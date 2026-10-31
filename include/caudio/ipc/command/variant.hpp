@@ -43,7 +43,8 @@ using Command =
                  LibrarySearch, LibraryStats, LibraryAdd, LibraryRemove, LibraryList, TagEdit,
                  TagGet, ConfigGet, ConfigSet, ConfigList, ConfigExport, ConfigImport, ConfigReset,
                  HistoryList, HistoryClear, BookmarkList, BookmarkAdd, BookmarkRemove, BookmarkGoto,
-                 Shutdown, Preview, DeviceList, DeviceSet, DeviceTest, Info, TrackRate>;
+                 Shutdown, Preview, DeviceList, DeviceSet, DeviceTest, Info, TrackRate,
+                 LibraryMaintenance>;
 
 // helper concepts
 namespace detail {

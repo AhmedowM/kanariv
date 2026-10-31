@@ -35,8 +35,9 @@ namespace caudio::ipc {
 using Result =
     std::variant<Status, QueueTracks, Queues, QueueCreated, PlaylistLoaded, VolumeInfo,
                  caudio::types::LibraryStats, Tracks, SearchResults, Playlists, PlaylistData,
-                 PlaylistCreated, PlaylistImportReport, ScanReport, ConfigValue, ConfigValues,
-                 SingleTrack, TrackInfo, History, Bookmarks, Empty, CliError, Devices>;
+                 PlaylistCreated, PlaylistImportReport, ScanReport, LibraryMaintenanceReport,
+                 ConfigValue, ConfigValues, SingleTrack, TrackInfo, History, Bookmarks, Empty,
+                 CliError, Devices>;
 
 /**
  * @brief Expected type for results that can fail with a CLI error.

@@ -160,6 +160,37 @@ struct LibraryList final {
      * @brief Filter by genre.
      */
     std::optional<std::string> genre{};
+    /**
+     * @brief Filter by user rating (0..5).
+     */
+    std::optional<int32_t> rating{};
+};
+
+/**
+ * @struct LibraryMaintenance
+ * @brief Library reconciliation report or prune missing rows.
+ * @ingroup caudio_ipc
+ *
+ * @json_example {"type": "LibraryMaintenance", "action": "report", "dry_run": true}
+ *
+ * @param action "report" (default) lists missing/duplicate tracks, "prune" deletes missing rows.
+ * @param dry_run When true (default), report planned actions without changing the database.
+ * @param library_id Library id to inspect (default: 1).
+ * @return LibraryMaintenanceReport object or Empty on prune success.
+ */
+struct LibraryMaintenance final {
+    /**
+     * @brief Maintenance action: "report" or "prune".
+     */
+    std::string action{"report"};
+    /**
+     * @brief Report planned actions without changing the database (default true).
+     */
+    bool dry_run{true};
+    /**
+     * @brief Library id to inspect (default: 1).
+     */
+    int64_t library_id{1};
 };
 
 } // namespace caudio::ipc

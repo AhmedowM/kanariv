@@ -527,3 +527,114 @@ TEST_CASE("daemon track rate and smart playlist roundtrip", "[ipc][cli]") {
     std::filesystem::remove(dbPath.string() + "-shm", ec);
     std::filesystem::remove(cfg.configPath, ec);
 }
+
+TEST_CASE("daemon library list rating filter and maintenance", "[ipc][cli]") {
+    std::string suffix = "libmaint";
+    std::filesystem::path dir = tempDirPath("ipc_" + suffix);
+    std::filesystem::path dbPath = dir / "library.db";
+    std::error_code ec;
+
+    auto dbRes = caudio::db::Database::open(dbPath.generic_string());
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+
+    // Insert tracks: some rated, some not.
+    caudio::types::Track t1{};
+    t1.path = "/tmp/track_a.mp3";
+    t1.title = "Track A";
+    t1.rating = 5;
+    for (int b = 0; b < 32; ++b)
+        t1.fingerprint[b] = (uint8_t)(b + 1);
+    auto ins1 = db->insertTrack(t1);
+    REQUIRE(ins1.has_value());
+
+    caudio::types::Track t2{};
+    t2.path = "/tmp/track_b.mp3";
+    t2.title = "Track B";
+    t2.rating = 0;
+    for (int b = 0; b < 32; ++b)
+        t2.fingerprint[b] = (uint8_t)(b + 2);
+    auto ins2 = db->insertTrack(t2);
+    REQUIRE(ins2.has_value());
+
+    ServiceConfig cfg;
+    cfg.dbPath = dbPath;
+    cfg.configPath = dir / "config.json";
+
+    auto svcRes = caudio::service::Service::create(cfg, std::move(db));
+    REQUIRE(svcRes.has_value());
+    auto svc = std::move(svcRes.value());
+
+    std::jthread svcThread([&](std::stop_token st) { (void)svc->run(st); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    // LibraryList with rating=5 should return only track A.
+    {
+        auto clientRes = IpcClient::connect(cfg.dbPath);
+        REQUIRE(clientRes.has_value());
+        auto client = std::move(clientRes.value());
+        auto listRes = client.send(LibraryList{.limit = 50, .rating = 5});
+        REQUIRE(listRes.has_value());
+        auto* tracks = std::get_if<Tracks>(&*listRes);
+        REQUIRE(tracks != nullptr);
+        REQUIRE(tracks->tracks.size() == 1);
+        CHECK(tracks->tracks[0].rating == 5);
+    }
+
+    // LibraryMaintenance report.
+    {
+        auto clientRes = IpcClient::connect(cfg.dbPath);
+        REQUIRE(clientRes.has_value());
+        auto client = std::move(clientRes.value());
+        auto repRes = client.send(LibraryMaintenance{.action = "report",
+                                                     .dry_run = true,
+                                                     .library_id = 1});
+        REQUIRE(repRes.has_value());
+        auto* rep = std::get_if<LibraryMaintenanceReport>(&*repRes);
+        REQUIRE(rep != nullptr);
+        CHECK(rep->tracks_checked == 2);
+        // Both tracks reference non-existent paths, so both should be missing.
+        CHECK(rep->missing_tracks.size() == 2);
+    }
+
+    // LibraryMaintenance prune (dry_run=false) should delete missing tracks.
+    {
+        auto clientRes = IpcClient::connect(cfg.dbPath);
+        REQUIRE(clientRes.has_value());
+        auto client = std::move(clientRes.value());
+        auto repRes = client.send(LibraryMaintenance{.action = "prune",
+                                                     .dry_run = false,
+                                                     .library_id = 1});
+        REQUIRE(repRes.has_value());
+        CHECK(std::holds_alternative<Empty>(*repRes));
+    }
+
+    // Verify tracks are gone.
+    {
+        auto clientRes = IpcClient::connect(cfg.dbPath);
+        REQUIRE(clientRes.has_value());
+        auto client = std::move(clientRes.value());
+        auto listRes = client.send(LibraryList{.limit = 50});
+        REQUIRE(listRes.has_value());
+        auto* tracks = std::get_if<Tracks>(&*listRes);
+        REQUIRE(tracks != nullptr);
+        CHECK(tracks->tracks.empty());
+    }
+
+    // Shutdown (new connection).
+    {
+        auto shutdownClientRes = IpcClient::connect(cfg.dbPath);
+        REQUIRE(shutdownClientRes.has_value());
+        auto shutdownClient = std::move(shutdownClientRes.value());
+        (void)shutdownClient.send(Shutdown{});
+    }
+
+    svcThread.request_stop();
+    svcThread.join();
+    svc.reset();
+
+    std::filesystem::remove(dbPath, ec);
+    std::filesystem::remove(dbPath.string() + "-wal", ec);
+    std::filesystem::remove(dbPath.string() + "-shm", ec);
+    std::filesystem::remove(cfg.configPath, ec);
+}

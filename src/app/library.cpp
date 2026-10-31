@@ -133,13 +133,34 @@ BatchResult App::libraryStats(int mostPlayed, const std::vector<std::string>& qu
 
 AppResult App::libraryList(const std::string& query, int limit, int offset,
                            const std::string& artist, const std::string& album,
-                           const std::string& genre) {
-    caudio::ipc::Command cmd{caudio::ipc::LibraryList{
-        query.empty() ? std::optional<std::string>{} : std::optional<std::string>{query}, limit,
-        offset, artist.empty() ? std::optional<std::string>{} : std::optional<std::string>{artist},
-        album.empty() ? std::optional<std::string>{} : std::optional<std::string>{album},
-        genre.empty() ? std::optional<std::string>{} : std::optional<std::string>{genre}}};
-    return impl_->confirm(impl_->sendRaw(cmd));
+                           const std::string& genre, std::optional<std::int32_t> rating) {
+    caudio::ipc::LibraryList cmd{};
+    cmd.query = query.empty() ? std::nullopt : std::optional<std::string>{query};
+    cmd.limit = limit;
+    cmd.offset = offset;
+    cmd.artist = artist.empty() ? std::nullopt : std::optional<std::string>{artist};
+    cmd.album = album.empty() ? std::nullopt : std::optional<std::string>{album};
+    cmd.genre = genre.empty() ? std::nullopt : std::optional<std::string>{genre};
+    cmd.rating = rating;
+    return impl_->confirm(impl_->sendRaw(caudio::ipc::Command{std::move(cmd)}));
+}
+
+AppResult App::libraryFavorites(std::int32_t minRating, int limit) {
+    caudio::ipc::LibraryList cmd{};
+    cmd.limit = limit;
+    cmd.rating = minRating;
+    caudio::ipc::Command c{std::move(cmd)};
+    return impl_->confirm(impl_->sendRaw(c));
+}
+
+AppResult App::libraryMaintenance(const std::string& action, bool dryRun,
+                                  std::int64_t libraryId) {
+    caudio::ipc::LibraryMaintenance cmd{};
+    cmd.action = action;
+    cmd.dry_run = dryRun;
+    cmd.library_id = libraryId;
+    caudio::ipc::Command c{std::move(cmd)};
+    return impl_->confirm(impl_->sendRaw(c));
 }
 
 AppResult App::libraryAdd(const std::string& path, bool recursive) {

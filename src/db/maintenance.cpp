@@ -54,14 +54,6 @@ libraryReport(Database& db, int64_t libraryId) {
     return report;
 }
 
-std::size_t LibraryMaintenanceReport::duplicateTracks() const noexcept {
-    std::size_t count = 0;
-    for (const auto& group : duplicate_groups)
-        if (group.size() > 1)
-            count += group.size() - 1;
-    return count;
-}
-
 std::expected<std::size_t, caudio::utils::Error>
 libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report) {
     std::size_t pruned = 0;

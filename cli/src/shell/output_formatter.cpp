@@ -272,6 +272,26 @@ void OutputFormatter::print(const caudio::ipc::Result& r, std::ostream& os) cons
                                     formatTime(t.duration));
                 }
             },
+            [&os](const caudio::ipc::LibraryMaintenanceReport& v) {
+                caudio::println(os, "Library maintenance: {} tracks checked", v.tracks_checked);
+                if (v.missing_tracks.empty() && v.duplicate_groups == 0)
+                    caudio::println(os, "  No missing files or duplicates found.");
+                else {
+                    if (!v.missing_tracks.empty()) {
+                        caudio::println(os, "  Missing files ({}):", v.missing_tracks.size());
+                        caudio::println(os, "{:>3} {:>6}  {:<40} {:<40}", "#", "ID", "Artist",
+                                        "Title");
+                        for (std::size_t i = 0; i < v.missing_tracks.size(); ++i) {
+                            const auto& t = v.missing_tracks[i];
+                            caudio::println(os, "{:3} {:6}  {:<40} {:<40}", i, t.id,
+                                            truncateField(t.artist, 40), truncateField(t.title, 40));
+                        }
+                    }
+                    if (v.duplicate_groups > 0)
+                        caudio::println(os, "  Duplicate groups: {} (redundant rows: {})",
+                                        v.duplicate_groups, v.duplicate_tracks);
+                }
+            },
             [&os](const caudio::ipc::Playlists& v) {
                 std::span<const caudio::types::Playlist> playlistSpan(v.playlists.data(),
                                                                       v.playlists.size());

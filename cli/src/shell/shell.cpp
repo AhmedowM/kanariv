@@ -511,15 +511,37 @@ int Shell::run(int argc, char** argv) {
     std::string libListArtist;
     std::string libListAlbum;
     std::string libListGenre;
+    int libListRating = 0;
     bool libListJson = false;
     auto* libList = libCmd->add_subcommand("list", "List all tracks in library");
     libList->add_option("--query", libListQuery, "Search query (title, artist, album, genre)");
     libList->add_option("--artist", libListArtist, "Filter by artist");
     libList->add_option("--album", libListAlbum, "Filter by album");
     libList->add_option("--genre", libListGenre, "Filter by genre");
+    libList->add_option("--rating", libListRating, "Filter by user rating (0-5)")
+        ->check(CLI::Range(0, 5));
     libList->add_option("--limit", libListLimit, "Limit results");
     libList->add_option("--offset", libListOffset, "Offset for pagination");
     libList->add_flag("--json", libListJson, "JSON output");
+    int libFavMinRating = 1;
+    int libFavLimit = 50;
+    bool libFavJson = false;
+    auto* libFav = libCmd->add_subcommand("favorites", "List favorited (rated) tracks");
+    libFav->add_option("--min-rating", libFavMinRating, "Minimum rating (0-5)")
+        ->check(CLI::Range(0, 5));
+    libFav->add_option("--limit", libFavLimit, "Limit results");
+    libFav->add_flag("--json", libFavJson, "JSON output");
+    std::string libMaintAction = "report";
+    bool libMaintDryRun = true;
+    std::int64_t libMaintLibraryId = 1;
+    bool libMaintJson = false;
+    auto* libMaint = libCmd->add_subcommand("maintenance",
+                                            "Report or prune missing/duplicate tracks");
+    libMaint->add_option("action", libMaintAction, "report or prune")
+        ->check(CLI::IsMember({"report", "prune"}));
+    libMaint->add_flag("--dry-run", libMaintDryRun, "Report only, no changes");
+    libMaint->add_option("--library", libMaintLibraryId, "Library id (default: 1)");
+    libMaint->add_flag("--json", libMaintJson, "JSON output");
     auto* tagCmd = cli_->add_subcommand("tag", "Tag operations");
     std::int64_t tagEditId = 0;
     std::string tagEditField;
@@ -987,10 +1009,24 @@ int Shell::run(int argc, char** argv) {
                 app_.libraryStats(libStatsMostPlayed, libStatsQueues, libStatsPlaylists),
                 libStatsJson);
         }
-        if (libList->parsed())
+        if (libList->parsed()) {
+            std::optional<std::int32_t> ratingOpt;
+            if (libListRating > 0)
+                ratingOpt = libListRating;
             return detail::render(app_.libraryList(libListQuery, libListLimit, libListOffset,
-                                                   libListArtist, libListAlbum, libListGenre),
+                                                   libListArtist, libListAlbum, libListGenre,
+                                                   ratingOpt),
                                   libListJson);
+        }
+        if (libFav->parsed()) {
+            return detail::render(app_.libraryFavorites(libFavMinRating, libFavLimit),
+                                  libFavJson);
+        }
+        if (libMaint->parsed()) {
+            return detail::render(app_.libraryMaintenance(libMaintAction, libMaintDryRun,
+                                                          libMaintLibraryId),
+                                  libMaintJson);
+        }
         if (libAdd->parsed())
             return detail::render(app_.libraryAdd(libAddPath, libAddRecursive), libAddJson);
         if (libRemove->parsed())

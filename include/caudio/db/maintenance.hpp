@@ -35,7 +35,13 @@ struct LibraryMaintenanceReport {
     /**
      * @brief Returns the number of redundant rows in duplicate groups.
      */
-    std::size_t duplicateTracks() const noexcept;
+    std::size_t duplicateTracks() const noexcept {
+        std::size_t count = 0;
+        for (const auto& group : duplicate_groups)
+            if (group.size() > 1)
+                count += group.size() - 1;
+        return count;
+    }
 };
 
 /**

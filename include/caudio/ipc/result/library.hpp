@@ -124,4 +124,36 @@ struct TrackInfo final {
     int64_t last_played{0};
 };
 
+/**
+ * @struct LibraryMaintenanceReport
+ * @brief Library reconciliation report (returned by LibraryMaintenance).
+ * @ingroup caudio_ipc
+ *
+ * @json_example {"type": "LibraryMaintenanceReport", "tracks_checked": 100,
+ *   "missing_tracks": [...], "duplicate_groups": 2, "duplicate_tracks": 3}
+ *
+ * @param tracks_checked Number of live rows examined.
+ * @param missing_tracks Tracks whose paths no longer exist on disk.
+ * @param duplicate_groups Number of path-sharing groups.
+ * @param duplicate_tracks Number of redundant rows in duplicate groups.
+ */
+struct LibraryMaintenanceReport final {
+    /**
+     * @brief Number of live rows examined.
+     */
+    std::size_t tracks_checked{};
+    /**
+     * @brief Tracks whose paths no longer exist on disk.
+     */
+    std::vector<caudio::types::Track> missing_tracks{};
+    /**
+     * @brief Number of path-sharing groups.
+     */
+    std::size_t duplicate_groups{};
+    /**
+     * @brief Number of redundant rows in duplicate groups.
+     */
+    std::size_t duplicate_tracks{};
+};
+
 } // namespace caudio::ipc

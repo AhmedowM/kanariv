@@ -403,7 +403,25 @@ class CAUDIO_API App {
      */
     AppResult libraryList(const std::string& query, int limit, int offset,
                           const std::string& artist, const std::string& album,
-                          const std::string& genre);
+                          const std::string& genre, std::optional<std::int32_t> rating = {});
+
+    /**
+     * @brief Lists favorited (rated) library tracks.
+     * @ingroup caudio_app
+     * @param minRating Minimum rating (0..5), defaults to 1.
+     * @param limit Maximum results (0 = unlimited).
+     */
+    AppResult libraryFavorites(std::int32_t minRating, int limit);
+
+    /**
+     * @brief Library maintenance: report or prune missing/duplicate tracks.
+     * @ingroup caudio_app
+     * @param action "report" or "prune".
+     * @param dryRun Report only, no changes (default true).
+     * @param libraryId Library id (default: 1).
+     */
+    AppResult libraryMaintenance(const std::string& action, bool dryRun,
+                                 std::int64_t libraryId);
 
     /** @brief Adds a file or directory to the library. @ingroup caudio_app */
     AppResult libraryAdd(const std::string& path, bool recursive);

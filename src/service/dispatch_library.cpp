@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <caudio/db/database.hpp>
+#include <caudio/db/maintenance.hpp>
 #include <caudio/db/scan.hpp>
 #include <caudio/db/search.hpp>
 #include <caudio/types/db.hpp>
@@ -49,6 +50,7 @@ using caudio::ipc::HistoryList;
 using caudio::ipc::Info;
 using caudio::ipc::LibraryAdd;
 using caudio::ipc::LibraryList;
+using caudio::ipc::LibraryMaintenance;
 using caudio::ipc::LibraryRemove;
 using caudio::ipc::LibraryScan;
 using caudio::ipc::LibrarySearch;
@@ -160,6 +162,8 @@ Service::Impl::handle(const caudio::ipc::LibraryList& cmd) {
         q.album = *cmd.album;
     if (cmd.genre.has_value())
         q.genre = *cmd.genre;
+    if (cmd.rating.has_value())
+        q.rating = *cmd.rating;
     auto tracks = db_->listTracks(&q);
     if (!tracks)
         return std::unexpected{tracks.error()};
@@ -874,6 +878,45 @@ Service::Impl::handle(const caudio::ipc::TrackRate& cmd) {
     if (!r)
         return std::unexpected{r.error()};
     return Result{Empty{}};
+}
+
+std::expected<caudio::ipc::Result, caudio::utils::Error>
+Service::Impl::handle(const caudio::ipc::LibraryMaintenance& cmd) {
+    caudio::db::Database& db = dynamic_cast<caudio::db::Database&>(*db_);
+    if (cmd.action == "report") {
+        auto report = caudio::db::libraryReport(db, cmd.library_id);
+        if (!report)
+            return std::unexpected{report.error()};
+        caudio::ipc::LibraryMaintenanceReport rep{};
+        rep.tracks_checked = report->tracks_checked;
+        for (const auto& t : report->missing_tracks)
+            rep.missing_tracks.push_back(t);
+        rep.duplicate_groups = report->duplicate_groups.size();
+        rep.duplicate_tracks = report->duplicateTracks();
+        return Result{std::move(rep)};
+    }
+    if (cmd.action == "prune") {
+        caudio::db::LibraryMaintenanceOptions opts{};
+        opts.dry_run = cmd.dry_run;
+        opts.prune_missing = true;
+        auto report = caudio::db::libraryApplyMaintenance(db, cmd.library_id, opts);
+        if (!report)
+            return std::unexpected{report.error()};
+        if (cmd.dry_run) {
+            caudio::ipc::LibraryMaintenanceReport rep{};
+            rep.tracks_checked = report->tracks_checked;
+            for (const auto& t : report->missing_tracks)
+                rep.missing_tracks.push_back(t);
+            rep.duplicate_groups = report->duplicate_groups.size();
+            rep.duplicate_tracks = report->duplicateTracks();
+            return Result{std::move(rep)};
+        }
+        return Result{Empty{}};
+    }
+    return std::unexpected{caudio::utils::makeError(
+        caudio::utils::StatusCode::InvalidArg,
+        "library maintenance: unknown action '" + cmd.action +
+        "' (expected 'report' or 'prune')")};
 }
 
 } // namespace caudio::service

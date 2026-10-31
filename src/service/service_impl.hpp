@@ -86,6 +86,8 @@ struct Service::Impl {
     std::expected<caudio::ipc::Result, caudio::utils::Error>
     handle(const caudio::ipc::LibraryList& cmd);
     std::expected<caudio::ipc::Result, caudio::utils::Error>
+    handle(const caudio::ipc::LibraryMaintenance& cmd);
+    std::expected<caudio::ipc::Result, caudio::utils::Error>
     handle(const caudio::ipc::LibraryRemove& cmd);
     std::expected<caudio::ipc::Result, caudio::utils::Error>
     handle(const caudio::ipc::LibraryScan& cmd);

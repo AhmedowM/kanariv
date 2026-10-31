@@ -324,6 +324,15 @@ Json toJson(const Command& cmd) {
                     j["genre"] = *v.genre;
                 else
                     j["genre"] = nullptr;
+                if (v.rating.has_value())
+                    j["rating"] = *v.rating;
+                else
+                    j["rating"] = nullptr;
+            } else if constexpr (std::is_same_v<T, LibraryMaintenance>) {
+                j["type"] = "LibraryMaintenance";
+                j["action"] = v.action;
+                j["dry_run"] = v.dry_run;
+                j["library_id"] = v.library_id;
             } else if constexpr (std::is_same_v<T, TagEdit>) {
                 j["type"] = "TagEdit";
                 j["id"] = v.id;
@@ -674,6 +683,18 @@ std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
                 v.album = j["album"].get<std::string>();
             if (j.contains("genre") && !j["genre"].isNull() && j["genre"].isString())
                 v.genre = j["genre"].get<std::string>();
+            if (j.contains("rating") && !j["rating"].isNull() && j["rating"].isNumber())
+                v.rating = j["rating"].get<int32_t>();
+            return Command{std::move(v)};
+        }
+        if (t == "LibraryMaintenance") {
+            LibraryMaintenance v{};
+            if (j.contains("action") && j["action"].isString())
+                v.action = j["action"].get<std::string>();
+            if (j.contains("dry_run") && j["dry_run"].isBoolean())
+                v.dry_run = j["dry_run"].get<bool>();
+            if (j.contains("library_id") && j["library_id"].isNumber())
+                v.library_id = j["library_id"].get<int64_t>();
             return Command{std::move(v)};
         }
         if (t == "TagEdit") {
@@ -933,6 +954,16 @@ Json toJson(const Result& r) {
                 j["matched"] = v.matched;
                 j["skipped"] = v.skipped;
                 j["duplicates"] = v.duplicates;
+                return j;
+            } else if constexpr (std::is_same_v<T, LibraryMaintenanceReport>) {
+                Json j;
+                j["type"] = "LibraryMaintenanceReport";
+                j["tracks_checked"] = v.tracks_checked;
+                j["missing_tracks"] = Json::array();
+                for (const auto& t : v.missing_tracks)
+                    j["missing_tracks"].push_back(caudio::utils::trackToJson(t));
+                j["duplicate_groups"] = v.duplicate_groups;
+                j["duplicate_tracks"] = v.duplicate_tracks;
                 return j;
             } else if constexpr (std::is_same_v<T, ConfigValue>) {
                 Json j;
@@ -1301,6 +1332,28 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                 r.skipped = j["skipped"].get<std::size_t>();
             if (j.contains("duplicates") && j["duplicates"].isNumber())
                 r.duplicates = j["duplicates"].get<std::size_t>();
+            return Result{std::move(r)};
+        }
+        if (t == "LibraryMaintenanceReport") {
+            LibraryMaintenanceReport r{};
+            if (j.contains("tracks_checked") && j["tracks_checked"].isNumber())
+                r.tracks_checked = j["tracks_checked"].get<std::size_t>();
+            if (j.contains("missing_tracks") && j["missing_tracks"].isArray()) {
+                const Json tracks = j["missing_tracks"];
+                for (std::size_t ti = 0, tn = tracks.size(); ti < tn; ++ti) {
+                    auto jt = tracks.at(ti);
+                    if (!jt)
+                        return std::unexpected{jt.error()};
+                    auto tr = caudio::utils::trackFromJson(*jt);
+                    if (!tr)
+                        return std::unexpected{tr.error()};
+                    r.missing_tracks.push_back(std::move(*tr));
+                }
+            }
+            if (j.contains("duplicate_groups") && j["duplicate_groups"].isNumber())
+                r.duplicate_groups = j["duplicate_groups"].get<std::size_t>();
+            if (j.contains("duplicate_tracks") && j["duplicate_tracks"].isNumber())
+                r.duplicate_tracks = j["duplicate_tracks"].get<std::size_t>();
             return Result{std::move(r)};
         }
         if (t == "ConfigValue") {
