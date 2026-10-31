@@ -511,6 +511,8 @@ int Shell::run(int argc, char** argv) {
     int libListLimit = 50;
     int libListOffset = 0;
     std::string libListQuery;
+    std::string libListSort;
+    std::string libListOrder;
     std::string libListArtist;
     std::string libListAlbum;
     std::string libListGenre;
@@ -518,6 +520,8 @@ int Shell::run(int argc, char** argv) {
     bool libListJson = false;
     auto* libList = libCmd->add_subcommand("list", "List all tracks in library");
     libList->add_option("--query", libListQuery, "Search query (title, artist, album, genre)");
+    libList->add_option("--sort", libListSort, "Sort field: id, title, artist, album, year, rating, play_count, duration, date_added");
+    libList->add_option("--order", libListOrder, "Sort direction: asc or desc");
     libList->add_option("--artist", libListArtist, "Filter by artist");
     libList->add_option("--album", libListAlbum, "Filter by album");
     libList->add_option("--genre", libListGenre, "Filter by genre");
@@ -1019,6 +1023,7 @@ int Shell::run(int argc, char** argv) {
             if (libListRating > 0)
                 ratingOpt = libListRating;
             return detail::render(app_.libraryList(libListQuery, libListLimit, libListOffset,
+                                                   libListSort, libListOrder,
                                                    libListArtist, libListAlbum, libListGenre,
                                                    ratingOpt),
                                   libListJson);

@@ -86,6 +86,10 @@ struct TrackQuery {
     int limit{};                         ///< Max rows (0 = unlimited).
     int offset{};                        ///< Row offset.
     std::string search;                  ///< Substring search across title/artist/album/genre.
+    std::string sort;                    ///< Sort field: id, title, artist, album, year,
+                                          ///< rating, play_count, duration, date_added.
+                                          ///< Empty = default (id).
+    std::string order;                   ///< Sort direction: "asc" or "desc". Default: asc.
 };
 
 /**

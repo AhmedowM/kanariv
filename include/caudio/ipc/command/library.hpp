@@ -149,6 +149,15 @@ struct LibraryList final {
      */
     int offset{0};
     /**
+     * @brief Sort field: id, title, artist, album, year, rating, play_count,
+     * duration, date_added. Empty = default (id).
+     */
+    std::string sort{};
+    /**
+     * @brief Sort direction: "asc" or "desc". Default: asc.
+     */
+    std::string order{};
+    /**
      * @brief Filter by artist.
      */
     std::optional<std::string> artist{};

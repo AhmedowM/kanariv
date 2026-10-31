@@ -906,7 +906,33 @@ Database::listTracks(const caudio::types::TrackQuery* q) {
             sql += " AND (title LIKE ? ESCAPE '\\' OR artist LIKE ? ESCAPE '\\' OR album LIKE "
                    "? ESCAPE '\\' OR genre LIKE ? ESCAPE '\\')";
     }
-    sql += " ORDER BY id";
+    // Build ORDER BY clause. Default: ORDER BY id ASC.
+    std::string orderBy = " ORDER BY id";
+    if (q && !q->sort.empty()) {
+        // Whitelist of allowed sort columns to prevent SQL injection.
+        static const std::unordered_map<std::string, std::string> kSortCols{
+            {"id", "id"},
+            {"title", "title COLLATE NOCASE"},
+            {"artist", "artist COLLATE NOCASE"},
+            {"album", "album COLLATE NOCASE"},
+            {"album_artist", "album_artist COLLATE NOCASE"},
+            {"genre", "genre COLLATE NOCASE"},
+            {"year", "year"},
+            {"track_num", "track_num"},
+            {"disc_num", "disc_num"},
+            {"duration", "duration"},
+            {"rating", "rating"},
+            {"play_count", "play_count"},
+            {"date_added", "date_added"},
+        };
+        auto it = kSortCols.find(q->sort);
+        if (it != kSortCols.end()) {
+            orderBy = " ORDER BY " + it->second;
+            std::string dir = (q->order == "desc") ? " DESC" : " ASC";
+            orderBy += dir;
+        }
+    }
+    sql += orderBy;
     bool has_limit = q && q->limit > 0;
     bool has_offset = q && q->offset > 0;
     if (has_limit) {

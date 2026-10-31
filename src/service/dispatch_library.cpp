@@ -234,6 +234,8 @@ Service::Impl::handle(const caudio::ipc::LibraryList& cmd) {
     caudio::types::TrackQuery q{};
     q.limit = cmd.limit;
     q.offset = cmd.offset;
+    q.sort = cmd.sort;
+    q.order = cmd.order;
     if (cmd.query.has_value())
         q.search = *cmd.query;
     if (cmd.artist.has_value())

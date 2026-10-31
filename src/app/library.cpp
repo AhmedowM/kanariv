@@ -132,12 +132,15 @@ BatchResult App::libraryStats(int mostPlayed, const std::vector<std::string>& qu
 }
 
 AppResult App::libraryList(const std::string& query, int limit, int offset,
+                           const std::string& sort, const std::string& order,
                            const std::string& artist, const std::string& album,
                            const std::string& genre, std::optional<std::int32_t> rating) {
     caudio::ipc::LibraryList cmd{};
     cmd.query = query.empty() ? std::nullopt : std::optional<std::string>{query};
     cmd.limit = limit;
     cmd.offset = offset;
+    cmd.sort = sort;
+    cmd.order = order;
     cmd.artist = artist.empty() ? std::nullopt : std::optional<std::string>{artist};
     cmd.album = album.empty() ? std::nullopt : std::optional<std::string>{album};
     cmd.genre = genre.empty() ? std::nullopt : std::optional<std::string>{genre};

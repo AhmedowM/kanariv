@@ -403,6 +403,7 @@ class CAUDIO_API App {
      * frontends pass plain values.
      */
     AppResult libraryList(const std::string& query, int limit, int offset,
+                          const std::string& sort, const std::string& order,
                           const std::string& artist, const std::string& album,
                           const std::string& genre, std::optional<std::int32_t> rating = {});
 
