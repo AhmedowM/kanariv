@@ -145,6 +145,104 @@ TEST_CASE("listTracks pagination limit/offset", "[db]") {
     REQUIRE(l6->size() == 2);
 }
 
+TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+
+    // Insert tracks with varied rating, year, play_count, duration.
+    caudio::types::Track t1 = makeTrack(1);
+    t1.rating = 5;
+    t1.year = 1970;
+    t1.play_count = 100;
+    t1.duration = 420.0;
+    REQUIRE(db->insertTrack(t1).has_value());
+
+    caudio::types::Track t2 = makeTrack(2);
+    t2.rating = 4;
+    t2.year = 1985;
+    t2.play_count = 42;
+    t2.duration = 240.0;
+    REQUIRE(db->insertTrack(t2).has_value());
+
+    caudio::types::Track t3 = makeTrack(3);
+    t3.rating = 3;
+    t3.year = 2000;
+    t3.play_count = 7;
+    t3.duration = 180.0;
+    REQUIRE(db->insertTrack(t3).has_value());
+
+    caudio::types::Track t4 = makeTrack(4);
+    t4.rating = 5;
+    t4.year = 2010;
+    t4.play_count = 0;
+    t4.duration = 600.0;
+    REQUIRE(db->insertTrack(t4).has_value());
+
+    // Exact rating filter.
+    caudio::types::TrackQuery q;
+    q.rating = 5;
+    auto r5 = db->listTracks(&q);
+    REQUIRE(r5.has_value());
+    REQUIRE(r5->size() == 2);
+    for (auto& t : *r5)
+        REQUIRE(t.rating == 5);
+
+    // Year range inclusive.
+    q = caudio::types::TrackQuery{};
+    q.year_min = 1980;
+    q.year_max = 2005;
+    auto ry = db->listTracks(&q);
+    REQUIRE(ry.has_value());
+    REQUIRE(ry->size() == 2);
+    for (auto& t : *ry) {
+        REQUIRE(t.year >= 1980);
+        REQUIRE(t.year <= 2005);
+    }
+
+    // One-sided year max only.
+    q = caudio::types::TrackQuery{};
+    q.year_max = 1975;
+    auto ry2 = db->listTracks(&q);
+    REQUIRE(ry2.has_value());
+    REQUIRE(ry2->size() == 1);
+    REQUIRE((*ry2)[0].year == 1970);
+
+    // Play count range.
+    q = caudio::types::TrackQuery{};
+    q.play_count_min = 10;
+    q.play_count_max = 200;
+    auto rp = db->listTracks(&q);
+    REQUIRE(rp.has_value());
+    REQUIRE(rp->size() == 2);
+    for (auto& t : *rp) {
+        REQUIRE(t.play_count >= 10);
+        REQUIRE(t.play_count <= 200);
+    }
+
+    // Duration range.
+    q = caudio::types::TrackQuery{};
+    q.duration_min = 200.0;
+    q.duration_max = 500.0;
+    auto rd = db->listTracks(&q);
+    REQUIRE(rd.has_value());
+    REQUIRE(rd->size() == 2);
+    for (auto& t : *rd) {
+        REQUIRE(t.duration >= 200.0);
+        REQUIRE(t.duration <= 500.0);
+    }
+
+    // Combined filters: rating=5 AND year>=2000.
+    q = caudio::types::TrackQuery{};
+    q.rating = 5;
+    q.year_min = 2000;
+    auto rc = db->listTracks(&q);
+    REQUIRE(rc.has_value());
+    REQUIRE(rc->size() == 1);
+    REQUIRE((*rc)[0].rating == 5);
+    REQUIRE((*rc)[0].year >= 2000);
+}
+
 TEST_CASE("findByFingerprint and findByPath", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());

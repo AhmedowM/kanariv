@@ -885,8 +885,22 @@ Database::listTracks(const caudio::types::TrackQuery* q) {
             sql += " AND genre=?";
         if (q->year)
             sql += " AND year=?";
+        if (q->year_min)
+            sql += " AND year>=?";
+        if (q->year_max)
+            sql += " AND year<=?";
         if (q->dirty)
             sql += " AND dirty=?";
+        if (q->rating)
+            sql += " AND rating=?";
+        if (q->play_count_min)
+            sql += " AND play_count>=?";
+        if (q->play_count_max)
+            sql += " AND play_count<=?";
+        if (q->duration_min)
+            sql += " AND duration>=?";
+        if (q->duration_max)
+            sql += " AND duration<=?";
         if (!q->search.empty())
             sql += " AND (title LIKE ? ESCAPE '\\' OR artist LIKE ? ESCAPE '\\' OR album LIKE "
                    "? ESCAPE '\\' OR genre LIKE ? ESCAPE '\\')";
@@ -916,8 +930,22 @@ Database::listTracks(const caudio::types::TrackQuery* q) {
             st.bindText(idx++, q->genre);
         if (q->year)
             st.bindInt(idx++, *q->year);
+        if (q->year_min)
+            st.bindInt(idx++, *q->year_min);
+        if (q->year_max)
+            st.bindInt(idx++, *q->year_max);
         if (q->dirty)
             st.bindInt(idx++, *q->dirty ? 1 : 0);
+        if (q->rating)
+            st.bindInt(idx++, *q->rating);
+        if (q->play_count_min)
+            st.bindInt(idx++, *q->play_count_min);
+        if (q->play_count_max)
+            st.bindInt(idx++, *q->play_count_max);
+        if (q->duration_min)
+            st.bindDouble(idx++, *q->duration_min);
+        if (q->duration_max)
+            st.bindDouble(idx++, *q->duration_max);
         if (!q->search.empty()) {
             std::string esc = internal::escapeLike(q->search);
             likePat = "%" + esc + "%";

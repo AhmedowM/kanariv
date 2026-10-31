@@ -66,15 +66,23 @@ struct PlaybackStats {
  * @ingroup caudio_types
  * @details All fields are optional filters combined with AND. `search`
  * maps to a LIKE on title/artist/album/genre. `limit == 0` means no limit;
- * `offset` requires `LIMIT -1` when no limit is set.
+ * `offset` requires `LIMIT -1` when no limit is set. Range fields are
+ * inclusive; omit either bound for a one-sided range.
  */
 struct TrackQuery {
     std::string artist;                  ///< Exact artist filter (empty = no filter).
     std::string album;                   ///< Exact album filter.
     std::string genre;                   ///< Exact genre filter.
     std::optional<int32_t> year{};       ///< Exact year filter.
+    std::optional<int32_t> year_min{};   ///< Minimum year (inclusive).
+    std::optional<int32_t> year_max{};   ///< Maximum year (inclusive).
     std::optional<int64_t> library_id{}; ///< Exact library filter.
     std::optional<bool> dirty{};         ///< Dirty flag filter.
+    std::optional<int32_t> rating{};     ///< Exact user rating filter (0..5).
+    std::optional<int64_t> play_count_min{}; ///< Minimum play count (inclusive).
+    std::optional<int64_t> play_count_max{}; ///< Maximum play count (inclusive).
+    std::optional<double> duration_min{};    ///< Minimum duration in seconds (inclusive).
+    std::optional<double> duration_max{};    ///< Maximum duration in seconds (inclusive).
     int limit{};                         ///< Max rows (0 = unlimited).
     int offset{};                        ///< Row offset.
     std::string search;                  ///< Substring search across title/artist/album/genre.
