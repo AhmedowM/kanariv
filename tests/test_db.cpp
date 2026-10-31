@@ -200,7 +200,7 @@ TEST_CASE("parseSmartQuery", "[db]") {
 
     // Combined AND.
     check("rating=5,year>=2000,genre=Jazz",
-          caudio::types::TrackQuery{.rating = 5, .year_min = 2000, .genre = "Jazz"});
+          caudio::types::TrackQuery{.genre = "Jazz", .year_min = 2000, .rating = 5});
 
     // Rejection: unknown field.
     auto bad1 = parseSmartQuery("foo=bar");
