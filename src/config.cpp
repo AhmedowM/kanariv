@@ -165,6 +165,17 @@ caudio::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
         if (j.contains("autoResumeOnPlay") && j["autoResumeOnPlay"].isBoolean()) {
             cfg.autoResumeOnPlay = j["autoResumeOnPlay"].get<bool>();
         }
+        if (j.contains("clearStopsPlayback") && j["clearStopsPlayback"].isBoolean()) {
+            cfg.clearStopsPlayback = j["clearStopsPlayback"].get<bool>();
+        }
+        if (j.contains("repeatDefault") && j["repeatDefault"].isString()) {
+            std::string rd = j["repeatDefault"].get<std::string>();
+            if (rd == "off" || rd == "one" || rd == "all")
+                cfg.repeatDefault = rd;
+        }
+        if (j.contains("autostart") && j["autostart"].isBoolean()) {
+            cfg.autostart = j["autostart"].get<bool>();
+        }
         // legacy keys: db_path, log_level
         if (j.contains("db_path") && j["db_path"].isString()) {
             std::string s = j["db_path"].get<std::string>();
@@ -196,6 +207,9 @@ caudio::utils::Expected<void> saveConfig(const Config& cfg) {
         j["device"] = cfg.device;
         j["logLevel"] = cfg.logLevel;
         j["autoResumeOnPlay"] = cfg.autoResumeOnPlay;
+        j["clearStopsPlayback"] = cfg.clearStopsPlayback;
+        j["repeatDefault"] = cfg.repeatDefault;
+        j["autostart"] = cfg.autostart;
         if (!cfg.socketPath.empty())
             j["socketPath"] = cfg.socketPath;
         std::ofstream out(cfg.configPath);

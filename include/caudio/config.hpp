@@ -52,6 +52,12 @@ struct Config {
     /** @brief If true, play() after daemon restart resumes the persisted track/position
      *  from DB instead of advancing to the next queue track. Default: false. */
     bool autoResumeOnPlay{false};
+    /** @brief When the active queue is cleared, also stop playback. Default: true. */
+    bool clearStopsPlayback{true};
+    /** @brief Default repeat mode for newly created queues: "off", "one", or "all". Default: "off". */
+    std::string repeatDefault{"off"};
+    /** @brief When a track is added to an empty queue, auto-start playback. Default: false. */
+    bool autostart{false};
 };
 
 /**

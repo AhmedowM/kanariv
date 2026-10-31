@@ -182,6 +182,15 @@ Service::Impl::handle(const caudio::ipc::QueueCreate& qc) {
     auto id = db_->createQueue(qc.name);
     if (!id)
         return std::unexpected{id.error()};
+    // Apply the configured default repeat mode to the new queue.
+    caudio::db::Database& db = dynamic_cast<caudio::db::Database&>(*db_);
+    if (config_.repeatDefault == "one") {
+        if (auto e = db.setQueueRepeat(*id, 1); !e)
+            return std::unexpected{e.error()};
+    } else if (config_.repeatDefault == "all") {
+        if (auto e = db.setQueueRepeat(*id, 2); !e)
+            return std::unexpected{e.error()};
+    }
     return Result{caudio::ipc::QueueCreated{*id, qc.name}};
 }
 
@@ -519,6 +528,10 @@ Service::Impl::handle(const caudio::ipc::QueueClear&) {
     auto r = db_->queueClear(qid);
     if (!r)
         return std::unexpected{r.error()};
+    if (config_.clearStopsPlayback) {
+        if (auto e = engine_->stop(); !e)
+            return std::unexpected{e.error()};
+    }
     updateShmStatus();
     return Result{QueueTracks{{}}};
 }

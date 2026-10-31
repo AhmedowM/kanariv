@@ -93,3 +93,53 @@ TEST_CASE("legacy Windows config is still read", "[config]") {
     REQUIRE(cfg->configPath == legacyDir / "config.json");
 }
 #endif
+
+TEST_CASE("config load/save playback-policy keys", "[config]") {
+    auto tmp = freshTempDir("caudio_test_config_policy");
+    auto cfgPath = tmp / "config.json";
+
+    // Write a config file with playback-policy keys.
+    {
+        std::ofstream out(cfgPath);
+        REQUIRE(out.good());
+        out << R"({
+  "clearStopsPlayback": false,
+  "repeatDefault": "all",
+  "autostart": true
+})";
+    }
+
+    auto loaded = caudio::config::loadConfig(cfgPath);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->clearStopsPlayback == false);
+    REQUIRE(loaded->repeatDefault == "all");
+    REQUIRE(loaded->autostart == true);
+
+    // Save and reload to verify round-trip.
+    auto saved = caudio::config::saveConfig(*loaded);
+    REQUIRE(saved.has_value());
+
+    auto reloaded = caudio::config::loadConfig(cfgPath);
+    REQUIRE(reloaded.has_value());
+    REQUIRE(reloaded->clearStopsPlayback == false);
+    REQUIRE(reloaded->repeatDefault == "all");
+    REQUIRE(reloaded->autostart == true);
+}
+
+TEST_CASE("config defaults for playback-policy keys", "[config]") {
+    auto tmp = freshTempDir("caudio_test_config_defaults");
+    auto cfgPath = tmp / "config.json";
+
+    // Empty config file -> defaults.
+    {
+        std::ofstream out(cfgPath);
+        REQUIRE(out.good());
+        out << "{}";
+    }
+
+    auto loaded = caudio::config::loadConfig(cfgPath);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->clearStopsPlayback == true);   // default
+    REQUIRE(loaded->repeatDefault == "off");        // default
+    REQUIRE(loaded->autostart == false);            // default
+}
