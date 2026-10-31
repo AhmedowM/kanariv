@@ -2,6 +2,7 @@
 
 #include <array>
 #include <caudio/db/database.hpp>
+#include <caudio/db/smart.hpp>
 #include <caudio/types/db.hpp>
 #include <caudio/utils/error.hpp>
 #include <caudio/utils/log.hpp>
@@ -1390,6 +1391,19 @@ std::expected<std::vector<caudio::types::Track>, caudio::utils::Error>
 Database::playlistGetTracks(int64_t pid) {
     if (pid == 0)
         return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg)};
+    // Resolve the playlist row first (acquires its own shared lock). Manual
+    // playlists fall through to the playlist_items join below; smart
+    // playlists (non-zero type with a smart_query) are evaluated against the
+    // library via listTracks().
+    auto pl = getPlaylist(pid);
+    if (!pl)
+        return std::unexpected{pl.error()};
+    if (pl->type != 0 && !pl->smart_query.empty()) {
+        auto q = parseSmartQuery(pl->smart_query);
+        if (!q)
+            return std::unexpected{q.error()};
+        return listTracks(&*q);
+    }
     std::shared_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{

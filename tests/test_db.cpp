@@ -3,6 +3,7 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <caudio/db/database.hpp>
+#include <caudio/db/smart.hpp>
 #include <caudio/types/db.hpp>
 #include <caudio/utils/error.hpp>
 #include <caudio/utils/log.hpp>
@@ -143,6 +144,139 @@ TEST_CASE("listTracks pagination limit/offset", "[db]") {
     auto l6 = db->listTracks(&q);
     REQUIRE(l6.has_value());
     REQUIRE(l6->size() == 2);
+}
+
+TEST_CASE("parseSmartQuery", "[db]") {
+    auto check = [](std::string_view q, caudio::types::TrackQuery expected) {
+        auto r = parseSmartQuery(q);
+        REQUIRE(r.has_value());
+        REQUIRE(r->rating == expected.rating);
+        REQUIRE(r->year == expected.year);
+        REQUIRE(r->year_min == expected.year_min);
+        REQUIRE(r->year_max == expected.year_max);
+        REQUIRE(r->play_count_min == expected.play_count_min);
+        REQUIRE(r->play_count_max == expected.play_count_max);
+        REQUIRE(r->duration_min == expected.duration_min);
+        REQUIRE(r->duration_max == expected.duration_max);
+        REQUIRE(r->artist == expected.artist);
+        REQUIRE(r->album == expected.album);
+        REQUIRE(r->genre == expected.genre);
+        REQUIRE(r->search == expected.search);
+    };
+
+    // Empty -> match all.
+    auto empty = parseSmartQuery("");
+    REQUIRE(empty.has_value());
+
+    // Exact rating.
+    check("rating=5", caudio::types::TrackQuery{.rating = 5});
+
+    // Year range ops.
+    check("year>=2000", caudio::types::TrackQuery{.year_min = 2000});
+    check("year<=1999", caudio::types::TrackQuery{.year_max = 1999});
+    check("year>2000", caudio::types::TrackQuery{.year_min = 2001});
+    check("year<2000", caudio::types::TrackQuery{.year_max = 1999});
+    check("year=1985", caudio::types::TrackQuery{.year = 1985});
+
+    // Play count.
+    check("play_count>=10", caudio::types::TrackQuery{.play_count_min = 10});
+    check("play_count<=5", caudio::types::TrackQuery{.play_count_max = 5});
+    check("play_count>5", caudio::types::TrackQuery{.play_count_min = 6});
+    check("play_count<5", caudio::types::TrackQuery{.play_count_max = 4});
+
+    // Duration.
+    check("duration>=300", caudio::types::TrackQuery{.duration_min = 300.0});
+    check("duration<=600", caudio::types::TrackQuery{.duration_max = 600.0});
+    check("duration=240.5",
+          caudio::types::TrackQuery{.duration_min = 240.5, .duration_max = 240.5});
+
+    // Exact text fields.
+    check("artist=Miles Davis", caudio::types::TrackQuery{.artist = "Miles Davis"});
+    check("album=Kind of Blue", caudio::types::TrackQuery{.album = "Kind of Blue"});
+    check("genre=Jazz", caudio::types::TrackQuery{.genre = "Jazz"});
+
+    // Search.
+    check("search=blue", caudio::types::TrackQuery{.search = "blue"});
+
+    // Combined AND.
+    check("rating=5,year>=2000,genre=Jazz",
+          caudio::types::TrackQuery{.rating = 5, .year_min = 2000, .genre = "Jazz"});
+
+    // Rejection: unknown field.
+    auto bad1 = parseSmartQuery("foo=bar");
+    REQUIRE(!bad1.has_value());
+    REQUIRE(bad1.error().code == caudio::utils::StatusCode::InvalidArg);
+
+    // Rejection: rating with range op.
+    auto bad2 = parseSmartQuery("rating>=4");
+    REQUIRE(!bad2.has_value());
+    REQUIRE(bad2.error().code == caudio::utils::StatusCode::InvalidArg);
+
+    // Rejection: rating out of range.
+    auto bad3 = parseSmartQuery("rating=9");
+    REQUIRE(!bad3.has_value());
+    REQUIRE(bad3.error().code == caudio::utils::StatusCode::InvalidArg);
+
+    // Rejection: malformed predicate.
+    auto bad4 = parseSmartQuery("rating");
+    REQUIRE(!bad4.has_value());
+    REQUIRE(bad4.error().code == caudio::utils::StatusCode::InvalidArg);
+}
+
+TEST_CASE("playlistGetTracks smart playlist evaluation", "[db]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+
+    // Insert tracks with varied rating/year.
+    caudio::types::Track t1 = makeTrack(1);
+    t1.rating = 5;
+    t1.year = 1970;
+    REQUIRE(db->insertTrack(t1).has_value());
+
+    caudio::types::Track t2 = makeTrack(2);
+    t2.rating = 4;
+    t2.year = 2005;
+    REQUIRE(db->insertTrack(t2).has_value());
+
+    caudio::types::Track t3 = makeTrack(3);
+    t3.rating = 5;
+    t3.year = 2010;
+    REQUIRE(db->insertTrack(t3).has_value());
+
+    // Create a manual playlist (should return its items).
+    auto pid = db->createPlaylist("manual");
+    REQUIRE(pid.has_value());
+    REQUIRE(db->playlistAddTrack(*pid, 1).has_value());
+    REQUIRE(db->playlistAddTrack(*pid, 2).has_value());
+    auto manual = db->playlistGetTracks(*pid);
+    REQUIRE(manual.has_value());
+    REQUIRE(manual->size() == 2);
+
+    // Create a smart playlist: rating=5.
+    auto spid = db->createPlaylist("top rated", 1, "rating=5");
+    REQUIRE(spid.has_value());
+    auto top = db->playlistGetTracks(*spid);
+    REQUIRE(top.has_value());
+    REQUIRE(top->size() == 2);
+    for (auto& t : *top)
+        REQUIRE(t.rating == 5);
+
+    // Create a smart playlist: year>=2000.
+    auto spid2 = db->createPlaylist("modern", 1, "year>=2000");
+    REQUIRE(spid2.has_value());
+    auto modern = db->playlistGetTracks(*spid2);
+    REQUIRE(modern.has_value());
+    REQUIRE(modern->size() == 2);
+    for (auto& t : *modern)
+        REQUIRE(t.year >= 2000);
+
+    // Invalid smart_query should propagate an error.
+    auto badpid = db->createPlaylist("bad", 1, "bogus=1");
+    REQUIRE(badpid.has_value());
+    auto bad = db->playlistGetTracks(*badpid);
+    REQUIRE(!bad.has_value());
+    REQUIRE(bad.error().code == caudio::utils::StatusCode::InvalidArg);
 }
 
 TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
