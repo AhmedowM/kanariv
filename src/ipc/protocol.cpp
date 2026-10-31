@@ -176,6 +176,9 @@ Json toJson(const Command& cmd) {
                 j["seconds"] = v.seconds;
             } else if constexpr (std::is_same_v<T, StatusReq>) {
                 j["type"] = "StatusReq";
+            } else if constexpr (std::is_same_v<T, StatusWait>) {
+                j["type"] = "StatusWait";
+                j["timeout_ms"] = v.timeout_ms;
             } else if constexpr (std::is_same_v<T, VolumeSet>) {
                 j["type"] = "VolumeSet";
                 if (v.level.has_value())
@@ -448,6 +451,12 @@ std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
         }
         if (t == "StatusReq")
             return Command{StatusReq{}};
+        if (t == "StatusWait") {
+            StatusWait sw{};
+            if (j.contains("timeout_ms") && j["timeout_ms"].isNumber())
+                sw.timeout_ms = j["timeout_ms"].get<int>();
+            return Command{std::move(sw)};
+        }
         if (t == "VolumeSet") {
             VolumeSet v{};
             if (j.contains("level") && !j["level"].isNull() && j["level"].isNumber())

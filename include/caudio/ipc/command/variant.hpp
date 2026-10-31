@@ -44,7 +44,7 @@ using Command =
                  TagGet, ConfigGet, ConfigSet, ConfigList, ConfigExport, ConfigImport, ConfigReset,
                  HistoryList, HistoryClear, BookmarkList, BookmarkAdd, BookmarkRemove, BookmarkGoto,
                  Shutdown, Preview, DeviceList, DeviceSet, DeviceTest, Info, TrackRate,
-                 LibraryMaintenance>;
+                 LibraryMaintenance, StatusWait>;
 
 // helper concepts
 namespace detail {

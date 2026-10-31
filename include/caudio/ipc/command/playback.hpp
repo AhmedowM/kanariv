@@ -106,6 +106,24 @@ struct Seek final {
  */
 struct StatusReq final {};
 
+/**
+ * @struct StatusWait
+ * @brief Wait for playback status to change, then return current status.
+ * @ingroup caudio_ipc
+ *
+ * @json_example {"type": "StatusWait", "timeout_ms": 5000}
+ *
+ * @return Status object with current playback state once it changes (or
+ *         when timeout_ms elapses).
+ *
+ * @param timeout_ms Maximum time to wait for a status change (default 5000).
+ *         When the timeout elapses without a change, the current status is
+ *         returned anyway. Use a short timeout (e.g. 1000 ms) for polling.
+ */
+struct StatusWait final {
+    int timeout_ms{5000}; ///< Max milliseconds to wait for status change.
+};
+
 // ---------------------------------------------------------------------------
 // Volume Commands
 // ---------------------------------------------------------------------------

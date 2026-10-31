@@ -4,11 +4,13 @@
 #include <caudio/service/service.hpp>
 #include <caudio/utils/error.hpp>
 #include <caudio/utils/result.hpp>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <engine/engine_access.hpp>
 #include <expected>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string_view>
 
@@ -26,6 +28,7 @@ using caudio::ipc::Restart;
 using caudio::ipc::Resume;
 using caudio::ipc::Seek;
 using caudio::ipc::StatusReq;
+using caudio::ipc::StatusWait;
 using caudio::ipc::Stop;
 using caudio::ipc::VolumeSet;
 
@@ -121,6 +124,18 @@ Service::Impl::handle(const caudio::ipc::Seek& s) {
 
 std::expected<caudio::ipc::Result, caudio::utils::Error>
 Service::Impl::handle(const caudio::ipc::StatusReq&) {
+    return statusResult();
+}
+
+std::expected<caudio::ipc::Result, caudio::utils::Error>
+Service::Impl::handle(const caudio::ipc::StatusWait& cmd) {
+    // Capture the current status sequence, then wait until it changes (a
+    // status-changing operation incremented it) or the timeout elapses.
+    uint64_t seq = status_seq_.load(std::memory_order_acquire);
+    std::unique_lock<std::mutex> lk(status_mtx_);
+    status_cv_.wait_for(lk, std::chrono::milliseconds(cmd.timeout_ms), [this, seq] {
+        return status_seq_.load(std::memory_order_acquire) != seq;
+    });
     return statusResult();
 }
 

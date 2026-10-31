@@ -86,6 +86,18 @@ class CAUDIO_API Client {
     caudio::utils::Expected<caudio::ipc::Result>
     send(const caudio::ipc::Command& cmd,
          std::chrono::milliseconds timeout = std::chrono::milliseconds{2000});
+
+    /**
+     * @brief Wait for playback status to change, then return current status.
+     * @ingroup caudio_client
+     * @param timeout Maximum time to wait for a status change.
+     * @return Current Status result, or timeout/error.
+     * @details Sends a `StatusWait` command to the daemon. The daemon blocks
+     * until the status changes or `timeout` elapses, then returns the current
+     * status. Use this for efficient status watching instead of polling.
+     */
+    caudio::utils::Expected<caudio::ipc::Result>
+    waitForStatus(std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});
 };
 
 } // namespace caudio::client

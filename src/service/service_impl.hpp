@@ -18,10 +18,12 @@
 #include <caudio/service/service.hpp>
 #include <caudio/utils/error.hpp>
 #include <caudio/utils/log.hpp>
+#include <condition_variable>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <service/ipc_server.hpp>
 #include <stop_token>
 #include <string>
@@ -146,6 +148,8 @@ struct Service::Impl {
     std::expected<caudio::ipc::Result, caudio::utils::Error> handle(const caudio::ipc::Seek& s);
     std::expected<caudio::ipc::Result, caudio::utils::Error> handle(const caudio::ipc::Shutdown&);
     std::expected<caudio::ipc::Result, caudio::utils::Error> handle(const caudio::ipc::StatusReq&);
+    std::expected<caudio::ipc::Result, caudio::utils::Error>
+    handle(const caudio::ipc::StatusWait&);
     std::expected<caudio::ipc::Result, caudio::utils::Error> handle(const caudio::ipc::Stop&);
     std::expected<caudio::ipc::Result, caudio::utils::Error>
     handle(const caudio::ipc::TagEdit& cmd);
@@ -167,6 +171,13 @@ struct Service::Impl {
     std::string shmName_;
     std::atomic<bool> running_{false};
     std::atomic<bool> shutdownRequested_{false};
+
+    // Status-change notification for StatusWait (long-poll style streaming).
+    // Incremented on every status-changing operation; StatusWait blocks until
+    // it changes or a timeout elapses.
+    std::atomic<uint64_t> status_seq_{0};
+    std::mutex status_mtx_;
+    std::condition_variable status_cv_;
 };
 
 } // namespace caudio::service

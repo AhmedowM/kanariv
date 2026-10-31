@@ -420,6 +420,10 @@ std::expected<caudio::ipc::Result, caudio::utils::Error> Service::Impl::statusRe
     auto st = detail::buildStatus(*engine_, *db_);
     if (!st)
         return std::unexpected{st.error()};
+    // Bump the status sequence and wake any StatusWait waiters so they
+    // observe the latest status.
+    status_seq_.fetch_add(1, std::memory_order_release);
+    status_cv_.notify_all();
     return caudio::ipc::Result{*st};
 }
 

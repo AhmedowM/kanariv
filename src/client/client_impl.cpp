@@ -124,4 +124,10 @@ caudio::utils::Expected<caudio::ipc::Result> Client::send(const caudio::ipc::Com
     }
 }
 
+caudio::utils::Expected<caudio::ipc::Result>
+Client::waitForStatus(std::chrono::milliseconds timeout) {
+    return send(caudio::ipc::Command{caudio::ipc::StatusWait{
+        static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count())}});
+}
+
 } // namespace caudio::client

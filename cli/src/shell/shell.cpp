@@ -864,8 +864,10 @@ int Shell::run(int argc, char** argv) {
             OutputFormatter fmt{jsonFlag};
             while (true) {
                 caudio::client::Client client{config_.dbPath, config_.socketPath};
+                // waitForStatus blocks until the status changes or the
+                // interval elapses, avoiding wasteful polling.
                 auto res =
-                    client.send(caudio::ipc::Command{caudio::ipc::StatusReq{}}, milliseconds{2000});
+                    client.waitForStatus(milliseconds{statusInterval});
                 if (!res) {
                     caudio::ipc::Result errRes{res.error()};
                     if (jsonFlag) {
@@ -901,7 +903,6 @@ int Shell::run(int argc, char** argv) {
                 std::cout << std::flush;
                 if (std::holds_alternative<caudio::utils::Error>(*res))
                     return 1;
-                std::this_thread::sleep_for(milliseconds{statusInterval});
             }
         }
         return detail::render(app_.status(), jsonFlag);
