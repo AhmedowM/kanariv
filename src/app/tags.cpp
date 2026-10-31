@@ -30,8 +30,8 @@ AppResult App::tagEdit(std::int64_t id, const std::string& field, const std::str
     return impl_->confirm(impl_->sendRaw(cmd), std::format("Updated {} for track {}", field, id));
 }
 
-AppResult App::tagGet(std::int64_t id) {
-    caudio::ipc::Command cmd{caudio::ipc::TagGet{id}};
+AppResult App::tagGet(std::int64_t id, bool cover) {
+    caudio::ipc::Command cmd{caudio::ipc::TagGet{id, cover}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
@@ -41,6 +41,24 @@ std::expected<TagValue, caudio::utils::Error> App::tagValue(std::int64_t id,
         return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
                                                         "unknown tag field '" + field + "'")};
     }
+
+    // Cover art needs its own IPC round-trip with cover=true; for all other
+    // fields a single TagGet suffices.
+    if (field == "cover") {
+        caudio::ipc::Command cmd{caudio::ipc::TagGet{id, true}};
+        auto res = impl_->sendRaw(cmd);
+        if (!res)
+            return std::unexpected{res.error()};
+        auto* st = std::get_if<caudio::ipc::SingleTrack>(&*res);
+        if (!st || st->cover_data.empty())
+            return std::unexpected{caudio::utils::makeError(
+                caudio::utils::StatusCode::NotFound,
+                "tag get cover: no cover art for track " + std::to_string(id))};
+        caudio::utils::Json j = caudio::utils::Json::object();
+        j["cover"] = st->cover_data;
+        return TagValue{st->cover_data, j.dump()};
+    }
+
     caudio::ipc::Command cmd{caudio::ipc::TagGet{id}};
     auto res = impl_->sendRaw(cmd);
     if (!res)

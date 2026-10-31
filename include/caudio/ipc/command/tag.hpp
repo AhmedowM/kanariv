@@ -46,19 +46,26 @@ struct TagEdit final {
 
 /**
  * @struct TagGet
- * @brief Get metadata for a track.
+ * @brief Get metadata for a track, optionally including cover art.
  * @ingroup caudio_ipc
  *
  * @json_example {"type": "TagGet", "id": 123}
  *
  * @param id Track ID.
- * @return SingleTrack object with full track metadata.
+ * @param cover When true, include base64-encoded cover art and MIME type.
+ * @return SingleTrack object with full track metadata; cover_mime and
+ *   cover_data populated when cover=true and cover art is available.
  */
 struct TagGet final {
     /**
      * @brief Track ID.
      */
     int64_t id{0};
+    /**
+     * @brief When true, include cover art (base64-encoded) and MIME type.
+     * Reads the file at track.cover_art_path.
+     */
+    bool cover{false};
 };
 
 } // namespace caudio::ipc

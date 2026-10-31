@@ -12,6 +12,7 @@
 #include <caudio/media/scan.hpp>
 #include <caudio/service/service.hpp>
 #include <caudio/utils/error.hpp>
+#include <caudio/utils/base64.hpp>
 #include <caudio/utils/json.hpp>
 #include <caudio/utils/log.hpp>
 #include <caudio/utils/result.hpp>
@@ -36,6 +37,13 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#include <fileref.h>
+#include <attachedpictureframe.h>
+#include <flacfile.h>
+#include <id3v2tag.h>
+#include <mpegfile.h>
+#include <tstring.h>
 
 #include "service_impl.hpp"
 #include "service_status.hpp"
@@ -69,6 +77,78 @@ using caudio::ipc::Preview;
 using caudio::ipc::TagEdit;
 using caudio::ipc::TagGet;
 using caudio::ipc::TrackRate;
+
+namespace {
+
+// Extract embedded cover art (APIC / FLAC picture / etc.) from an audio file
+// using TagLib. Returns {raw_bytes, mime_type} or nullopt when no embedded
+// picture is found or the file cannot be read.
+std::optional<std::pair<std::vector<std::byte>, std::string>>
+extractEmbeddedCoverArt(const std::filesystem::path& path, caudio::utils::Logger* logger) {
+    TagLib::FileRef file(path.generic_string().c_str());
+    if (!file.file()) {
+        if (logger)
+            logger->debug("cover art: cannot open file {}", path.generic_string());
+        return std::nullopt;
+    }
+    if (logger)
+        logger->debug("cover art: file opened: {}", path.generic_string());
+
+    // Helper: copy a TagLib ByteVector into a vector<byte>.
+    auto copyBytes = [](const TagLib::ByteVector& bv) {
+        std::vector<std::byte> out;
+        out.reserve(bv.size());
+        for (auto b : bv)
+            out.push_back(static_cast<std::byte>(b));
+        return out;
+    };
+
+    // ID3v2 (MP3, etc.) — Attached Picture Frame (APIC).
+    // Construct ID3v2::Tag directly from the file so we find ID3v2 tags even
+    // when file.tag() returns ID3v1 (which has no cover art support).
+    TagLib::ID3v2::Tag id3v2(file.file(), 0);
+    if (logger)
+        logger->debug("cover art: ID3v2 tag read, {} APIC frames", id3v2.frameList("APIC").size());
+    for (auto* f : id3v2.frameList("APIC")) {
+        auto* apic = static_cast<TagLib::ID3v2::AttachedPictureFrame*>(f);
+        if (!apic || apic->type() != TagLib::ID3v2::AttachedPictureFrame::FrontCover)
+            continue;
+        auto mime = apic->mimeType().to8Bit(true);
+        std::string mimeStr(mime.data(), mime.size());
+        if (mimeStr.empty())
+            mimeStr = "image/jpeg";
+        if (logger)
+            logger->debug("cover art: found ID3v2 APIC front cover, {} bytes", apic->picture().size());
+        return std::make_pair(copyBytes(apic->picture()), mimeStr);
+    }
+    if (logger)
+        logger->debug("cover art: no ID3v2 APIC front cover frame found");
+
+    // FLAC — Picture blocks
+    if (auto* flac = dynamic_cast<TagLib::FLAC::File*>(file.file())) {
+        auto pics = flac->pictureList();
+        if (logger)
+            logger->debug("cover art: FLAC file, {} pictures", pics.size());
+        for (const auto* pic : pics) {
+            if (pic->type() == TagLib::FLAC::Picture::FrontCover) {
+                std::string mimeStr(pic->mimeType().to8Bit(true).data());
+                if (mimeStr.empty())
+                    mimeStr = "image/png";
+                if (logger)
+                    logger->debug("cover art: found FLAC front cover picture, {} bytes",
+                                  pic->data().size());
+                return std::make_pair(copyBytes(pic->data()), mimeStr);
+            }
+        }
+    }
+
+    if (logger)
+        logger->debug("cover art: no cover art found in file {}", path.generic_string());
+    return std::nullopt;
+}
+
+} // namespace
+
 
 namespace detail {
 double durationFromDecoder(const std::filesystem::path& path) noexcept;
@@ -557,7 +637,42 @@ Service::Impl::handle(const caudio::ipc::TagGet& cmd) {
                 tr.error().code, "track not found: " + std::to_string(cmd.id))};
         return std::unexpected{tr.error()};
     }
-    return Result{SingleTrack{std::move(*tr)}};
+    caudio::ipc::SingleTrack st{std::move(*tr)};
+    if (cmd.cover) {
+        // Cover art: prefer the stored cover_art_path file, then fall back to
+        // embedded cover art (APIC / FLAC picture / MP4 cover art / etc.)
+        // extracted from the audio file itself.
+        if (!st.track.cover_art_path.empty()) {
+            std::ifstream ifs(st.track.cover_art_path, std::ios::binary);
+            if (ifs) {
+                std::string content((std::istreambuf_iterator<char>(ifs)),
+                                    std::istreambuf_iterator<char>());
+                if (!content.empty()) {
+                    st.cover_mime =
+                        caudio::utils::Base64::mimeTypeFromPath(st.track.cover_art_path);
+                    std::vector<std::byte> data;
+                    data.reserve(content.size());
+                    for (char c : content)
+                        data.push_back(static_cast<std::byte>(c));
+                    st.cover_data = caudio::utils::Base64::encode(
+                        std::span<const std::byte>(data.data(), data.size()));
+                }
+            }
+        }
+        if (st.cover_data.empty() && !st.track.path.empty()) {
+            auto embedded = extractEmbeddedCoverArt(st.track.path, logger_.get());
+            if (embedded) {
+                st.cover_data = caudio::utils::Base64::encode(
+                    std::span<const std::byte>(embedded->first.data(), embedded->first.size()));
+                st.cover_mime = embedded->second;
+            }
+        }
+        if (st.cover_data.empty())
+            return std::unexpected{caudio::utils::makeError(
+                caudio::utils::StatusCode::NotFound,
+                "tag get: no cover art for track " + std::to_string(cmd.id))};
+    }
+    return Result{std::move(st)};
 }
 
 std::expected<caudio::ipc::Result, caudio::utils::Error>

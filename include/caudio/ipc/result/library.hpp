@@ -89,12 +89,22 @@ struct ScanReport final {
  * @json_example {"type": "SingleTrack", "track": {"id": 1, "title": "Song", ...}}
  *
  * @param track Track metadata.
+ * @param cover_mime MIME type of cover art (e.g., "image/jpeg"), empty when no cover.
+ * @param cover_data Base64-encoded cover art (RFC 4648), empty when no cover.
  */
 struct SingleTrack final {
     /**
      * @brief Track metadata.
      */
     caudio::types::Track track{};
+    /**
+     * @brief MIME type of cover art (e.g., "image/jpeg"), empty when no cover.
+     */
+    std::string cover_mime{};
+    /**
+     * @brief Base64-encoded cover art (RFC 4648), empty when no cover.
+     */
+    std::string cover_data{};
 };
 
 /**

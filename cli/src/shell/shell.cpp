@@ -30,6 +30,7 @@
 #include <caudio/service/service.hpp>
 #include <caudio/types/format.hpp>
 #include <caudio/utils/error.hpp>
+#include <caudio/utils/base64.hpp>
 #include <caudio/utils/json.hpp>
 #include <caudio/utils/log.hpp>
 #include <caudio/utils/math.hpp>
@@ -42,8 +43,10 @@
 #include <ctime>
 #include <expected>
 #include <filesystem>
+#include <fstream>
 #include <format>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stop_token>
@@ -560,10 +563,12 @@ int Shell::run(int argc, char** argv) {
     std::int64_t tagGetId = 0;
     std::string tagGetField;
     bool tagGetJson = false;
+    std::string tagGetOut;
     auto* tagGet = tagCmd->add_subcommand("get", "Get track tags");
     tagGet->add_option("id", tagGetId, "Track id")->required();
     tagGet->add_option("field", tagGetField, "Single field (default: all)");
     tagGet->add_flag("--json", tagGetJson, "JSON output");
+    tagGet->add_option("--out", tagGetOut, "Output file path (cover art only)");
     auto* trackCmd = cli_->add_subcommand("track", "Track operations");
     std::int64_t trRateId = 0;
     int trRateRating = 0;
@@ -1042,7 +1047,7 @@ int Shell::run(int argc, char** argv) {
                 caudio::println(std::cerr,
                                 "tag get: unknown field '{}' (expected one of "
                                 "title|artist|album|album_artist|genre|year|"
-                                "track_number|disc_number)",
+                                "track_number|disc_number|cover)",
                                 tagGetField);
                 return 1;
             }
@@ -1051,6 +1056,34 @@ int Shell::run(int argc, char** argv) {
             auto tv = app_.tagValue(tagGetId, tagGetField);
             if (!tv)
                 return detail::renderError(tv.error());
+            if (!tagGetOut.empty() && tagGetField == "cover") {
+                // --out only applies to cover art: decode base64 and write to file.
+                auto decoded = caudio::utils::Base64::decode(tv->value);
+                if (!decoded)
+                    return detail::renderError(decoded.error());
+                std::ofstream ofs(tagGetOut, std::ios::binary);
+                if (!ofs)
+                    return detail::renderError(
+                        caudio::utils::makeError(caudio::utils::StatusCode::Io,
+                                                 "tag get: cannot open output '" +
+                                                     tagGetOut + "'"));
+                if (decoded->size() > static_cast<std::size_t>(
+                                         std::numeric_limits<std::streamsize>::max()))
+                    return detail::renderError(
+                        caudio::utils::makeError(caudio::utils::StatusCode::Io,
+                                                 "tag get: cover art is too large to write"));
+                ofs.write(reinterpret_cast<const char*>(decoded->data()),
+                          static_cast<std::streamsize>(decoded->size()));
+                ofs.flush();
+                if (!ofs)
+                    return detail::renderError(
+                        caudio::utils::makeError(caudio::utils::StatusCode::Io,
+                                                 "tag get: write failed for '" +
+                                                     tagGetOut + "'"));
+                caudio::println(std::cout, "Wrote cover art ({} bytes) to {}",
+                                decoded->size(), tagGetOut);
+                return 0;
+            }
             if (tagGetJson)
                 caudio::println("{}", tv->json);
             else

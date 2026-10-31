@@ -80,8 +80,9 @@ struct CAUDIO_API BatchReport {
 using BatchResult = std::expected<BatchReport, caudio::utils::Error>;
 
 /** @brief Known tag fields accepted by tagValue. @ingroup caudio_app */
-inline constexpr std::array<std::string_view, 8> tagFields{
-    "title", "artist", "album", "album_artist", "genre", "year", "track_number", "disc_number"};
+inline constexpr std::array<std::string_view, 9> tagFields{
+    "title", "artist", "album", "album_artist", "genre", "year", "track_number",
+    "disc_number", "cover"};
 
 /** @brief True when field names a known tag field. @ingroup caudio_app */
 CAUDIO_API bool isTagField(std::string_view field);
@@ -442,8 +443,12 @@ class CAUDIO_API App {
     /**
      * @brief Reads the full track tag record.
      * @ingroup caudio_app
+     * @param id Track id.
+     * @param cover When true, include cover art (base64-encoded) and MIME type.
+     * @return Outcome data; result carries SingleTrack with cover_mime/cover_data
+     *   populated when cover=true and cover art is available.
      */
-    AppResult tagGet(std::int64_t id);
+    AppResult tagGet(std::int64_t id, bool cover = false);
 
     /**
      * @brief Reads one tag field as human text plus single-key JSON.

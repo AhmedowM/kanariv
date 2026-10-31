@@ -341,6 +341,7 @@ Json toJson(const Command& cmd) {
             } else if constexpr (std::is_same_v<T, TagGet>) {
                 j["type"] = "TagGet";
                 j["id"] = v.id;
+                j["cover"] = v.cover;
             } else if constexpr (std::is_same_v<T, ConfigGet>) {
                 j["type"] = "ConfigGet";
                 j["key"] = v.key;
@@ -709,10 +710,12 @@ std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
             return Command{TagEdit{id, std::move(field), std::move(value)}};
         }
         if (t == "TagGet") {
-            int64_t id = 0;
+            TagGet tg{};
             if (j.contains("id") && j["id"].isNumber())
-                id = j["id"].get<int64_t>();
-            return Command{TagGet{id}};
+                tg.id = j["id"].get<int64_t>();
+            if (j.contains("cover") && j["cover"].isBoolean())
+                tg.cover = j["cover"].get<bool>();
+            return Command{std::move(tg)};
         }
         if (t == "ConfigGet") {
             std::string k;
@@ -986,6 +989,10 @@ Json toJson(const Result& r) {
                 Json j;
                 j["type"] = "SingleTrack";
                 j["track"] = caudio::utils::trackToJson(v.track);
+                if (!v.cover_mime.empty())
+                    j["cover_mime"] = v.cover_mime;
+                if (!v.cover_data.empty())
+                    j["cover_data"] = v.cover_data;
                 return j;
             } else if constexpr (std::is_same_v<T, TrackInfo>) {
                 Json j;
@@ -1397,6 +1404,10 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     return std::unexpected{tr.error()};
                 st.track = std::move(*tr);
             }
+            if (j.contains("cover_mime") && j["cover_mime"].isString())
+                st.cover_mime = j["cover_mime"].get<std::string>();
+            if (j.contains("cover_data") && j["cover_data"].isString())
+                st.cover_data = j["cover_data"].get<std::string>();
             return Result{std::move(st)};
         }
         if (t == "TrackInfo") {
