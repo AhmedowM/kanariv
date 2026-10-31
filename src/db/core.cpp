@@ -996,6 +996,34 @@ std::expected<void, caudio::utils::Error> Database::setDirty(int64_t id, int dir
     return {};
 }
 
+std::expected<void, caudio::utils::Error> Database::setRating(int64_t id, int32_t rating) {
+    if (id == 0)
+        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg)};
+    if (rating < 0 || rating > 5)
+        return std::unexpected{caudio::utils::makeError(
+            caudio::utils::StatusCode::InvalidArg, "rating must be 0..5")};
+    std::unique_lock lk{impl_->dbMutex_};
+    if (!impl_->db_)
+        return std::unexpected{
+            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+    std::string_view sql = "UPDATE tracks SET rating=? WHERE id=?";
+    std::unique_lock cacheLk{impl_->cacheMutex_};
+    auto sRes = impl_->getCachedForUse(sql);
+    if (!sRes)
+        return std::unexpected{sRes.error()};
+    SqliteStatement& st = *(*sRes);
+    st.bindInt(1, rating);
+    st.bindInt(2, id);
+    int rc = st.stepDone();
+    st.reset();
+    if (rc != SQLITE_DONE)
+        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Internal,
+                                                        sqlite3_errmsg(impl_->db_.get()))};
+    if (sqlite3_changes(impl_->db_.get()) == 0)
+        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound)};
+    return {};
+}
+
 std::expected<int64_t, caudio::utils::Error>
 Database::createPlaylist(std::string_view name, int type, std::string_view smart_query) {
     if (name.empty())

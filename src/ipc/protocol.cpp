@@ -246,6 +246,7 @@ Json toJson(const Command& cmd) {
             } else if constexpr (std::is_same_v<T, PlaylistCreate>) {
                 j["type"] = "PlaylistCreate";
                 j["name"] = v.name;
+                j["smart_query"] = v.smart_query;
             } else if constexpr (std::is_same_v<T, PlaylistAdd>) {
                 j["type"] = "PlaylistAdd";
                 j["pid"] = v.pid;
@@ -398,6 +399,10 @@ Json toJson(const Command& cmd) {
                     j["id"] = nullptr;
             } else if constexpr (std::is_same_v<T, Info>) {
                 j["type"] = "Info";
+            } else if constexpr (std::is_same_v<T, TrackRate>) {
+                j["type"] = "TrackRate";
+                j["track_id"] = v.track_id;
+                j["rating"] = v.rating;
             }
             return j;
         },
@@ -536,10 +541,12 @@ std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
             return Command{PlaylistTracks{pid}};
         }
         if (t == "PlaylistCreate") {
-            std::string name;
+            PlaylistCreate pc;
             if (j.contains("name") && j["name"].isString())
-                name = j["name"].get<std::string>();
-            return Command{PlaylistCreate{std::move(name)}};
+                pc.name = j["name"].get<std::string>();
+            if (j.contains("smart_query") && j["smart_query"].isString())
+                pc.smart_query = j["smart_query"].get<std::string>();
+            return Command{std::move(pc)};
         }
         if (t == "PlaylistAdd") {
             int64_t pid = 0;
@@ -781,6 +788,14 @@ std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
         }
         if (t == "Info")
             return Command{Info{}};
+        if (t == "TrackRate") {
+            TrackRate tr{};
+            if (j.contains("track_id") && j["track_id"].isNumber())
+                tr.track_id = j["track_id"].get<int64_t>();
+            if (j.contains("rating") && j["rating"].isNumber())
+                tr.rating = j["rating"].get<int32_t>();
+            return Command{std::move(tr)};
+        }
         return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
                                                         "unknown Command type: " + t)};
     } catch (const std::exception& e) {

@@ -186,4 +186,10 @@ AppResult App::libraryRemove(const std::string& query) {
     return Outcome{std::move(*res), std::move(line), false, false};
 }
 
+AppResult App::trackRate(std::int64_t id, std::int32_t rating) {
+    caudio::ipc::Command cmd{caudio::ipc::TrackRate{id, rating}};
+    return impl_->confirm(impl_->sendRaw(cmd),
+                          std::format("Rated track {} as {}", id, rating));
+}
+
 } // namespace caudio::app

@@ -66,6 +66,7 @@ using caudio::ipc::PlaylistTracks;
 using caudio::ipc::Preview;
 using caudio::ipc::TagEdit;
 using caudio::ipc::TagGet;
+using caudio::ipc::TrackRate;
 
 namespace detail {
 double durationFromDecoder(const std::filesystem::path& path) noexcept;
@@ -653,7 +654,8 @@ Service::Impl::handle(const caudio::ipc::PlaylistCreate& cmd) {
     if (cmd.name.empty())
         return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
                                                         "playlist create: missing name")};
-    auto id = db_->createPlaylist(cmd.name);
+    int type = cmd.smart_query.empty() ? 0 : 1;
+    auto id = db_->createPlaylist(cmd.name, type, cmd.smart_query);
     if (!id)
         return std::unexpected{id.error()};
     return Result{caudio::ipc::PlaylistCreated{*id, cmd.name}};
@@ -852,6 +854,25 @@ Service::Impl::handle(const caudio::ipc::PlaylistImport& cmd) {
 
 std::expected<caudio::ipc::Result, caudio::utils::Error>
 Service::Impl::handle(const caudio::ipc::Preview&) {
+    return Result{Empty{}};
+}
+
+std::expected<caudio::ipc::Result, caudio::utils::Error>
+Service::Impl::handle(const caudio::ipc::TrackRate& cmd) {
+    if (cmd.track_id == 0)
+        return std::unexpected{caudio::utils::makeError(
+            caudio::utils::StatusCode::InvalidArg, "track rate: invalid id")};
+    if (cmd.rating < 0 || cmd.rating > 5)
+        return std::unexpected{caudio::utils::makeError(
+            caudio::utils::StatusCode::InvalidArg, "track rate: rating must be 0..5")};
+    caudio::db::Database& db = dynamic_cast<caudio::db::Database&>(*db_);
+    if (!db.getTrack(cmd.track_id))
+        return std::unexpected{caudio::utils::makeError(
+            caudio::utils::StatusCode::NotFound, "track not found: " +
+            std::to_string(cmd.track_id))};
+    auto r = db.setRating(cmd.track_id, cmd.rating);
+    if (!r)
+        return std::unexpected{r.error()};
     return Result{Empty{}};
 }
 

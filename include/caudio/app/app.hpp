@@ -320,8 +320,11 @@ class CAUDIO_API App {
     /**
      * @brief Creates an empty playlist.
      * @ingroup caudio_app
+     * @param name Playlist name.
+     * @param smart_query Optional smart-playlist filter expression.
      */
-    AppResult playlistCreate(const std::string& name);
+    AppResult playlistCreate(const std::string& name,
+                             const std::string& smart_query = {});
 
     /**
      * @brief Adds ids/paths to a playlist (resolving files via the library).
@@ -433,6 +436,15 @@ class CAUDIO_API App {
      */
     std::expected<TagValue, caudio::utils::Error> tagValue(std::int64_t id,
                                                            const std::string& field);
+
+    /**
+     * @brief Sets the user rating (0..5) on a library track.
+     * @ingroup caudio_app
+     * @param id Library track id.
+     * @param rating Rating value (0..5).
+     * @return Outcome data, or the transport/server error.
+     */
+    AppResult trackRate(std::int64_t id, std::int32_t rating);
 
     /** @brief Lists playback history entries. @ingroup caudio_app */
     AppResult historyList(int limit);

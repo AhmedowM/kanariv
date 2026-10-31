@@ -41,15 +41,18 @@ AppResult App::playlistTracks(std::int64_t pid) {
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
-AppResult App::playlistCreate(const std::string& name) {
-    caudio::ipc::Command cmd{caudio::ipc::PlaylistCreate{name}};
+AppResult App::playlistCreate(const std::string& name,
+                              const std::string& smart_query) {
+    caudio::ipc::PlaylistCreate pc{name};
+    pc.smart_query = smart_query;
+    caudio::ipc::Command cmd{std::move(pc)};
     auto res = impl_->sendRaw(cmd);
     if (!res)
         return std::unexpected{res.error()};
-    if (auto* pc = std::get_if<caudio::ipc::PlaylistCreated>(&*res)) {
+    if (auto* pcRes = std::get_if<caudio::ipc::PlaylistCreated>(&*res)) {
         // Hoisted: copy before Outcome moves *res (see App::resume).
-        std::int64_t id = pc->id;
-        std::string pName = pc->name;
+        std::int64_t id = pcRes->id;
+        std::string pName = pcRes->name;
         return Outcome{.result = std::move(*res),
                        .line = std::format("Created playlist {} '{}'", id, pName),
                        .toStderr = false,

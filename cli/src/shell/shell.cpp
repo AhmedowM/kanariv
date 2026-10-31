@@ -408,9 +408,11 @@ int Shell::run(int argc, char** argv) {
     plTracks->add_option("pid", plTracksPid, "Playlist id")->required();
     plTracks->add_flag("--json", plTracksJson, "JSON output");
     std::string plCreateName;
+    std::string plCreateSmart;
     bool plCreateJson = false;
     auto* plCreate = plCmd->add_subcommand("create", "Create an empty playlist");
     plCreate->add_option("name", plCreateName, "Playlist name")->required();
+    plCreate->add_option("--smart", plCreateSmart, "Smart-playlist filter expression");
     plCreate->add_flag("--json", plCreateJson, "JSON output");
     std::int64_t plAddPid = 0;
     std::vector<std::string> plAddIds;
@@ -540,6 +542,15 @@ int Shell::run(int argc, char** argv) {
     tagGet->add_option("id", tagGetId, "Track id")->required();
     tagGet->add_option("field", tagGetField, "Single field (default: all)");
     tagGet->add_flag("--json", tagGetJson, "JSON output");
+    auto* trackCmd = cli_->add_subcommand("track", "Track operations");
+    std::int64_t trRateId = 0;
+    int trRateRating = 0;
+    bool trRateJson = false;
+    auto* trRate = trackCmd->add_subcommand("rate", "Rate a track (0-5)");
+    trRate->add_option("id", trRateId, "Track id")->required();
+    trRate->add_option("rating", trRateRating, "Rating (0-5)")
+        ->check(CLI::Range(0, 5));
+    trRate->add_flag("--json", trRateJson, "JSON output");
     auto* historyCmd = cli_->add_subcommand("history", "Playback history operations");
     bool historyJson = false;
     int historyLimit = 50;
@@ -918,7 +929,7 @@ int Shell::run(int argc, char** argv) {
         if (plTracks->parsed())
             return detail::render(app_.playlistTracks(plTracksPid), plTracksJson);
         if (plCreate->parsed())
-            return detail::render(app_.playlistCreate(plCreateName), plCreateJson);
+            return detail::render(app_.playlistCreate(plCreateName, plCreateSmart), plCreateJson);
         if (plAdd->parsed())
             return detail::renderBatch(
                 app_.playlistAdd(plAddPid, plAddIds, plAddPaths, plAddRecursive), plAddJson);
@@ -1011,6 +1022,12 @@ int Shell::run(int argc, char** argv) {
             return 0;
         }
         std::cout << tagCmd->help() << "\n";
+        return 0;
+    }
+    if (trackCmd->parsed()) {
+        if (trRate->parsed())
+            return detail::render(app_.trackRate(trRateId, trRateRating), trRateJson);
+        std::cout << trackCmd->help() << "\n";
         return 0;
     }
     if (historyCmd->parsed()) {

@@ -46,12 +46,13 @@ struct PlaylistTracks final {
 
 /**
  * @struct PlaylistCreate
- * @brief Create an empty playlist.
+ * @brief Create an empty playlist, optionally a smart playlist.
  * @ingroup caudio_ipc
  *
  * @json_example {"type": "PlaylistCreate", "name": "mix"}
  *
  * @param name Display name for the new playlist.
+ * @param smart_query Smart-playlist filter expression (empty = manual playlist).
  * @return PlaylistCreated object with the new playlist id and name.
  */
 struct PlaylistCreate final {
@@ -59,6 +60,11 @@ struct PlaylistCreate final {
      * @brief Display name for the new playlist.
      */
     std::string name{};
+    /**
+     * @brief Smart-playlist filter expression (empty = manual playlist).
+     * See the smart-query grammar in caudio/db/smart.hpp.
+     */
+    std::string smart_query{};
 };
 
 /**

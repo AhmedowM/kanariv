@@ -253,6 +253,16 @@ class CAUDIO_API Database final : public caudio::contracts::IDatabase {
      * Thread-safe: unique_lock on dbMutex_.
      */
     std::expected<void, caudio::utils::Error> setDirty(int64_t id, int dirty);
+    /**
+     * @brief Sets the user rating for a track.
+     * @ingroup caudio_db
+     * @param id Track id.
+     * @param rating Rating value (0..5).
+     * @return Success or Error InvalidArg/NotFound/Internal.
+     * @par Thread safety
+     * Thread-safe: unique_lock on dbMutex_.
+     */
+    std::expected<void, caudio::utils::Error> setRating(int64_t id, int32_t rating);
 
     // Playlists
     // Queue operations

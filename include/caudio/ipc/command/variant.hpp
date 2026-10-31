@@ -17,6 +17,7 @@
 #include <caudio/ipc/command/queue.hpp>
 #include <caudio/ipc/command/system.hpp>
 #include <caudio/ipc/command/tag.hpp>
+#include <caudio/ipc/command/track.hpp>
 #include <type_traits>
 #include <variant>
 
@@ -42,7 +43,7 @@ using Command =
                  LibrarySearch, LibraryStats, LibraryAdd, LibraryRemove, LibraryList, TagEdit,
                  TagGet, ConfigGet, ConfigSet, ConfigList, ConfigExport, ConfigImport, ConfigReset,
                  HistoryList, HistoryClear, BookmarkList, BookmarkAdd, BookmarkRemove, BookmarkGoto,
-                 Shutdown, Preview, DeviceList, DeviceSet, DeviceTest, Info>;
+                 Shutdown, Preview, DeviceList, DeviceSet, DeviceTest, Info, TrackRate>;
 
 // helper concepts
 namespace detail {

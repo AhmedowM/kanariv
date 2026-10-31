@@ -415,3 +415,115 @@ TEST_CASE("command roundtrip - status", "[ipc][cli]") {
     std::filesystem::remove(dbPath.string() + "-shm", ec);
     std::filesystem::remove(cfg.configPath, ec);
 }
+
+TEST_CASE("track rate and smart playlist protocol roundtrip", "[ipc]") {
+    // TrackRate command roundtrip.
+    Command rate{TrackRate{.track_id = 7, .rating = 5}};
+    auto rateJson = toJson(rate);
+    auto rateBack = commandFromJson(rateJson);
+    REQUIRE(rateBack.has_value());
+    auto* rateVal = std::get_if<TrackRate>(&*rateBack);
+    REQUIRE(rateVal != nullptr);
+    CHECK(rateVal->track_id == 7);
+    CHECK(rateVal->rating == 5);
+
+    // PlaylistCreate with smart_query roundtrip.
+    Command pl{PlaylistCreate{.name = "top rated", .smart_query = "rating=5"}};
+    auto plJson = toJson(pl);
+    auto plBack = commandFromJson(plJson);
+    REQUIRE(plBack.has_value());
+    auto* plVal = std::get_if<PlaylistCreate>(&*plBack);
+    REQUIRE(plVal != nullptr);
+    CHECK(plVal->name == "top rated");
+    CHECK(plVal->smart_query == "rating=5");
+}
+
+TEST_CASE("daemon track rate and smart playlist roundtrip", "[ipc][cli]") {
+    std::string suffix = "trackrate";
+    std::filesystem::path dir = tempDirPath("ipc_" + suffix);
+    std::filesystem::path dbPath = dir / "library.db";
+    std::error_code ec;
+
+    ServiceConfig cfg;
+    cfg.dbPath = dbPath;
+    cfg.configPath = dir / "config.json";
+
+    // Open the database once and share it with the service so the test can
+    // insert tracks directly while the daemon runs (WAL allows this).
+    auto dbRes = caudio::db::Database::open(dbPath.generic_string());
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+
+    caudio::types::Track t{};
+    t.path = "/tmp/track_rate.mp3";
+    t.title = "Rate Me";
+    t.artist = "Test Artist";
+    for (int b = 0; b < 32; ++b)
+        t.fingerprint[b] = (uint8_t)(b * 3);
+    auto ins = db->insertTrack(t);
+    REQUIRE(ins.has_value());
+    int64_t trackId = *ins;
+
+    std::shared_ptr<caudio::contracts::IDatabase> sharedDb(std::move(db));
+    auto svcRes = caudio::service::Service::create(cfg, sharedDb);
+    REQUIRE(svcRes.has_value());
+    auto svc = std::move(svcRes.value());
+
+    std::jthread svcThread([&](std::stop_token st) { (void)svc->run(st); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    // Rate the track via IPC (new connection per request on named pipes).
+    {
+        auto rateClientRes = IpcClient::connect(cfg.dbPath);
+        REQUIRE(rateClientRes.has_value());
+        auto rateClient = std::move(rateClientRes.value());
+        auto rateRes = rateClient.send(TrackRate{.track_id = trackId, .rating = 5});
+        REQUIRE(rateRes.has_value());
+        CHECK(std::holds_alternative<Empty>(*rateRes));
+    }
+
+    // Create a smart playlist via IPC.
+    int64_t plId = 0;
+    {
+        auto plClientRes = IpcClient::connect(cfg.dbPath);
+        REQUIRE(plClientRes.has_value());
+        auto plClient = std::move(plClientRes.value());
+        auto plRes = plClient.send(PlaylistCreate{.name = "top rated", .smart_query = "rating=5"});
+        REQUIRE(plRes.has_value());
+        auto* pc = std::get_if<PlaylistCreated>(&*plRes);
+        REQUIRE(pc != nullptr);
+        CHECK(pc->name == "top rated");
+        plId = pc->id;
+    }
+
+    // List tracks on the smart playlist (new connection per request).
+    {
+        auto plTracksClientRes = IpcClient::connect(cfg.dbPath);
+        REQUIRE(plTracksClientRes.has_value());
+        auto plTracksClient = std::move(plTracksClientRes.value());
+        auto plTracksRes = plTracksClient.send(PlaylistTracks{.pid = plId});
+        REQUIRE(plTracksRes.has_value());
+        auto* pd = std::get_if<PlaylistData>(&*plTracksRes);
+        REQUIRE(pd != nullptr);
+        REQUIRE(pd->tracks.size() == 1);
+        CHECK(pd->tracks[0].id == trackId);
+        CHECK(pd->tracks[0].rating == 5);
+    }
+
+    // Shutdown (new connection).
+    {
+        auto shutdownClientRes = IpcClient::connect(cfg.dbPath);
+        REQUIRE(shutdownClientRes.has_value());
+        auto shutdownClient = std::move(shutdownClientRes.value());
+        (void)shutdownClient.send(Shutdown{});
+    }
+
+    svcThread.request_stop();
+    svcThread.join();
+    svc.reset();
+
+    std::filesystem::remove(dbPath, ec);
+    std::filesystem::remove(dbPath.string() + "-wal", ec);
+    std::filesystem::remove(dbPath.string() + "-shm", ec);
+    std::filesystem::remove(cfg.configPath, ec);
+}

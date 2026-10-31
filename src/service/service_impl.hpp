@@ -149,6 +149,8 @@ struct Service::Impl {
     handle(const caudio::ipc::TagEdit& cmd);
     std::expected<caudio::ipc::Result, caudio::utils::Error> handle(const caudio::ipc::TagGet& cmd);
     std::expected<caudio::ipc::Result, caudio::utils::Error>
+    handle(const caudio::ipc::TrackRate& cmd);
+    std::expected<caudio::ipc::Result, caudio::utils::Error>
     handle(const caudio::ipc::VolumeSet& v);
 
     ServiceConfig config_;
