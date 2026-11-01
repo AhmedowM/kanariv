@@ -349,7 +349,10 @@ Json toJson(const Command& cmd) {
                 j["value"] = v.value;
             } else if constexpr (std::is_same_v<T, TagGet>) {
                 j["type"] = "TagGet";
-                j["id"] = v.id;
+                if (v.id.has_value())
+                    j["id"] = *v.id;
+                if (v.path.has_value())
+                    j["path"] = *v.path;
                 j["cover"] = v.cover;
             } else if constexpr (std::is_same_v<T, ConfigGet>) {
                 j["type"] = "ConfigGet";
@@ -735,6 +738,8 @@ std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
             TagGet tg{};
             if (j.contains("id") && j["id"].isNumber())
                 tg.id = j["id"].get<int64_t>();
+            if (j.contains("path") && j["path"].isString())
+                tg.path = j["path"].get<std::string>();
             if (j.contains("cover") && j["cover"].isBoolean())
                 tg.cover = j["cover"].get<bool>();
             return Command{std::move(tg)};

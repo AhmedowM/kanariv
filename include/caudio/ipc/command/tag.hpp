@@ -7,6 +7,7 @@
  */
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace caudio::ipc {
@@ -58,9 +59,13 @@ struct TagEdit final {
  */
 struct TagGet final {
     /**
-     * @brief Track ID.
+     * @brief Track ID. Mutually exclusive with `path`.
      */
-    int64_t id{0};
+    std::optional<int64_t> id{};
+    /**
+     * @brief File path to look up the track by. Mutually exclusive with `id`.
+     */
+    std::optional<std::string> path{};
     /**
      * @brief When true, include cover art (base64-encoded) and MIME type.
      * Reads the file at track.cover_art_path.

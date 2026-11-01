@@ -25,27 +25,78 @@ bool isTagField(std::string_view field) {
     return std::find(tagFields.begin(), tagFields.end(), field) != tagFields.end();
 }
 
-AppResult App::tagEdit(std::int64_t id, const std::string& field, const std::string& value) {
-    caudio::ipc::Command cmd{caudio::ipc::TagEdit{id, field, value}};
-    return impl_->confirm(impl_->sendRaw(cmd), std::format("Updated {} for track {}", field, id));
+// Returns true if s consists entirely of decimal digits (a numeric track id).
+bool isNumericId(std::string_view s) {
+    if (s.empty())
+        return false;
+    for (char c : s) {
+        if (c < '0' || c > '9')
+            return false;
+    }
+    return true;
 }
 
-AppResult App::tagGet(std::int64_t id, bool cover) {
-    caudio::ipc::Command cmd{caudio::ipc::TagGet{id, cover}};
+AppResult App::tagEdit(std::string idOrPath, const std::string& field,
+                       const std::string& value) {
+    int64_t id = 0;
+    if (isNumericId(idOrPath)) {
+        id = std::stoll(idOrPath);
+    } else {
+        // Resolve path to track id via TagGet{path}.
+        caudio::ipc::Command tgCmd{caudio::ipc::TagGet{.path = idOrPath}};
+        auto tgRes = impl_->sendRaw(tgCmd);
+        if (!tgRes)
+            return std::unexpected{tgRes.error()};
+        if (auto* st = std::get_if<caudio::ipc::SingleTrack>(&*tgRes))
+            id = st->track.id;
+        else
+            return std::unexpected{caudio::utils::makeError(
+                caudio::utils::StatusCode::NotFound,
+                "track not found for path '" + idOrPath + "'")};
+    }
+    caudio::ipc::Command cmd{caudio::ipc::TagEdit{id, field, value}};
+    return impl_->confirm(impl_->sendRaw(cmd),
+                          std::format("Updated {} for track {}", field, id));
+}
+
+AppResult App::tagGet(std::string idOrPath, bool cover) {
+    caudio::ipc::TagGet tg{.cover = cover};
+    if (isNumericId(idOrPath)) {
+        tg.id = std::stoll(idOrPath);
+    } else {
+        tg.path = idOrPath;
+    }
+    caudio::ipc::Command cmd{std::move(tg)};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
-std::expected<TagValue, caudio::utils::Error> App::tagValue(std::int64_t id,
+std::expected<TagValue, caudio::utils::Error> App::tagValue(std::string idOrPath,
                                                             const std::string& field) {
     if (!isTagField(field)) {
         return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
                                                         "unknown tag field '" + field + "'")};
     }
 
+    int64_t id = 0;
+    if (isNumericId(idOrPath)) {
+        id = std::stoll(idOrPath);
+    } else {
+        caudio::ipc::Command tgCmd{caudio::ipc::TagGet{.path = idOrPath}};
+        auto tgRes = impl_->sendRaw(tgCmd);
+        if (!tgRes)
+            return std::unexpected{tgRes.error()};
+        if (auto* st = std::get_if<caudio::ipc::SingleTrack>(&*tgRes))
+            id = st->track.id;
+        else
+            return std::unexpected{caudio::utils::makeError(
+                caudio::utils::StatusCode::NotFound,
+                "track not found for path '" + idOrPath + "'")};
+    }
+
     // Cover art needs its own IPC round-trip with cover=true; for all other
     // fields a single TagGet suffices.
     if (field == "cover") {
-        caudio::ipc::Command cmd{caudio::ipc::TagGet{id, true}};
+        caudio::ipc::Command cmd{caudio::ipc::TagGet{.id = id, .cover = true}};
         auto res = impl_->sendRaw(cmd);
         if (!res)
             return std::unexpected{res.error()};
@@ -59,7 +110,7 @@ std::expected<TagValue, caudio::utils::Error> App::tagValue(std::int64_t id,
         return TagValue{st->cover_data, j.dump()};
     }
 
-    caudio::ipc::Command cmd{caudio::ipc::TagGet{id}};
+    caudio::ipc::Command cmd{caudio::ipc::TagGet{.id = id}};
     auto res = impl_->sendRaw(cmd);
     if (!res)
         return std::unexpected{res.error()};

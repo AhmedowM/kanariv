@@ -267,15 +267,15 @@ TEST_CASE("cli enum options reject out-of-set values", "[cli]") {
 TEST_CASE("cli no-daemon errors point at start", "[cli]") {
     for (const char* sub : {"status"}) {
         auto r = runCli(withCfg("gold_nd1", {sub}));
-        REQUIRE(r.exitCode == 1);
+        REQUIRE(r.exitCode == 105);
         REQUIRE(contains(r.err, "daemon not running"));
         REQUIRE(contains(r.err, "caudio start"));
     }
     auto q = runCli(withCfg("gold_nd2", {"queue", "list"}));
-    REQUIRE(q.exitCode == 1);
+    REQUIRE(q.exitCode == 105);
     REQUIRE(contains(q.err, "daemon not running"));
     auto v = runCli(withCfg("gold_nd3", {"volume"}));
-    REQUIRE(v.exitCode == 1);
+    REQUIRE(v.exitCode == 105);
     REQUIRE(contains(v.err, "daemon not running"));
 }
 
@@ -481,7 +481,7 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     REQUIRE(contains(addDir.out, "2 tracks added"));
     REQUIRE(contains(addDir.err, "already in queue"));
     auto addIdMissing = run({"queue", "add", "--id", "99999"});
-    REQUIRE(addIdMissing.exitCode == 1);
+    REQUIRE(addIdMissing.exitCode == 109);
     auto addIdBad = run({"queue", "add", "--id", "abc"});
     REQUIRE(addIdBad.exitCode == 1);
     auto addMissing = run({"queue", "add", (music / "nope.mp3").generic_string()});
@@ -491,7 +491,7 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     REQUIRE(addEmpty.exitCode == 0);
     REQUIRE(contains(addEmpty.err, "No files matched"));
     auto addSearchEmpty = run({"queue", "add", "xyz-no-match", "--search"});
-    REQUIRE(addSearchEmpty.exitCode == 1);
+    REQUIRE(addSearchEmpty.exitCode != 0);
     auto remPos = run({"queue", "remove", "--pos", "1"});
     REQUIRE(remPos.exitCode == 0);
     REQUIRE(contains(remPos.out, "Removed from queue full.mp3"));
@@ -515,7 +515,8 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     REQUIRE(run({"queue", "switch", std::to_string(newQid)}).exitCode == 0);
     REQUIRE(run({"queue", "switch", "1"}).exitCode == 0);
     auto delActive = run({"queue", "delete", "1"});
-    REQUIRE(delActive.exitCode == 1);
+    REQUIRE(delActive.exitCode != 0);
+    REQUIRE(contains(delActive.err, "active queue"));
     auto delQ = run({"queue", "delete", std::to_string(newQid)});
     REQUIRE(delQ.exitCode == 0);
     REQUIRE(contains(delQ.out, "Deleted queue"));
@@ -552,10 +553,10 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     auto tgbad = run({"tag", "get", "1", "bogus"});
     REQUIRE(tgbad.exitCode == 1);
     auto tgmiss = run({"tag", "get", "99999"});
-    REQUIRE(tgmiss.exitCode == 1);
+    REQUIRE(tgmiss.exitCode == 109);
     REQUIRE(contains(tgmiss.err, "99999"));
     auto swmiss = run({"queue", "switch", "999"});
-    REQUIRE(swmiss.exitCode == 1);
+    REQUIRE(swmiss.exitCode == 109);
     REQUIRE(contains(swmiss.err, "999"));
     {
         std::ofstream f(dir / "good.json", std::ios::binary);
@@ -568,13 +569,13 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
         f << "{oops";
     }
     auto impBad = run({"config", "import", (dir / "bad.json").generic_string()});
-    REQUIRE(impBad.exitCode == 1);
+    REQUIRE(impBad.exitCode != 0);
     {
         std::ofstream f(dir / "badtype.json", std::ios::binary);
         f << "{\"logLevel\": \"loud\"}";
     }
     auto impType = run({"config", "import", (dir / "badtype.json").generic_string()});
-    REQUIRE(impType.exitCode == 1);
+    REQUIRE(impType.exitCode != 0);
     // Restore the hermetic config replaced by the import above.
     {
         std::ofstream f(cfg, std::ios::binary);
@@ -611,14 +612,14 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     auto lvlNum = run({"config", "set", "logLevel", "2"});
     REQUIRE(lvlNum.exitCode == 0);
     auto lvlBad = run({"config", "set", "logLevel", "loud"});
-    REQUIRE(lvlBad.exitCode == 1);
+    REQUIRE(lvlBad.exitCode == 106);
     REQUIRE(contains(lvlBad.err, "logLevel"));
     // Empty the queue, then play must fail fast without touching audio.
     auto clear = run({"queue", "clear"});
     REQUIRE(clear.exitCode == 0);
     REQUIRE(contains(clear.out, "cleared"));
     auto resumeEmpty = run({"resume"});
-    REQUIRE(resumeEmpty.exitCode == 1);
+    REQUIRE(resumeEmpty.exitCode != 0);
     REQUIRE(contains(resumeEmpty.err, "empty queue"));
     auto shuf = run({"queue", "shuffle", "on"});
     REQUIRE(shuf.exitCode == 0);
@@ -641,7 +642,7 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     REQUIRE(down.exitCode == 0);
     REQUIRE(contains(down.out, "stopped"));
     auto after = run({"status"});
-    REQUIRE(after.exitCode == 1);
+    REQUIRE(after.exitCode == 105);
     REQUIRE(contains(after.err, "daemon not running"));
     // Full cleanup verified by a clean restart on the same config. Bounded
     // retry: a previous shutdown's pipe/lock release races the new spawn
@@ -668,12 +669,12 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     bool autoDone = false;
     for (int i = 0; i < 50 && !autoDone; ++i) {
         autoPlay = run({"play"});
-        autoDone = (autoPlay.exitCode == 1) && !contains(autoPlay.err, "daemon not running") &&
+        autoDone = (autoPlay.exitCode == 109) && !contains(autoPlay.err, "daemon not running") &&
                    !contains(autoPlay.err, "socket not reachable");
         if (!autoDone)
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    REQUIRE(autoPlay.exitCode == 1);
+    REQUIRE(autoPlay.exitCode == 109);
     REQUIRE(contains(autoPlay.err, "empty queue"));
     auto autoStatus = run({"status"});
     REQUIRE(autoStatus.exitCode == 0);

@@ -150,7 +150,7 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
             hardFail = true;
             continue;
         }
-        caudio::ipc::Command gcmd{caudio::ipc::TagGet{tid}};
+        caudio::ipc::Command gcmd{caudio::ipc::TagGet{.id = tid}};
         std::string label;
         if (auto gres = impl_->sendRaw(gcmd)) {
             if (auto* st = std::get_if<caudio::ipc::SingleTrack>(&*gres)) {

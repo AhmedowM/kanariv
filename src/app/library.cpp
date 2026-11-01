@@ -189,7 +189,7 @@ AppResult App::libraryRemove(const std::string& query) {
             id = 0;
         }
         if (id != 0) {
-            caudio::ipc::Command cmd{caudio::ipc::TagGet{id}};
+            caudio::ipc::Command cmd{caudio::ipc::TagGet{.id = id}};
             if (auto res = impl_->sendRaw(cmd)) {
                 if (auto* st = std::get_if<caudio::ipc::SingleTrack>(&*res))
                     label = caudio::app::addedLabel(st->track);
@@ -210,7 +210,24 @@ AppResult App::libraryRemove(const std::string& query) {
     return Outcome{std::move(*res), std::move(line), false, false};
 }
 
-AppResult App::trackRate(std::int64_t id, std::int32_t rating) {
+AppResult App::trackRate(std::string idOrPath, std::int32_t rating) {
+    int64_t id = 0;
+    if (!idOrPath.empty() &&
+        idOrPath.find_first_not_of("0123456789") == std::string::npos) {
+        id = std::stoll(idOrPath);
+    } else {
+        // Resolve path to track id via TagGet{path}.
+        caudio::ipc::Command tgCmd{caudio::ipc::TagGet{.path = idOrPath}};
+        auto tgRes = impl_->sendRaw(tgCmd);
+        if (!tgRes)
+            return std::unexpected{tgRes.error()};
+        if (auto* st = std::get_if<caudio::ipc::SingleTrack>(&*tgRes))
+            id = st->track.id;
+        else
+            return std::unexpected{caudio::utils::makeError(
+                caudio::utils::StatusCode::NotFound,
+                "track not found for path '" + idOrPath + "'")};
+    }
     caudio::ipc::Command cmd{caudio::ipc::TrackRate{id, rating}};
     return impl_->confirm(impl_->sendRaw(cmd),
                           std::format("Rated track {} as {}", id, rating));

@@ -444,7 +444,7 @@ class CAUDIO_API App {
      * @brief Edits one track tag field (database row).
      * @ingroup caudio_app
      */
-    AppResult tagEdit(std::int64_t id, const std::string& field, const std::string& value);
+    AppResult tagEdit(std::string idOrPath, const std::string& field, const std::string& value);
 
     /**
      * @brief Reads the full track tag record.
@@ -454,7 +454,7 @@ class CAUDIO_API App {
      * @return Outcome data; result carries SingleTrack with cover_mime/cover_data
      *   populated when cover=true and cover art is available.
      */
-    AppResult tagGet(std::int64_t id, bool cover = false);
+    AppResult tagGet(std::string idOrPath, bool cover = false);
 
     /**
      * @brief Reads one tag field as human text plus single-key JSON.
@@ -463,7 +463,7 @@ class CAUDIO_API App {
      * @param field Must name a known field (see isTagField); frontends
      * validate before calling, unknown names fail as InvalidArg.
      */
-    std::expected<TagValue, caudio::utils::Error> tagValue(std::int64_t id,
+    std::expected<TagValue, caudio::utils::Error> tagValue(std::string idOrPath,
                                                            const std::string& field);
 
     /**
@@ -473,7 +473,7 @@ class CAUDIO_API App {
      * @param rating Rating value (0..5).
      * @return Outcome data, or the transport/server error.
      */
-    AppResult trackRate(std::int64_t id, std::int32_t rating);
+    AppResult trackRate(std::string idOrPath, std::int32_t rating);
 
     /** @brief Lists playback history entries. @ingroup caudio_app */
     AppResult historyList(int limit);

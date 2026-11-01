@@ -626,14 +626,25 @@ Service::Impl::handle(const caudio::ipc::TagEdit& cmd) {
 
 std::expected<caudio::ipc::Result, caudio::utils::Error>
 Service::Impl::handle(const caudio::ipc::TagGet& cmd) {
-    if (cmd.id == 0)
+    int64_t trackId = 0;
+    if (cmd.id.has_value()) {
+        trackId = *cmd.id;
+    } else if (cmd.path.has_value()) {
+        // Resolve path to track id.
+        auto tr = db_->findByPath(*cmd.path);
+        if (!tr)
+            return std::unexpected{tr.error()};
+        trackId = tr->id;
+    } else {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "tag get: invalid id")};
-    auto tr = db_->getTrack(cmd.id);
+            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+                                     "tag get: id or path required")};
+    }
+    auto tr = db_->getTrack(trackId);
     if (!tr) {
         if (tr.error().message.empty())
             return std::unexpected{caudio::utils::makeError(
-                tr.error().code, "track not found: " + std::to_string(cmd.id))};
+                tr.error().code, "track not found: " + std::to_string(trackId))};
         return std::unexpected{tr.error()};
     }
     caudio::ipc::SingleTrack st{std::move(*tr)};
@@ -669,7 +680,7 @@ Service::Impl::handle(const caudio::ipc::TagGet& cmd) {
         if (st.cover_data.empty())
             return std::unexpected{caudio::utils::makeError(
                 caudio::utils::StatusCode::NotFound,
-                "tag get: no cover art for track " + std::to_string(cmd.id))};
+                "tag get: no cover art for track " + std::to_string(trackId))};
     }
     return Result{std::move(st)};
 }

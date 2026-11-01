@@ -116,11 +116,27 @@ std::string statusLine(const caudio::ipc::Status& st) {
     return s;
 }
 
+// Map StatusCode to a finer exit code (F-13).
+// 0 = success, 1 = general error, 105 = daemon not running / bad state,
+// 106 = invalid argument, 109 = not found.
+int exitCodeForError(const caudio::utils::Error& e) {
+    switch (e.code) {
+        case caudio::utils::StatusCode::InvalidArg:
+            return 106;
+        case caudio::utils::StatusCode::NotFound:
+            return 109;
+        case caudio::utils::StatusCode::State:
+            return 105;
+        default:
+            return 1;
+    }
+}
+
 int renderError(const caudio::utils::Error& e) {
     std::string text;
     caudio::app::detail::renderErrorInto(text, e);
     caudio::println(std::cerr, "{}", text);
-    return 1;
+    return exitCodeForError(e);
 }
 
 int renderJson(const caudio::ipc::Result& r) {
@@ -563,12 +579,12 @@ int Shell::run(int argc, char** argv) {
     libMaint->add_option("--library", libMaintLibraryId, "Library id (default: 1)");
     libMaint->add_flag("--json", libMaintJson, "JSON output");
     auto* tagCmd = cli_->add_subcommand("tag", "Tag operations");
-    std::int64_t tagEditId = 0;
+    std::string tagEditId;
     std::string tagEditField;
     std::string tagEditValue;
     bool tagEditJson = false;
     auto* tagEdit = tagCmd->add_subcommand("edit", "Edit track tag");
-    tagEdit->add_option("id", tagEditId, "Track id")->required();
+    tagEdit->add_option("id", tagEditId, "Track id or file path")->required();
     tagEdit
         ->add_option("field", tagEditField,
                      "Field (title,artist,album,album_artist,genre,year,track_number,disc_number)")
@@ -577,21 +593,21 @@ int Shell::run(int argc, char** argv) {
                                "track_number", "disc_number"}));
     tagEdit->add_option("value", tagEditValue, "New value")->required();
     tagEdit->add_flag("--json", tagEditJson, "JSON output");
-    std::int64_t tagGetId = 0;
+    std::string tagGetId;
     std::string tagGetField;
     bool tagGetJson = false;
     std::string tagGetOut;
     auto* tagGet = tagCmd->add_subcommand("get", "Get track tags");
-    tagGet->add_option("id", tagGetId, "Track id")->required();
+    tagGet->add_option("id", tagGetId, "Track id or file path")->required();
     tagGet->add_option("field", tagGetField, "Single field (default: all)");
     tagGet->add_flag("--json", tagGetJson, "JSON output");
     tagGet->add_option("--out", tagGetOut, "Output file path (cover art only)");
     auto* trackCmd = cli_->add_subcommand("track", "Track operations");
-    std::int64_t trRateId = 0;
+    std::string trRateId;
     int trRateRating = 0;
     bool trRateJson = false;
     auto* trRate = trackCmd->add_subcommand("rate", "Rate a track (0-5)");
-    trRate->add_option("id", trRateId, "Track id")->required();
+    trRate->add_option("id", trRateId, "Track id or file path")->required();
     trRate->add_option("rating", trRateRating, "Rating (0-5)")
         ->check(CLI::Range(0, 5));
     trRate->add_flag("--json", trRateJson, "JSON output");

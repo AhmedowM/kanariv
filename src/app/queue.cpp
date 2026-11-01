@@ -162,7 +162,7 @@ BatchResult App::queueAdd(const std::vector<std::string>& paths, const std::stri
         rep.json = std::move(*res);
         int added = detail::printAddedText(*rep.json, seen, rep.out, rep.err);
         detail::countLineText(added, rep.out);
-        rep.exitCode = 0;
+        rep.exitCode = (added == 0) ? 1 : 0;
         return rep;
     }
     // PATH mode: expand globs/folders client-side.

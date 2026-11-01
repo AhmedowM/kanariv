@@ -437,9 +437,18 @@ config; rotated at 1 MB keeping \fBcaudio.log.1\fR and \fBcaudio.log.2\fR.
 Success (including \fBstart\fR when the daemon is already running).
 .TP
 .B 1
-Any error: unknown command, missing or invalid argument, validation
-failure, daemon-side or runtime error. Details go to stderr. (Finer
-usage codes are a post-1.0 option, not implemented.)
+General error: unknown command, runtime failure, I/O error. Details go to stderr.
+.TP
+.B 105
+Daemon not running or invalid state for the requested operation (e.g. queue empty,
+not playing). Start the daemon with \fBcaudio start\fR or check the current state.
+.TP
+.B 106
+Invalid argument: missing or malformed option, out-of-range value, validation
+failure. Check \fB\-\-help\fR for valid grammars.
+.TP
+.B 109
+Requested entity not found: track, device, playlist, or queue id does not exist.
 .SH SEE ALSO
 .BR cmake (1),
 .BR ninja (1),
