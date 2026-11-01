@@ -29,10 +29,24 @@ struct CAUDIO_API Config final {
     std::filesystem::path dbPath{"library.db"};
     std::string socketPath{};
 
+    /** @brief Uses the default `library.db` database and derived socket. */
     Config() = default;
+    /**
+     * @brief Constructs a transport configuration for a database.
+     * @param db Database path; the socket is derived from it.
+     */
     explicit Config(std::filesystem::path db) : dbPath(std::move(db)) {}
+    /**
+     * @brief Constructs a transport configuration with an explicit endpoint.
+     * @param db Database path.
+     * @param sock Socket or named-pipe endpoint; empty derives it from `db`.
+     */
     Config(std::filesystem::path db, std::string sock)
         : dbPath(std::move(db)), socketPath(std::move(sock)) {}
+    /**
+     * @brief Copies the database and socket settings from application config.
+     * @param cfg Loaded application configuration.
+     */
     explicit Config(const caudio::config::Config& cfg)
         : dbPath(cfg.dbPath), socketPath(cfg.socketPath) {}
 };

@@ -39,6 +39,7 @@ class CAUDIO_API JsonError : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
+/** @brief Non-owning proxy returned for mutable JSON member access. */
 class CAUDIO_API JsonRef;
 
 /**
@@ -86,9 +87,9 @@ class CAUDIO_API Json {
      */
     bool erase(std::string_view key) noexcept;
 
-    /// @brief Empty object. @ingroup caudio_utils
+    /** @brief Creates an empty object. @ingroup caudio_utils */
     static Json object();
-    /// @brief Empty array. @ingroup caudio_utils
+    /** @brief Creates an empty array. @ingroup caudio_utils */
     static Json array();
     /**
      * @brief Parses a JSON document.
@@ -113,21 +114,21 @@ class CAUDIO_API Json {
      */
     std::string dump(int indent = -1) const;
 
-    /// @ingroup caudio_utils
+    /** @brief Reports whether this value is an object. @return True for an object. */
     bool isObject() const noexcept;
-    /// @ingroup caudio_utils
+    /** @brief Reports whether this value is an array. @return True for an array. */
     bool isArray() const noexcept;
-    /// @ingroup caudio_utils
+    /** @brief Reports whether this value is a string. @return True for a string. */
     bool isString() const noexcept;
-    /// @ingroup caudio_utils
+    /** @brief Reports whether this value is numeric. @return True for any number. */
     bool isNumber() const noexcept;
-    /// @ingroup caudio_utils
+    /** @brief Reports whether this value is an integer. @return True for an integer. */
     bool isInteger() const noexcept;
-    /// @ingroup caudio_utils
+    /** @brief Reports whether this value is unsigned. @return True for an unsigned integer. */
     bool isUnsigned() const noexcept;
-    /// @ingroup caudio_utils
+    /** @brief Reports whether this value is boolean. @return True for a boolean. */
     bool isBoolean() const noexcept;
-    /// @ingroup caudio_utils
+    /** @brief Reports whether this value is null. @return True for JSON null. */
     bool isNull() const noexcept;
 
     /**

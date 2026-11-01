@@ -13,7 +13,7 @@
  * - Audio thread (miniaudio): Consumes from ring buffer via AudioOutput::dataCallback
  * - Control thread: Application calls play/pause/stop/seek/volume
  *
- * Thread Safety:
+ * @par Thread safety
  * - Public methods: Thread-safe (atomic state + mutexes for complex operations)
  * - decodeLoop(): Runs on dedicated jthread, single-threaded
  * - AudioOutput::dataCallback(): Runs on miniaudio audio thread (real-time)
@@ -65,12 +65,16 @@ enum class State : uint8_t { Stopped = 0, Playing = 1, Paused = 2, Error = 3 };
  * @ingroup caudio_player
  */
 struct PlayerOptions {
-    /// Output sample rate in Hz (default: 48000)
+    /** @brief Output sample rate in hertz. */
     uint32_t sampleRate = 48000;
-    /// Output channel count (default: 2)
+    /** @brief Number of interleaved output channels. */
     uint32_t channels = 2;
-    /// Non-owning logger (may be null = silent). Must outlive the Player;
-    /// threaded through to decoder/output, never from destructors.
+    /**
+     * @brief Non-owning logger used by the decoder and output.
+     * @par Ownership
+     * May be null to disable logging. The logger must outlive the Player and
+     * is never called from the destructor.
+     */
     caudio::utils::Logger* logger{nullptr};
 };
 
@@ -105,7 +109,9 @@ struct PlayerOptions {
  */
 class CAUDIO_API Player {
   public:
+    /** @brief Expected result used by operations that return no value. */
     using ExpectedVoid = std::expected<void, caudio::utils::Error>;
+    /** @brief Expected result returned by the factory. */
     using ExpectedPlayer = std::expected<std::unique_ptr<Player>, caudio::utils::Error>;
 
     /**
@@ -118,7 +124,8 @@ class CAUDIO_API Player {
      *
      * @retval StatusCode::Device Decode thread creation failed
      *
-     * Thread Safety: Thread-safe. Can be called from any thread.
+     * @par Thread safety
+     * Thread-safe; can be called from any thread.
      */
     static ExpectedPlayer create(const PlayerOptions& opts = {});
 
@@ -128,7 +135,8 @@ class CAUDIO_API Player {
      * Stops any active playback, signals the decode thread to stop,
      * and waits for it to join. Safe to call multiple times.
      *
-     * Thread Safety: Thread-safe (called from control thread)
+     * @par Thread safety
+     * Thread-safe; stops playback and joins the decode thread.
      */
     ~Player();
 
@@ -149,8 +157,11 @@ class CAUDIO_API Player {
      * @retval StatusCode::Io FFmpeg initialization failed
      * @retval StatusCode::Device Audio output device creation failed
      *
-     * Thread Safety: Thread-safe (uses openMutex_ for exclusive access)
-     * Precondition: Player must be in Stopped state (automatically stops if playing)
+     * @par Thread safety
+     * Thread-safe; uses the open mutex for exclusive access.
+     * @par Ownership
+     * The player takes ownership of `reader` after successful or failed
+     * opening and releases it when the player is destroyed or reopened.
      */
     ExpectedVoid open(std::string_view path);
 
@@ -168,7 +179,8 @@ class CAUDIO_API Player {
      * @retval StatusCode::Io FFmpeg initialization failed
      * @retval StatusCode::Device Audio output device creation failed
      *
-     * Thread Safety: Thread-safe (uses openMutex_ for exclusive access)
+     * @par Thread safety
+     * Thread-safe; uses the open mutex for exclusive access.
      */
     ExpectedVoid openReader(std::unique_ptr<media::Reader> reader);
 
@@ -182,7 +194,8 @@ class CAUDIO_API Player {
      *
      * @retval StatusCode::State Not opened, or already playing
      *
-     * Thread Safety: Thread-safe (atomic compare_exchange for state transition)
+     * @par Thread safety
+     * Thread-safe; uses an atomic state transition.
      */
     ExpectedVoid play();
 
@@ -196,7 +209,8 @@ class CAUDIO_API Player {
      *
      * @retval StatusCode::State Not currently playing
      *
-     * Thread Safety: Thread-safe (atomic compare_exchange for state transition)
+     * @par Thread safety
+     * Thread-safe; uses an atomic state transition.
      */
     ExpectedVoid pause();
 
@@ -210,7 +224,8 @@ class CAUDIO_API Player {
      *
      * @retval StatusCode::State Not currently paused
      *
-     * Thread Safety: Thread-safe (atomic compare_exchange for state transition)
+     * @par Thread safety
+     * Thread-safe; uses an atomic state transition.
      */
     ExpectedVoid resume();
 
@@ -223,7 +238,8 @@ class CAUDIO_API Player {
      * and closes the open gate to stop the decode thread.
      * Does not close the decoder/reader; call open() again to play.
      *
-     * Thread Safety: Thread-safe (uses openMutex_ for exclusive access)
+     * @par Thread safety
+     * Thread-safe; uses the open mutex for exclusive access.
      */
     ExpectedVoid stop();
 
@@ -241,8 +257,10 @@ class CAUDIO_API Player {
      * @retval StatusCode::Io Decoder seek failed
      * @retval StatusCode::Internal Decoder not initialized
      *
-     * Thread Safety: Thread-safe (atomic operations for position, mutex for decode thread wake)
-     * Gapless: Ring buffer is reset to avoid stale samples from previous position
+     * @par Thread safety
+     * Thread-safe; synchronizes decoder access and wakes the decode thread.
+     * @par Blocking
+     * May wait for decoder synchronization and device state changes.
      */
     ExpectedVoid seek(double seconds);
 
@@ -256,7 +274,8 @@ class CAUDIO_API Player {
      *
      * @retval StatusCode::InvalidArg volume is NaN or infinity
      *
-     * Thread Safety: Thread-safe (atomic store with relaxed ordering)
+     * @par Thread safety
+     * Thread-safe; stores the volume atomically.
      */
     ExpectedVoid setVolume(float volume);
 
@@ -264,7 +283,8 @@ class CAUDIO_API Player {
      * @brief Get current playback state
      * @return Current State enum value
      *
-     * Thread Safety: Thread-safe (atomic load with acquire ordering)
+     * @par Thread safety
+     * Thread-safe; loads the state atomically.
      */
     State state() const noexcept;
 
@@ -275,7 +295,8 @@ class CAUDIO_API Player {
      * Calculates position from posBase (frames at last seek/start) plus
      * elapsed time since playback started. Uses steady_clock for monotonicity.
      *
-     * Thread Safety: Thread-safe (atomic loads with acquire/relaxed ordering)
+     * @par Thread safety
+     * Thread-safe; reads position state atomically.
      */
     std::chrono::duration<double> position() const noexcept;
 

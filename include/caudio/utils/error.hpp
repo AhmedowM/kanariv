@@ -69,6 +69,7 @@ CAUDIO_API Error makeError(StatusCode c, std::string_view msg = {});
  */
 template <>
 struct std::formatter<caudio::utils::Error> : std::formatter<std::string> {
+    /** @brief Formats an error as `Code[: message]`. */
     auto format(const caudio::utils::Error& e, auto& ctx) const {
         std::string s = std::string(caudio::utils::toString(e.code));
         if (!e.message.empty()) {

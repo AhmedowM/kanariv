@@ -37,7 +37,7 @@ const pageTitle = compound ? `${compound.name} API` : `${alias?.name || 'API'} R
         <p class="eyebrow">{compound.kind} · XML reference</p>
         <h1>{compound.name}</h1>
         {compound.brief && <p class="summary">{compound.brief}</p>}
-        {compound.description && <p>{compound.description}</p>}
+        {compound.descriptionParagraphs?.map((paragraph) => <p>{paragraph}</p>)}
         {compound.location && <p class="location"><code>{compound.location.file}:{compound.location.line}</code></p>}
         {compound.includes.length > 0 && <><h2>Includes</h2><ul class="chips">{compound.includes.map((include) => <li><code>{include}</code></li>)}</ul></>}
         {compound.bases.length > 0 && <><h2>Inheritance</h2><ul>{compound.bases.map((base) => <li><code>{base.name}</code></li>)}</ul></>}
@@ -47,9 +47,11 @@ const pageTitle = compound ? `${compound.name} API` : `${alias?.name || 'API'} R
             <section class="member" id={member.id}>
               <h3><code>{member.definition || member.name}{member.args || ''}</code></h3>
               {member.brief && <p>{member.brief}</p>}
-              {member.description && <p>{member.description}</p>}
-              {member.parameters.length > 0 && <><h4>Parameters</h4><dl>{member.parameters.map((parameter) => <><dt><code>{parameter.name}</code>{parameter.type && `: ${parameter.type}`}</dt><dd>{parameter.description || 'No parameter description.'}</dd></>)}</dl></>}
+              {member.descriptionParagraphs?.map((paragraph) => <p>{paragraph}</p>)}
+              {member.parameters.length > 0 && <><h4>Parameters</h4><dl>{member.parameters.map((parameter) => <><dt><code>{parameter.name}</code>{parameter.type && `: ${parameter.type}`}</dt>{parameter.description && <dd>{parameter.description}</dd>}</>)}</dl></>}
               {member.returnDescription && <p><strong>Returns:</strong> {member.returnDescription}</p>}
+              {member.sections?.filter((section) => section.kind === 'retval').length > 0 && <><h4>Errors and special results</h4><dl>{member.sections.filter((section) => section.kind === 'retval').map((section) => <><dt><code>{section.name || 'Result'}</code></dt><dd>{section.text}</dd></>)}</dl></>}
+              {member.sections?.filter((section) => section.kind === 'par' || section.kind === 'see').map((section) => <div class="api-note"><strong>{section.title || (section.kind === 'see' ? 'See also' : 'Note')}</strong><p>{section.text}</p></div>)}
               {member.enumValues.length > 0 && <ul class="enum-values">{member.enumValues.map((value) => <li><code>{value.name}</code>{value.brief && ` — ${value.brief}`}</li>)}</ul>}
             </section>
           ))}
@@ -83,6 +85,8 @@ const pageTitle = compound ? `${compound.name} API` : `${alias?.name || 'API'} R
   .member dl { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: .35rem 1rem; }
   .member dt { font-weight: 650; }
   .member dd { margin: 0; color: var(--caudio-text-muted); }
+  .api-note { margin-top: 1rem; padding: .8rem 1rem; border-left: 3px solid var(--caudio-brand); background: color-mix(in srgb, var(--caudio-brand) 7%, var(--caudio-surface)); }
+  .api-note p { margin: .25rem 0 0; }
   .compound-link { display: grid; gap: .3rem; color: var(--caudio-text); text-decoration: none; }
   .compound-link span { color: var(--caudio-text-muted); }
   .compound-link:hover { border-color: var(--caudio-brand); text-decoration: none; }

@@ -22,6 +22,13 @@
 
 namespace caudio::utils {
 
+/**
+ * @brief Stateless RFC 4648 Base64 conversion helpers.
+ * @ingroup caudio_utils
+ *
+ * All methods are static and allocate their result. They do not retain
+ * references to input data and are safe to call concurrently.
+ */
 class Base64 {
   public:
     /**

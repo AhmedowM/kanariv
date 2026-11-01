@@ -76,6 +76,7 @@ constexpr std::string_view toString(RepeatMode m) noexcept {
  */
 template <>
 struct std::formatter<caudio::types::PlaybackState> : std::formatter<std::string_view> {
+    /** @brief Formats the state using its stable IPC spelling. */
     auto format(caudio::types::PlaybackState s, auto& ctx) const {
         return std::formatter<std::string_view>::format(caudio::types::toString(s), ctx);
     }
@@ -87,6 +88,7 @@ struct std::formatter<caudio::types::PlaybackState> : std::formatter<std::string
  */
 template <>
 struct std::formatter<caudio::types::RepeatMode> : std::formatter<std::string_view> {
+    /** @brief Formats the repeat mode using its stable IPC spelling. */
     auto format(caudio::types::RepeatMode m, auto& ctx) const {
         return std::formatter<std::string_view>::format(caudio::types::toString(m), ctx);
     }

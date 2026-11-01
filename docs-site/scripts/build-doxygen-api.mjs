@@ -19,21 +19,66 @@ function decode(value = '') {
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&')
+}
+
+function rawText(node) {
+  if (!node) return '';
+  if (node.parts) {
+    return node.parts.map((part) => typeof part === 'string' ? part : rawText(part)).join('');
+  }
+  return `${node.text || ''}${node.children.map(rawText).join('')}`;
+}
+
+function text(node) {
+  return decode(rawText(node)).replace(/\s+/g, ' ').trim();
+}
+
+function proseText(node) {
+  if (!node) return '';
+  if (node.name === 'parameterlist' || node.name === 'xrefsect') return '';
+  if (node.name === 'simplesect' && ['return', 'see', 'retval'].includes(node.attrs.kind)) return '';
+  return decode(rawProseText(node))
     .replace(/\s+/g, ' ').trim();
 }
 
+function rawProseText(node) {
+  if (!node) return '';
+  if (node.name === 'parameterlist' || node.name === 'xrefsect') return '';
+  if (node.name === 'simplesect' && ['return', 'see', 'retval'].includes(node.attrs.kind)) return '';
+  if (node.name === 'simplesect' && node.attrs.kind === 'par') {
+    return node.children.map(rawProseText).filter(Boolean).join(' ');
+  }
+  if (node.parts) {
+    return node.parts
+      .filter((part) => typeof part === 'string' ||
+        (part.name !== 'parameterlist' && part.name !== 'xrefsect' &&
+          !(part.name === 'simplesect' && ['return', 'see', 'retval'].includes(part.attrs.kind))))
+      .map((part) => typeof part === 'string' ? part : rawProseText(part))
+      .join('');
+  }
+  return `${node.text || ''}${node.children.map(rawProseText).join('')}`;
+}
+
+function paragraphs(node) {
+  if (!node) return [];
+  const paras = children(node, 'para').map(proseText).filter(Boolean);
+  return paras.length > 0 ? paras : [proseText(node)].filter(Boolean);
+}
+
 function parseXml(xml) {
-  const root = { name: '#root', attrs: {}, children: [], text: '' };
+  const root = { name: '#root', attrs: {}, children: [], parts: [], text: '' };
   const stack = [root];
   const tokenPattern = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<\/?[^>]+>|[^<]+/g;
   for (const token of xml.match(tokenPattern) || []) {
     if (token.startsWith('<!--') || token.startsWith('<?') || token.startsWith('<!DOCTYPE')) continue;
     if (token.startsWith('<![CDATA[')) {
       stack.at(-1).text += token.slice(9, -3);
+      stack.at(-1).parts.push(token.slice(9, -3));
       continue;
     }
     if (!token.startsWith('<')) {
       stack.at(-1).text += token;
+      stack.at(-1).parts.push(token);
       continue;
     }
     if (token.startsWith('</')) {
@@ -46,8 +91,9 @@ function parseXml(xml) {
     if (!name) continue;
     const attrs = Object.fromEntries([...attributes.matchAll(/([\w:-]+)="([^"]*)"/g)]
       .map(([, key, value]) => [key, decode(value)]));
-    const node = { name, attrs, children: [], text: '' };
+    const node = { name, attrs, children: [], parts: [], text: '' };
     stack.at(-1).children.push(node);
+    stack.at(-1).parts.push(node);
     if (!selfClosing) stack.push(node);
   }
   return root;
@@ -68,11 +114,6 @@ function first(node, name) {
   return children(node, name)[0];
 }
 
-function text(node) {
-  if (!node) return '';
-  return decode(`${node.text || ''}${node.children.map(text).join('')}`);
-}
-
 function description(node, name) {
   return text(first(node, name));
 }
@@ -86,13 +127,41 @@ function renderableDescription(node, name) {
   return value || null;
 }
 
+function renderableParagraphs(node, name) {
+  const value = paragraphs(first(node, name));
+  return value.length > 0 ? value : null;
+}
+
+function structuredSections(member) {
+  const sections = descendants(member, 'simplesect')
+    .filter((section) => ['par', 'see'].includes(section.attrs.kind))
+    .map((section) => ({
+      kind: section.attrs.kind,
+      title: text(first(section, 'title')) || null,
+      name: null,
+      text: paragraphs(section).join(' '),
+    }));
+  for (const list of descendants(member, 'parameterlist')) {
+    if (list.attrs.kind !== 'retval') continue;
+    for (const item of children(list, 'parameteritem')) {
+      sections.push({
+        kind: 'retval',
+        title: null,
+        name: descendants(item, 'parametername').map(text).join(', '),
+        text: text(first(item, 'parameterdescription')),
+      });
+    }
+  }
+  return sections.filter((section) => section.text || section.name);
+}
+
 function parameterDocs(member) {
   const docs = new Map();
   for (const list of descendants(member, 'parameterlist')) {
     if (list.attrs.kind !== 'param') continue;
     for (const item of children(list, 'parameteritem')) {
       const names = descendants(item, 'parametername').map(text);
-      const value = text(first(item, 'parameterdescription'));
+      const value = proseText(first(item, 'parameterdescription'));
       for (const name of names) docs.set(name, value || null);
     }
   }
@@ -124,11 +193,15 @@ function parseMember(member) {
     type: text(first(member, 'type')) || null,
     args: text(first(member, 'argsstring')) || null,
     brief: renderableDescription(member, 'briefdescription'),
-    description: renderableDescription(member, 'detaileddescription'),
+    briefParagraphs: renderableParagraphs(member, 'briefdescription'),
+    description: renderableParagraphs(member, 'detaileddescription')?.join('\n\n') || null,
+    descriptionParagraphs: renderableParagraphs(member, 'detaileddescription'),
+    sections: structuredSections(member),
     parameters: children(member, 'param').map((parameter) => parseParameter(parameter, docs)),
-    returnDescription: children(member, 'simplesect')
+    returnDescription: descendants(member, 'simplesect')
       .find((section) => section.attrs.kind === 'return')
-      ? text(children(member, 'simplesect').find((section) => section.attrs.kind === 'return'))
+      ? paragraphs(descendants(member, 'simplesect')
+        .find((section) => section.attrs.kind === 'return')).join(' ')
       : null,
     enumValues: children(member, 'enumvalue').map((value) => ({
       name: text(first(value, 'name')),
@@ -151,7 +224,10 @@ function parseCompound(xml, filename) {
     name,
     kind: compound.attrs.kind || 'compound',
     brief: renderableDescription(compound, 'briefdescription'),
-    description: renderableDescription(compound, 'detaileddescription'),
+    briefParagraphs: renderableParagraphs(compound, 'briefdescription'),
+    description: renderableParagraphs(compound, 'detaileddescription')?.join('\n\n') || null,
+    descriptionParagraphs: renderableParagraphs(compound, 'detaileddescription'),
+    sections: structuredSections(compound),
     location: location?.attrs.file ? {
       file: location.attrs.file,
       line: Number(location.attrs.line) || null,

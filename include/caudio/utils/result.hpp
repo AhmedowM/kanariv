@@ -87,6 +87,7 @@ constexpr std::string_view toString(StatusCode r) noexcept {
  */
 template <>
 struct std::formatter<caudio::utils::StatusCode> : std::formatter<std::string_view> {
+    /** @brief Formats a status code using its diagnostic spelling. */
     auto format(caudio::utils::StatusCode r, auto& ctx) const {
         return std::formatter<std::string_view>::format(caudio::utils::toString(r), ctx);
     }

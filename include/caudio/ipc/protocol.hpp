@@ -81,6 +81,7 @@ namespace caudio::ipc {
 // JSON vocabulary: the opaque Json (nlohmann stays in src/).
 // Track conversion lives in caudio::utils (utils/record_json.hpp) -- single
 // definition, no ipc::detail duplicate.
+/** @brief Opaque JSON value used by the IPC serializers. */
 using Json = caudio::utils::Json;
 
 /**

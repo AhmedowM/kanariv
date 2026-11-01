@@ -31,28 +31,35 @@ class Generator {
   public:
     /// @brief Coroutine promise. @ingroup caudio_utils
     struct promise_type {
-        std::optional<T> value_;
-        std::exception_ptr ex_;
+        std::optional<T> value_; ///< Most recently yielded value.
+        std::exception_ptr ex_; ///< Exception captured from the coroutine body.
 
+        /** @brief Creates the owning Generator for this promise. */
         Generator get_return_object() {
             return Generator{std::coroutine_handle<promise_type>::from_promise(*this)};
         }
+        /** @brief Suspends before the first iteration. */
         std::suspend_always initial_suspend() noexcept {
             return {};
         }
+        /** @brief Suspends after completion so the owner can destroy the frame. */
         std::suspend_always final_suspend() noexcept {
             return {};
         }
+        /** @brief Stores a yielded value and suspends the coroutine. */
         std::suspend_always yield_value(T v) {
             value_.emplace(std::move(v));
             return {};
         }
+        /** @brief Completes the coroutine without yielding another value. */
         void return_void() {}
+        /** @brief Captures an exception for rethrow during iteration. */
         void unhandled_exception() {
             ex_ = std::current_exception();
         }
     };
 
+    /** @brief Handle type owned by a Generator instance. */
     using Handle = std::coroutine_handle<promise_type>;
 
     /// @brief Wraps a coroutine handle. @ingroup caudio_utils
@@ -77,6 +84,7 @@ class Generator {
     struct iterator {
         Handle handle_ = {};
 
+        /** @brief Resumes the coroutine and advances to the next value. */
         iterator& operator++() {
             handle_.promise().value_.reset();
             handle_.resume();
@@ -84,9 +92,11 @@ class Generator {
                 std::rethrow_exception(handle_.promise().ex_);
             return *this;
         }
+        /** @brief Returns the current yielded value. */
         T& operator*() const {
             return *handle_.promise().value_;
         }
+        /** @brief Compares this iterator with the end sentinel. */
         bool operator==(sentinel) const {
             return handle_.done();
         }

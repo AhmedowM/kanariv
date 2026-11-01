@@ -64,6 +64,7 @@ constexpr int versionMajor() noexcept {
 /**
  * @brief Version minor component.
  * @ingroup caudio_version
+ * @return Numeric minor component of the library version.
  */
 constexpr int versionMinor() noexcept {
     return caudio::detail::versionMinor;
@@ -72,6 +73,7 @@ constexpr int versionMinor() noexcept {
 /**
  * @brief Version patch component.
  * @ingroup caudio_version
+ * @return Numeric patch component of the library version.
  */
 constexpr int versionPatch() noexcept {
     return caudio::detail::versionPatch;

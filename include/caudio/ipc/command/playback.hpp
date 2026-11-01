@@ -92,7 +92,7 @@ struct Prev final {};
  */
 
 struct Seek final {
-    double seconds{0.0};
+    double seconds{0.0}; ///< Non-negative position from the start, in seconds.
 };
 
 /**

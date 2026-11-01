@@ -22,13 +22,31 @@ namespace caudio::config {
  * - POSIX socket/pid/lock are under $XDG_RUNTIME_DIR/caudio or $XDG_DATA_HOME/caudio or
  * ~/.local/share/caudio
  */
+/**
+ * @brief Derives the local IPC endpoint for a database.
+ * @param dbPath Database path used as the stable identity for the endpoint.
+ * @return Named-pipe or Unix-socket path, or an error when the platform
+ *         runtime directory cannot be determined.
+ */
 CAUDIO_API caudio::utils::Expected<std::string> socketPathFor(const std::filesystem::path& dbPath);
+/**
+ * @brief Derives the PID-file path for a database.
+ * @param dbPath Database path used as the stable identity.
+ * @return PID-file path, or an error when the runtime directory is unavailable.
+ */
 CAUDIO_API caudio::utils::Expected<std::filesystem::path>
 pidPathFor(const std::filesystem::path& dbPath);
+/**
+ * @brief Derives the single-instance lock-file path for a database.
+ * @param dbPath Database path used as the stable identity.
+ * @return Lock-file path, or an error when the runtime directory is unavailable.
+ */
 CAUDIO_API caudio::utils::Expected<std::filesystem::path>
 lockPathFor(const std::filesystem::path& dbPath);
 /**
  * @brief Daemon log file path for a database: `<db-dir>/caudio.log`.
+ * @param dbPath Database path whose parent directory receives the log.
+ * @return Log-file path, or an error if the path cannot be derived.
  * Falls back to the temp dir when the db path has no parent.
  */
 CAUDIO_API caudio::utils::Expected<std::filesystem::path>

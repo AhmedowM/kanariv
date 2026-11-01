@@ -29,32 +29,42 @@
 #define CAUDIO_API
 #endif
 
+/** @brief Opaque SQLite database handle (defined by SQLite). */
 struct sqlite3;
+/** @brief Opaque SQLite prepared-statement handle (defined by SQLite). */
 struct sqlite3_stmt;
 
 namespace caudio::config {
+/** @brief Persisted application configuration. */
 struct Config;
 } // namespace caudio::config
 
 namespace caudio::db {
+/** @brief Database implementation. */
 class Database;
+/** @brief SQLite statement wrapper. */
 class SqliteStatement;
 } // namespace caudio::db
 
 namespace caudio::contracts {
+/** @brief Abstract database contract used by the engine and service. */
 class IDatabase;
 } // namespace caudio::contracts
 
 namespace caudio::engine {
+/** @brief Playback engine. */
 class Engine;
 } // namespace caudio::engine
 
 namespace caudio::media {
+/** @brief Seekable or streaming media reader. */
 class Reader;
+/** @brief Audio decoder. */
 class Decoder;
 } // namespace caudio::media
 
 namespace caudio::player {
+/** @brief Audio-device output sink. */
 class AudioOutput;
 } // namespace caudio::player
 
@@ -62,34 +72,57 @@ namespace caudio::service {
 // IpcServer is internal (src/service/ipc_server.hpp); the public
 // `caudio/service/service.hpp` only names it in Service's private members,
 // so the forward declaration stays here.
+/** @brief Host adapter for running a service in a platform process. */
 class Host;
+/** @brief IPC server implementation used by the service. */
 class IpcServer;
+/** @brief Long-running daemon service. */
 class Service;
 } // namespace caudio::service
 
 namespace caudio::ipc {
+/** @brief Shared-memory playback status record. */
 struct Status;
+/** @brief Read-only shared-memory status mapping. */
 class ShmStatusReader;
+/** @brief Writable shared-memory status mapping. */
 class ShmStatusWriter;
 } // namespace caudio::ipc
 
 namespace caudio::types {
+/** @brief Queue repeat policy. */
 enum class RepeatMode : std::uint8_t;
+/** @brief Playback state-machine value. */
 enum class PlaybackState : std::uint8_t;
+/** @brief Persisted audio track record. */
 struct Track;
+/** @brief Persisted playlist record. */
 struct Playlist;
+/** @brief Queue entry record. */
 struct QueueItem;
+/** @brief Playback history record. */
 struct HistoryEntry;
+/** @brief Bookmark record. */
 struct Bookmark;
+/** @brief Queue record. */
 struct Queue;
+/** @brief Library summary record. */
 struct Library;
+/** @brief Track search query. */
 struct TrackQuery;
+/** @brief History search query. */
 struct HistoryQuery;
+/** @brief Playback statistics. */
 struct PlaybackStats;
+/** @brief Engine state snapshot. */
 struct EngineState;
+/** @brief Engine event category. */
 enum class EngineEventType : std::uint8_t;
+/** @brief Engine event payload. */
 struct EngineEvent;
+/** @brief Engine callback collection. */
 struct EngineCallbacks;
+/** @brief Engine construction options. */
 struct EngineConfig;
 } // namespace caudio::types
 
