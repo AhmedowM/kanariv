@@ -127,6 +127,23 @@ cmake --build --preset docs --parallel 4
 
 Man page is at `docs/man/caudio.1` -- preview with `man ./docs/man/caudio.1` or `groff -man -Tascii docs/man/caudio.1 | less`.
 
+The documentation site in `docs-site/` must be updated whenever a change
+affects user-visible behavior or the public development workflow, even when no
+public C++ API changes are involved. This includes new or changed configuration
+paths and defaults, CLI or TUI commands, service behavior, IPC behavior,
+installation or build instructions, platform-specific behavior, and other
+features that users need to discover. Update the relevant guide, reference
+page, search metadata, or release note alongside the code change, and run the
+site build before opening a pull request:
+
+```sh
+cd docs-site
+npm ci
+npm run build
+```
+
+The site build also regenerates the custom Doxygen API model and search index.
+
 ### Code Style
 
 - **Formatter:** `clang-format` using `.clang-format` at repo root. Run before committing:
