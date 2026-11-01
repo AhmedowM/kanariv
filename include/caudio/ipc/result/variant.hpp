@@ -4,6 +4,10 @@
  * @file variant.hpp
  * @brief Result variant and expected-reply alias for the caudio IPC protocol.
  * @ingroup caudio_ipc
+ * @details The active alternative identifies the reply projection returned
+ * for a command. `Empty` represents a successful command with no payload and
+ * `CliError` represents a protocol-level failure returned by the daemon.
+ * Serialization preserves the selected alternative's wire discriminator.
  */
 
 #include <caudio/fwd.hpp>
@@ -31,6 +35,9 @@ namespace caudio::ipc {
  * @see toJson for serialization
  * @see resultFromJson for deserialization
  * @see protocol.cppm for IPC framing
+ * @par Ownership
+ * The variant owns its active result payload; vectors and strings are copied
+ * or moved with the normal `std::variant` value semantics.
  */
 using Result =
     std::variant<Status, QueueTracks, Queues, QueueCreated, PlaylistLoaded, VolumeInfo,

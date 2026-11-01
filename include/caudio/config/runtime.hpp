@@ -70,6 +70,10 @@ struct CAUDIO_API RuntimePaths {
      * `logs`, `cache`, and `importedMedia` directories themselves. Empty
      * fields are skipped. Existing directories are accepted. An empty object
      * is a successful no-op.
+     * @par Thread safety
+     * The operation is safe when each call uses an independent
+     * `RuntimePaths` value. Concurrent calls targeting the same paths rely on
+     * the platform filesystem's directory-creation semantics.
      */
     [[nodiscard]] caudio::utils::Expected<void> ensureDirectories() const;
 };

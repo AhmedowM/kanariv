@@ -36,16 +36,16 @@ namespace caudio::ipc {
  * writers publish under an odd seqlock sequence, readers retry on mismatch.
  */
 struct CAUDIO_API ShmStatus {
-    uint64_t seq{0};      // seqlock writer: odd=writing, even=done
-    double position{0.0}; // current playback position in seconds
-    double duration{0.0}; // track duration in seconds
-    float volume{1.0f};   // volume 0.0-1.0
-    bool muted{false};    // muted flag
-    int state{0};         // PlaybackState enum (int)
-    int64_t track_id{0};  // current track ID
-    size_t queueSize{0};  // queue size
-    char title[256]{0};   // track title
-    char artist[256]{0};  // track artist
+    uint64_t seq{0};      ///< Seqlock sequence; odd while writing, even when stable.
+    double position{0.0}; ///< Current playback position in seconds.
+    double duration{0.0}; ///< Current track duration in seconds.
+    float volume{1.0f};   ///< Volume in the range [0, 1].
+    bool muted{false};    ///< Whether output is muted.
+    int state{0};         ///< `PlaybackState` value stored as an integer.
+    int64_t track_id{0};  ///< Current track identifier, or zero when absent.
+    size_t queueSize{0};  ///< Number of items in the active queue.
+    char title[256]{0};   ///< Null-terminated current track title.
+    char artist[256]{0};  ///< Null-terminated current track artist.
 };
 
 /**
@@ -56,11 +56,11 @@ struct CAUDIO_API ShmStatus {
  * caller-owned storage, copied into the fixed arrays under the seqlock.
  */
 struct CAUDIO_API ShmStatusUpdate final {
-    double position{0.0}; // current playback position in seconds
-    float volume{1.0f};   // volume 0.0-1.0
-    bool muted{false};    // muted flag
-    int state{0};         // PlaybackState enum (int)
-    int64_t track_id{0};  // current track ID
+    double position{0.0}; ///< Current playback position in seconds.
+    float volume{1.0f};   ///< Volume in the range [0, 1].
+    bool muted{false};    ///< Whether output is muted.
+    int state{0};         ///< `PlaybackState` value stored as an integer.
+    int64_t track_id{0};  ///< Current track identifier, or zero when absent.
     std::string_view title;
     std::string_view artist;
 };
@@ -87,15 +87,35 @@ struct CAUDIO_API alignas(64) AtomicShmStatus {
 static_assert(sizeof(AtomicShmStatus) <= 4096, "AtomicShmStatus should fit in one page");
 
 /**
- * @brief `bit_cast` atomic helpers for the double/float snapshot fields.
+ * @brief Loads a double from an atomic bit representation.
+ * @param a Atomic storage to read.
+ * @return Reconstructed double value.
  * @ingroup caudio_ipc
  */
 inline double atomicLoadDouble(const std::atomic<uint64_t>& a) noexcept;
-/** @ingroup caudio_ipc */
+/**
+ * @brief Stores a double in an atomic bit representation.
+ * @param a Atomic storage to update.
+ * @param v Value to store.
+ * @par Thread safety
+ * The caller must provide synchronization with readers according to the
+ * surrounding seqlock protocol.
+ * @ingroup caudio_ipc
+ */
 inline void atomicStoreDouble(std::atomic<uint64_t>& a, double v) noexcept;
-/** @ingroup caudio_ipc */
+/**
+ * @brief Loads a float from an atomic bit representation.
+ * @param a Atomic storage to read.
+ * @return Reconstructed float value.
+ * @ingroup caudio_ipc
+ */
 inline float atomicLoadFloat(const std::atomic<uint32_t>& a) noexcept;
-/** @ingroup caudio_ipc */
+/**
+ * @brief Stores a float in an atomic bit representation.
+ * @param a Atomic storage to update.
+ * @param v Value to store.
+ * @ingroup caudio_ipc
+ */
 inline void atomicStoreFloat(std::atomic<uint32_t>& a, float v) noexcept;
 
 /**

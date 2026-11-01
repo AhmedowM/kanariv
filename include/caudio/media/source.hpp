@@ -59,7 +59,8 @@ enum class SourceKind : std::uint8_t {
  * Implementations are expected to be cheap value-like objects. `open()` is
  * non-const because descriptor-backed sources transfer ownership on success.
  *
- * Thread Safety: Implementations are not required to be thread-safe. A host
+ * @par Thread safety
+ * Implementations are not required to be thread-safe. A host
  * should create one source per playback operation.
  */
 class CAUDIO_API Source {

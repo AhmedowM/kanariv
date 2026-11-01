@@ -11,7 +11,7 @@
  * - enumerateDevices(): System audio device enumeration via miniaudio context
  * - AudioOutput: Lock-free audio playback with ring buffer integration
  *
- * Thread Safety:
+ * @par Thread safety
  * - enumerateDevices(): Thread-safe (creates/destroys miniaudio context internally)
  * - AudioOutput::create(): Thread-safe
  * - AudioOutput methods: Thread-safe for control (start/stop/setVolume),
@@ -49,7 +49,8 @@ namespace caudio::player {
  * user-friendly CLI selection. The default device is marked with
  * isDefault = true.
  *
- * Thread Safety: Thread-safe. Each call creates and destroys its own
+ * @par Thread safety
+ * Thread-safe. Each call creates and destroys its own
  * miniaudio context. Can be called concurrently.
  *
  * Error Handling: On miniaudio context initialization failure, returns
@@ -72,7 +73,7 @@ CAUDIO_API caudio::types::DeviceList enumerateDevices();
  * a lock-free SPSC ring buffer. Designed for real-time audio playback
  * with minimal latency and no allocations in the audio callback.
  *
- * Thread Safety:
+ * @par Thread safety
  * - create()/init()/shutdown(): Thread-safe, called from control thread
  * - start()/stop()/setVolume()/volume(): Thread-safe (atomic)
  * - audio callback: runs on the audio thread (real-time), lock-free
@@ -103,15 +104,19 @@ class CAUDIO_API AudioOutput {
      * @ingroup caudio_player
      */
     struct Config {
-        /// Output sample rate in Hz (default: 48000)
+        /** @brief Output sample rate in hertz. */
         uint32_t sampleRate = 48000;
-        /// Number of output channels (default: 2)
+        /** @brief Number of output channels. */
         uint32_t channels = 2;
-        /// Pointer to SPSC ring buffer for sample data (required)
+        /** @brief SPSC ring buffer consumed by the audio callback. */
         caudio::utils::SpscRing<float>* ring = nullptr;
-        /// Initial volume 0.0-1.0 (default: 1.0)
+        /** @brief Initial volume, clamped to the range [0, 1]. */
         float volume = 1.0f;
-        /// Non-owning logger (may be null = silent). Must outlive the output.
+        /**
+         * @brief Non-owning logger; null disables logging.
+         * @par Ownership
+         * The logger must outlive the AudioOutput.
+         */
         caudio::utils::Logger* logger{nullptr};
     };
 
@@ -132,7 +137,8 @@ class CAUDIO_API AudioOutput {
      * @retval StatusCode::Device miniaudio device init failed
      * @retval StatusCode::InvalidArg Invalid config (0 channels, 0 sample rate, null ring)
      *
-     * Thread Safety: Thread-safe. Can be called from any thread.
+     * @par Thread safety
+     * Thread-safe; can be called from any thread.
      */
     static Expected create(const Config& cfg);
 
@@ -143,7 +149,8 @@ class CAUDIO_API AudioOutput {
      * Volume is clamped to [0.0, 1.0] and applied atomically.
      * Takes effect on the next audio callback.
      *
-     * Thread Safety: Thread-safe (atomic store with relaxed ordering)
+     * @par Thread safety
+     * Thread-safe; stores the volume atomically.
      */
     void setVolume(float vol);
 
@@ -151,7 +158,8 @@ class CAUDIO_API AudioOutput {
      * @brief Get current playback volume
      * @return Current volume level (0.0 to 1.0)
      *
-     * Thread Safety: Thread-safe (atomic load with relaxed ordering)
+     * @par Thread safety
+     * Thread-safe; loads the volume atomically.
      */
     float volume() const noexcept;
 
@@ -161,8 +169,10 @@ class CAUDIO_API AudioOutput {
      * Starts the miniaudio device if initialized. Uses compare_exchange
      * to ensure only one start transition occurs.
      *
-     * Thread Safety: Thread-safe (atomic compare_exchange)
-     * Precondition: init() must have completed successfully (create() calls it automatically)
+     * @par Thread safety
+     * Thread-safe; uses an atomic running-state transition.
+     * @par Blocking
+     * May block while the backend starts the audio device.
      */
     void start();
 
@@ -172,7 +182,8 @@ class CAUDIO_API AudioOutput {
      * Stops the miniaudio device if running. Uses compare_exchange
      * to ensure only one stop transition occurs.
      *
-     * Thread Safety: Thread-safe (atomic compare_exchange)
+     * @par Thread safety
+     * Thread-safe; uses an atomic running-state transition.
      */
     void stop();
 
@@ -182,7 +193,8 @@ class CAUDIO_API AudioOutput {
      * Stops the device if running, then uninitializes the miniaudio device.
      * Safe to call multiple times. Called automatically by destructor.
      *
-     * Thread Safety: Thread-safe (atomic exchange for initialized flag)
+     * @par Thread safety
+     * Thread-safe; idempotently exchanges the initialized flag.
      */
     void shutdown() noexcept;
 
@@ -202,7 +214,8 @@ class CAUDIO_API AudioOutput {
      * @retval true Device initialized successfully
      * @retval false Initialization failed (invalid config or miniaudio error)
      *
-     * Thread Safety: Thread-safe (called from control thread during setup)
+     * @par Thread safety
+     * Thread-safe during setup; callers should not reconfigure a running device.
      * miniaudio Integration:
      * - ma_device_config_init(ma_device_type_playback)
      * - Format: ma_format_f32 (float32)

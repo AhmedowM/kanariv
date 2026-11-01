@@ -4,6 +4,9 @@
  * @file bookmark.hpp
  * @brief Bookmark results for the caudio IPC protocol.
  * @ingroup caudio_ipc
+ * @details The payload owns a snapshot of bookmark rows. It can therefore be
+ * retained after the client connection or database operation that produced
+ * it has ended.
  */
 
 #include <caudio/types/record.hpp>

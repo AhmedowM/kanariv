@@ -20,6 +20,9 @@ namespace caudio::app {
 /**
  * @brief Checks for glob characters (`*` or `?`).
  * @ingroup caudio_app
+ * @param s Token to inspect.
+ * @return `true` when the token contains either wildcard character; false
+ * otherwise. No filesystem access is performed.
  */
 CAUDIO_API bool hasGlobChars(std::string_view s);
 
@@ -33,6 +36,10 @@ CAUDIO_API bool hasGlobChars(std::string_view s);
  * @details Glob = non-recursive filename match in the pattern's parent dir;
  * folders yield top-level (or recursive) audio files; anything else lands
  * in `unmatched`.
+ * @par Thread safety
+ * Re-entrant for independent output vectors. The filesystem is queried while
+ * expanding a token, so results can change if another process mutates the
+ * directory concurrently.
  */
 CAUDIO_API void expandAddToken(const std::string& token, bool recursive,
                                std::vector<std::string>& files,

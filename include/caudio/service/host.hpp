@@ -39,11 +39,13 @@ namespace caudio::service {
  * @brief Owns an in-process Service and its worker thread.
  * @ingroup caudio_service
  *
- * Lifetime: Create with `create()`, which starts the service loop before
+ * @par Lifetime
+ * Create with `create()`, which starts the service loop before
  * returning. `stop()` requests cancellation and waits. The destructor does the
  * same, so an early return cannot leak the worker thread.
  *
- * Thread safety: `requestStop()`, `running()`, `ready()`, and `error()` are
+ * @par Thread safety
+ * `requestStop()`, `running()`, `ready()`, and `error()` are
  * safe to call from any thread. `wait()` and `stop()` must not be called from
  * the worker thread (it cannot join itself) and must not run concurrently with
  * each other.

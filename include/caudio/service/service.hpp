@@ -55,11 +55,13 @@ struct ServiceConfig : public caudio::config::Config {
  * @brief Main service class that owns core components and dispatches IPC commands.
  * @ingroup caudio_service
  *
- * Thread safety: Service is not thread-safe for concurrent method calls. The IPC server runs
+ * @par Thread safety
+ * Service is not thread-safe for concurrent method calls. The IPC server runs
  * on its own thread and invokes its internal dispatcher serially. External callers should not
  * invoke Service methods concurrently with server->run().
  *
- * Lifetime: Created via create(), runs via run(stop_token), cleaned up via shutdown() in
+ * @par Lifetime
+ * Created via create(), runs via run(stop_token), cleaned up via shutdown() in
  * destructor. Uses RAII for all resources (DB, Engine, IPC server, PID file, lock file, shared
  * memory).
  */
@@ -120,7 +122,8 @@ class CAUDIO_API Service final {
      *
      * Starts the IPC server with an internal dispatcher for incoming commands.
      * Blocks until stop_token signals or shutdown() is called.
-     * Thread safety: Must not be called concurrently with another run().
+     * @par Thread safety
+     * Must not be called concurrently with another run().
      * The token is observed between dispatch iterations; call `shutdown()` to
      * request immediate teardown from another thread.
      */

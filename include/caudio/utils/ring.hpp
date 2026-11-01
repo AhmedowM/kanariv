@@ -43,6 +43,15 @@ static_assert((ringCacheLine & (ringCacheLine - 1)) == 0, "ringCacheLine must be
  *   reset with read/write is a data race. No fence beyond release stores.
  * - Data movement uses `memcpy` with wrap-around; capacity is in frames.
  *
+ * @par Thread safety
+ * Exactly one producer may call `write()` and exactly one consumer may call
+ * `read()`. Capacity queries may be called by either side, but the result is a
+ * momentary observation rather than a reservation. Copying is disabled.
+ *
+ * @par Lifetime
+ * The ring owns its storage. Any spans or pointers passed to an operation must
+ * remain valid for that call only; no caller-owned sample storage is retained.
+ *
  * @see ringCacheLine
  */
 template <typename T>

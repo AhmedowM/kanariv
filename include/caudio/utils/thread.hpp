@@ -1,5 +1,16 @@
 #pragma once
 
+/**
+ * @file thread.hpp
+ * @brief Portable thread sleeping and naming helpers.
+ * @ingroup caudio_utils
+ * @details Sleep functions are thin wrappers over the standard library.
+ * Thread naming is best-effort and platform dependent; Linux names are
+ * truncated to the platform limit, while unsupported platforms report an
+ * error (or a compatibility no-op where documented below). These helpers
+ * do not create, join, or otherwise take ownership of thread objects.
+ */
+
 #include <caudio/utils/error.hpp>
 #include <chrono>
 #include <cstdint>
@@ -8,6 +19,13 @@
 
 namespace caudio::utils::detail {
 
+/**
+ * @brief Truncates a thread name to the Linux 15-character limit.
+ * @param s Name to truncate.
+ * @return A view of at most 15 characters into `s`.
+ * @par Lifetime
+ * The returned view borrows `s` and is valid only while `s` remains alive.
+ */
 constexpr std::string_view truncate15(std::string_view s) noexcept {
     return s.substr(0, 15);
 }

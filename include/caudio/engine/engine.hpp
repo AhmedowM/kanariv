@@ -109,6 +109,10 @@ class CAUDIO_API Engine final {
      * @param db Shared database contract (must be non-null and open).
      * @return Success or Error InvalidArg / loadState failure.
      * @retval StatusCode::InvalidArg if db is null or not open.
+     * @par Ownership
+     * The engine retains the shared pointer and keeps the database attached
+     * until shutdown or replacement; callers may release their own copy after
+     * this call returns.
      * @par Thread safety
      * Thread-safe; calls the database implementation to load state.
      * @see loadState
@@ -148,7 +152,9 @@ class CAUDIO_API Engine final {
      *   ring reset).
      * - Stopped -> Playing: queueNextLocked under queueMutex_ (bounded
      *   500 ms wait), then doPlayTrack.
-     * Gapless: doPlayTrack prerolls and pushes TrackStarted event.
+     * @par Blocking
+     * Gapless playback prerolls the next track before returning and pushes a
+     * `TrackStarted` event when playback begins.
      * @par Thread safety
      * Thread-safe; Stopped path waits boundedly on queueMutex_, decoder
      * under decodeMtx_.

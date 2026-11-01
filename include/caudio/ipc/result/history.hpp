@@ -4,6 +4,9 @@
  * @file history.hpp
  * @brief Playback history results for the caudio IPC protocol.
  * @ingroup caudio_ipc
+ * @details This is a transport value, not a live database cursor. The vector
+ * owns its entries and is fully materialized before it is serialized into an
+ * IPC reply.
  */
 
 #include <caudio/types/record.hpp>

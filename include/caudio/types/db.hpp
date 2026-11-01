@@ -21,6 +21,9 @@ namespace caudio::types {
  * @brief Queue container row.
  * @ingroup caudio_types
  * @details Maps to `queues`. Separate from `queue` (items) table.
+ * The default id is zero until persisted; `library_id` defaults to the
+ * built-in library (1). This is a value type only and performs no database
+ * I/O.
  */
 struct Queue {
     int64_t id{};          ///< Row id (PK).
@@ -34,6 +37,9 @@ struct Queue {
  * @brief Library (scan root) row.
  * @ingroup caudio_types
  * @details Maps to `libraries`. Id 1 is the default library with empty path.
+ * Timestamps are Unix milliseconds. `extensions` is the comma-separated
+ * allow-list consumed by the scanner; callers should preserve the spelling
+ * expected by their scan policy.
  */
 struct Library {
     int64_t id{};                                   ///< Row id (PK).
@@ -50,6 +56,8 @@ struct Library {
  * @brief Aggregate database statistics.
  * @ingroup caudio_types
  * @details Returned by `Database::getStats()`. Counts exclude soft-deleted tracks.
+ * All counters describe the snapshot at one database read; they are not
+ * updated live if the database changes after construction.
  */
 struct PlaybackStats {
     int64_t num_tracks{};        ///< Number of live tracks.
@@ -68,6 +76,9 @@ struct PlaybackStats {
  * maps to a LIKE on title/artist/album/genre. `limit == 0` means no limit;
  * `offset` requires `LIMIT -1` when no limit is set. Range fields are
  * inclusive; omit either bound for a one-sided range.
+ * @par Ownership
+ * String filters are owned by the query object. Passing an empty string or
+ * disengaged optional means that criterion is not applied.
  */
 struct TrackQuery {
     std::string artist;                  ///< Exact artist filter (empty = no filter).
@@ -95,6 +106,10 @@ struct TrackQuery {
 /**
  * @brief Filter for listing history entries.
  * @ingroup caudio_types
+ * @details Filters are combined with AND. A zero `limit` means no limit;
+ * `offset` is applied by the database listing operation.
+ * @par Ownership
+ * The query owns all filter values and can be reused for another listing call.
  */
 struct HistoryQuery {
     std::optional<int64_t> track_id{}; ///< Filter by track.

@@ -4,6 +4,11 @@
  * @file variant.hpp
  * @brief Command variant and alternative concepts for the caudio IPC protocol.
  * @ingroup caudio_ipc
+ * @details `Command` is the closed set of request payloads accepted by the
+ * daemon. Adding a command requires adding its payload type here and teaching
+ * the protocol serializer and service dispatcher about that alternative.
+ * The concepts below are intended for generic serializers and dispatch code;
+ * they do not perform runtime validation of a payload's field values.
  * @note This header is fully inline/template; no .cpp is required.
  */
 
@@ -33,6 +38,9 @@ namespace caudio::ipc {
  * @see toJson for serialization
  * @see commandFromJson for deserialization
  * @see protocol.cppm for IPC framing
+ * @par Ownership
+ * The variant owns its active command payload and is safe to move between
+ * request-building and transport code.
  */
 using Command =
     std::variant<Play, Pause, Resume, Restart, Stop, Next, Prev, Seek, StatusReq, VolumeSet,

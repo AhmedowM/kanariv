@@ -13,7 +13,7 @@
  * - MemoryReader: In-memory buffer reading
  * - DescriptorReader: Native file-descriptor reading with explicit ownership
  *
- * Thread Safety:
+ * @par Thread safety
  * - Reader interface: Thread-compatible (single-threaded use expected)
  * - FileReader: Thread-safe for concurrent read/seek/tell (internal mutex)
  * - MemoryReader: Not thread-safe (no internal synchronization)
@@ -47,7 +47,7 @@ namespace caudio::media {
  * hosts can hand an already-open file to the media layer without inventing a
  * filesystem path for content URIs.
  *
- * Ownership:
+ * @par Ownership
  * - When `closeOnDestroy` is true, the reader created from this descriptor
  *   closes it exactly once.
  * - When false, the caller retains ownership and must keep the descriptor open
@@ -76,7 +76,8 @@ struct FileDescriptor {
  * (FileReader, MemoryReader, etc.) must implement this interface.
  * Mirrors the C ca_reader.c virtual table.
  *
- * Thread Safety: Thread-compatible. The Player uses a single reader
+ * @par Thread safety
+ * Thread-compatible. The Player uses a single reader
  * from the decode thread. Concurrent access requires external synchronization
  * (except FileReader which has internal mutex for seek/tell).
  *
@@ -149,7 +150,8 @@ class CAUDIO_API Reader {
  * file APIs (_ftelli64/_fseeki64 on Windows, ftello/fseeko on POSIX)
  * to support files larger than 2GB.
  *
- * Thread Safety: Thread-safe for concurrent read/seek/tell operations
+ * @par Thread safety
+ * Thread-safe for concurrent read/seek/tell operations
  * via internal mutex. The FILE* is owned exclusively by this instance.
  *
  * Error Handling:
@@ -176,7 +178,8 @@ class CAUDIO_API FileReader final : public Reader {
      * @retval StatusCode::NotFound Cannot open file
      * @retval StatusCode::Internal fseek/ftell failed during size detection
      *
-     * Thread Safety: Thread-safe (no shared state during construction)
+     * @par Thread safety
+     * Thread-safe; construction uses no shared state.
      */
     static caudio::utils::Expected<std::unique_ptr<Reader>> open(const std::filesystem::path& path);
 
@@ -218,7 +221,8 @@ class CAUDIO_API FileReader final : public Reader {
  * Ownership follows FileDescriptor::closeOnDestroy: the reader closes an owned
  * descriptor in its destructor and never closes a borrowed one.
  *
- * Thread Safety: Thread-safe for concurrent read/seek/tell via an internal
+ * @par Thread safety
+ * Thread-safe for concurrent read/seek/tell via an internal
  * mutex. The descriptor's position is serialized by the reader.
  *
  * Error Handling:
@@ -281,7 +285,8 @@ class CAUDIO_API DescriptorReader final : public Reader {
  * access without file I/O. Copies input data to an owned buffer for
  * lifetime safety.
  *
- * Thread Safety: NOT thread-safe. No internal synchronization. Intended
+ * @par Thread safety
+ * Not thread-safe. No internal synchronization. Intended
  * for single-threaded use (e.g., decode thread).
  *
  * Use Cases:

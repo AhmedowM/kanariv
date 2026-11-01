@@ -85,6 +85,10 @@ class CAUDIO_API Database final : public caudio::contracts::IDatabase {
      * (ignores duplicate-position errors), ensures the default library row and
      * migrates engine_state.active_queue_id if missing. Starts the background
      * writer thread.
+     * @par Lifetime
+     * The returned `unique_ptr` owns the database and must remain alive while
+     * callers use the handle or any value-producing operation that depends on
+     * it. The logger supplied in `opts` is borrowed.
      * @par Thread safety
      * Thread-safe for distinct paths; the returned Database is not shared until open returns.
      */
@@ -645,10 +649,24 @@ class CAUDIO_API Database final : public caudio::contracts::IDatabase {
      */
     std::expected<std::vector<caudio::types::Library>, caudio::utils::Error>
     listLibraries() override;
-    /** @brief Updates a library definition. @ingroup caudio_db */
+    /**
+     * @brief Updates a library definition.
+     * @param l Library value containing the existing identifier and new fields.
+     * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
+     * @par Thread safety
+     * Thread-safe; takes the database write lock.
+     * @ingroup caudio_db
+     */
     std::expected<void, caudio::utils::Error>
     libraryUpdate(const caudio::types::Library& l) override;
-    /** @brief Deletes a library definition. @ingroup caudio_db */
+    /**
+     * @brief Deletes a library definition.
+     * @param id Library identifier.
+     * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
+     * @par Thread safety
+     * Thread-safe; takes the database write lock.
+     * @ingroup caudio_db
+     */
     std::expected<void, caudio::utils::Error> libraryDelete(int64_t id) override;
 
     /**
@@ -659,7 +677,13 @@ class CAUDIO_API Database final : public caudio::contracts::IDatabase {
      * Thread-safe: shared_lock + cacheMutex_ for cached statements.
      */
     std::expected<caudio::types::PlaybackStats, caudio::utils::Error> getStats() override;
-    /** @brief Returns engine-oriented playback statistics. @ingroup caudio_db */
+    /**
+     * @brief Returns engine-oriented playback statistics.
+     * @return Statistics snapshot, or a backend error.
+     * @par Thread safety
+     * Thread-safe; takes a shared database lock.
+     * @ingroup caudio_db
+     */
     std::expected<caudio::types::PlaybackStats, caudio::utils::Error> playbackStats() override;
 
     /**

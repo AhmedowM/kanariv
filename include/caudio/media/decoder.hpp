@@ -21,7 +21,8 @@
  *    start at 0)
  * 6. On open failure, restore the original position
  *
- * Thread Safety: a Decoder instance is NOT thread-safe for concurrent calls.
+ * @par Thread safety
+ * A Decoder instance is not thread-safe for concurrent calls.
  * Callers must externally serialize decode() and seek(); the Player keeps
  * decode() on its decode thread and coordinates control-thread seeks.
  * sampleRate(), channels() and totalFrames() are thread-safe (const noexcept).
