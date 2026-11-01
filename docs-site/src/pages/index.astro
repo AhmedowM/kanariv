@@ -1,0 +1,24 @@
+---
+// src/pages/index.astro
+import { getCollection, render } from 'astro:content';
+import Layout from '../layouts/Layout.astro';
+
+const docs = await getCollection('docs');
+const homeDoc = docs.find((d) => d.slug === 'index');
+
+if (!homeDoc) {
+  throw new Error('Home page not found in content collection');
+}
+
+const { Content, headings } = await render(homeDoc);
+---
+
+<Layout
+  currentSection=""
+  currentPage="index"
+  title={homeDoc.data.title}
+  description={homeDoc.data.description}
+  headings={headings}
+>
+  <Content />
+</Layout>

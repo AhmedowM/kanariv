@@ -1,0 +1,37 @@
+# Dependency directories
+node_modules/
+
+# Build output
+dist/
+.svelte-kit/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Astro cache
+.astro/
+
+# Generated search index (built at build time)
+public/search-index.json
+
+# TypeScript
+*.tsbuildinfo

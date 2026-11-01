@@ -1,0 +1,34 @@
+---
+// src/pages/[...slug].astro
+import { getCollection, render } from 'astro:content';
+import Layout from '../layouts/Layout.astro';
+
+// Required for static builds: return all paths to prerender
+export async function getStaticPaths() {
+  const docs = await getCollection('docs');
+  return docs.map((doc) => ({
+    params: { slug: doc.slug },
+    props: { doc },
+  }));
+}
+
+const { slug } = Astro.params;
+const { doc } = Astro.props;
+
+if (!doc || doc.slug !== slug) {
+  return Astro.redirect('/');
+}
+
+const { Content, headings } = await render(doc);
+const section = doc.slug.split('/')[0];
+---
+
+<Layout
+  currentSection={section}
+  currentPage={doc.slug}
+  title={doc.data.title}
+  description={doc.data.description}
+  headings={headings}
+>
+  <Content />
+</Layout>

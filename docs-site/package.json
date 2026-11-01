@@ -1,0 +1,21 @@
+{
+  "name": "caudio-docs",
+  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "npm@11.20.0",
+  "description": "Documentation site for caudio — headless local music player and C++23 library",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "preddev": "node scripts/build-search-index.mjs",
+    "prebuild": "node scripts/build-search-index.mjs",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^4.16.0"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}

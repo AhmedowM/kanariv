@@ -1,0 +1,213 @@
+---
+// src/layouts/Layout.astro
+import { getCollection } from 'astro:content';
+import Header from '../components/Header.astro';
+import TOC from '../components/TOC.astro';
+import '../styles/custom.css';
+
+export interface Props {
+  currentSection: string;
+  currentPage: string;
+  title: string;
+  description?: string;
+  headings?: any[];
+}
+
+const { currentSection, currentPage, title, description, headings } = Astro.props;
+
+function getSection(slug: string): string {
+  const parts = slug.split('/');
+  return parts[0];
+}
+
+const section = getSection(currentPage);
+const showTOC = headings && headings.length > 0;
+---
+
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-base={import.meta.env.BASE_URL}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f6f7fb" />
+    <style is:inline>
+      :root { color-scheme: light; background: #f6f7fb; }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) { color-scheme: dark; background: #10131b; }
+      }
+      html[data-theme="dark"] { color-scheme: dark; background: #10131b; }
+      body { background: inherit; }
+    </style>
+    <title>{title} — caudio docs</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script is:inline>
+      try {
+        const theme = localStorage.getItem('theme');
+        if (theme === 'light' || theme === 'dark') {
+          document.documentElement.dataset.theme = theme;
+        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      } catch {
+        // Storage can be unavailable in privacy-restricted browsers.
+      }
+    </script>
+  </head>
+  <body class="docs-body page-enter">
+    <Header currentSection={section} />
+
+    <div class="docs-shell">
+      {showTOC && (
+        <aside class="docs-toc-left" aria-label="On this page">
+          <TOC headings={headings} />
+        </aside>
+      )}
+
+      <main class="docs-content" id="main-content">
+        <div class="docs-content-inner">
+          <slot />
+        </div>
+      </main>
+    </div>
+
+    <footer class="docs-footer">
+      <div class="footer-inner">
+        <p>© {new Date().getFullYear()} caudio. MIT License.</p>
+        <a href="https://github.com/AhmedowM/caudio" target="_blank" rel="noopener">
+          GitHub
+        </a>
+      </div>
+    </footer>
+
+    <style>
+      /* ── Page entrance animation ── */
+      .page-enter {
+        animation: pageFadeIn var(--caudio-duration-base) var(--caudio-ease-out) both;
+      }
+
+      @keyframes pageFadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* ── Body ── */
+      .docs-body {
+        margin: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+          Arial, sans-serif;
+        background: var(--caudio-bg);
+        color: var(--caudio-text);
+        line-height: 1.6;
+        transition:
+          background 0.35s ease,
+          color 0.35s ease;
+      }
+
+      /* ── Shell ── */
+      .docs-shell {
+        display: flex;
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 2rem 1rem 4rem;
+        gap: 0;
+        min-height: calc(100vh - 4.5rem - 70px);
+      }
+
+      /* ── Left TOC (slim, replaces sidebar) ── */
+      .docs-toc-left {
+        position: sticky;
+        top: 5.5rem;
+        width: 250px;
+        flex-shrink: 0;
+        padding-top: 0.5rem;
+        height: fit-content;
+      }
+
+      /* ── Main content (right is free) ── */
+      .docs-content {
+        flex: 1;
+        min-width: 0;
+        padding-left: 3rem;
+      }
+
+      .docs-content-inner {
+        max-width: 860px;
+      }
+
+      /* ── Footer ── */
+      .docs-footer {
+        margin-top: auto;
+        border-top: 1px solid var(--caudio-border);
+        padding: 2rem 1.5rem;
+        background: var(--caudio-surface);
+        color: var(--caudio-text-muted);
+        font-size: 0.875rem;
+      }
+
+      .footer-inner {
+        max-width: 1320px;
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+      }
+
+      .footer-inner a {
+        color: var(--caudio-brand);
+        text-decoration: none;
+        transition: color 0.2s ease;
+      }
+
+      .footer-inner a:hover {
+        color: var(--caudio-brand-emphasize);
+        text-decoration: underline;
+      }
+
+      [data-theme="light"] .footer-inner a {
+        color: var(--caudio-brand);
+      }
+
+      /* ── Reduced motion ── */
+      @media (prefers-reduced-motion: reduce) {
+        .docs-body,
+        .docs-shell,
+        .docs-content,
+        .page-enter {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+
+      /* ── Mobile ── */
+      @media (max-width: 768px) {
+        .docs-shell {
+          flex-direction: column;
+          padding: 1rem 1rem 3rem;
+        }
+        .docs-toc-left {
+          position: static;
+          width: 100%;
+          padding-top: 1rem;
+        }
+        .docs-content {
+          padding-left: 0;
+        }
+        .docs-content-inner {
+          max-width: 100%;
+        }
+      }
+    </style>
+
+    <script>
+    </script>
+  </body>
+</html>

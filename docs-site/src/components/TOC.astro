@@ -1,0 +1,166 @@
+---
+// src/components/TOC.astro
+export interface Props {
+  headings: Array<{ depth: number; slug: string; text: string }>;
+}
+
+const { headings } = Astro.props;
+
+// Filter to H2 and H3 only
+const tocItems = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
+---
+
+{tocItems.length > 0 && (
+  <aside class="docs-toc" aria-label="On this page">
+    <button class="toc-toggle" type="button" aria-expanded="false" aria-controls="toc-links">
+      <span class="toc-title">On this page</span>
+      <span class="toc-chevron" aria-hidden="true">⌄</span>
+    </button>
+    <nav class="toc-nav" id="toc-links" hidden>
+      <ul class="toc-list">
+        {tocItems.map((item) => (
+          <li class={`toc-item level-${item.depth}`}>
+            <a
+              href={`#${item.slug}`}
+              class="toc-link"
+              data-target={item.slug}
+            >
+              {item.text}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  </aside>
+)}
+
+<style>
+  /* ── TOC shell ── */
+  .docs-toc {
+    position: sticky;
+    top: 5rem; /* below header */
+    width: 220px;
+    flex-shrink: 0;
+    padding-top: 0.5rem;
+  }
+
+  .toc-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--caudio-text);
+  }
+
+  .toc-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.5rem;
+    color: var(--caudio-text);
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    text-align: left;
+  }
+  .toc-toggle:hover { color: var(--caudio-brand); background: var(--caudio-surface-muted); }
+  .toc-chevron { color: var(--caudio-brand); transition: transform 160ms ease; }
+  .toc-toggle[aria-expanded="true"] .toc-chevron { transform: rotate(180deg); }
+
+  /* ── TOC list ── */
+  .toc-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 0.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.05rem;
+  }
+
+  .toc-item {
+    margin: 0;
+  }
+
+  .toc-item.level-3 {
+    padding-left: 1rem;
+  }
+
+  /* ── TOC links ── */
+  .toc-link {
+    display: block;
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+    color: var(--caudio-text-muted);
+    text-decoration: none;
+    border-radius: 8px;
+    margin: 0.05rem 0;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      transform 0.1s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    position: relative;
+  }
+
+  .toc-link:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--caudio-text);
+    transform: translateX(4px);
+  }
+
+  .toc-link.active {
+    background-color: var(--caudio-brand-subtle);
+    color: var(--caudio-brand);
+    font-weight: 500;
+    box-shadow: inset 0 0 0 1px var(--caudio-brand);
+  }
+
+  /* ── Reduced motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    .toc-link {
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ── Mobile: hide TOC ── */
+  @media (max-width: 768px) {
+    .docs-toc {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  // Scroll spy: highlight current TOC item based on scroll position
+  const links = document.querySelectorAll('.toc-link');
+  const toggle = document.querySelector('.toc-toggle');
+  const nav = document.querySelector('#toc-links');
+  toggle?.addEventListener('click', () => {
+    const expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', String(!expanded));
+    if (nav) nav.hidden = expanded;
+  });
+  const observerOptions = {
+    rootMargin: '-10% 0px -60% 0px',
+    threshold: 0,
+  };
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        const id = entry.target.getAttribute('id');
+        links.forEach((link) => {
+          link.classList.toggle('active', link.dataset.target === id);
+        });
+      }
+    });
+  }, observerOptions);
+
+  // Observe all heading elements
+  document.querySelectorAll('h2, h3').forEach((heading) => {
+    observer.observe(heading);
+  });
+</script>
