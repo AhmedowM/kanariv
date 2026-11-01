@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `library stats --top-tracks/--top-albums/--top-genres/--top-artists`
+  listening reports with multi-artist splitting (`0192df0`)
+- `library list --sort <field> --order <asc|desc>` sorting on library
+  listing (`5f529de`)
+- `tag get cover` / `tag get cover --out FILE` cover-art output, including
+  embedded cover art extraction (ID3v2 APIC, FLAC picture blocks)
+  (`3152f88`)
+- `Client::waitForStatus()` + `StatusWait` IPC command; `status --watch`
+  uses the status-stream API instead of polling (`4ecc9af`)
+- `--columns` allowlist on `library list`; `device test --tone` plays a
+  440 Hz sine for 1s (`fed372f`)
+- Playback-policy config keys: `clearStopsPlayback`, `repeatDefault`,
+  `autostart` (`3d20bb0`)
+- Track rating (`track rate`), smart-playlist creation (`playlist create
+  --smart`), and `library maintenance report|prune` (`08ee5e7`,
+  `0bee82f`, `92e1c06`)
+- `ParseSmartQuery` smart-playlist query parser and evaluation
+  (`41aa8eb`)
+- `TrackQuery` filters: rating, year_min/max, play_count_min/max,
+  duration_min/max (`9a861c3`)
+- `Service::Impl` Host wrapper and `RuntimePaths` for in-process daemon
+  embedding (`659e9e2`)
+- `SourceRef` track-source identity and `Database::findBySource()`
+  (`567c36c`)
+- `PathSource` and `DescriptorSource` read transports for media scanning
+  (`264a4dd`)
+- Android NDK builds and CI matrix (`a77cb8a`)
+- CMake `source`/`runtime`/`host` component targets plus Phase A tests
+  (`3b252a2`)
 - `caudio bookmark add|list|remove|goto` for per-track position bookmarks,
   with optional notes and `--json` output (`52f3dbe`)
 - Cross-session resume: the engine persists its resume position and the new
@@ -40,6 +69,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `find_package(caudio)` consumer and package contents (`c4ac853`)
 
 ### Changed
+- `tag get`/`tag edit` and `track rate` accept a track id or file path
+  (non-numeric args resolve via `TagGet{path}` → `db_->findByPath()`);
+  `TagGet.id` is now optional with a new `path` field; static bash/zsh/fish
+  completion scripts added (`1d9a179`)
+- Finer IPC error exit codes: InvalidArg → 106, NotFound → 109, State →
+  105, default → 1; `queue add --search` with no matches exits non-zero
+  instead of 0; man page EXIT STATUS updated (`1d9a179`)
+- Centralized shared `Engine`/`Database` types into the `types` component
+  with improved documentation (`1c12dae`, `a7149b5`)
+- Enhanced public API documentation and method descriptions
+  (`4a4d83c`, `1448fce`)
+- Reorganized public engine and database methods (`be4a8f1`)
+- CMake `types` target made INTERFACE; added contracts module files
+  (`97d0cbe`)
+- Fixed MSVC LTCG + sqlite3 export; skip brew LLVM on macOS Intel
+  (`e5a113f`)
+- Set `$ORIGIN` RUNPATH on bundled Linux FFmpeg libs; install
+  `CXX_MODULES` file set in dev (`a4128c5`)
 - Public headers grouped by domain (`types/`, `media/`, `ipc/command/`,
   `ipc/result/`, `engine/`, `db/`) and CMake targets split per component;
   `ipc` now depends only on `config` and `utils` (`071074a`, `135c327`,
@@ -112,6 +159,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helper (`d8e4b48`)
 
 ### Fixed
+- Android NDK: removed local-cache from setup-ndk to resolve missing NDK
+  tools (`7d49970`)
+- CI Windows: dropped MinGW from ci.yml, moved to compilers.yml/modules.yml
+  (`066d9ea`)
+- MSVC: avoid shadowed source variable in db JSON import (`bb27b78`)
+- History: count accumulated playback time correctly (`ef4e51d`)
+- CI: support MinGW and FreeBSD toolchains (`a86e451`, `deaae99`)
+- Modules: support GCC module toolchain versions (`21ab46b`)
+- CMake: build module contracts and types as static targets (`e51f820`)
+- CI: select LLVM 21 in FreeBSD builds; add FreeBSD build verification
+  (`8827c1c`, `d8ee278`)
 - Resumed playback starts at the persisted position: the engine seeks the
   decoder before the output ring is prerolled, instead of playing ~100 ms of
   the track head until the client-side seek arrives (`8a3a2fa`)
