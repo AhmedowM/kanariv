@@ -10,7 +10,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
+#include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace caudio::app::cli {
@@ -28,6 +30,7 @@ class OutputFormatter {
     bool color_{false};
     int64_t highlightTrackId_{0};
     std::string highlightNeedle_;
+    std::set<std::string> columns_;  ///< If non-empty, only these track columns are printed.
 
     /** @brief mm:ss rendering for durations. */
     static std::string formatTime(double secs);
@@ -69,6 +72,15 @@ class OutputFormatter {
      * In table mode: dispatches to type-specific formatter for each Result alternative.
      */
     void print(const caudio::ipc::Result& r, std::ostream& os) const;
+
+    /**
+     * @brief Restrict track-table output to an allowlist of columns.
+     * @ingroup caudio_client
+     * @param columns Comma-separated column names (id, title, artist, album,
+     * genre, year, rating, duration, path). Empty clears the filter (all
+     * columns). Unknown names are ignored; never a free format string.
+     */
+    void setColumns(std::string_view columns);
 
     /**
      * @brief Print Result with automatic stderr/stdout routing and exit code.

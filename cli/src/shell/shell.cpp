@@ -142,7 +142,7 @@ bool useColor() {
 
 // Renders a Phase-1 outcome: errors (with hint), JSON results, human
 // lines, bare results, or silent success, in that order.
-int render(caudio::app::AppResult res, bool asJson) {
+int render(caudio::app::AppResult res, bool asJson, std::string_view columns = {}) {
     if (!res)
         return renderError(res.error());
     auto outcome = std::move(*res);
@@ -164,6 +164,8 @@ int render(caudio::app::AppResult res, bool asJson) {
     }
     if (outcome.result) {
         OutputFormatter fmt{false};
+        if (!columns.empty())
+            fmt.setColumns(columns);
         fmt.print(*outcome.result, std::cout);
     }
     return 0;
@@ -513,6 +515,7 @@ int Shell::run(int argc, char** argv) {
     std::string libListQuery;
     std::string libListSort;
     std::string libListOrder;
+    std::string libListColumns;
     std::string libListArtist;
     std::string libListAlbum;
     std::string libListGenre;
@@ -522,6 +525,7 @@ int Shell::run(int argc, char** argv) {
     libList->add_option("--query", libListQuery, "Search query (title, artist, album, genre)");
     libList->add_option("--sort", libListSort, "Sort field: id, title, artist, album, year, rating, play_count, duration, date_added");
     libList->add_option("--order", libListOrder, "Sort direction: asc or desc");
+    libList->add_option("--columns", libListColumns, "Column allowlist: id,title,artist,album,genre,year,rating,duration,path");
     libList->add_option("--artist", libListArtist, "Filter by artist");
     libList->add_option("--album", libListAlbum, "Filter by album");
     libList->add_option("--genre", libListGenre, "Filter by genre");
@@ -663,8 +667,10 @@ int Shell::run(int argc, char** argv) {
     devSet->add_flag("--json", devSetJson, "JSON output");
     std::string devTestId;
     bool devTestJson = false;
+    bool devTestTone = false;
     auto* devTest = deviceCmd->add_subcommand("test", "Check audio device is available");
     devTest->add_option("--id", devTestId, "Device ID (default: current config)");
+    devTest->add_flag("--tone", devTestTone, "Play an audible test tone");
     devTest->add_flag("--json", devTestJson, "JSON output");
     bool infoJson = false;
     auto* infoCmd = cli_->add_subcommand("info", "Show current track info");
@@ -1027,7 +1033,7 @@ int Shell::run(int argc, char** argv) {
                                                    libListSort, libListOrder,
                                                    libListArtist, libListAlbum, libListGenre,
                                                    ratingOpt),
-                                  libListJson);
+                                  libListJson, libListColumns);
         }
         if (libFav->parsed()) {
             return detail::render(app_.libraryFavorites(libFavMinRating, libFavLimit),
@@ -1204,7 +1210,7 @@ int Shell::run(int argc, char** argv) {
             std::optional<std::string> id;
             if (!devTestId.empty())
                 id = devTestId;
-            return detail::render(app_.deviceTest(id), devTestJson);
+            return detail::render(app_.deviceTest(id, devTestTone), devTestJson);
         }
         std::cout << deviceCmd->help() << "\n";
         return 0;

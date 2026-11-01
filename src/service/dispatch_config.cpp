@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <caudio/config.hpp>
 #include <caudio/ipc/command.hpp>
@@ -8,6 +10,9 @@
 #include <caudio/utils/json.hpp>
 #include <caudio/utils/log.hpp>
 #include <caudio/utils/result.hpp>
+#include <caudio/utils/ring.hpp>
+#include <chrono>
+#include <cmath>
 #include <expected>
 #include <filesystem>
 #include <fstream>
@@ -17,6 +22,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -238,8 +244,7 @@ Service::Impl::handle(const caudio::ipc::DeviceTest& cmd) {
             testId = "auto";
         }
     }
-    // Enumeration-only check: there is no test-tone path (no AudioOutput is
-    // created here). Success means the id resolves against a listed device.
+    // Enumeration check: verify the id resolves against listed devices.
     auto devList = caudio::player::enumerateDevices();
     bool found = false;
     for (const auto& d : devList.devices) {
@@ -251,6 +256,54 @@ Service::Impl::handle(const caudio::ipc::DeviceTest& cmd) {
     if (!found && testId != "auto") {
         return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
                                                         "device not found: " + testId)};
+    }
+    // Tone test: generate and play an audible sine wave through the device.
+    if (cmd.tone) {
+        constexpr std::uint32_t sampleRate = 48000;
+        constexpr std::uint32_t channels = 2;
+        constexpr double frequency = 440.0; // A4 concert pitch
+        constexpr double durationSec = 1.0;
+        constexpr std::size_t ringCapacity = 2048; // ~42 ms of audio
+
+        caudio::utils::SpscRing<float> ring(ringCapacity, channels);
+        auto out = caudio::player::AudioOutput::create(
+            caudio::player::AudioOutput::Config{sampleRate, channels, &ring, 0.3f, nullptr});
+        if (!out)
+            return std::unexpected{out.error()};
+
+        (*out)->start();
+
+        const std::size_t totalFrames =
+            sampleRate * static_cast<std::size_t>(durationSec);
+        double phase = 0.0;
+        const double phaseStep = 2.0 * 3.14159265358979323846 * frequency / sampleRate;
+        std::array<float, 2> frameBuf{};
+        std::size_t framesWritten = 0;
+        while (framesWritten < totalFrames) {
+            const std::size_t framesToWrite =
+                std::min<std::size_t>(ring.availableWrite(), totalFrames - framesWritten);
+            if (framesToWrite == 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                continue;
+            }
+            for (std::size_t f = 0; f < framesToWrite; ++f) {
+                const float sample =
+                    static_cast<float>(0.3 * std::sin(phase));
+                frameBuf[0] = sample;
+                frameBuf[1] = sample;
+                ring.write(frameBuf.data(), 1);
+                phase += phaseStep;
+                if (phase > 2.0 * 3.14159265358979323846)
+                    phase -= 2.0 * 3.14159265358979323846;
+            }
+            framesWritten += framesToWrite;
+        }
+
+        // Wait for the tone to finish playing through the device.
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(static_cast<int>(durationSec * 1000) + 500));
+        (*out)->stop();
+        (*out)->shutdown();
     }
     return Result{Empty{}};
 }

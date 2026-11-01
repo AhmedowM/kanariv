@@ -500,7 +500,7 @@ class CAUDIO_API App {
      * @ingroup caudio_app
      * @param id Device id, or nullopt for the default device.
      */
-    AppResult deviceTest(std::optional<std::string> id);
+    AppResult deviceTest(std::optional<std::string> id, bool tone = false);
 
     /**
      * @brief Reads a config value from the local file (no daemon needed).

@@ -60,6 +60,10 @@ struct DeviceTest final {
      * @brief Device ID to check. If omitted, checks the default device.
      */
     std::optional<std::string> id{};
+    /**
+     * @brief Play an audible test tone instead of enumeration-only check.
+     */
+    bool tone{false};
 };
 
 } // namespace caudio::ipc

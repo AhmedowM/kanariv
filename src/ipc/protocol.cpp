@@ -410,6 +410,7 @@ Json toJson(const Command& cmd) {
                     j["id"] = *v.id;
                 else
                     j["id"] = nullptr;
+                j["tone"] = v.tone;
             } else if constexpr (std::is_same_v<T, Info>) {
                 j["type"] = "Info";
             } else if constexpr (std::is_same_v<T, TrackRate>) {
@@ -817,7 +818,10 @@ std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
             std::optional<std::string> id;
             if (j.contains("id") && !j["id"].isNull() && j["id"].isString())
                 id = j["id"].get<std::string>();
-            return Command{DeviceTest{std::move(id)}};
+            DeviceTest dt{std::move(id)};
+            if (j.contains("tone") && j["tone"].isBoolean())
+                dt.tone = j["tone"].get<bool>();
+            return Command{std::move(dt)};
         }
         if (t == "Info")
             return Command{Info{}};

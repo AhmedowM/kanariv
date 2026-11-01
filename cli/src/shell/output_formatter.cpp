@@ -41,6 +41,26 @@ std::string OutputFormatter::truncateField(const std::string& s, std::size_t max
     return s.substr(0, maxLen - 3) + "...";
 }
 
+void OutputFormatter::setColumns(std::string_view columns) {
+    columns_.clear();
+    if (columns.empty())
+        return;
+    std::size_t start = 0;
+    while (start <= columns.size()) {
+        std::size_t comma = columns.find(',', start);
+        if (comma == std::string::npos)
+            comma = columns.size();
+        std::string col(columns.substr(start, comma - start));
+        while (!col.empty() && (col.front() == ' ' || col.front() == '\t'))
+            col.erase(0, 1);
+        while (!col.empty() && (col.back() == ' ' || col.back() == '\t'))
+            col.pop_back();
+        if (!col.empty())
+            columns_.insert(std::move(col));
+        start = comma + 1;
+    }
+}
+
 void OutputFormatter::printTrackDetail(std::ostream& os, const caudio::types::Track& t) {
     caudio::println(os, "Track [{}]", t.id);
     caudio::println(os, "  Path:         {}", t.path);
@@ -216,16 +236,56 @@ void OutputFormatter::print(const caudio::ipc::Result& r, std::ostream& os) cons
                     }
                 }
             },
-            [&os](const caudio::ipc::Tracks& v) {
+            [&os, this](const caudio::ipc::Tracks& v) {
                 std::span<const caudio::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
                 caudio::println(os, "Tracks ({}):", tracksSpan.size());
-                caudio::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
-                                "Title", "Dur");
-                for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                    const auto& t = tracksSpan[i];
-                    caudio::println(os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
-                                    truncateField(t.artist, 40), truncateField(t.title, 40),
-                                    formatTime(t.duration));
+                if (columns_.empty()) {
+                    caudio::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
+                                    "Title", "Dur");
+                    for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
+                        const auto& t = tracksSpan[i];
+                        caudio::println(os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
+                                        truncateField(t.artist, 40), truncateField(t.title, 40),
+                                        formatTime(t.duration));
+                    }
+                } else {
+                    // --columns allowlist: print only selected columns.
+                    bool hasId = columns_.contains("id");
+                    bool hasTitle = columns_.contains("title");
+                    bool hasArtist = columns_.contains("artist");
+                    bool hasAlbum = columns_.contains("album");
+                    bool hasGenre = columns_.contains("genre");
+                    bool hasYear = columns_.contains("year");
+                    bool hasRating = columns_.contains("rating");
+                    bool hasDuration = columns_.contains("duration");
+                    bool hasPath = columns_.contains("path");
+                    // Header
+                    caudio::print(os, "{:>3}", "#");
+                    if (hasId) caudio::print(os, " {:>6}", "ID");
+                    if (hasTitle) caudio::print(os, " {:<40}", "Title");
+                    if (hasArtist) caudio::print(os, " {:<40}", "Artist");
+                    if (hasAlbum) caudio::print(os, " {:<40}", "Album");
+                    if (hasGenre) caudio::print(os, " {:<20}", "Genre");
+                    if (hasYear) caudio::print(os, " {:>6}", "Year");
+                    if (hasRating) caudio::print(os, " {:>8}", "Rating");
+                    if (hasDuration) caudio::print(os, " {:>8}", "Dur");
+                    if (hasPath) caudio::print(os, " {}", "Path");
+                    caudio::println(os, "");
+                    // Rows
+                    for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
+                        const auto& t = tracksSpan[i];
+                        caudio::print(os, "{:3}", i);
+                        if (hasId) caudio::print(os, " {:6}", t.id);
+                        if (hasTitle) caudio::print(os, " {:<40}", truncateField(t.title, 40));
+                        if (hasArtist) caudio::print(os, " {:<40}", truncateField(t.artist, 40));
+                        if (hasAlbum) caudio::print(os, " {:<40}", truncateField(t.album, 40));
+                        if (hasGenre) caudio::print(os, " {:<20}", truncateField(t.genre, 20));
+                        if (hasYear) caudio::print(os, " {:6}", t.year == 0 ? "---" : std::to_string(t.year));
+                        if (hasRating) caudio::print(os, " {:8}", t.rating);
+                        if (hasDuration) caudio::print(os, " {:>8}", formatTime(t.duration));
+                        if (hasPath) caudio::print(os, " {}", t.path);
+                        caudio::println(os, "");
+                    }
                 }
             },
             [&os, this](const caudio::ipc::SearchResults& v) {

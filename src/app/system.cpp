@@ -108,10 +108,12 @@ AppResult App::deviceSet(const std::string& id) {
     return impl_->confirm(impl_->sendRaw(cmd), std::format("Default device: {}", id));
 }
 
-AppResult App::deviceTest(std::optional<std::string> id) {
-    caudio::ipc::Command cmd{caudio::ipc::DeviceTest{id}};
+AppResult App::deviceTest(std::optional<std::string> id, bool tone) {
+    caudio::ipc::Command cmd{caudio::ipc::DeviceTest{id, tone}};
     std::string line =
         id.has_value() ? std::format("Device available: {}", *id) : "Default device available";
+    if (tone)
+        line += " (playing test tone)";
     return impl_->confirm(impl_->sendRaw(cmd), std::move(line));
 }
 
