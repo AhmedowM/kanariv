@@ -10,17 +10,18 @@ caudio's daemon communicates with clients over a JSON-over-IPC protocol with
 
 ## Message framing
 
-Every IPC message is:
+Every IPC message is a length-prefixed JSON payload. The transport reads the
+header first, then reads exactly the number of payload bytes declared by that
+header.
 
-```
-+--------+---------------------+
-| 4 bytes|   N bytes JSON  |
-| (BE u32)|   payload       |
-+--------+---------------------+
-```
+| Part | Size | Meaning |
+|---|---:|---|
+| Length prefix | 4 bytes | Big-endian `uint32_t` containing the payload length |
+| JSON payload | `N` bytes | One UTF-8 encoded request or reply object |
 
-The 4-byte prefix is the length of the JSON payload in bytes, encoded as a
-big-endian `uint32_t`.
+The prefix is not part of the JSON document. Receivers must reject truncated
+payloads and should impose a practical maximum payload size before allocating
+the message buffer.
 
 ## Request format
 

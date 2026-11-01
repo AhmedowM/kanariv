@@ -1,0 +1,92 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import model from '../../../data/doxygen-api.json';
+
+const aliases = model.aliases || [];
+const compounds = model.compounds || [];
+
+export function getStaticPaths() {
+  return [
+    ...(model.aliases || []).map((alias) => ({
+      params: { id: alias.id },
+      props: {
+        alias,
+        members: (model.compounds || []).filter((compound) => {
+          const namespace = `caudio::${alias.id}`;
+          return (compound.name === namespace || compound.name.startsWith(`${namespace}::`)) &&
+            !compound.name.startsWith(`${namespace}::detail::`);
+        }),
+      },
+    })),
+    ...(model.compounds || []).map((compound) => ({
+      params: { id: compound.id },
+      props: { compound },
+    })),
+  ];
+}
+
+const { alias, compound, members = [] } = Astro.props;
+const pageTitle = compound ? `${compound.name} API` : `${alias?.name || 'API'} Reference`;
+---
+
+<Layout currentSection="reference" currentPage={`reference/api/${compound?.id || alias?.id || ''}`} title={pageTitle} description={compound?.brief || alias?.description || ''} headings={[]}>
+  <article class="api-page">
+    <a class="back-link" href="/reference/api/">← API reference</a>
+    {compound ? (
+      <>
+        <p class="eyebrow">{compound.kind} · XML reference</p>
+        <h1>{compound.name}</h1>
+        {compound.brief && <p class="summary">{compound.brief}</p>}
+        {compound.description && <p>{compound.description}</p>}
+        {compound.location && <p class="location"><code>{compound.location.file}:{compound.location.line}</code></p>}
+        {compound.includes.length > 0 && <><h2>Includes</h2><ul class="chips">{compound.includes.map((include) => <li><code>{include}</code></li>)}</ul></>}
+        {compound.bases.length > 0 && <><h2>Inheritance</h2><ul>{compound.bases.map((base) => <li><code>{base.name}</code></li>)}</ul></>}
+        <h2>Members</h2>
+        {compound.members.length > 0 ? <div class="members">
+          {compound.members.map((member) => (
+            <section class="member" id={member.id}>
+              <h3><code>{member.definition || member.name}{member.args || ''}</code></h3>
+              {member.brief && <p>{member.brief}</p>}
+              {member.description && <p>{member.description}</p>}
+              {member.parameters.length > 0 && <><h4>Parameters</h4><dl>{member.parameters.map((parameter) => <><dt><code>{parameter.name}</code>{parameter.type && `: ${parameter.type}`}</dt><dd>{parameter.description || 'No parameter description.'}</dd></>)}</dl></>}
+              {member.returnDescription && <p><strong>Returns:</strong> {member.returnDescription}</p>}
+              {member.enumValues.length > 0 && <ul class="enum-values">{member.enumValues.map((value) => <li><code>{value.name}</code>{value.brief && ` — ${value.brief}`}</li>)}</ul>}
+            </section>
+          ))}
+        </div> : <p class="empty">No documented members were found in the XML model.</p>}
+      </>
+    ) : (
+      <>
+        <p class="eyebrow">Component API · XML reference</p>
+        <h1>{alias.name}</h1>
+        <p class="summary">{alias.description}</p>
+        {model.generated ? (
+          members.length > 0 ? <div class="members">{members.map((item) => <a class="compound-link" href={`/reference/api/${item.id}/`}><strong>{item.name}</strong><span>{item.brief || item.kind}</span></a>)}</div> :
+            <p class="empty">No {alias.name} compounds were found in the generated XML model.</p>
+        ) : <p class="empty">The custom API model is waiting for Doxygen XML. Generate it with <code>CAUDIO_BUILD_DOCS=ON</code>, then rebuild this site.</p>}
+      </>
+    )}
+  </article>
+</Layout>
+
+<style>
+  .api-page { padding: 2rem 0 5rem; }
+  .back-link { display: inline-block; margin-bottom: 2rem; }
+  .eyebrow { color: var(--caudio-brand); font-size: .78rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+  .summary { color: var(--caudio-text-muted); font-size: 1.15rem; }
+  .location, .empty { color: var(--caudio-text-muted); }
+  .members { display: grid; gap: .85rem; }
+  .member, .compound-link { display: block; padding: 1rem 1.1rem; background: var(--caudio-surface); border: 1px solid var(--caudio-border); border-radius: 12px; }
+  .member h3 { margin-top: 0; overflow-wrap: anywhere; }
+  .member p { color: var(--caudio-text-muted); }
+  .member h4 { margin-bottom: .35rem; }
+  .member dl { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: .35rem 1rem; }
+  .member dt { font-weight: 650; }
+  .member dd { margin: 0; color: var(--caudio-text-muted); }
+  .compound-link { display: grid; gap: .3rem; color: var(--caudio-text); text-decoration: none; }
+  .compound-link span { color: var(--caudio-text-muted); }
+  .compound-link:hover { border-color: var(--caudio-brand); text-decoration: none; }
+  .chips { display: flex; flex-wrap: wrap; gap: .5rem; padding: 0; list-style: none; }
+  .chips li { padding: .35rem .6rem; border: 1px solid var(--caudio-border); border-radius: 999px; }
+  .enum-values { padding-left: 1.2rem; }
+</style>

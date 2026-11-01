@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "preddev": "node scripts/build-search-index.mjs",
-    "prebuild": "node scripts/build-search-index.mjs",
+    "preddev": "node scripts/build-doxygen-api.mjs && node scripts/build-search-index.mjs",
+    "prebuild": "node scripts/build-doxygen-api.mjs && node scripts/build-search-index.mjs",
     "build": "astro build",
     "preview": "astro preview"
   },

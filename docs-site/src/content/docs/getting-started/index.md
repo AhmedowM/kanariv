@@ -11,6 +11,33 @@ Choose a path to start using caudio:
 - [Installation](/getting-started/installation) — install prerequisites and build
 - [Quick Start](/getting-started/quickstart) — scan, queue, and play your first track
 
+## The shortest path
+
+If you already have a C++23 compiler, Ninja, Python, and FFmpeg development
+libraries installed:
+
+```sh
+git clone https://github.com/AhmedowM/caudio.git
+cd caudio
+python scripts/configure.py dev --toolchain clang --jobs 4 --build --test
+```
+
+Then scan a directory and play a track:
+
+```sh
+./build/dev/caudio library scan --path ~/Music
+./build/dev/caudio library search "album title" --limit 10
+./build/dev/caudio queue add ~/Music/album/*.flac
+./build/dev/caudio play
+```
+
+## How the pieces fit
+
+The command-line client is intentionally thin. It talks to a local daemon,
+which coordinates the database, library scanner, queue, decoder, and audio
+output. Configuration is kept outside the source tree so a development build
+and an installed build can use the same runtime model.
+
 ## What caudio is
 
 caudio is a headless, local music player and a reusable C++23 library. It
@@ -71,3 +98,4 @@ Consumers use `import caudio.*` rather than public headers.
 - [Installation](/getting-started/installation) — build from source
 - [Quick Start](/getting-started/quickstart) — scan, queue, play
 - [API Reference](/reference/api/) — C++ library API documentation
+- [Download](/download) — release status and source availability

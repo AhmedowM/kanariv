@@ -27,6 +27,19 @@
       }
     },
     {
+      "name": "docs",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/docs",
+      "displayName": "Documentation: Doxygen HTML and XML",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CAUDIO_BUILD_DOCS": "ON",
+        "CAUDIO_BUILD_CLI": "OFF",
+        "CAUDIO_ENABLE_TESTS": "OFF",
+        "CAUDIO_ENABLE_EXAMPLES": "OFF"
+      }
+    },
+    {
       "name": "ci",
       "inherits": "base",
       "displayName": "Headless CI: Debug, tests, no audio device",
@@ -108,6 +121,13 @@
     {
       "name": "dev",
       "configurePreset": "dev"
+    },
+    {
+      "name": "docs",
+      "configurePreset": "docs",
+      "targets": [
+        "doc-check"
+      ]
     },
     {
       "name": "ci",

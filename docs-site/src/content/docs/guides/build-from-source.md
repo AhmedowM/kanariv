@@ -109,12 +109,20 @@ For modules, add `-DCAUDIO_ENABLE_MODULES=ON` and use Ninja.
 ## Building documentation
 
 ```sh
-python scripts/configure.py dev --toolchain clang --docs --build
-cmake --build build/dev --target doc-check --parallel 4
+cmake --preset docs
+cmake --build --preset docs --parallel 4
+# or: python scripts/configure.py docs --build
 ```
 
-HTML output: `build/docs/html/index.html`
-XML output: `build/docs/xml/index.xml`
+HTML output: `build/docs/docs/html/index.html`
+XML output: `build/docs/docs/xml/index.xml`
+
+The documentation site consumes that XML during its build. From
+`docs-site/`, run `npm run build` after generating `build/docs/docs/xml`; the
+site will render the component and symbol pages directly from the custom XML
+model and include their symbols in search. If the XML directory is absent, the
+API routes remain explicit placeholders so the rest of the documentation can
+still build.
 
 ## Using as a library
 

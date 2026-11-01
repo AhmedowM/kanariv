@@ -12,7 +12,8 @@ const tocItems = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
 
 {tocItems.length > 0 && (
   <aside class="docs-toc" aria-label="On this page">
-    <button class="toc-toggle" type="button" aria-expanded="false" aria-controls="toc-links">
+    <button class="toc-toggle" type="button" aria-expanded="false" aria-controls="toc-links" aria-label="Show page contents">
+      <span class="toc-icon" aria-hidden="true"><i></i><i></i><i></i></span>
       <span class="toc-title">On this page</span>
       <span class="toc-chevron" aria-hidden="true">⌄</span>
     </button>
@@ -56,15 +57,22 @@ const tocItems = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    width: 100%;
-    padding: 0.5rem;
+    width: max-content;
+    min-width: 2.5rem;
+    padding: 0.65rem;
     color: var(--caudio-text);
     background: transparent;
     border: 0;
     border-radius: 8px;
     text-align: left;
+    gap: 0.6rem;
   }
   .toc-toggle:hover { color: var(--caudio-brand); background: var(--caudio-surface-muted); }
+  .toc-icon { display: grid; gap: 3px; }
+  .toc-icon i { display: block; width: 4px; height: 4px; border-radius: 999px; background: currentColor; }
+  .toc-title { display: none; }
+  .toc-toggle[aria-expanded="true"] { width: 100%; }
+  .toc-toggle[aria-expanded="true"] .toc-title { display: inline; }
   .toc-chevron { color: var(--caudio-brand); transition: transform 160ms ease; }
   .toc-toggle[aria-expanded="true"] .toc-chevron { transform: rotate(180deg); }
 

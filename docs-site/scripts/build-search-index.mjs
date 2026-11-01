@@ -5,10 +5,11 @@
  */
 
 import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
-import { join, extname, relative, dirname } from 'path';
+import { join, extname, relative } from 'path';
 
 const docsRoot = join(process.cwd(), 'src', 'content', 'docs');
 const publicDir = join(process.cwd(), 'public');
+const apiCatalogPath = join(process.cwd(), 'src', 'data', 'doxygen-api.json');
 
 function parseFrontmatter(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
@@ -100,6 +101,21 @@ async function build() {
       section: slug.split('/')[0],
       searchText: normalize(`${title} ${description} ${body}`),
     });
+  }
+
+  if (existsSync(apiCatalogPath)) {
+    const apiCatalog = JSON.parse(readFileSync(apiCatalogPath, 'utf8'));
+    for (const compound of apiCatalog.compounds || []) {
+      index.push({
+        title: `${compound.name} API`,
+        description: compound.brief || `Generated ${compound.kind || 'API'} reference`,
+        content: compound.members.map((member) => `${member.name} ${member.brief}`).join(' '),
+        searchText: normalize(`${compound.name} ${compound.brief} ${compound.members.map((member) => `${member.name} ${member.brief}`).join(' ')}`),
+        url: `/reference/api/${compound.id}/`,
+        section: 'reference',
+        kind: 'doxygen',
+      });
+    }
   }
 
   if (!existsSync(publicDir)) {

@@ -11,6 +11,11 @@ modules that mirror them.
 
 ## Components
 
+The API pages below are rendered from a custom intermediate model built from
+Doxygen XML. The site does not use Doxygen's generated HTML: namespaces,
+classes, structs, enums, functions, overloads, inheritance, parameters, and
+return documentation are rendered in the same shell as the rest of this site.
+
 | Component | Description |
 |---|---|
 | [Utils](/reference/api/utils) | Errors, logging, JSON, queues, threads, versioning |

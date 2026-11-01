@@ -117,11 +117,12 @@ ctest --test-dir build -j4 --output-on-failure
 ### Documentation
 
 ```sh
-cmake -B build -G Ninja -DCAUDIO_BUILD_DOCS=ON
-cmake --build build --target doc-check
-# HTML: build/docs/html/index.html
-# XML:  build/docs/xml/index.xml
-# Open: build/docs/html/index.html
+cmake --preset docs
+cmake --build --preset docs --parallel 4
+# or: python scripts/configure.py docs --build
+# HTML: build/docs/docs/html/index.html
+# XML:  build/docs/docs/xml/index.xml
+# Open: build/docs/docs/html/index.html
 ```
 
 Man page is at `docs/man/caudio.1` -- preview with `man ./docs/man/caudio.1` or `groff -man -Tascii docs/man/caudio.1 | less`.

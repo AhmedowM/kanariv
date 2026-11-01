@@ -33,6 +33,7 @@ TOOLCHAINS = ("auto", "gcc", "clang", "msvc", "apple", "android")
 GENERATORS = ("ninja", "vs")
 INTENTS = (
     "dev",
+    "docs",
     "ci",
     "release",
     "release-lto",
@@ -65,6 +66,13 @@ INTENT_CACHE = {
         "CMAKE_BUILD_TYPE": "Debug",
         "CAUDIO_ENABLE_TESTS": "ON",
         "CAUDIO_ENABLE_EXAMPLES": "ON",
+    },
+    "docs": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CAUDIO_BUILD_DOCS": "ON",
+        "CAUDIO_BUILD_CLI": "OFF",
+        "CAUDIO_ENABLE_TESTS": "OFF",
+        "CAUDIO_ENABLE_EXAMPLES": "OFF",
     },
     "ci": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -483,6 +491,8 @@ def action_commands(args: argparse.Namespace, build_dir: Path,
     actions: list[tuple[str, list[str]]] = []
     if args.build:
         cmd = ["cmake", "--build", str(build_dir), "-j", str(args.jobs)]
+        if args.intent == "docs":
+            cmd += ["--target", "doc-check"]
         if generator == "vs":
             cmd += ["--config", config]
         actions.append(("build", cmd))
@@ -676,6 +686,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         build_arch = args.android_abi if toolchain == "android" else arch
         build_dir = repo_root() / "build" / (
+            "docs" if args.intent == "docs" else
             f"{args.intent}-{toolchain}-{args.generator}-{build_arch}")
     build_dir = build_dir.resolve()
 
