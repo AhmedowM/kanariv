@@ -180,12 +180,19 @@ class IDatabase {
     /** @brief Returns aggregate playback statistics for engine consumers. */
     virtual std::expected<caudio::types::PlaybackStats, caudio::utils::Error> playbackStats() = 0;
     /**
-     * @brief Returns library totals and optionally most-played tracks.
-     * @param mostPlayed Number of most-played entries to include; omitted or
-     * non-positive requests totals only.
+     * @brief Returns library totals and optional top-N listening reports.
+     * @param topTracks Number of top tracks by total plays; omitted or non-positive = totals only.
+     * @param topAlbums Number of top albums by total plays; omitted or non-positive = not requested.
+     * @param topGenres Number of top genres by total plays; omitted or non-positive = not requested.
+     * @param topArtists Number of top artists by total plays; omitted or non-positive = not requested.
+     * @details Multi-artist tracks are split so each individual artist is counted
+     * separately in `top_artists`.
      */
     virtual std::expected<caudio::types::LibraryStats, caudio::utils::Error>
-    libraryStats(std::optional<int> mostPlayed = std::nullopt) = 0;
+    libraryStats(std::optional<int> topTracks = std::nullopt,
+                 std::optional<int> topAlbums = std::nullopt,
+                 std::optional<int> topGenres = std::nullopt,
+                 std::optional<int> topArtists = std::nullopt) = 0;
     /**
      * @brief Lists tracks matching an optional filter.
      * @param q Optional, non-owning filter valid for the duration of the call;

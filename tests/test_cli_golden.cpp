@@ -456,7 +456,7 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     REQUIRE(contains(imp.out, "1 matched"));
     REQUIRE(contains(imp.out, "1 skipped"));
     REQUIRE(contains(imp.out, "1 duplicate"));
-    auto stMp = run({"library", "stats", "--most-played", "0"});
+    auto stMp = run({"library", "stats", "--top-tracks", "0"});
     REQUIRE(stMp.exitCode == 0);
     REQUIRE(contains(stMp.out, "Library Stats (Detailed):"));
     auto stQ = run({"library", "stats", "--queue", "all"});

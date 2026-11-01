@@ -489,13 +489,22 @@ int Shell::run(int argc, char** argv) {
     libSearch->add_option("--limit", libSearchLimit, "Limit");
     libSearch->add_flag("--json", libSearchJson, "JSON output");
     bool libStatsJson = false;
-    int libStatsMostPlayed = -1;
+    int libStatsTopTracks = -1;
+    int libStatsTopAlbums = 0;
+    int libStatsTopGenres = 0;
+    int libStatsTopArtists = 0;
     std::vector<std::string> libStatsQueues;
     std::vector<std::int64_t> libStatsPlaylists;
     auto* libStats = libCmd->add_subcommand("stats", "Library stats");
     libStats->add_flag("--json", libStatsJson, "JSON output");
-    libStats->add_option("--most-played", libStatsMostPlayed,
-                         "Top-N most played (0 = totals only)");
+    libStats->add_option("--top-tracks", libStatsTopTracks,
+                         "Top-N most played tracks (0 = totals only)");
+    libStats->add_option("--top-albums", libStatsTopAlbums,
+                         "Top-N albums by total plays (0 = not requested)");
+    libStats->add_option("--top-genres", libStatsTopGenres,
+                         "Top-N genres by total plays (0 = not requested)");
+    libStats->add_option("--top-artists", libStatsTopArtists,
+                         "Top-N artists by total plays (multi-artist tracks split)");
     libStats->add_option("--queue", libStatsQueues, "Queue overview: all or id (repeatable)");
     libStats->add_option("--playlist", libStatsPlaylists, "Playlist overview by id (repeatable)");
     std::string libAddPath;
@@ -1022,7 +1031,19 @@ int Shell::run(int argc, char** argv) {
                 return 1;
             }
             return detail::renderBatch(
-                app_.libraryStats(libStatsMostPlayed, libStatsQueues, libStatsPlaylists),
+                app_.libraryStats(libStatsTopTracks >= 0
+                                      ? std::optional<int>{libStatsTopTracks}
+                                      : std::nullopt,
+                                  libStatsTopAlbums > 0
+                                      ? std::optional<int>{libStatsTopAlbums}
+                                  : std::nullopt,
+                                  libStatsTopGenres > 0
+                                      ? std::optional<int>{libStatsTopGenres}
+                                  : std::nullopt,
+                                  libStatsTopArtists > 0
+                                      ? std::optional<int>{libStatsTopArtists}
+                                  : std::nullopt,
+                                  libStatsQueues, libStatsPlaylists),
                 libStatsJson);
         }
         if (libList->parsed()) {

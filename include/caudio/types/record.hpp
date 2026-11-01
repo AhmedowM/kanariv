@@ -265,12 +265,26 @@ struct TrackMetadata {
 };
 
 /**
+ * @brief Top entity entry for listening reports (artist/album/genre).
+ * @ingroup caudio_types
+ * @details `name` is the entity name; `track_count` is how many distinct
+ * tracks reference it; `total_plays` is the sum of play_count across those
+ * tracks. For artists, multi-artist tracks are split so each individual
+ * artist gets credited with the full play_count.
+ */
+struct TopEntity {
+    std::string name{};            ///< Entity name (artist / album / genre).
+    std::size_t track_count{0};    ///< Number of distinct tracks referencing it.
+    std::int64_t total_plays{0};   ///< Sum of play_count across those tracks.
+};
+
+/**
  * @brief Library statistics with always-computed totals and optional top-N history.
  * @ingroup caudio_types
  * @details Canonical stats shape for `Database::libraryStats()` and the IPC
- * `LibraryStats` result. Totals are always populated; `most_played` is engaged
+ * `LibraryStats` result. Totals are always populated; `top_tracks` is engaged
  * only when the caller asked for the top-N list, and an engaged empty vector
- * means "totals only" (top_n == 0). `queues` counts queue items.
+ * means "totals only" (top_tracks == 0). `queues` counts queue items.
  */
 struct LibraryStats {
     std::size_t tracks{0};              ///< Total live tracks.
@@ -278,8 +292,15 @@ struct LibraryStats {
     std::size_t playlists{0};           ///< Total playlists.
     std::int64_t total_duration_ms{0};  ///< Sum of durations (ms).
     std::int64_t total_play_time_ms{0}; ///< Sum of play_count * duration (ms).
-    /// Top most-played tracks (play_count DESC); nullopt when not requested.
-    std::optional<std::vector<Track>> most_played{};
+    /// Top tracks by total plays (play_count DESC); nullopt when not requested.
+    std::optional<std::vector<Track>> top_tracks{};
+    /// Top albums by total plays; nullopt when not requested.
+    std::optional<std::vector<TopEntity>> top_albums{};
+    /// Top genres by total plays; nullopt when not requested.
+    std::optional<std::vector<TopEntity>> top_genres{};
+    /// Top artists by total plays; nullopt when not requested.
+    /// Multi-artist tracks are split so each individual artist is counted.
+    std::optional<std::vector<TopEntity>> top_artists{};
 };
 
 } // namespace caudio::types

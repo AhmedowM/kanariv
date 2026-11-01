@@ -298,8 +298,14 @@ Json toJson(const Command& cmd) {
                 j["limit"] = v.limit;
             } else if constexpr (std::is_same_v<T, LibraryStats>) {
                 j["type"] = "LibraryStats";
-                if (v.top_n)
-                    j["top_n"] = *v.top_n;
+                if (v.top_tracks)
+                    j["top_tracks"] = *v.top_tracks;
+                if (v.top_albums)
+                    j["top_albums"] = *v.top_albums;
+                if (v.top_genres)
+                    j["top_genres"] = *v.top_genres;
+                if (v.top_artists)
+                    j["top_artists"] = *v.top_artists;
             } else if constexpr (std::is_same_v<T, LibraryAdd>) {
                 j["type"] = "LibraryAdd";
                 j["path"] = v.path;
@@ -655,10 +661,16 @@ std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
         }
         if (t == "LibraryStats" || t == "LibraryStatsDetailed") {
             LibraryStats v{};
-            if (j.contains("top_n") && j["top_n"].isNumber())
-                v.top_n = j["top_n"].get<int>();
+            if (j.contains("top_tracks") && j["top_tracks"].isNumber())
+                v.top_tracks = j["top_tracks"].get<int>();
             else if (t == "LibraryStatsDetailed")
-                v.top_n = 10;
+                v.top_tracks = 10;
+            if (j.contains("top_albums") && j["top_albums"].isNumber())
+                v.top_albums = j["top_albums"].get<int>();
+            if (j.contains("top_genres") && j["top_genres"].isNumber())
+                v.top_genres = j["top_genres"].get<int>();
+            if (j.contains("top_artists") && j["top_artists"].isNumber())
+                v.top_artists = j["top_artists"].get<int>();
             return Command{std::move(v)};
         }
         if (t == "LibraryAdd") {
@@ -912,10 +924,40 @@ Json toJson(const Result& r) {
                 j["playlists"] = v.playlists;
                 j["total_duration_ms"] = v.total_duration_ms;
                 j["total_play_time_ms"] = v.total_play_time_ms;
-                if (v.most_played) {
-                    j["most_played"] = Json::array();
-                    for (const auto& t : *v.most_played)
-                        j["most_played"].push_back(caudio::utils::trackToJson(t));
+                if (v.top_tracks) {
+                    j["top_tracks"] = Json::array();
+                    for (const auto& t : *v.top_tracks)
+                        j["top_tracks"].push_back(caudio::utils::trackToJson(t));
+                }
+                if (v.top_albums) {
+                    j["top_albums"] = Json::array();
+                    for (const auto& e : *v.top_albums) {
+                        Json je;
+                        je["name"] = e.name;
+                        je["track_count"] = static_cast<int64_t>(e.track_count);
+                        je["total_plays"] = e.total_plays;
+                        j["top_albums"].push_back(je);
+                    }
+                }
+                if (v.top_genres) {
+                    j["top_genres"] = Json::array();
+                    for (const auto& e : *v.top_genres) {
+                        Json je;
+                        je["name"] = e.name;
+                        je["track_count"] = static_cast<int64_t>(e.track_count);
+                        je["total_plays"] = e.total_plays;
+                        j["top_genres"].push_back(je);
+                    }
+                }
+                if (v.top_artists) {
+                    j["top_artists"] = Json::array();
+                    for (const auto& e : *v.top_artists) {
+                        Json je;
+                        je["name"] = e.name;
+                        je["track_count"] = static_cast<int64_t>(e.track_count);
+                        je["total_plays"] = e.total_plays;
+                        j["top_artists"].push_back(je);
+                    }
                 }
                 return j;
             } else if constexpr (std::is_same_v<T, Tracks>) {
@@ -1229,20 +1271,74 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                 ls.total_duration_ms = j["total_duration_ms"].get<int64_t>();
             if (j.contains("total_play_time_ms") && j["total_play_time_ms"].isNumber())
                 ls.total_play_time_ms = j["total_play_time_ms"].get<int64_t>();
-            if (j.contains("most_played") && j["most_played"].isArray()) {
-                ls.most_played.emplace();
-                const Json mostPlayed = j["most_played"];
-                for (std::size_t ti = 0, tn = mostPlayed.size(); ti < tn; ++ti) {
-                    auto jt = mostPlayed.at(ti);
+            if (j.contains("top_tracks") && j["top_tracks"].isArray()) {
+                ls.top_tracks.emplace();
+                const Json topTracks = j["top_tracks"];
+                for (std::size_t ti = 0, tn = topTracks.size(); ti < tn; ++ti) {
+                    auto jt = topTracks.at(ti);
                     if (!jt)
                         return std::unexpected{jt.error()};
                     auto tr = caudio::utils::trackFromJson(*jt);
                     if (!tr)
                         return std::unexpected{tr.error()};
-                    ls.most_played->push_back(std::move(*tr));
+                    ls.top_tracks->push_back(std::move(*tr));
                 }
             } else if (t == "LibraryStatsDetailed") {
-                ls.most_played.emplace();
+                ls.top_tracks.emplace();
+            }
+            if (j.contains("top_albums") && j["top_albums"].isArray()) {
+                ls.top_albums.emplace();
+                const Json topAlbums = j["top_albums"];
+                for (std::size_t ti = 0, tn = topAlbums.size(); ti < tn; ++ti) {
+                    auto jt = topAlbums.at(ti);
+                    if (!jt)
+                        return std::unexpected{jt.error()};
+                    const Json& jo = *jt;
+                    caudio::types::TopEntity e;
+                    if (jo.contains("name") && jo["name"].isString())
+                        e.name = jo["name"].get<std::string>();
+                    if (jo.contains("track_count") && jo["track_count"].isNumber())
+                        e.track_count = static_cast<std::size_t>(jo["track_count"].get<int64_t>());
+                    if (jo.contains("total_plays") && jo["total_plays"].isNumber())
+                        e.total_plays = jo["total_plays"].get<int64_t>();
+                    ls.top_albums->push_back(std::move(e));
+                }
+            }
+            if (j.contains("top_genres") && j["top_genres"].isArray()) {
+                ls.top_genres.emplace();
+                const Json topGenres = j["top_genres"];
+                for (std::size_t ti = 0, tn = topGenres.size(); ti < tn; ++ti) {
+                    auto jt = topGenres.at(ti);
+                    if (!jt)
+                        return std::unexpected{jt.error()};
+                    const Json& jo = *jt;
+                    caudio::types::TopEntity e;
+                    if (jo.contains("name") && jo["name"].isString())
+                        e.name = jo["name"].get<std::string>();
+                    if (jo.contains("track_count") && jo["track_count"].isNumber())
+                        e.track_count = static_cast<std::size_t>(jo["track_count"].get<int64_t>());
+                    if (jo.contains("total_plays") && jo["total_plays"].isNumber())
+                        e.total_plays = jo["total_plays"].get<int64_t>();
+                    ls.top_genres->push_back(std::move(e));
+                }
+            }
+            if (j.contains("top_artists") && j["top_artists"].isArray()) {
+                ls.top_artists.emplace();
+                const Json topArtists = j["top_artists"];
+                for (std::size_t ti = 0, tn = topArtists.size(); ti < tn; ++ti) {
+                    auto jt = topArtists.at(ti);
+                    if (!jt)
+                        return std::unexpected{jt.error()};
+                    const Json& jo = *jt;
+                    caudio::types::TopEntity e;
+                    if (jo.contains("name") && jo["name"].isString())
+                        e.name = jo["name"].get<std::string>();
+                    if (jo.contains("track_count") && jo["track_count"].isNumber())
+                        e.track_count = static_cast<std::size_t>(jo["track_count"].get<int64_t>());
+                    if (jo.contains("total_plays") && jo["total_plays"].isNumber())
+                        e.total_plays = jo["total_plays"].get<int64_t>();
+                    ls.top_artists->push_back(std::move(e));
+                }
             }
             return Result{std::move(ls)};
         }

@@ -220,10 +220,7 @@ Service::Impl::handle(const caudio::ipc::LibrarySearch& cmd) {
 
 std::expected<caudio::ipc::Result, caudio::utils::Error>
 Service::Impl::handle(const caudio::ipc::LibraryStats& cmd) {
-    auto topN = cmd.top_n;
-    if (topN && *topN < 0)
-        topN = 10;
-    auto st = db_->libraryStats(topN);
+    auto st = db_->libraryStats(cmd.top_tracks, cmd.top_albums, cmd.top_genres, cmd.top_artists);
     if (!st)
         return std::unexpected{st.error()};
     return Result{std::move(*st)};

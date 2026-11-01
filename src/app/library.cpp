@@ -34,20 +34,20 @@ AppResult App::librarySearch(const std::string& query, int limit) {
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
-BatchResult App::libraryStats(int mostPlayed, const std::vector<std::string>& queues,
+BatchResult App::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbums,
+                              std::optional<int> topGenres, std::optional<int> topArtists,
+                              const std::vector<std::string>& queues,
                               const std::vector<std::int64_t>& playlists) {
-    if (mostPlayed < -1)
-        return BatchReport::fail("library stats: --most-played needs N >= 0");
     BatchReport rep;
-    std::optional<caudio::ipc::Result> table;
-    caudio::ipc::Command cmd{caudio::ipc::LibraryStats{}};
-    if (mostPlayed >= 0)
-        cmd = caudio::ipc::Command{caudio::ipc::LibraryStats{mostPlayed}};
-    auto statsRes = impl_->sendRaw(cmd);
+    caudio::ipc::LibraryStats cmd{};
+    cmd.top_tracks = topTracks;
+    cmd.top_albums = topAlbums;
+    cmd.top_genres = topGenres;
+    cmd.top_artists = topArtists;
+    auto statsRes = impl_->sendRaw(caudio::ipc::Command{std::move(cmd)});
     if (!statsRes)
         return std::unexpected{statsRes.error()};
-    table = std::move(*statsRes);
-    rep.json = std::move(table);
+    rep.json = std::move(*statsRes);
     detail::renderInto(rep.out, *rep.json);
     if (!queues.empty() || !playlists.empty())
         rep.out += '\n';

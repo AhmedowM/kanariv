@@ -1,6 +1,7 @@
 ﻿#include <sqlite3.h>
 
 #include <array>
+#include <algorithm>
 #include <caudio/db/database.hpp>
 #include <caudio/db/smart.hpp>
 #include <caudio/types/db.hpp>
@@ -17,6 +18,7 @@
 #include <db/stmt_helpers.hpp>
 #include <db/write_thread.hpp>
 #include <expected>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -1870,7 +1872,10 @@ std::expected<caudio::types::PlaybackStats, caudio::utils::Error> Database::getS
 }
 
 std::expected<caudio::types::LibraryStats, caudio::utils::Error>
-Database::libraryStats(std::optional<int> mostPlayed) {
+Database::libraryStats(std::optional<int> topTracks,
+                       std::optional<int> topAlbums,
+                       std::optional<int> topGenres,
+                       std::optional<int> topArtists) {
     std::shared_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
@@ -1913,23 +1918,152 @@ Database::libraryStats(std::optional<int> mostPlayed) {
         st.reset();
     }
 
-    // Most played tracks: engaged only when requested (empty when N is 0).
-    if (mostPlayed) {
-        d.most_played.emplace();
-        if (*mostPlayed > 0) {
+    // ------------------------------------------------------------------
+    // Top-N listening reports
+    // ------------------------------------------------------------------
+
+    // Top tracks by play count (play_count DESC).
+    if (topTracks) {
+        d.top_tracks.emplace();
+        if (*topTracks > 0) {
             std::string sql =
-                std::string(internal::selectTracksCols) +
-                " WHERE deleted_at IS NULL AND play_count > 0 ORDER BY play_count DESC LIMIT " +
-                std::to_string(*mostPlayed);
-            auto sRes = impl_->getCachedForUse(sql);
-            if (sRes) {
-                SqliteStatement& st = *(*sRes);
-                while (st.step()) {
-                    caudio::types::Track t;
-                    internal::fillTrackFromStmt(st.get(), t);
-                    d.most_played->push_back(std::move(t));
+            std::string(internal::selectTracksCols) +
+            " WHERE deleted_at IS NULL AND play_count > 0 ORDER BY play_count DESC LIMIT " +
+            std::to_string(*topTracks);
+        auto sRes = impl_->getCachedForUse(sql);
+        if (sRes) {
+            SqliteStatement& st = *(*sRes);
+            while (st.step()) {
+                caudio::types::Track t;
+                internal::fillTrackFromStmt(st.get(), t);
+                d.top_tracks->push_back(std::move(t));
+            }
+            st.reset();
+        }
+    }
+    }
+
+    // Top albums by total plays (GROUP BY album).
+    if (topAlbums && *topAlbums > 0) {
+        d.top_albums.emplace();
+        std::string sql = std::format(
+            "SELECT album, COUNT(*), COALESCE(SUM(play_count),0) "
+            "FROM tracks WHERE deleted_at IS NULL AND album IS NOT NULL AND album != '' "
+            "GROUP BY album "
+            "ORDER BY SUM(play_count) DESC, album ASC LIMIT {}",
+            *topAlbums);
+        auto sRes = impl_->getCachedForUse(sql);
+        if (sRes) {
+            SqliteStatement& st = *(*sRes);
+            while (st.step()) {
+                caudio::types::TopEntity e;
+                e.name = st.columnText(0);
+                e.track_count = static_cast<std::size_t>(st.columnInt(1));
+                e.total_plays = st.columnInt(2);
+                d.top_albums->push_back(std::move(e));
+            }
+            st.reset();
+        }
+    }
+
+    // Top genres by total plays (GROUP BY genre).
+    if (topGenres && *topGenres > 0) {
+        d.top_genres.emplace();
+        std::string sql = std::format(
+            "SELECT genre, COUNT(*), COALESCE(SUM(play_count),0) "
+            "FROM tracks WHERE deleted_at IS NULL AND genre IS NOT NULL AND genre != '' "
+            "GROUP BY genre "
+            "ORDER BY SUM(play_count) DESC, genre ASC LIMIT {}",
+            *topGenres);
+        auto sRes = impl_->getCachedForUse(sql);
+        if (sRes) {
+            SqliteStatement& st = *(*sRes);
+            while (st.step()) {
+                caudio::types::TopEntity e;
+                e.name = st.columnText(0);
+                e.track_count = static_cast<std::size_t>(st.columnInt(1));
+                e.total_plays = st.columnInt(2);
+                d.top_genres->push_back(std::move(e));
+            }
+            st.reset();
+        }
+    }
+
+    // Top artists by total plays.
+    // Multi-artist tracks are split so each individual artist is counted
+    // separately with the full play_count of the track.
+    if (topArtists && *topArtists > 0) {
+        d.top_artists.emplace();
+        // Fetch all (artist, play_count) pairs for live tracks with play_count > 0.
+        std::string sql =
+            "SELECT artist, play_count FROM tracks WHERE deleted_at IS NULL "
+            "AND artist IS NOT NULL AND artist != '' AND play_count > 0";
+        auto sRes = impl_->getCachedForUse(sql);
+        if (sRes) {
+            SqliteStatement& st = *(*sRes);
+            // Accumulate per-artist play counts.
+            std::map<std::string, std::pair<std::size_t, std::int64_t>> artistStats;
+            while (st.step()) {
+                std::string artistStr = st.columnText(0);
+                if (artistStr.empty())
+                    continue;
+                std::int64_t playCount = st.columnInt(1);
+
+                // Split multi-artist strings. Delimiters (safest first):
+                //   ";"        semicolon (most common tag separator)
+                //   ", "       comma+space (avoids breaking names like "The Beatles, The")
+                //   " feat. ", " ft. ", " featuring ", " & "   surrounded by spaces
+                std::size_t start = 0;
+                while (start < artistStr.size()) {
+                    // Find the next delimiter position.
+                    std::size_t next = artistStr.size();
+                    auto tryFind = [&](std::string_view delim) {
+                        std::size_t p = artistStr.find(delim, start);
+                        if (p != std::string::npos && p < next)
+                            next = p;
+                    };
+                    tryFind(";");
+                    tryFind(", ");
+                    tryFind(" feat. ");
+                    tryFind(" ft. ");
+                    tryFind(" featuring ");
+                    tryFind(" & ");
+
+                    std::string part = artistStr.substr(start, next - start);
+                    // Trim whitespace.
+                    while (!part.empty() && (part.front() == ' ' || part.front() == '\t'))
+                        part.erase(0, 1);
+                    while (!part.empty() && (part.back() == ' ' || part.back() == '\t'))
+                        part.pop_back();
+                    if (!part.empty()) {
+                        auto& acc = artistStats[part];
+                        acc.first += 1;
+                        acc.second += playCount;
+                    }
+                    if (next == artistStr.size())
+                        break;
+                    start = next + 1;
                 }
-                st.reset();
+            }
+            st.reset();
+
+            // Sort by total_plays DESC, then name ASC.
+            std::vector<std::pair<std::string, std::pair<std::size_t, std::int64_t>>>
+                sorted(artistStats.begin(), artistStats.end());
+            std::sort(sorted.begin(), sorted.end(),
+                      [](const auto& a, const auto& b) {
+                          if (a.second.second != b.second.second)
+                              return a.second.second > b.second.second;
+                          return a.first < b.first;
+                      });
+
+            std::size_t limit = static_cast<std::size_t>(*topArtists);
+            for (std::size_t i = 0; i < sorted.size() && i < limit; ++i) {
+                caudio::types::TopEntity e;
+                e.name = sorted[i].first;
+                e.track_count = sorted[i].second.first;
+                e.total_plays = sorted[i].second.second;
+                d.top_artists->push_back(std::move(e));
             }
         }
     }

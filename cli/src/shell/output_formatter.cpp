@@ -211,28 +211,54 @@ void OutputFormatter::print(const caudio::ipc::Result& r, std::ostream& os) cons
                     caudio::println(os, "Volume: {}%", pct);
             },
             [&os](const caudio::types::LibraryStats& v) {
-                if (!v.most_played) {
-                    caudio::println(os, "Tracks: {} Queues: {} Playlists: {}", v.tracks, v.queues,
-                                    v.playlists);
-                    return;
-                }
-                caudio::println(os, "Library Stats (Detailed):");
-                caudio::println(os, "  Tracks:      {}", v.tracks);
-                caudio::println(os, "  Queues:      {}", v.queues);
-                caudio::println(os, "  Playlists:   {}", v.playlists);
+                caudio::println(os, "Tracks: {} Queues: {} Playlists: {}", v.tracks, v.queues,
+                                v.playlists);
                 double totalDurSec = v.total_duration_ms / 1000.0;
                 double totalPlaySec = v.total_play_time_ms / 1000.0;
                 caudio::println(os, "  Total Duration:  {}", formatTime(totalDurSec));
                 caudio::println(os, "  Total Play Time: {}", formatTime(totalPlaySec));
-                if (!v.most_played->empty()) {
-                    caudio::println(os, "\n  Most Played Tracks:");
-                    caudio::println(os, "  {:>3} {:>6}  {:<40} {:<40} {:>8} {:>10}", "#", "ID",
-                                    "Artist", "Title", "Dur", "Plays");
-                    for (std::size_t i = 0; i < v.most_played->size(); ++i) {
-                        const auto& t = (*v.most_played)[i];
-                        caudio::println(os, "  {:3} {:6}  {:<40} {:<40} {:>8} {:>10}", i + 1, t.id,
-                                        truncateField(t.artist, 40), truncateField(t.title, 40),
-                                        formatTime(t.duration), t.play_count);
+                if (v.top_tracks) {
+                    caudio::println(os, "Library Stats (Detailed):");
+                    if (!v.top_tracks->empty()) {
+                        caudio::println(os, "\n  Most Played Tracks:");
+                        caudio::println(os, "  {:>3} {:>6}  {:<40} {:<40} {:>8} {:>10}", "#", "ID",
+                                        "Artist", "Title", "Dur", "Plays");
+                        for (std::size_t i = 0; i < v.top_tracks->size(); ++i) {
+                            const auto& t = (*v.top_tracks)[i];
+                            caudio::println(os, "  {:3} {:6}  {:<40} {:<40} {:>8} {:>10}", i + 1, t.id,
+                                            truncateField(t.artist, 40), truncateField(t.title, 40),
+                                            formatTime(t.duration), t.play_count);
+                        }
+                    }
+                }
+                if (v.top_albums && !v.top_albums->empty()) {
+                    caudio::println(os, "\n  Top Albums by Plays:");
+                    caudio::println(os, "  {:>3} {:<40} {:>10} {:>10}", "#", "Album", "Tracks",
+                                    "Plays");
+                    for (std::size_t i = 0; i < v.top_albums->size(); ++i) {
+                        const auto& e = (*v.top_albums)[i];
+                        caudio::println(os, "  {:3} {:<40} {:>10} {:>10}", i + 1,
+                                        truncateField(e.name, 40), e.track_count, e.total_plays);
+                    }
+                }
+                if (v.top_genres && !v.top_genres->empty()) {
+                    caudio::println(os, "\n  Top Genres by Plays:");
+                    caudio::println(os, "  {:>3} {:<20} {:>10} {:>10}", "#", "Genre", "Tracks",
+                                    "Plays");
+                    for (std::size_t i = 0; i < v.top_genres->size(); ++i) {
+                        const auto& e = (*v.top_genres)[i];
+                        caudio::println(os, "  {:3} {:<20} {:>10} {:>10}", i + 1,
+                                        truncateField(e.name, 20), e.track_count, e.total_plays);
+                    }
+                }
+                if (v.top_artists && !v.top_artists->empty()) {
+                    caudio::println(os, "\n  Top Artists by Plays:");
+                    caudio::println(os, "  {:>3} {:<40} {:>10} {:>10}", "#", "Artist", "Tracks",
+                                    "Plays");
+                    for (std::size_t i = 0; i < v.top_artists->size(); ++i) {
+                        const auto& e = (*v.top_artists)[i];
+                        caudio::println(os, "  {:3} {:<40} {:>10} {:>10}", i + 1,
+                                        truncateField(e.name, 40), e.track_count, e.total_plays);
                     }
                 }
             },

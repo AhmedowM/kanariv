@@ -202,7 +202,7 @@ TEST_CASE("library stats detailed protocol roundtrip", "[ipc]") {
                                     .playlists = 20,
                                     .total_duration_ms = 36000000,
                                     .total_play_time_ms = 7200000,
-                                    .most_played = std::vector<caudio::types::Track>{track}}};
+                                    .top_tracks = std::vector<caudio::types::Track>{track}}};
     auto resJson = toJson(res);
     REQUIRE(resJson["type"].snapshot().get<std::string>() == "LibraryStats");
     auto resBack = resultFromJson(resJson);
@@ -214,10 +214,10 @@ TEST_CASE("library stats detailed protocol roundtrip", "[ipc]") {
     CHECK(stats->playlists == 20);
     CHECK(stats->total_duration_ms == 36000000);
     CHECK(stats->total_play_time_ms == 7200000);
-    REQUIRE(stats->most_played.has_value());
-    REQUIRE(stats->most_played->size() == 1);
-    CHECK((*stats->most_played)[0].id == 7);
-    CHECK((*stats->most_played)[0].title == "Song");
+    REQUIRE(stats->top_tracks.has_value());
+    REQUIRE(stats->top_tracks->size() == 1);
+    CHECK((*stats->top_tracks)[0].id == 7);
+    CHECK((*stats->top_tracks)[0].title == "Song");
 }
 
 TEST_CASE("library stats summary protocol roundtrip", "[ipc]") {
@@ -226,43 +226,43 @@ TEST_CASE("library stats summary protocol roundtrip", "[ipc]") {
                                            .playlists = 20,
                                            .total_duration_ms = 36000000,
                                            .total_play_time_ms = 7200000,
-                                           .most_played = std::nullopt}};
+                                           .top_tracks = std::nullopt}};
     auto resJson = toJson(res);
     REQUIRE(resJson["type"].snapshot().get<std::string>() == "LibraryStats");
-    CHECK_FALSE(resJson.contains("most_played"));
+    CHECK_FALSE(resJson.contains("top_tracks"));
     auto resBack = resultFromJson(resJson);
     REQUIRE(resBack.has_value());
     auto* stats = std::get_if<caudio::types::LibraryStats>(&*resBack);
     REQUIRE(stats != nullptr);
     CHECK(stats->tracks == 100);
     CHECK(stats->total_duration_ms == 36000000);
-    CHECK_FALSE(stats->most_played.has_value());
+    CHECK_FALSE(stats->top_tracks.has_value());
 }
 
 TEST_CASE("library stats command roundtrip", "[ipc]") {
     auto summary = toJson(Command{LibraryStats{}});
     CHECK(summary["type"].snapshot().get<std::string>() == "LibraryStats");
-    CHECK_FALSE(summary.contains("top_n"));
+    CHECK_FALSE(summary.contains("top_tracks"));
 
     auto detailed = toJson(Command{LibraryStats{5}});
-    REQUIRE(detailed.contains("top_n"));
-    CHECK(detailed["top_n"].snapshot().get<int>() == 5);
+    REQUIRE(detailed.contains("top_tracks"));
+    CHECK(detailed["top_tracks"].snapshot().get<int>() == 5);
     auto detailedBack = commandFromJson(detailed);
     REQUIRE(detailedBack.has_value());
     auto* detailedCmd = std::get_if<LibraryStats>(&*detailedBack);
     REQUIRE(detailedCmd != nullptr);
-    REQUIRE(detailedCmd->top_n.has_value());
-    CHECK(*detailedCmd->top_n == 5);
+    REQUIRE(detailedCmd->top_tracks.has_value());
+    CHECK(*detailedCmd->top_tracks == 5);
 
     Json legacy;
     legacy["type"] = "LibraryStatsDetailed";
-    legacy["top_n"] = 3;
+    legacy["top_tracks"] = 3;
     auto legacyBack = commandFromJson(legacy);
     REQUIRE(legacyBack.has_value());
     auto* legacyCmd = std::get_if<LibraryStats>(&*legacyBack);
     REQUIRE(legacyCmd != nullptr);
-    REQUIRE(legacyCmd->top_n.has_value());
-    CHECK(*legacyCmd->top_n == 3);
+    REQUIRE(legacyCmd->top_tracks.has_value());
+    CHECK(*legacyCmd->top_tracks == 3);
 }
 
 TEST_CASE("shm status reader/writer roundtrip", "[ipc][shm]") {

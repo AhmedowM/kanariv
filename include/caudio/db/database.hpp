@@ -576,16 +576,26 @@ class CAUDIO_API Database final : public caudio::contracts::IDatabase {
     std::expected<caudio::types::PlaybackStats, caudio::utils::Error> playbackStats() override;
 
     /**
-     * @brief Returns library stats (counts and totals, optionally most-played).
+     * @brief Returns library stats (counts and totals, optionally top-N lists).
      * @ingroup caudio_db
-     * @param mostPlayed Omitted for the summary projection (totals only); a
-     * value requests that many most-played entries (0 = totals only).
+     * @param topTracks Omitted or non-positive = totals only; a value requests
+     *   that many top-track entries.
+     * @param topAlbums Omitted or non-positive = not requested; a value
+     *   requests that many top albums by total plays.
+     * @param topGenres Omitted or non-positive = not requested; a value
+     *   requests that many top genres by total plays.
+     * @param topArtists Omitted or non-positive = not requested; a value
+     *   requests that many top artists by total plays. Multi-artist tracks
+     *   are split so each individual artist is counted separately.
      * @return Stats or Error.
      * @par Thread safety
      * Thread-safe: shared_lock + cacheMutex_.
      */
     std::expected<caudio::types::LibraryStats, caudio::utils::Error>
-    libraryStats(std::optional<int> mostPlayed = std::nullopt) override;
+    libraryStats(std::optional<int> topTracks = std::nullopt,
+                 std::optional<int> topAlbums = std::nullopt,
+                 std::optional<int> topGenres = std::nullopt,
+                 std::optional<int> topArtists = std::nullopt) override;
 
     // Persisted engine state and playback history
     /** @brief Loads persisted engine state. @ingroup caudio_db */

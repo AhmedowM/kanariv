@@ -389,11 +389,16 @@ class CAUDIO_API App {
     /**
      * @brief Shows library stats, optionally with queue/playlist breakdowns.
      * @ingroup caudio_app
-     * @param mostPlayed Top-N threshold (>= 0 enables detailed mode).
+     * @param topTracks Top-N tracks by total plays; nullopt or non-positive = totals only.
+     * @param topAlbums Top-N albums by total plays; nullopt or non-positive = not requested.
+     * @param topGenres Top-N genres by total plays; nullopt or non-positive = not requested.
+     * @param topArtists Top-N artists by total plays; nullopt or non-positive = not requested.
      * @param queues Queue selectors ("all" or numeric ids).
      * @param playlists Playlist ids to include in the breakdown.
      */
-    BatchResult libraryStats(int mostPlayed, const std::vector<std::string>& queues,
+    BatchResult libraryStats(std::optional<int> topTracks, std::optional<int> topAlbums,
+                             std::optional<int> topGenres, std::optional<int> topArtists,
+                             const std::vector<std::string>& queues,
                              const std::vector<std::int64_t>& playlists);
 
     /**

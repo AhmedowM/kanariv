@@ -63,21 +63,34 @@ struct LibrarySearch final {
 
 /**
  * @struct LibraryStats
- * @brief Get library statistics, optionally with the most-played tracks.
+ * @brief Get library statistics, optionally with the top tracks.
  * @ingroup caudio_ipc
  *
- * @json_example {"type": "LibraryStats", "top_n": 10}
+ * @json_example {"type": "LibraryStats", "top_tracks": 10}
  *
- * @param top_n Omitted for the summary projection; a value (0 = totals only)
- * requests the detailed projection with that many most-played entries.
+ * @param top_tracks Omitted for the summary projection; a value (0 = totals only)
+ * requests the detailed projection with that many top tracks.
  * @return `caudio::types::LibraryStats` object with counts, totals, and
- * `most_played` engaged exactly when `top_n` was supplied.
+ * `top_tracks` engaged exactly when `top_tracks` was supplied.
  */
 struct LibraryStats final {
     /**
-     * @brief Optional most-played entries (0 = totals only).
+     * @brief Number of top tracks by total plays; omitted or non-positive = totals only.
      */
-    std::optional<int> top_n{};
+    std::optional<int> top_tracks{};
+    /**
+     * @brief Number of top albums by total plays; omitted or non-positive = not requested.
+     */
+    std::optional<int> top_albums{};
+    /**
+     * @brief Number of top genres by total plays; omitted or non-positive = not requested.
+     */
+    std::optional<int> top_genres{};
+    /**
+     * @brief Number of top artists by total plays; omitted or non-positive = not requested.
+     * @details Multi-artist tracks are split so each individual artist is counted separately.
+     */
+    std::optional<int> top_artists{};
 };
 
 /**
