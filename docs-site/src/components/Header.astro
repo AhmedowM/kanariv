@@ -85,48 +85,63 @@ const tabHasActiveChild = (tab: NavTab) => {
   <div class="header-container">
     <!-- Logo -->
     <a href={`${BASE}/`} class="logo" aria-label="kanariv">
+      <!-- Mark: solid record (R2) -->
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 64 64"
+        class="logo-mark"
+        aria-hidden="true"
+        focusable="false"
+        style="color: var(--kanariv-brand)"
+      >
+        <path fill="currentColor" fill-rule="evenodd" d="
+          M32 4a28 28 0 1 1 0 56a28 28 0 1 1 0-56Z
+          M32 14a18 18 0 1 0 0 36a18 18 0 1 0 0-36Z
+          M32 17a15 15 0 1 0 0 30a15 15 0 1 0 0-30Z
+          M32 27a5 5 0 1 0 0 10a5 5 0 1 0 0-10Z"/>
+      </svg>
+      <!-- Wordmark: custom route-C letterforms -->
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 645 146"
-        fill="none"
         class="logo-wordmark"
         aria-hidden="true"
         focusable="false"
       >
         <!-- k -->
-        <rect x="0" y="0" width="26" height="140" fill="currentColor" stroke="none" />
-        <polygon points="20.5,75.6 83,40 88.5,48.5 26,84" fill="currentColor" stroke="none" />
-        <polygon points="11.6,69.1 80,140 52.2,140 11.6,97.9" fill="currentColor" stroke="none" />
+        <rect x="0" y="0" width="26" height="140" fill="url(#kanariv-grad-light)" />
+        <polygon points="20.5,75.6 83,40 88.5,48.5 26,84" fill="url(#kanariv-grad-light)" />
+        <polygon points="11.6,69.1 80,140 52.2,140 11.6,97.9" fill="url(#kanariv-grad-light)" />
         <!-- a -->
         <g transform="translate(88 0)">
-          <path d="M104 90 A52 52 0 1 1 0 90 A52 52 0 1 1 104 90 Z M84 90 A26 40 0 1 0 32 90 A26 40 0 1 0 84 90 Z" fill="currentColor" fill-rule="evenodd" stroke="none" />
-          <rect x="84" y="40" width="26" height="100" fill="currentColor" stroke="none" />
+          <path d="M104 90 A52 52 0 1 1 0 90 A52 52 0 1 1 104 90 Z M84 90 A26 40 0 1 0 32 90 A26 40 0 1 0 84 90 Z" fill="url(#kanariv-grad-light)" fill-rule="evenodd" />
+          <rect x="84" y="40" width="26" height="100" fill="url(#kanariv-grad-light)" />
         </g>
         <!-- n -->
         <g transform="translate(210 0)">
-          <rect x="0" y="40" width="26" height="100" fill="currentColor" stroke="none" />
-          <rect x="72" y="40" width="26" height="100" fill="currentColor" stroke="none" />
-          <rect x="26" y="40" width="46" height="10" fill="currentColor" stroke="none" />
+          <rect x="0" y="40" width="26" height="100" fill="url(#kanariv-grad-light)" />
+          <rect x="72" y="40" width="26" height="100" fill="url(#kanariv-grad-light)" />
+          <rect x="26" y="40" width="46" height="10" fill="url(#kanariv-grad-light)" />
         </g>
         <!-- a -->
         <g transform="translate(320 0)">
-          <path d="M104 90 A52 52 0 1 1 0 90 A52 52 0 1 1 104 90 Z M84 90 A26 40 0 1 0 32 90 A26 40 0 1 0 84 90 Z" fill="currentColor" fill-rule="evenodd" stroke="none" />
-          <rect x="84" y="40" width="26" height="100" fill="currentColor" stroke="none" />
+          <path d="M104 90 A52 52 0 1 1 0 90 A52 52 0 1 1 104 90 Z M84 90 A26 40 0 1 0 32 90 A26 40 0 1 0 84 90 Z" fill="url(#kanariv-grad-light)" fill-rule="evenodd" />
+          <rect x="84" y="40" width="26" height="100" fill="url(#kanariv-grad-light)" />
         </g>
         <!-- r -->
         <g transform="translate(442 0)">
-          <rect x="0" y="40" width="26" height="100" fill="currentColor" stroke="none" />
-          <rect x="26" y="40" width="40" height="10" fill="currentColor" stroke="none" />
-          <rect x="58" y="40" width="10" height="22" fill="currentColor" stroke="none" />
+          <rect x="0" y="40" width="26" height="100" fill="url(#kanariv-grad-light)" />
+          <rect x="26" y="40" width="40" height="10" fill="url(#kanariv-grad-light)" />
+          <rect x="58" y="40" width="10" height="22" fill="url(#kanariv-grad-light)" />
         </g>
         <!-- i -->
         <g transform="translate(515 0)">
-          <rect x="0" y="40" width="26" height="100" fill="currentColor" stroke="none" />
-          <circle cx="13" cy="14" r="13" fill="currentColor" stroke="none" />
+          <rect x="0" y="40" width="26" height="100" fill="url(#kanariv-grad-light)" />
+          <circle cx="13" cy="14" r="13" fill="url(#kanariv-grad-light)" />
         </g>
         <!-- v -->
         <g transform="translate(553 0)">
-          <polygon points="0,40 26,40 50,128 76,40 88,40 50,142" fill="currentColor" stroke="none" />
+          <polygon points="0,40 26,40 50,128 76,40 88,40 50,142" fill="url(#kanariv-grad-light)" />
         </g>
       </svg>
     </a>
@@ -318,11 +333,32 @@ const tabHasActiveChild = (tab: NavTab) => {
     transform: translateY(-1px);
   }
 
-  .logo svg {
+  .logo svg.logo-mark {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: block;
+  }
+
+  .logo svg.logo-wordmark {
     width: auto;
     height: 28px;
     flex-shrink: 0;
     display: block;
+  }
+
+  /* Theme-aware wordmark gradient (mirrors the old header-text gradient). */
+  .logo-wordmark rect,
+  .logo-wordmark polygon,
+  .logo-wordmark path,
+  .logo-wordmark circle {
+    fill: url(#kanariv-grad-light);
+  }
+  [data-theme="dark"] .logo-wordmark rect,
+  [data-theme="dark"] .logo-wordmark polygon,
+  [data-theme="dark"] .logo-wordmark path,
+  [data-theme="dark"] .logo-wordmark circle {
+    fill: url(#kanariv-grad-dark);
   }
 
   /* ── Horizontal tabs ── */
