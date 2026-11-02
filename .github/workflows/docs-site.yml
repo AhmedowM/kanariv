@@ -2,9 +2,9 @@ name: Deploy docs to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -22,6 +22,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The API reference is generated from Doxygen XML, so the docs job needs a
+      # configured build tree even though it never compiles the project.
+      - name: Install docs toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build doxygen graphviz \
+            ffmpeg libavcodec-dev libavformat-dev libavutil-dev \
+            libswresample-dev libswscale-dev
+          cmake --version
+          doxygen --version
+
+      - name: Generate Doxygen XML
+        run: |
+          cmake -S . -B build/docs -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DKANARIV_BUILD_DOCS=ON \
+            -DKANARIV_BUILD_CLI=OFF \
+            -DKANARIV_ENABLE_TESTS=OFF \
+            -DKANARIV_ENABLE_EXAMPLES=OFF
+          cmake --build build/docs --target doc-check
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -44,6 +67,8 @@ jobs:
           path: ./docs-site/dist
 
   deploy:
+    # Pull requests only build the site; publishing happens from master.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
