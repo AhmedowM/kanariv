@@ -1,9 +1,9 @@
-#include <caudio/media/scan.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/media/scan.hpp>
+#include <kanariv/utils/error.hpp>
 #include <iostream>
 
 int main() {
-    auto result = caudio::media::scanTracksToVector(".");
+    auto result = kanariv::media::scanTracksToVector(".");
     if (!result) return 1;
     std::cout << "discovered " << result->size() << " tracks\n";
 }

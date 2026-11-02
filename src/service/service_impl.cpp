@@ -6,19 +6,19 @@
 
 #include <algorithm>
 #include <atomic>
-#include <caudio/config.hpp>
-#include <caudio/contracts/database.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/protocol.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/ipc/shm_status.hpp>
-#include <caudio/service/service.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/types/engine.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/log.hpp>
-#include <caudio/utils/result.hpp>
-#include <caudio/version.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/contracts/database.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/protocol.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/ipc/shm_status.hpp>
+#include <kanariv/service/service.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/version.hpp>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -43,14 +43,14 @@
 #include "service_paths.hpp"
 #include "service_status.hpp"
 
-namespace caudio::service {
+namespace kanariv::service {
 
 Service::~Service() {
     shutdown();
 }
 
 Service::ExpectedService Service::create(const ServiceConfig& cfg,
-                                         std::shared_ptr<caudio::contracts::IDatabase> db) {
+                                         std::shared_ptr<kanariv::contracts::IDatabase> db) {
     // Host-supplied runtime paths are authoritative over the inherited fields.
     // Desktop callers leave RuntimePaths empty and keep the existing behavior.
     ServiceConfig resolved = cfg;
@@ -85,8 +85,8 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
         // Single-instance enforcement via flock lock file
         lockPath = detail::lockPathForSocket(dbPath, spStr);
         if (!detail::tryAcquireLock(lockPath, lockFd)) {
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::AlreadyExists, "service already running (lock held)")};
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::AlreadyExists, "service already running (lock held)")};
         }
 
         // Check for stale PID file
@@ -97,7 +97,7 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
                 // Process is alive, daemon already running
                 detail::releaseLock(lockFd);
                 return std::unexpected{
-                    caudio::utils::makeError(caudio::utils::StatusCode::AlreadyExists,
+                    kanariv::utils::makeError(kanariv::utils::StatusCode::AlreadyExists,
                                              "service already running (pid alive)")};
             }
             // Stale PID - remove it
@@ -110,7 +110,7 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
             if (detail::probeSocketAlive(spStr)) {
                 detail::releaseLock(lockFd);
                 return std::unexpected{
-                    caudio::utils::makeError(caudio::utils::StatusCode::AlreadyExists,
+                    kanariv::utils::makeError(kanariv::utils::StatusCode::AlreadyExists,
                                              "service already running (pipe alive)")};
             }
         } else
@@ -121,7 +121,7 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
                 if (detail::probeSocketAlive(spStr)) {
                     detail::releaseLock(lockFd);
                     return std::unexpected{
-                        caudio::utils::makeError(caudio::utils::StatusCode::AlreadyExists,
+                        kanariv::utils::makeError(kanariv::utils::StatusCode::AlreadyExists,
                                                  "service already running (socket alive)")};
                 } else {
                     // Stale socket - remove
@@ -144,36 +144,36 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
     // in-process host without a log directory stays silent instead of
     // inferring a desktop location. A log that cannot be opened degrades to
     // silence — logging must never block startup.
-    caudio::utils::Logger::Callback logCb = [](caudio::utils::LogLevel, std::string_view) {};
+    kanariv::utils::Logger::Callback logCb = [](kanariv::utils::LogLevel, std::string_view) {};
     std::filesystem::path logFile;
     if (!cfg.runtime.logs.empty()) {
-        logFile = cfg.runtime.logs / "caudio.log";
+        logFile = cfg.runtime.logs / "kanariv.log";
     } else if (!inProcess) {
-        if (auto lp = caudio::config::logPathFor(dbPath))
+        if (auto lp = kanariv::config::logPathFor(dbPath))
             logFile = *lp;
     }
     if (!logFile.empty()) {
-        caudio::utils::FileSinkOptions sinkOpts;
+        kanariv::utils::FileSinkOptions sinkOpts;
         sinkOpts.teeStderr = cfg.logToStderr;
-        if (auto sink = caudio::utils::FileLogSink::open(logFile, sinkOpts))
+        if (auto sink = kanariv::utils::FileLogSink::open(logFile, sinkOpts))
             logCb = sink->callback();
     }
-    auto loggerPtr = std::make_unique<caudio::utils::Logger>(
-        std::move(logCb), static_cast<caudio::utils::LogLevel>(std::clamp(
-                              cfg.logLevel, std::to_underlying(caudio::utils::LogLevel::Trace),
-                              std::to_underlying(caudio::utils::LogLevel::Error))));
-    caudio::utils::Logger* logger = loggerPtr.get();
+    auto loggerPtr = std::make_unique<kanariv::utils::Logger>(
+        std::move(logCb), static_cast<kanariv::utils::LogLevel>(std::clamp(
+                              cfg.logLevel, std::to_underlying(kanariv::utils::LogLevel::Trace),
+                              std::to_underlying(kanariv::utils::LogLevel::Error))));
+    kanariv::utils::Logger* logger = loggerPtr.get();
 
     // create Engine
-    caudio::types::EngineConfig ecfg{};
+    kanariv::types::EngineConfig ecfg{};
     ecfg.logger = logger;
     ecfg.autoResumeOnPlay = cfg.autoResumeOnPlay;
-    auto engRes = caudio::engine::Engine::create(ecfg);
+    auto engRes = kanariv::engine::Engine::create(ecfg);
     if (!engRes) {
         detail::releaseLock(lockFd);
         return std::unexpected{engRes.error()};
     }
-    std::unique_ptr<caudio::engine::Engine> eng = std::move(engRes.value());
+    std::unique_ptr<kanariv::engine::Engine> eng = std::move(engRes.value());
     if (db) {
         if (auto e = eng->attachDatabase(db); !e) {
             detail::releaseLock(lockFd);
@@ -184,7 +184,7 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
     // IPC server / PID / shared status exist only for the desktop daemon.
     std::unique_ptr<IpcServer> srvPtr;
     std::string shmName;
-    std::unique_ptr<caudio::ipc::ShmStatusWriter> shmWriter;
+    std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter;
     std::string pidStr;
     if (!inProcess) {
         srvPtr = std::make_unique<IpcServer>();
@@ -214,15 +214,15 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
 
         // Create shared memory status block for event-driven status snapshots
         // Derive shm name via canonical hex8 (consistent with socket/pid/lock)
-        shmName = caudio::config::detail_paths::hex8ForDb(dbPath);
-        auto shmRes = caudio::ipc::ShmStatusWriter::create(shmName);
+        shmName = kanariv::config::detail_paths::hex8ForDb(dbPath);
+        auto shmRes = kanariv::ipc::ShmStatusWriter::create(shmName);
         if (!shmRes) {
             // Non-fatal: continue without shm (clients fall back to IPC status).
             loggerPtr->warn("shm status unavailable: {} (falling back to IPC status)",
                             shmRes.error().message);
         }
         if (shmRes)
-            shmWriter = std::make_unique<caudio::ipc::ShmStatusWriter>(std::move(*shmRes));
+            shmWriter = std::make_unique<kanariv::ipc::ShmStatusWriter>(std::move(*shmRes));
     }
 
     auto svc = std::unique_ptr<Service>(
@@ -230,34 +230,34 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
                     std::move(loggerPtr), pidPath, spStr, lockFd, std::move(shmWriter), shmName));
     if (inProcess) {
         svc->impl_->logger_->info("service started in-process version={} db={}",
-                                  caudio::version::version(), dbPath.generic_string());
+                                  kanariv::version::version(), dbPath.generic_string());
     } else {
         svc->impl_->logger_->info("daemon started version={} pid={} db={} socket={}",
-                                  caudio::version::version(), pidStr, dbPath.generic_string(),
+                                  kanariv::version::version(), pidStr, dbPath.generic_string(),
                                   spStr);
     }
     return svc;
 }
 
-Service::Service(const ServiceConfig& cfg, std::shared_ptr<caudio::contracts::IDatabase> db,
-                 std::unique_ptr<caudio::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
-                 std::unique_ptr<caudio::utils::Logger> logger, std::filesystem::path pidPath,
+Service::Service(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts::IDatabase> db,
+                 std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
+                 std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
                  std::string socketPath, std::intptr_t lockFd,
-                 std::unique_ptr<caudio::ipc::ShmStatusWriter> shmWriter, std::string shmName)
+                 std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName)
     : impl_(std::make_unique<Impl>(cfg, std::move(db), std::move(eng), std::move(srv),
                                    std::move(logger), std::move(pidPath), std::move(socketPath),
                                    lockFd, std::move(shmWriter), std::move(shmName))) {}
 
-Service::Impl::Impl(const ServiceConfig& cfg, std::shared_ptr<caudio::contracts::IDatabase> db,
-                    std::unique_ptr<caudio::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
-                    std::unique_ptr<caudio::utils::Logger> logger, std::filesystem::path pidPath,
+Service::Impl::Impl(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts::IDatabase> db,
+                    std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
+                    std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
                     std::string socketPath, std::intptr_t lockFd,
-                    std::unique_ptr<caudio::ipc::ShmStatusWriter> shmWriter, std::string shmName)
+                    std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName)
     : config_(cfg), db_(std::move(db)), engine_(std::move(eng)), server_(std::move(srv)),
       logger_(std::move(logger)), pidPath_(std::move(pidPath)), socketPath_(std::move(socketPath)),
       lockFd_(lockFd), shmWriter_(std::move(shmWriter)), shmName_(std::move(shmName)) {}
 
-caudio::utils::Expected<void> Service::run(std::stop_token st) {
+kanariv::utils::Expected<void> Service::run(std::stop_token st) {
     return impl_->run(st);
 }
 
@@ -265,14 +265,14 @@ bool Service::running() const noexcept {
     return impl_->running_.load(std::memory_order_acquire);
 }
 
-caudio::utils::Expected<void> Service::Impl::run(std::stop_token st) {
+kanariv::utils::Expected<void> Service::Impl::run(std::stop_token st) {
     if (running_.exchange(true)) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::State, "already running")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "already running")};
     }
     // build dispatcher
-    auto dispatcher = [this](const caudio::ipc::Command& cmd)
-        -> std::expected<caudio::ipc::Result, caudio::utils::Error> { return this->dispatch(cmd); };
+    auto dispatcher = [this](const kanariv::ipc::Command& cmd)
+        -> std::expected<kanariv::ipc::Result, kanariv::utils::Error> { return this->dispatch(cmd); };
     if (server_)
         server_->run(st, dispatcher);
     // block until stop requested
@@ -337,15 +337,15 @@ void Service::Impl::shutdown() {
     // shm handle will be cleaned up via RAII
 }
 
-caudio::contracts::IDatabase& Service::db() noexcept {
+kanariv::contracts::IDatabase& Service::db() noexcept {
     return *impl_->db_;
 }
 
-caudio::utils::Expected<void>
-Service::attachDatabase(std::shared_ptr<caudio::contracts::IDatabase> db) {
+kanariv::utils::Expected<void>
+Service::attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db) {
     if (!db || !db->isOpen()) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "null db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "null db")};
     }
     impl_->db_ = std::move(db);
     return engine().attachDatabase(impl_->db_);
@@ -354,7 +354,7 @@ Service::attachDatabase(std::shared_ptr<caudio::contracts::IDatabase> db) {
  * @brief Access the audio engine instance.
  * @return Reference to the Engine.
  */
-caudio::engine::Engine& Service::engine() noexcept {
+kanariv::engine::Engine& Service::engine() noexcept {
     return *impl_->engine_;
 }
 /**
@@ -375,7 +375,7 @@ const std::string& Service::shmName() const noexcept {
  * @brief Get the shared memory status writer (if available).
  * @return Pointer to ShmStatusWriter or nullptr if SHM creation failed.
  */
-caudio::ipc::ShmStatusWriter* Service::shmWriter() noexcept {
+kanariv::ipc::ShmStatusWriter* Service::shmWriter() noexcept {
     return impl_->shmWriter_.get();
 }
 
@@ -401,7 +401,7 @@ void Service::Impl::updateShmStatus() {
         int64_t aq = eng.activeQueueId();
         qSize = db_->queueCount(aq);
     }
-    caudio::ipc::ShmStatusUpdate u{};
+    kanariv::ipc::ShmStatusUpdate u{};
     u.position = eng.position();
     u.volume = eng.volume();
     u.muted = (eng.volume() == 0.0f);
@@ -416,7 +416,7 @@ void Service::Impl::updateShmStatus() {
     }
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error> Service::Impl::statusResult() {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::statusResult() {
     auto st = detail::buildStatus(*engine_, *db_);
     if (!st)
         return std::unexpected{st.error()};
@@ -424,21 +424,21 @@ std::expected<caudio::ipc::Result, caudio::utils::Error> Service::Impl::statusRe
     // observe the latest status.
     status_seq_.fetch_add(1, std::memory_order_release);
     status_cv_.notify_all();
-    return caudio::ipc::Result{*st};
+    return kanariv::ipc::Result{*st};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::dispatch(const caudio::ipc::Command& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::dispatch(const kanariv::ipc::Command& cmd) {
     // Per-command trace at debug: what the daemon was asked to do. Guarded
     // by enabled() (dump() walks the whole command) and try/catch (a log
     // line must never break dispatch on adversarial input).
-    if (logger_ && logger_->enabled(caudio::utils::LogLevel::Debug)) {
+    if (logger_ && logger_->enabled(kanariv::utils::LogLevel::Debug)) {
         try {
-            logger_->debug("dispatch {}", caudio::ipc::toJson(cmd).dump());
+            logger_->debug("dispatch {}", kanariv::ipc::toJson(cmd).dump());
         } catch (...) {
         }
     }
     return std::visit(DispatchVisitor{this}, cmd);
 }
 
-} // namespace caudio::service
+} // namespace kanariv::service

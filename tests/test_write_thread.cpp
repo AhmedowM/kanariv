@@ -2,9 +2,9 @@
 
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <chrono>
 #include <expected>
 #include <string>
@@ -14,21 +14,21 @@
 #include "../src/db/write_thread.hpp"
 #include "../src/utils/mpsc_queue.hpp"
 
-using namespace caudio::utils;
+using namespace kanariv::utils;
 
 TEST_CASE("WriterThread bounded full BUSY and flush timeout 200ms", "[db][writer_thread]") {
     // Use MpscQueue directly to verify Bounded full -> Busy
-    caudio::utils::MpscQueue<int> q(2);
+    kanariv::utils::MpscQueue<int> q(2);
     REQUIRE(q.push(1).has_value());
     REQUIRE(q.push(2).has_value());
     auto r = q.push(3);
     REQUIRE(!r.has_value());
-    REQUIRE(r.error().code == caudio::utils::StatusCode::Busy);
+    REQUIRE(r.error().code == kanariv::utils::StatusCode::Busy);
 
     // Real WriterThread: capacity 2, do NOT open so queue never drains -> flush should timeout
     // after ~200ms with Busy
     {
-        caudio::db::WriterThread wt(2);
+        kanariv::db::WriterThread wt(2);
         // push two ops without opening thread -> queue stays full
         // need to construct WriteOperation-like pushes via WriterThread::push
         // Use sql strings; stmt nullptr
@@ -38,13 +38,13 @@ TEST_CASE("WriterThread bounded full BUSY and flush timeout 200ms", "[db][writer
         REQUIRE(pr2.has_value());
         auto pr3 = wt.push("SELECT 1;", {});
         REQUIRE(!pr3.has_value());
-        REQUIRE(pr3.error().code == caudio::utils::StatusCode::Busy);
+        REQUIRE(pr3.error().code == kanariv::utils::StatusCode::Busy);
         auto start = std::chrono::steady_clock::now();
         auto fr = wt.flush();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start);
         REQUIRE(!fr.has_value());
-        REQUIRE(fr.error().code == caudio::utils::StatusCode::Busy);
+        REQUIRE(fr.error().code == kanariv::utils::StatusCode::Busy);
         REQUIRE(elapsed.count() >= 190);
         REQUIRE(elapsed.count() < 600);
         // after draining by close, flush should succeed quickly
@@ -55,7 +55,7 @@ TEST_CASE("WriterThread bounded full BUSY and flush timeout 200ms", "[db][writer
     }
     // Flush succeeds when queue empty
     {
-        caudio::db::WriterThread wt2(4);
+        kanariv::db::WriterThread wt2(4);
         auto start = std::chrono::steady_clock::now();
         auto fr = wt2.flush();
         REQUIRE(fr.has_value());
@@ -70,18 +70,18 @@ TEST_CASE("WriterThread bounded full BUSY and flush timeout 200ms", "[db][writer
         // thread must run on a handle owned by the SQLite copy the db
         // component links. Shared builds enforce one copy via sqlite3.dll;
         // the ownership rule keeps the test valid for static builds too.
-        auto opened = caudio::db::Database::open(":memory:");
+        auto opened = kanariv::db::Database::open(":memory:");
         REQUIRE(opened.has_value());
-        sqlite3* db = caudio::db::DatabaseAccess::handle(**opened);
+        sqlite3* db = kanariv::db::DatabaseAccess::handle(**opened);
         REQUIRE(db != nullptr);
-        caudio::db::WriterThread wt(4);
+        kanariv::db::WriterThread wt(4);
         wt.open(db);
         auto prCreate = wt.push("CREATE TABLE t(id INTEGER)", {});
         REQUIRE(prCreate.has_value());
         // push an insert using SQL string (stmt=nullptr)
         std::atomic<bool> cbCalled{false};
         auto pr = wt.push("INSERT INTO t(id) VALUES (1)",
-                          [&](std::expected<void, caudio::utils::Error> e) {
+                          [&](std::expected<void, kanariv::utils::Error> e) {
                               cbCalled.store(true);
                               (void)e;
                           });

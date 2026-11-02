@@ -1,6 +1,6 @@
 # FreeBSD builds (manual).
 #
-# Verifies caudio builds on FreeBSD with both GCC and Clang, on x64 and
+# Verifies kanariv builds on FreeBSD with both GCC and Clang, on x64 and
 # arm64. Downloads the trimmed FFmpeg asset inside the VM when available
 # for the platform/arch, otherwise falls back to the system FFmpeg package.
 #
@@ -29,7 +29,7 @@ jobs:
         compiler: [gcc, clang]
         arch: [x86_64, arm64]
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
       DEPS_REPO: "AhmedowM/deps-private"
     steps:
       - name: Checkout

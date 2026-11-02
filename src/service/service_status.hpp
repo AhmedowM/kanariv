@@ -2,23 +2,23 @@
 
 /**
  * @file service_status.hpp
- * @brief Daemon status snapshot builder for caudio.service (internal).
- * @ingroup caudio_service
+ * @brief Daemon status snapshot builder for kanariv.service (internal).
+ * @ingroup kanariv_service
  */
 
-#include <caudio/ipc/result.hpp>
-#include <caudio/utils.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils.hpp>
 #include <expected>
 
-namespace caudio::engine {
+namespace kanariv::engine {
 class Engine;
-} // namespace caudio::engine
+} // namespace kanariv::engine
 
-namespace caudio::contracts {
+namespace kanariv::contracts {
 class IDatabase;
-} // namespace caudio::contracts
+} // namespace kanariv::contracts
 
-namespace caudio::service::detail {
+namespace kanariv::service::detail {
 
 /**
  * @brief Build a Status object from Engine and Database.
@@ -28,7 +28,7 @@ namespace caudio::service::detail {
  * @param db Database reference.
  * @return Status on success, Error on failure.
  */
-std::expected<caudio::ipc::Status, caudio::utils::Error>
-buildStatus(caudio::engine::Engine& eng, caudio::contracts::IDatabase& db);
+std::expected<kanariv::ipc::Status, kanariv::utils::Error>
+buildStatus(kanariv::engine::Engine& eng, kanariv::contracts::IDatabase& db);
 
-} // namespace caudio::service::detail
+} // namespace kanariv::service::detail

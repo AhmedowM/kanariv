@@ -1,12 +1,12 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/utils/ring.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <cstddef>
 #include <span>
 #include <stop_token>
 #include <thread>
-namespace caudio::utils::test {
+namespace kanariv::utils::test {
 
 bool ring_write_read_wrap() {
     SpscRing<float> r{8192, 2};
@@ -233,9 +233,9 @@ bool ring_concurrent_spsc() {
     return true;
 }
 
-} // namespace caudio::utils::test
+} // namespace kanariv::utils::test
 
-using namespace caudio::utils::test;
+using namespace kanariv::utils::test;
 
 TEST_CASE("SpscRing write/read wrap", "[utils][ring]") {
     REQUIRE(ring_write_read_wrap());

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Intent-driven configure/build/test helper for caudio.
+"""Intent-driven configure/build/test helper for kanariv.
 
 Replaces the compiler x generator x variant preset fan-out with one intent
 plus explicit environment options. The script only resolves the command line
@@ -46,76 +46,76 @@ INTENTS = (
 
 DEFAULT_CACHE = {
     "CMAKE_BUILD_TYPE": "Debug",
-    "CAUDIO_BUILD_CLI": "ON",
-    "CAUDIO_ENABLE_TESTS": "OFF",
-    "CAUDIO_ENABLE_EXAMPLES": "OFF",
-    "CAUDIO_ENABLE_MODULES": "OFF",
-    "CAUDIO_ENABLE_SANITIZERS": "OFF",
-    "CAUDIO_BUILD_DOCS": "OFF",
-    "CAUDIO_TEST_NOAUDIO": "OFF",
-    "CAUDIO_REQUIRE_GIT_VERSION": "OFF",
-    "CAUDIO_USE_TRIMMED_FFMPEG": "OFF",
-    "CAUDIO_ALLOW_UNSUPPORTED_COMPILER": "OFF",
-    "CAUDIO_LINK_SECTION_GC": "OFF",
-    "CAUDIO_BUILD_SHARED": "ON",
+    "KANARIV_BUILD_CLI": "ON",
+    "KANARIV_ENABLE_TESTS": "OFF",
+    "KANARIV_ENABLE_EXAMPLES": "OFF",
+    "KANARIV_ENABLE_MODULES": "OFF",
+    "KANARIV_ENABLE_SANITIZERS": "OFF",
+    "KANARIV_BUILD_DOCS": "OFF",
+    "KANARIV_TEST_NOAUDIO": "OFF",
+    "KANARIV_REQUIRE_GIT_VERSION": "OFF",
+    "KANARIV_USE_TRIMMED_FFMPEG": "OFF",
+    "KANARIV_ALLOW_UNSUPPORTED_COMPILER": "OFF",
+    "KANARIV_LINK_SECTION_GC": "OFF",
+    "KANARIV_BUILD_SHARED": "ON",
     "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "OFF",
 }
 
 INTENT_CACHE = {
     "dev": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CAUDIO_ENABLE_TESTS": "ON",
-        "CAUDIO_ENABLE_EXAMPLES": "ON",
+        "KANARIV_ENABLE_TESTS": "ON",
+        "KANARIV_ENABLE_EXAMPLES": "ON",
     },
     "docs": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CAUDIO_BUILD_DOCS": "ON",
-        "CAUDIO_BUILD_CLI": "OFF",
-        "CAUDIO_ENABLE_TESTS": "OFF",
-        "CAUDIO_ENABLE_EXAMPLES": "OFF",
+        "KANARIV_BUILD_DOCS": "ON",
+        "KANARIV_BUILD_CLI": "OFF",
+        "KANARIV_ENABLE_TESTS": "OFF",
+        "KANARIV_ENABLE_EXAMPLES": "OFF",
     },
     "ci": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CAUDIO_ENABLE_TESTS": "ON",
-        "CAUDIO_TEST_NOAUDIO": "ON",
+        "KANARIV_ENABLE_TESTS": "ON",
+        "KANARIV_TEST_NOAUDIO": "ON",
     },
     "release": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CAUDIO_REQUIRE_GIT_VERSION": "ON",
+        "KANARIV_REQUIRE_GIT_VERSION": "ON",
     },
     "release-lto": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CAUDIO_REQUIRE_GIT_VERSION": "ON",
+        "KANARIV_REQUIRE_GIT_VERSION": "ON",
         "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON",
     },
     "minsize": {"CMAKE_BUILD_TYPE": "MinSizeRel"},
     "minsize-lto": {
         "CMAKE_BUILD_TYPE": "MinSizeRel",
         "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON",
-        "CAUDIO_LINK_SECTION_GC": "ON",
+        "KANARIV_LINK_SECTION_GC": "ON",
     },
     "modules": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CAUDIO_ENABLE_MODULES": "ON",
-        "CAUDIO_BUILD_CLI": "OFF",
-        "CAUDIO_ENABLE_TESTS": "OFF",
-        "CAUDIO_ENABLE_EXAMPLES": "OFF",
+        "KANARIV_ENABLE_MODULES": "ON",
+        "KANARIV_BUILD_CLI": "OFF",
+        "KANARIV_ENABLE_TESTS": "OFF",
+        "KANARIV_ENABLE_EXAMPLES": "OFF",
     },
     "android": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CAUDIO_BUILD_CLI": "OFF",
-        "CAUDIO_BUILD_STATIC": "OFF",
-        "CAUDIO_ENABLE_TESTS": "OFF",
-        "CAUDIO_ENABLE_EXAMPLES": "OFF",
-        "CAUDIO_ENABLE_MODULES": "OFF",
-        "CAUDIO_BUILD_DOCS": "OFF",
-        "CAUDIO_BUILD_SHARED": "ON",
+        "KANARIV_BUILD_CLI": "OFF",
+        "KANARIV_BUILD_STATIC": "OFF",
+        "KANARIV_ENABLE_TESTS": "OFF",
+        "KANARIV_ENABLE_EXAMPLES": "OFF",
+        "KANARIV_ENABLE_MODULES": "OFF",
+        "KANARIV_BUILD_DOCS": "OFF",
+        "KANARIV_BUILD_SHARED": "ON",
     },
     "default": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CAUDIO_BUILD_CLI": "ON",
-        "CAUDIO_ENABLE_TESTS": "OFF",
-        "CAUDIO_ENABLE_EXAMPLES": "OFF",
+        "KANARIV_BUILD_CLI": "ON",
+        "KANARIV_ENABLE_TESTS": "OFF",
+        "KANARIV_ENABLE_EXAMPLES": "OFF",
     },
 }
 
@@ -335,7 +335,7 @@ def capture_vcvars_env(vcvars: Path, vcvars_args: list[str],
     if vcvars_args:
         invocation += " " + " ".join(vcvars_args)
     try:
-        with tempfile.TemporaryDirectory(prefix="caudio-vcvars-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="kanariv-vcvars-") as tmp:
             script = Path(tmp) / "capture.bat"
             script.write_text(
                 f"@echo off\r\n{invocation} >nul 2>&1\r\nset\r\n",
@@ -407,34 +407,34 @@ def build_cache(args: argparse.Namespace, intent: str,
     cache.update(INTENT_CACHE[intent])
 
     if args.no_cli:
-        cache["CAUDIO_BUILD_CLI"] = "OFF"
+        cache["KANARIV_BUILD_CLI"] = "OFF"
     if args.no_tests:
-        cache["CAUDIO_ENABLE_TESTS"] = "OFF"
+        cache["KANARIV_ENABLE_TESTS"] = "OFF"
     if args.no_examples:
-        cache["CAUDIO_ENABLE_EXAMPLES"] = "OFF"
+        cache["KANARIV_ENABLE_EXAMPLES"] = "OFF"
     if args.docs:
-        cache["CAUDIO_BUILD_DOCS"] = "ON"
+        cache["KANARIV_BUILD_DOCS"] = "ON"
     if args.no_audio:
-        cache["CAUDIO_TEST_NOAUDIO"] = "ON"
+        cache["KANARIV_TEST_NOAUDIO"] = "ON"
     if args.sanitizers:
-        cache["CAUDIO_ENABLE_SANITIZERS"] = "ON"
+        cache["KANARIV_ENABLE_SANITIZERS"] = "ON"
     if args.modules:
-        cache["CAUDIO_ENABLE_MODULES"] = "ON"
+        cache["KANARIV_ENABLE_MODULES"] = "ON"
     if args.trimmed_ffmpeg:
-        cache["CAUDIO_USE_TRIMMED_FFMPEG"] = "ON"
+        cache["KANARIV_USE_TRIMMED_FFMPEG"] = "ON"
     if args.static:
-        cache["CAUDIO_BUILD_STATIC"] = "ON"
+        cache["KANARIV_BUILD_STATIC"] = "ON"
     if args.require_git_version:
-        cache["CAUDIO_REQUIRE_GIT_VERSION"] = "ON"
+        cache["KANARIV_REQUIRE_GIT_VERSION"] = "ON"
     if args.allow_unsupported_compiler:
-        cache["CAUDIO_ALLOW_UNSUPPORTED_COMPILER"] = "ON"
+        cache["KANARIV_ALLOW_UNSUPPORTED_COMPILER"] = "ON"
 
     if args.extra_cxx_flags:
-        cache["CAUDIO_EXTRA_CXX_FLAGS"] = args.extra_cxx_flags
+        cache["KANARIV_EXTRA_CXX_FLAGS"] = args.extra_cxx_flags
     if args.extra_c_flags:
-        cache["CAUDIO_EXTRA_C_FLAGS"] = args.extra_c_flags
+        cache["KANARIV_EXTRA_C_FLAGS"] = args.extra_c_flags
     if args.extra_link_flags:
-        cache["CAUDIO_EXTRA_LINK_FLAGS"] = args.extra_link_flags
+        cache["KANARIV_EXTRA_LINK_FLAGS"] = args.extra_link_flags
     return cache
 
 
@@ -460,7 +460,7 @@ def configure_command(args: argparse.Namespace, toolchain: str,
     else:
         cmd += [
             f"-DCMAKE_TOOLCHAIN_FILE={root / 'cmake' / 'toolchain.cmake'}",
-            f"-DCAUDIO_TOOLCHAIN={toolchain}",
+            f"-DKANARIV_TOOLCHAIN={toolchain}",
         ]
     for key, value in cache.items():
         cmd.append(f"-D{key}={value}")
@@ -543,7 +543,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         argv = sys.argv[1:]
     argv = normalize_argv(argv)
     parser = argparse.ArgumentParser(
-        description="Configure caudio from an intent plus explicit environment.",
+        description="Configure kanariv from an intent plus explicit environment.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "intents: " + ", ".join(INTENTS) + "\n"
@@ -583,39 +583,39 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         help="vcvars batch file or its directory (MSVC + Ninja)")
     parser.add_argument("--ffmpeg-root", default=None, metavar="PATH",
                         help="value for -DFFmpeg_ROOT (trimmed CI uses "
-                             "$CAUDIO_TRIMMED_ROOT)")
+                             "$KANARIV_TRIMMED_ROOT)")
     parser.add_argument("--define", action="append", default=[],
                         metavar="KEY=VALUE",
                         help="extra -D cache definition (repeatable)")
     parser.add_argument("--extra-cxx-flags", default="",
-                        help="CAUDIO_EXTRA_CXX_FLAGS")
+                        help="KANARIV_EXTRA_CXX_FLAGS")
     parser.add_argument("--extra-c-flags", default="",
-                        help="CAUDIO_EXTRA_C_FLAGS")
+                        help="KANARIV_EXTRA_C_FLAGS")
     parser.add_argument("--extra-link-flags", default="",
-                        help="CAUDIO_EXTRA_LINK_FLAGS")
+                        help="KANARIV_EXTRA_LINK_FLAGS")
 
     parser.add_argument("--no-cli", action="store_true",
-                        help="CAUDIO_BUILD_CLI=OFF")
+                        help="KANARIV_BUILD_CLI=OFF")
     parser.add_argument("--no-tests", action="store_true",
-                        help="CAUDIO_ENABLE_TESTS=OFF")
+                        help="KANARIV_ENABLE_TESTS=OFF")
     parser.add_argument("--no-examples", action="store_true",
-                        help="CAUDIO_ENABLE_EXAMPLES=OFF")
+                        help="KANARIV_ENABLE_EXAMPLES=OFF")
     parser.add_argument("--docs", action="store_true",
-                        help="CAUDIO_BUILD_DOCS=ON")
+                        help="KANARIV_BUILD_DOCS=ON")
     parser.add_argument("--no-audio", action="store_true",
-                        help="CAUDIO_TEST_NOAUDIO=ON")
+                        help="KANARIV_TEST_NOAUDIO=ON")
     parser.add_argument("--sanitizers", action="store_true",
-                        help="CAUDIO_ENABLE_SANITIZERS=ON")
+                        help="KANARIV_ENABLE_SANITIZERS=ON")
     parser.add_argument("--modules", action="store_true",
-                        help="CAUDIO_ENABLE_MODULES=ON (does not disable the CLI)")
+                        help="KANARIV_ENABLE_MODULES=ON (does not disable the CLI)")
     parser.add_argument("--trimmed-ffmpeg", action="store_true",
-                        help="CAUDIO_USE_TRIMMED_FFMPEG=ON")
+                        help="KANARIV_USE_TRIMMED_FFMPEG=ON")
     parser.add_argument("--static", action="store_true",
-                        help="CAUDIO_BUILD_STATIC=ON (build static libs alongside shared)")
+                        help="KANARIV_BUILD_STATIC=ON (build static libs alongside shared)")
     parser.add_argument("--require-git-version", action="store_true",
-                        help="CAUDIO_REQUIRE_GIT_VERSION=ON")
+                        help="KANARIV_REQUIRE_GIT_VERSION=ON")
     parser.add_argument("--allow-unsupported-compiler", action="store_true",
-                        help="CAUDIO_ALLOW_UNSUPPORTED_COMPILER=ON")
+                        help="KANARIV_ALLOW_UNSUPPORTED_COMPILER=ON")
 
     parser.add_argument("--print", action="store_true",
                         help="print the configure command and exit")

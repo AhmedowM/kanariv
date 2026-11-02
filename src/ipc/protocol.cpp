@@ -1,14 +1,14 @@
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/protocol.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/types/format.hpp>
-#include <caudio/types/parse.hpp>
-#include <caudio/types/record.hpp>
-#include <caudio/types/wire.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/record_json.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/protocol.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/types/format.hpp>
+#include <kanariv/types/parse.hpp>
+#include <kanariv/types/record.hpp>
+#include <kanariv/types/wire.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/record_json.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -23,15 +23,15 @@
 #include <variant>
 #include <vector>
 
-namespace caudio::ipc::detail {
+namespace kanariv::ipc::detail {
 
-std::string resultCodeToString(caudio::utils::StatusCode r) {
-    return std::string(caudio::utils::toString(r));
+std::string resultCodeToString(kanariv::utils::StatusCode r) {
+    return std::string(kanariv::utils::toString(r));
 }
 
-std::expected<caudio::utils::StatusCode, caudio::utils::Error>
+std::expected<kanariv::utils::StatusCode, kanariv::utils::Error>
 resultCodeFromString(std::string_view sv) {
-    using R = caudio::utils::StatusCode;
+    using R = kanariv::utils::StatusCode;
     if (sv == "Ok")
         return R::Ok;
     if (sv == "InvalidArg")
@@ -58,15 +58,15 @@ resultCodeFromString(std::string_view sv) {
         return R::Corrupt;
     if (sv == "NoSpace")
         return R::NoSpace;
-    return std::unexpected{caudio::utils::makeError(R::InvalidArg, "unknown Result code")};
+    return std::unexpected{kanariv::utils::makeError(R::InvalidArg, "unknown Result code")};
 }
 
-// Track conversion lives in caudio::utils (utils/record_json.hpp) -- single
+// Track conversion lives in kanariv::utils (utils/record_json.hpp) -- single
 // definition shared by db export/import and the IPC codec.
 // (The former ipc::detail subset is deleted; wire readers tolerate the
 // fuller db field set: all reads are contains-guarded.)
 
-Json playlistToJson(const caudio::types::Playlist& p) {
+Json playlistToJson(const kanariv::types::Playlist& p) {
     Json j;
     j["id"] = p.id;
     j["name"] = p.name;
@@ -78,9 +78,9 @@ Json playlistToJson(const caudio::types::Playlist& p) {
     return j;
 }
 
-std::expected<caudio::types::Playlist, caudio::utils::Error> playlistFromJson(const Json& j) {
+std::expected<kanariv::types::Playlist, kanariv::utils::Error> playlistFromJson(const Json& j) {
     try {
-        caudio::types::Playlist p{};
+        kanariv::types::Playlist p{};
         if (j.contains("id") && j["id"].isNumber())
             p.id = j["id"].get<int64_t>();
         if (j.contains("name") && j["name"].isString())
@@ -98,11 +98,11 @@ std::expected<caudio::types::Playlist, caudio::utils::Error> playlistFromJson(co
         return p;
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
-Json errorToJson(const caudio::utils::Error& e) {
+Json errorToJson(const kanariv::utils::Error& e) {
     Json j;
     j["type"] = "Error";
     j["code"] = resultCodeToString(e.code);
@@ -111,7 +111,7 @@ Json errorToJson(const caudio::utils::Error& e) {
     return j;
 }
 
-std::expected<caudio::utils::Error, caudio::utils::Error> errorFromJson(const Json& j) {
+std::expected<kanariv::utils::Error, kanariv::utils::Error> errorFromJson(const Json& j) {
     try {
         std::string codeStr;
         std::string msg;
@@ -121,15 +121,15 @@ std::expected<caudio::utils::Error, caudio::utils::Error> errorFromJson(const Js
             int v = j["code_value"].get<int>();
             // map via to_underlying comparison
             for (auto c :
-                 {caudio::utils::StatusCode::Ok, caudio::utils::StatusCode::InvalidArg,
-                  caudio::utils::StatusCode::NotFound, caudio::utils::StatusCode::Unsupported,
-                  caudio::utils::StatusCode::Io, caudio::utils::StatusCode::Device,
-                  caudio::utils::StatusCode::State, caudio::utils::StatusCode::NoMem,
-                  caudio::utils::StatusCode::Internal, caudio::utils::StatusCode::AlreadyExists,
-                  caudio::utils::StatusCode::Busy, caudio::utils::StatusCode::Corrupt,
-                  caudio::utils::StatusCode::NoSpace}) {
+                 {kanariv::utils::StatusCode::Ok, kanariv::utils::StatusCode::InvalidArg,
+                  kanariv::utils::StatusCode::NotFound, kanariv::utils::StatusCode::Unsupported,
+                  kanariv::utils::StatusCode::Io, kanariv::utils::StatusCode::Device,
+                  kanariv::utils::StatusCode::State, kanariv::utils::StatusCode::NoMem,
+                  kanariv::utils::StatusCode::Internal, kanariv::utils::StatusCode::AlreadyExists,
+                  kanariv::utils::StatusCode::Busy, kanariv::utils::StatusCode::Corrupt,
+                  kanariv::utils::StatusCode::NoSpace}) {
                 if (std::to_underlying(c) == v) {
-                    codeStr = std::string(caudio::utils::toString(c));
+                    codeStr = std::string(kanariv::utils::toString(c));
                     break;
                 }
             }
@@ -141,16 +141,16 @@ std::expected<caudio::utils::Error, caudio::utils::Error> errorFromJson(const Js
         auto rc = resultCodeFromString(codeStr);
         if (!rc)
             return std::unexpected{rc.error()};
-        return caudio::utils::Error{*rc, msg};
+        return kanariv::utils::Error{*rc, msg};
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
-} // namespace caudio::ipc::detail
+} // namespace kanariv::ipc::detail
 
-namespace caudio::ipc {
+namespace kanariv::ipc {
 
 Json toJson(const Command& cmd) {
     return std::visit(
@@ -432,11 +432,11 @@ Json toJson(const Command& cmd) {
         cmd);
 }
 
-std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
+std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
     try {
         if (!j.contains("type") || !j["type"].isString()) {
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "missing type")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "missing type")};
         }
         std::string t = j["type"].get<std::string>();
         if (t == "Play")
@@ -553,10 +553,10 @@ std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
         if (t == "QueueRepeat") {
             QueueRepeat v{};
             if (j.contains("mode") && !j["mode"].isNull() && j["mode"].isString()) {
-                auto m = caudio::types::parseRepeatMode(j["mode"].get<std::string>());
+                auto m = kanariv::types::parseRepeatMode(j["mode"].get<std::string>());
                 if (!m)
-                    return std::unexpected{caudio::utils::makeError(
-                        caudio::utils::StatusCode::InvalidArg, "unknown RepeatMode")};
+                    return std::unexpected{kanariv::utils::makeError(
+                        kanariv::utils::StatusCode::InvalidArg, "unknown RepeatMode")};
                 v.mode = *m;
             }
             return Command{std::move(v)};
@@ -850,11 +850,11 @@ std::expected<Command, caudio::utils::Error> commandFromJson(const Json& j) {
                 tr.rating = j["rating"].get<int32_t>();
             return Command{std::move(tr)};
         }
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "unknown Command type: " + t)};
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
@@ -887,7 +887,7 @@ Json toJson(const Result& r) {
                 j["type"] = "QueueTracks";
                 j["tracks"] = Json::array();
                 for (const auto& t : v.tracks)
-                    j["tracks"].push_back(caudio::utils::trackToJson(t));
+                    j["tracks"].push_back(kanariv::utils::trackToJson(t));
                 return j;
             } else if constexpr (std::is_same_v<T, Queues>) {
                 Json j;
@@ -921,7 +921,7 @@ Json toJson(const Result& r) {
                 j["vol"] = v.vol;
                 j["muted"] = v.muted;
                 return j;
-            } else if constexpr (std::is_same_v<T, caudio::types::LibraryStats>) {
+            } else if constexpr (std::is_same_v<T, kanariv::types::LibraryStats>) {
                 Json j;
                 j["type"] = "LibraryStats";
                 j["tracks"] = v.tracks;
@@ -932,7 +932,7 @@ Json toJson(const Result& r) {
                 if (v.top_tracks) {
                     j["top_tracks"] = Json::array();
                     for (const auto& t : *v.top_tracks)
-                        j["top_tracks"].push_back(caudio::utils::trackToJson(t));
+                        j["top_tracks"].push_back(kanariv::utils::trackToJson(t));
                 }
                 if (v.top_albums) {
                     j["top_albums"] = Json::array();
@@ -970,7 +970,7 @@ Json toJson(const Result& r) {
                 j["type"] = "Tracks";
                 j["tracks"] = Json::array();
                 for (const auto& t : v.tracks)
-                    j["tracks"].push_back(caudio::utils::trackToJson(t));
+                    j["tracks"].push_back(kanariv::utils::trackToJson(t));
                 return j;
             } else if constexpr (std::is_same_v<T, SearchResults>) {
                 Json j;
@@ -978,7 +978,7 @@ Json toJson(const Result& r) {
                 j["query"] = v.query;
                 j["tracks"] = Json::array();
                 for (const auto& t : v.tracks)
-                    j["tracks"].push_back(caudio::utils::trackToJson(t));
+                    j["tracks"].push_back(kanariv::utils::trackToJson(t));
                 return j;
             } else if constexpr (std::is_same_v<T, ScanReport>) {
                 Json j;
@@ -997,7 +997,7 @@ Json toJson(const Result& r) {
                 j["type"] = "PlaylistData";
                 j["tracks"] = Json::array();
                 for (const auto& t : v.tracks)
-                    j["tracks"].push_back(caudio::utils::trackToJson(t));
+                    j["tracks"].push_back(kanariv::utils::trackToJson(t));
                 j["format"] = v.format;
                 return j;
             } else if constexpr (std::is_same_v<T, PlaylistCreated>) {
@@ -1013,7 +1013,7 @@ Json toJson(const Result& r) {
                 j["name"] = v.name;
                 j["tracks"] = Json::array();
                 for (const auto& t : v.tracks)
-                    j["tracks"].push_back(caudio::utils::trackToJson(t));
+                    j["tracks"].push_back(kanariv::utils::trackToJson(t));
                 j["matched"] = v.matched;
                 j["skipped"] = v.skipped;
                 j["duplicates"] = v.duplicates;
@@ -1024,7 +1024,7 @@ Json toJson(const Result& r) {
                 j["tracks_checked"] = v.tracks_checked;
                 j["missing_tracks"] = Json::array();
                 for (const auto& t : v.missing_tracks)
-                    j["missing_tracks"].push_back(caudio::utils::trackToJson(t));
+                    j["missing_tracks"].push_back(kanariv::utils::trackToJson(t));
                 j["duplicate_groups"] = v.duplicate_groups;
                 j["duplicate_tracks"] = v.duplicate_tracks;
                 return j;
@@ -1048,7 +1048,7 @@ Json toJson(const Result& r) {
             } else if constexpr (std::is_same_v<T, SingleTrack>) {
                 Json j;
                 j["type"] = "SingleTrack";
-                j["track"] = caudio::utils::trackToJson(v.track);
+                j["track"] = kanariv::utils::trackToJson(v.track);
                 if (!v.cover_mime.empty())
                     j["cover_mime"] = v.cover_mime;
                 if (!v.cover_data.empty())
@@ -1057,7 +1057,7 @@ Json toJson(const Result& r) {
             } else if constexpr (std::is_same_v<T, TrackInfo>) {
                 Json j;
                 j["type"] = "TrackInfo";
-                j["track"] = caudio::utils::trackToJson(v.track);
+                j["track"] = kanariv::utils::trackToJson(v.track);
                 j["play_count"] = v.play_count;
                 j["last_played"] = v.last_played;
                 return j;
@@ -1126,7 +1126,7 @@ Json toJson(const Result& r) {
                 Json j;
                 j["type"] = "Empty";
                 return j;
-            } else if constexpr (std::is_same_v<T, caudio::utils::Error>) {
+            } else if constexpr (std::is_same_v<T, kanariv::utils::Error>) {
                 return detail::errorToJson(v);
             } else {
                 Json j;
@@ -1137,24 +1137,24 @@ Json toJson(const Result& r) {
         r);
 }
 
-std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
+std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
     try {
         if (!j.contains("type") || !j["type"].isString()) {
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                             "missing Result type")};
         }
         std::string t = j["type"].get<std::string>();
         if (t == "Status") {
             Status s{};
             if (j.contains("state") && j["state"].isString()) {
-                auto ps = caudio::types::parsePlaybackState(j["state"].get<std::string>());
+                auto ps = kanariv::types::parsePlaybackState(j["state"].get<std::string>());
                 if (!ps)
-                    return std::unexpected{caudio::utils::makeError(
-                        caudio::utils::StatusCode::InvalidArg, "unknown PlaybackState")};
+                    return std::unexpected{kanariv::utils::makeError(
+                        kanariv::utils::StatusCode::InvalidArg, "unknown PlaybackState")};
                 s.state = *ps;
             } else if (j.contains("state_value") && j["state_value"].isNumber()) {
                 int v = j["state_value"].get<int>();
-                s.state = static_cast<caudio::types::PlaybackState>(v);
+                s.state = static_cast<kanariv::types::PlaybackState>(v);
             }
             if (j.contains("pos") && j["pos"].isNumber())
                 s.pos = j["pos"].get<double>();
@@ -1167,14 +1167,14 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
             if (j.contains("shuffle") && j["shuffle"].isBoolean())
                 s.shuffle = j["shuffle"].get<bool>();
             if (j.contains("repeat") && j["repeat"].isString()) {
-                auto rm = caudio::types::parseRepeatMode(j["repeat"].get<std::string>());
+                auto rm = kanariv::types::parseRepeatMode(j["repeat"].get<std::string>());
                 if (!rm)
-                    return std::unexpected{caudio::utils::makeError(
-                        caudio::utils::StatusCode::InvalidArg, "unknown RepeatMode")};
+                    return std::unexpected{kanariv::utils::makeError(
+                        kanariv::utils::StatusCode::InvalidArg, "unknown RepeatMode")};
                 s.repeat = *rm;
             } else if (j.contains("repeat_value") && j["repeat_value"].isNumber()) {
                 int v = j["repeat_value"].get<int>();
-                s.repeat = static_cast<caudio::types::RepeatMode>(v);
+                s.repeat = static_cast<kanariv::types::RepeatMode>(v);
             }
             if (j.contains("track_id") && j["track_id"].isNumber())
                 s.track_id = j["track_id"].get<int64_t>();
@@ -1200,7 +1200,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     auto jt = tracks.at(ti);
                     if (!jt)
                         return std::unexpected{jt.error()};
-                    auto tr = caudio::utils::trackFromJson(*jt);
+                    auto tr = kanariv::utils::trackFromJson(*jt);
                     if (!tr)
                         return std::unexpected{tr.error()};
                     qt.tracks.push_back(std::move(*tr));
@@ -1251,8 +1251,8 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                 if (auto* st = std::get_if<Status>(&*sub))
                     p.status = std::move(*st);
                 else
-                    return std::unexpected{caudio::utils::makeError(
-                        caudio::utils::StatusCode::Corrupt, "PlaylistLoaded status not a Status")};
+                    return std::unexpected{kanariv::utils::makeError(
+                        kanariv::utils::StatusCode::Corrupt, "PlaylistLoaded status not a Status")};
             }
             return Result{std::move(p)};
         }
@@ -1265,7 +1265,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
             return Result{std::move(vi)};
         }
         if (t == "LibraryStats" || t == "LibraryStatsDetailed") {
-            caudio::types::LibraryStats ls{};
+            kanariv::types::LibraryStats ls{};
             if (j.contains("tracks") && j["tracks"].isNumber())
                 ls.tracks = j["tracks"].get<std::size_t>();
             if (j.contains("queues") && j["queues"].isNumber())
@@ -1283,7 +1283,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     auto jt = topTracks.at(ti);
                     if (!jt)
                         return std::unexpected{jt.error()};
-                    auto tr = caudio::utils::trackFromJson(*jt);
+                    auto tr = kanariv::utils::trackFromJson(*jt);
                     if (!tr)
                         return std::unexpected{tr.error()};
                     ls.top_tracks->push_back(std::move(*tr));
@@ -1299,7 +1299,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     if (!jt)
                         return std::unexpected{jt.error()};
                     const Json& jo = *jt;
-                    caudio::types::TopEntity e;
+                    kanariv::types::TopEntity e;
                     if (jo.contains("name") && jo["name"].isString())
                         e.name = jo["name"].get<std::string>();
                     if (jo.contains("track_count") && jo["track_count"].isNumber())
@@ -1317,7 +1317,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     if (!jt)
                         return std::unexpected{jt.error()};
                     const Json& jo = *jt;
-                    caudio::types::TopEntity e;
+                    kanariv::types::TopEntity e;
                     if (jo.contains("name") && jo["name"].isString())
                         e.name = jo["name"].get<std::string>();
                     if (jo.contains("track_count") && jo["track_count"].isNumber())
@@ -1335,7 +1335,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     if (!jt)
                         return std::unexpected{jt.error()};
                     const Json& jo = *jt;
-                    caudio::types::TopEntity e;
+                    kanariv::types::TopEntity e;
                     if (jo.contains("name") && jo["name"].isString())
                         e.name = jo["name"].get<std::string>();
                     if (jo.contains("track_count") && jo["track_count"].isNumber())
@@ -1355,7 +1355,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     auto jt = tracks.at(ti);
                     if (!jt)
                         return std::unexpected{jt.error()};
-                    auto tr = caudio::utils::trackFromJson(*jt);
+                    auto tr = kanariv::utils::trackFromJson(*jt);
                     if (!tr)
                         return std::unexpected{tr.error()};
                     trs.tracks.push_back(std::move(*tr));
@@ -1373,7 +1373,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     auto jt = tracks.at(ti);
                     if (!jt)
                         return std::unexpected{jt.error()};
-                    auto tr = caudio::utils::trackFromJson(*jt);
+                    auto tr = kanariv::utils::trackFromJson(*jt);
                     if (!tr)
                         return std::unexpected{tr.error()};
                     sr.tracks.push_back(std::move(*tr));
@@ -1411,7 +1411,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     auto jt = tracks.at(ti);
                     if (!jt)
                         return std::unexpected{jt.error()};
-                    auto tr = caudio::utils::trackFromJson(*jt);
+                    auto tr = kanariv::utils::trackFromJson(*jt);
                     if (!tr)
                         return std::unexpected{tr.error()};
                     pd.tracks.push_back(std::move(*tr));
@@ -1441,7 +1441,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     auto jt = tracks.at(ti);
                     if (!jt)
                         return std::unexpected{jt.error()};
-                    auto tr = caudio::utils::trackFromJson(*jt);
+                    auto tr = kanariv::utils::trackFromJson(*jt);
                     if (!tr)
                         return std::unexpected{tr.error()};
                     r.tracks.push_back(std::move(*tr));
@@ -1465,7 +1465,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                     auto jt = tracks.at(ti);
                     if (!jt)
                         return std::unexpected{jt.error()};
-                    auto tr = caudio::utils::trackFromJson(*jt);
+                    auto tr = kanariv::utils::trackFromJson(*jt);
                     if (!tr)
                         return std::unexpected{tr.error()};
                     r.missing_tracks.push_back(std::move(*tr));
@@ -1507,13 +1507,13 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
         if (t == "SingleTrack") {
             SingleTrack st{};
             if (j.contains("track")) {
-                auto tr = caudio::utils::trackFromJson(j["track"]);
+                auto tr = kanariv::utils::trackFromJson(j["track"]);
                 if (!tr)
                     return std::unexpected{tr.error()};
                 st.track = std::move(*tr);
             } else if (j.contains("id")) {
                 // legacy: track fields directly in object
-                auto tr = caudio::utils::trackFromJson(j);
+                auto tr = kanariv::utils::trackFromJson(j);
                 if (!tr)
                     return std::unexpected{tr.error()};
                 st.track = std::move(*tr);
@@ -1527,7 +1527,7 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
         if (t == "TrackInfo") {
             TrackInfo ti{};
             if (j.contains("track")) {
-                auto tr = caudio::utils::trackFromJson(j["track"]);
+                auto tr = kanariv::utils::trackFromJson(j["track"]);
                 if (!tr)
                     return std::unexpected{tr.error()};
                 ti.track = std::move(*tr);
@@ -1630,11 +1630,11 @@ std::expected<Result, caudio::utils::Error> resultFromJson(const Json& j) {
                 return std::unexpected{e.error()};
             return Result{*e};
         }
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "unknown Result type: " + t)};
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
@@ -1645,12 +1645,12 @@ std::string serializeRequest(const IpcRequest& req) {
     return j.dump();
 }
 
-std::expected<IpcRequest, caudio::utils::Error> deserializeRequest(std::string_view sv) {
+std::expected<IpcRequest, kanariv::utils::Error> deserializeRequest(std::string_view sv) {
     try {
         const Json j = Json::parse(sv);
         if (!j.contains("id") || !j.contains("cmd")) {
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "missing id/cmd")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "missing id/cmd")};
         }
         uint32_t id = j["id"].get<uint32_t>();
         auto cmd = commandFromJson(j["cmd"]);
@@ -1659,7 +1659,7 @@ std::expected<IpcRequest, caudio::utils::Error> deserializeRequest(std::string_v
         return IpcRequest{id, std::move(*cmd)};
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
@@ -1676,12 +1676,12 @@ std::string serializeReply(const IpcReply& rep) {
     return j.dump();
 }
 
-std::expected<IpcReply, caudio::utils::Error> deserializeReply(std::string_view sv) {
+std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view sv) {
     try {
         const Json j = Json::parse(sv);
         if (!j.contains("id")) {
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "missing id")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "missing id")};
         }
         uint32_t id = j["id"].get<uint32_t>();
         bool ok = true;
@@ -1692,8 +1692,8 @@ std::expected<IpcReply, caudio::utils::Error> deserializeReply(std::string_view 
 
         if (ok) {
             if (!j.contains("result")) {
-                return std::unexpected{caudio::utils::makeError(
-                    caudio::utils::StatusCode::InvalidArg, "missing result")};
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg, "missing result")};
             }
             auto r = resultFromJson(j["result"]);
             if (!r)
@@ -1706,8 +1706,8 @@ std::expected<IpcReply, caudio::utils::Error> deserializeReply(std::string_view 
             else if (j.contains("result"))
                 ej = j["result"];
             else
-                return std::unexpected{caudio::utils::makeError(
-                    caudio::utils::StatusCode::InvalidArg, "missing error")};
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg, "missing error")};
             auto e = detail::errorFromJson(ej);
             if (!e)
                 return std::unexpected{e.error()};
@@ -1715,7 +1715,7 @@ std::expected<IpcReply, caudio::utils::Error> deserializeReply(std::string_view 
         }
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
@@ -1734,10 +1734,10 @@ std::vector<std::byte> frame(std::string_view json) {
     return out;
 }
 
-std::expected<std::string, caudio::utils::Error> deframe(std::span<const std::byte> buf) {
+std::expected<std::string, kanariv::utils::Error> deframe(std::span<const std::byte> buf) {
     if (buf.size() < 4) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "frame too short")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too short")};
     }
     uint32_t len = (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[0])) << 24) |
                    (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[1])) << 16) |
@@ -1745,7 +1745,7 @@ std::expected<std::string, caudio::utils::Error> deframe(std::span<const std::by
                    static_cast<uint32_t>(std::to_integer<unsigned char>(buf[3]));
     if (buf.size() < 4 + len) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "frame incomplete")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame incomplete")};
     }
     std::string s;
     s.reserve(len);
@@ -1763,4 +1763,4 @@ std::string toJsonString(const Command& c) {
     return toJson(c).dump(2);
 }
 
-} // namespace caudio::ipc
+} // namespace kanariv::ipc

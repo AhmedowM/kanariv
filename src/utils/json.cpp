@@ -1,6 +1,6 @@
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -14,7 +14,7 @@
 
 #include "nlohmann/json_fwd.hpp"
 
-namespace caudio::utils {
+namespace kanariv::utils {
 
 struct Json::Impl {
     nlohmann::ordered_json v = nlohmann::ordered_json(nullptr);
@@ -378,4 +378,4 @@ Json JsonRef::snapshot() const {
     return out;
 }
 
-} // namespace caudio::utils
+} // namespace kanariv::utils

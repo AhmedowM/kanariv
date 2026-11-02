@@ -1,19 +1,19 @@
 ---
 title: Configuration
-description: Runtime configuration options for caudio daemon and client
+description: Runtime configuration options for kanariv daemon and client
 ---
 
 # Configuration
 
-caudio reads configuration from a JSON config file and provides canonical path
+kanariv reads configuration from a JSON config file and provides canonical path
 helpers for socket, PID, lock, and log file locations.
 
 ## Config structure
 
 ```json
 {
-  "dbPath": "~/.local/share/caudio/library.db",
-  "configPath": "~/.local/share/caudio/config.json",
+  "dbPath": "~/.local/share/kanariv/library.db",
+  "configPath": "~/.local/share/kanariv/config.json",
   "device": "auto",
   "logLevel": 2,
   "socketPath": "",
@@ -40,18 +40,18 @@ helpers for socket, PID, lock, and log file locations.
 
 ```sh
 # List all configuration as JSON
-caudio config list --json
+kanariv config list --json
 
 # Get a single value
-caudio config get logLevel
+kanariv config get logLevel
 
 # Set a value
-caudio config set logLevel 3
+kanariv config set logLevel 3
 ```
 
 ## Canonical paths
 
-The `caudio::config` module provides path helpers derived from `dbPath`:
+The `kanariv::config` module provides path helpers derived from `dbPath`:
 
 | Function | Returns |
 |---|---|
@@ -60,21 +60,21 @@ The `caudio::config` module provides path helpers derived from `dbPath`:
 | `lockPathFor(dbPath)` | Lock file path |
 | `logPathFor(dbPath)` | Daemon log file path |
 
-- **Windows:** Socket is a named pipe; PID/lock files under `%LOCALAPPDATA%/caudio`
-- **POSIX:** Socket/PID/lock under `$XDG_RUNTIME_DIR/caudio` or
-  `$XDG_DATA_HOME/caudio` or `~/.local/share/caudio`
+- **Windows:** Socket is a named pipe; PID/lock files under `%LOCALAPPDATA%/kanariv`
+- **POSIX:** Socket/PID/lock under `$XDG_RUNTIME_DIR/kanariv` or
+  `$XDG_DATA_HOME/kanariv` or `~/.local/share/kanariv`
 
 ## ServiceConfig (C++ API)
 
-For in-process service hosts, `caudio::service::ServiceConfig` extends
-`caudio::config::Config`:
+For in-process service hosts, `kanariv::service::ServiceConfig` extends
+`kanariv::config::Config`:
 
 ```cpp
-caudio::service::ServiceConfig cfg;
-cfg.runtime.database = "/data/app/caudio/caudio.db";
-cfg.runtime.logs = "/data/app/caudio/logs";
+kanariv::service::ServiceConfig cfg;
+cfg.runtime.database = "/data/app/kanariv/kanariv.db";
+cfg.runtime.logs = "/data/app/kanariv/logs";
 cfg.inProcess = true;  // No desktop daemon scaffolding
-auto host = caudio::service::Host::create(cfg);
+auto host = kanariv::service::Host::create(cfg);
 ```
 
 ## Next steps

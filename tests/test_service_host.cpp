@@ -1,10 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/config/runtime.hpp>
-#include <caudio/contracts/database.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/service/host.hpp>
-#include <caudio/service/service.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/config/runtime.hpp>
+#include <kanariv/contracts/database.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/service/host.hpp>
+#include <kanariv/service/service.hpp>
+#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <filesystem>
@@ -14,9 +14,9 @@
 #include <string>
 #include <thread>
 
-using namespace caudio::service;
-using namespace caudio::utils;
-using namespace caudio::test_helpers;
+using namespace kanariv::service;
+using namespace kanariv::utils;
+using namespace kanariv::test_helpers;
 
 namespace {
 
@@ -133,14 +133,14 @@ TEST_CASE("host exposes service for direct commands", "[service][host]") {
 }
 
 TEST_CASE("runtime paths empty is a no-op", "[service][runtime]") {
-    caudio::config::RuntimePaths empty;
+    kanariv::config::RuntimePaths empty;
     REQUIRE(empty.empty());
     REQUIRE(empty.ensureDirectories().has_value());
 }
 
 TEST_CASE("runtime paths ensure directories", "[service][runtime]") {
     auto dir = tempDirPath("runtime");
-    caudio::config::RuntimePaths rp;
+    kanariv::config::RuntimePaths rp;
     rp.database = dir / "sub" / "library.db";
     rp.logs = dir / "logs";
     rp.cache = dir / "cache";

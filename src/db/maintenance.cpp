@@ -1,19 +1,19 @@
-#include <caudio/db/maintenance.hpp>
+#include <kanariv/db/maintenance.hpp>
 
-#include <caudio/types/db.hpp>
-#include <caudio/types/record.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/record.hpp>
 #include <filesystem>
 #include <map>
 #include <string>
 #include <system_error>
 
-namespace caudio::db {
+namespace kanariv::db {
 
-std::expected<LibraryMaintenanceReport, caudio::utils::Error>
+std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
 libraryReport(Database& db, int64_t libraryId) {
     if (libraryId <= 0)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "invalid library id"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "invalid library id"));
 
     auto libraries = db.listLibraries();
     if (!libraries)
@@ -27,16 +27,16 @@ libraryReport(Database& db, int64_t libraryId) {
     }
     if (!found)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "library not found"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "library not found"));
 
-    caudio::types::TrackQuery query{};
+    kanariv::types::TrackQuery query{};
     query.library_id = libraryId;
     auto tracks = db.listTracks(&query);
     if (!tracks)
         return std::unexpected(tracks.error());
 
     LibraryMaintenanceReport report{};
-    std::map<std::string, std::vector<caudio::types::Track>> paths;
+    std::map<std::string, std::vector<kanariv::types::Track>> paths;
     for (const auto& track : *tracks) {
         ++report.tracks_checked;
         std::error_code ec;
@@ -54,7 +54,7 @@ libraryReport(Database& db, int64_t libraryId) {
     return report;
 }
 
-std::expected<std::size_t, caudio::utils::Error>
+std::expected<std::size_t, kanariv::utils::Error>
 libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report) {
     std::size_t pruned = 0;
     for (const auto& track : report.missing_tracks) {
@@ -66,7 +66,7 @@ libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report) {
     return pruned;
 }
 
-std::expected<LibraryMaintenanceReport, caudio::utils::Error>
+std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
 libraryApplyMaintenance(Database& db, int64_t libraryId,
                          const LibraryMaintenanceOptions& options) {
     auto report = libraryReport(db, libraryId);
@@ -80,4 +80,4 @@ libraryApplyMaintenance(Database& db, int64_t libraryId,
     return report;
 }
 
-} // namespace caudio::db
+} // namespace kanariv::db

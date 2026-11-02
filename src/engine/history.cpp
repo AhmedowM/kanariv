@@ -1,5 +1,5 @@
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <chrono>
 #include <cstdint>
 #include <engine/history.hpp>
@@ -7,7 +7,7 @@
 #include <memory>
 #include <utility>
 
-namespace caudio::engine::detail {
+namespace kanariv::engine::detail {
 
 uint64_t nowMs() noexcept {
     using namespace std::chrono;
@@ -31,22 +31,22 @@ bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr, i
     return false;
 }
 
-} // namespace caudio::engine::detail
+} // namespace kanariv::engine::detail
 
-namespace caudio::engine {
+namespace kanariv::engine {
 
-History::History(std::shared_ptr<caudio::contracts::IDatabase> db) : db_(std::move(db)) {}
+History::History(std::shared_ptr<kanariv::contracts::IDatabase> db) : db_(std::move(db)) {}
 
 History::ExpectedEntries History::listHistory(int limit) {
     if (!db_ || !db_->isOpen())
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::State, "no db"));
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     return db_->engineHistoryList(limit);
 }
 
 History::ExpectedVoid History::clearHistory() {
     if (!db_ || !db_->isOpen())
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::State, "no db"));
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     return db_->engineHistoryClear();
 }
 
-} // namespace caudio::engine
+} // namespace kanariv::engine

@@ -1,12 +1,12 @@
 ---
 title: API Reference
-description: C++23 library API reference for all caudio components
+description: C++23 library API reference for all kanariv components
 ---
 
 # API Reference
 
-caudio provides nine installable library components plus an optional CLI.
-Public headers under `include/caudio/` are canonical, with opt-in C++23
+kanariv provides nine installable library components plus an optional CLI.
+Public headers under `include/kanariv/` are canonical, with opt-in C++23
 modules that mirror them.
 
 ## Components
@@ -35,28 +35,28 @@ return documentation are rendered in the same shell as the rest of this site.
 ### CMake
 
 ```cmake
-find_package(caudio CONFIG REQUIRED)
+find_package(kanariv CONFIG REQUIRED)
 
 add_executable(my_player main.cpp)
-target_link_libraries(my_player PRIVATE caudio::engine caudio::db)
+target_link_libraries(my_player PRIVATE kanariv::engine kanariv::db)
 ```
 
 ### C++ (headers)
 
 ```cpp
-#include <caudio.hpp>
+#include <kanariv.hpp>
 #include <memory>
 #include <print>
 
 int main() {
-    auto database = caudio::db::Database::open(":memory:");
+    auto database = kanariv::db::Database::open(":memory:");
     if (!database) {
         std::println(stderr, "database open failed: {}",
                      database.error().message);
         return 1;
     }
 
-    auto engine = caudio::engine::Engine::create();
+    auto engine = kanariv::engine::Engine::create();
     if (!engine) {
         std::println(stderr, "engine create failed: {}",
                      engine.error().message);
@@ -64,7 +64,7 @@ int main() {
     }
 
     if (auto result = engine.value()->attachDatabase(
-            std::shared_ptr<caudio::db::Database>(
+            std::shared_ptr<kanariv::db::Database>(
                 std::move(database.value())));
         !result) {
         std::println(stderr, "attach failed: {}", result.error().message);
@@ -78,17 +78,17 @@ int main() {
 ### C++23 modules
 
 ```cpp
-import caudio.media;
+import kanariv.media;
 
 int main() {
-    auto tracks = caudio::media::scanTracksToVector(".");
+    auto tracks = kanariv::media::scanTracksToVector(".");
     return tracks ? 0 : 1;
 }
 ```
 
 ## Error handling
 
-All fallible operations return `std::expected<T, caudio::utils::Error>`.
+All fallible operations return `std::expected<T, kanariv::utils::Error>`.
 Errors carry a `StatusCode` and an optional diagnostic message:
 
 ```cpp

@@ -1,11 +1,11 @@
 ---
-title: caudio
+title: kanariv
 description: A local-first, headless music player and reusable C++23 library.
 ---
 
 # A music engine for your local library
 
-**caudio** is a headless music player and reusable C++23 library for people who
+**kanariv** is a headless music player and reusable C++23 library for people who
 want a fast, scriptable, local-first audio stack. It decodes media with
 FFmpeg, persists library and playback state in SQLite, and exposes the same
 engine through a command-line client and a documented IPC protocol.
@@ -13,7 +13,7 @@ engine through a command-line client and a documented IPC protocol.
 No account is required. There is no cloud catalog and no GUI to get in the
 way of automation.
 
-## Why caudio
+## Why kanariv
 
 ### Local by default
 
@@ -54,13 +54,13 @@ in other languages.
 ## A five-minute preview
 
 ```sh
-git clone https://github.com/AhmedowM/caudio.git
-cd caudio
+git clone https://github.com/AhmedowM/kanariv.git
+cd kanariv
 python scripts/configure.py dev --toolchain clang --jobs 4 --build --test
-./build/dev/caudio library scan --path ~/Music
-./build/dev/caudio library search "miles davis" --limit 10
-./build/dev/caudio queue add ~/Music/Kind\ of\ Blue/*.flac
-./build/dev/caudio play
+./build/dev/kanariv library scan --path ~/Music
+./build/dev/kanariv library search "miles davis" --limit 10
+./build/dev/kanariv queue add ~/Music/Kind\ of\ Blue/*.flac
+./build/dev/kanariv play
 ```
 
 ## Supported platforms

@@ -6,12 +6,12 @@ import Layout from '../layouts/Layout.astro';
   currentSection=""
   currentPage="search"
   title="Search"
-  description="Search the caudio documentation."
+  description="Search the kanariv documentation."
 >
   <div class="search-page">
     <p class="eyebrow">Documentation index</p>
     <h1>Search the docs</h1>
-    <p class="search-intro">Find guides, concepts, and API references across caudio.</p>
+    <p class="search-intro">Find guides, concepts, and API references across kanariv.</p>
     <form class="search-page-form" id="search-page-form" role="search">
       <label for="search-page-input">Search documentation</label>
       <div class="search-page-input-wrap">
@@ -25,20 +25,20 @@ import Layout from '../layouts/Layout.astro';
 
 <style>
   .search-page { max-width: 760px; padding: 3rem 0 5rem; }
-  .eyebrow { color: var(--caudio-brand); font-size: .78rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
-  .search-intro { color: var(--caudio-text-muted); font-size: 1.1rem; }
+  .eyebrow { color: var(--kanariv-brand); font-size: .78rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+  .search-intro { color: var(--kanariv-text-muted); font-size: 1.1rem; }
   .search-page-form { margin-top: 2rem; }
-  .search-page-form label { display: block; margin-bottom: .55rem; color: var(--caudio-text-muted); font-size: .85rem; font-weight: 650; }
+  .search-page-form label { display: block; margin-bottom: .55rem; color: var(--kanariv-text-muted); font-size: .85rem; font-weight: 650; }
   .search-page-input-wrap { display: flex; gap: .65rem; }
-  .search-page-input-wrap input { min-width: 0; flex: 1; padding: .85rem 1rem; color: var(--caudio-text); background: var(--caudio-surface); border: 1px solid var(--caudio-border); border-radius: 10px; }
-  .search-page-input-wrap button { padding: .85rem 1.25rem; color: #fff; background: var(--caudio-brand); border: 0; border-radius: 10px; font-weight: 700; }
-  .search-page-input-wrap button:hover { background: var(--caudio-brand-emphasize); }
+  .search-page-input-wrap input { min-width: 0; flex: 1; padding: .85rem 1rem; color: var(--kanariv-text); background: var(--kanariv-surface); border: 1px solid var(--kanariv-border); border-radius: 10px; }
+  .search-page-input-wrap button { padding: .85rem 1.25rem; color: #fff; background: var(--kanariv-brand); border: 0; border-radius: 10px; font-weight: 700; }
+  .search-page-input-wrap button:hover { background: var(--kanariv-brand-emphasize); }
   :global(.search-page-results) { display: grid; gap: .7rem; margin-top: 2.5rem; }
-  :global(.search-page-result) { display: block; padding: 1rem 1.1rem; background: var(--caudio-surface); border: 1px solid var(--caudio-border); border-radius: 12px; box-shadow: var(--caudio-shadow); }
-  :global(.search-page-result:hover) { border-color: var(--caudio-brand); text-decoration: none; transform: translateY(-2px); }
-  :global(.search-page-result strong) { display: block; color: var(--caudio-text); }
-  :global(.search-page-result span) { display: block; margin-top: .25rem; color: var(--caudio-text-muted); font-size: .9rem; }
-  :global(.search-page-status) { color: var(--caudio-text-muted); }
+  :global(.search-page-result) { display: block; padding: 1rem 1.1rem; background: var(--kanariv-surface); border: 1px solid var(--kanariv-border); border-radius: 12px; box-shadow: var(--kanariv-shadow); }
+  :global(.search-page-result:hover) { border-color: var(--kanariv-brand); text-decoration: none; transform: translateY(-2px); }
+  :global(.search-page-result strong) { display: block; color: var(--kanariv-text); }
+  :global(.search-page-result span) { display: block; margin-top: .25rem; color: var(--kanariv-text-muted); font-size: .9rem; }
+  :global(.search-page-status) { color: var(--kanariv-text-muted); }
   @media (max-width: 520px) { .search-page-input-wrap { flex-direction: column; } }
 </style>
 

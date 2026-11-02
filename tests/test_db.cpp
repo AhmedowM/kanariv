@@ -2,12 +2,12 @@
 
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/db/smart.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/log.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/smart.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstdint>
 #include <db/database_access.hpp>
 #include <expected>
@@ -15,11 +15,11 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-using namespace caudio::db;
-using namespace caudio::utils;
+using namespace kanariv::db;
+using namespace kanariv::utils;
 
-static caudio::types::Track makeTrack(int idx, const std::string& pathOverride = "") {
-    caudio::types::Track t;
+static kanariv::types::Track makeTrack(int idx, const std::string& pathOverride = "") {
+    kanariv::types::Track t;
     t.path = pathOverride.empty() ? ("/tmp/track_" + std::to_string(idx) + ".mp3") : pathOverride;
     t.title = "Title" + std::to_string(idx);
     t.artist = "Artist" + std::to_string(idx);
@@ -35,18 +35,18 @@ TEST_CASE("insertTrack duplicate AlreadyExists", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t = makeTrack(1);
+    kanariv::types::Track t = makeTrack(1);
     auto r1 = db->insertTrack(t);
     REQUIRE(r1.has_value());
     // fingerprint is UNIQUE per schema; duplicate fingerprint should be AlreadyExists
-    caudio::types::Track t2 = makeTrack(1);
+    kanariv::types::Track t2 = makeTrack(1);
     // ensure same fingerprint but different path to prove fingerprint uniqueness
     t2.path = "/tmp/track_dup_path.mp3";
     auto r2 = db->insertTrack(t2);
     REQUIRE(!r2.has_value());
     REQUIRE(r2.error().code == StatusCode::AlreadyExists);
     // same path with different fingerprint should succeed (path not unique)
-    caudio::types::Track t3 = makeTrack(99, t.path);
+    kanariv::types::Track t3 = makeTrack(99, t.path);
     for (int b = 0; b < 32; ++b)
         t3.fingerprint[b] = (uint8_t)(0xFF - b);
     auto r3 = db->insertTrack(t3);
@@ -58,7 +58,7 @@ TEST_CASE("updateTrack missing NotFound", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t = makeTrack(2);
+    kanariv::types::Track t = makeTrack(2);
     t.id = 9999; // non-existent id
     auto r = db->updateTrack(t);
     REQUIRE(!r.has_value());
@@ -86,7 +86,7 @@ TEST_CASE("deleteTrack and verify", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t = makeTrack(3);
+    kanariv::types::Track t = makeTrack(3);
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     int64_t id = *ins;
@@ -108,11 +108,11 @@ TEST_CASE("listTracks pagination limit/offset", "[db]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 5; ++i) {
-        caudio::types::Track t = makeTrack(10 + i);
+        kanariv::types::Track t = makeTrack(10 + i);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
     }
-    caudio::types::TrackQuery q;
+    kanariv::types::TrackQuery q;
     q.limit = 2;
     q.offset = 0;
     auto l1 = db->listTracks(&q);
@@ -147,7 +147,7 @@ TEST_CASE("listTracks pagination limit/offset", "[db]") {
 }
 
 TEST_CASE("parseSmartQuery", "[db]") {
-    auto check = [](std::string_view q, caudio::types::TrackQuery expected) {
+    auto check = [](std::string_view q, kanariv::types::TrackQuery expected) {
         auto r = parseSmartQuery(q);
         REQUIRE(r.has_value());
         REQUIRE(r->rating == expected.rating);
@@ -169,58 +169,58 @@ TEST_CASE("parseSmartQuery", "[db]") {
     REQUIRE(empty.has_value());
 
     // Exact rating.
-    check("rating=5", caudio::types::TrackQuery{.rating = 5});
+    check("rating=5", kanariv::types::TrackQuery{.rating = 5});
 
     // Year range ops.
-    check("year>=2000", caudio::types::TrackQuery{.year_min = 2000});
-    check("year<=1999", caudio::types::TrackQuery{.year_max = 1999});
-    check("year>2000", caudio::types::TrackQuery{.year_min = 2001});
-    check("year<2000", caudio::types::TrackQuery{.year_max = 1999});
-    check("year=1985", caudio::types::TrackQuery{.year = 1985});
+    check("year>=2000", kanariv::types::TrackQuery{.year_min = 2000});
+    check("year<=1999", kanariv::types::TrackQuery{.year_max = 1999});
+    check("year>2000", kanariv::types::TrackQuery{.year_min = 2001});
+    check("year<2000", kanariv::types::TrackQuery{.year_max = 1999});
+    check("year=1985", kanariv::types::TrackQuery{.year = 1985});
 
     // Play count.
-    check("play_count>=10", caudio::types::TrackQuery{.play_count_min = 10});
-    check("play_count<=5", caudio::types::TrackQuery{.play_count_max = 5});
-    check("play_count>5", caudio::types::TrackQuery{.play_count_min = 6});
-    check("play_count<5", caudio::types::TrackQuery{.play_count_max = 4});
+    check("play_count>=10", kanariv::types::TrackQuery{.play_count_min = 10});
+    check("play_count<=5", kanariv::types::TrackQuery{.play_count_max = 5});
+    check("play_count>5", kanariv::types::TrackQuery{.play_count_min = 6});
+    check("play_count<5", kanariv::types::TrackQuery{.play_count_max = 4});
 
     // Duration.
-    check("duration>=300", caudio::types::TrackQuery{.duration_min = 300.0});
-    check("duration<=600", caudio::types::TrackQuery{.duration_max = 600.0});
+    check("duration>=300", kanariv::types::TrackQuery{.duration_min = 300.0});
+    check("duration<=600", kanariv::types::TrackQuery{.duration_max = 600.0});
     check("duration=240.5",
-          caudio::types::TrackQuery{.duration_min = 240.5, .duration_max = 240.5});
+          kanariv::types::TrackQuery{.duration_min = 240.5, .duration_max = 240.5});
 
     // Exact text fields.
-    check("artist=Miles Davis", caudio::types::TrackQuery{.artist = "Miles Davis"});
-    check("album=Kind of Blue", caudio::types::TrackQuery{.album = "Kind of Blue"});
-    check("genre=Jazz", caudio::types::TrackQuery{.genre = "Jazz"});
+    check("artist=Miles Davis", kanariv::types::TrackQuery{.artist = "Miles Davis"});
+    check("album=Kind of Blue", kanariv::types::TrackQuery{.album = "Kind of Blue"});
+    check("genre=Jazz", kanariv::types::TrackQuery{.genre = "Jazz"});
 
     // Search.
-    check("search=blue", caudio::types::TrackQuery{.search = "blue"});
+    check("search=blue", kanariv::types::TrackQuery{.search = "blue"});
 
     // Combined AND.
     check("rating=5,year>=2000,genre=Jazz",
-          caudio::types::TrackQuery{.genre = "Jazz", .year_min = 2000, .rating = 5});
+          kanariv::types::TrackQuery{.genre = "Jazz", .year_min = 2000, .rating = 5});
 
     // Rejection: unknown field.
     auto bad1 = parseSmartQuery("foo=bar");
     REQUIRE(!bad1.has_value());
-    REQUIRE(bad1.error().code == caudio::utils::StatusCode::InvalidArg);
+    REQUIRE(bad1.error().code == kanariv::utils::StatusCode::InvalidArg);
 
     // Rejection: rating with range op.
     auto bad2 = parseSmartQuery("rating>=4");
     REQUIRE(!bad2.has_value());
-    REQUIRE(bad2.error().code == caudio::utils::StatusCode::InvalidArg);
+    REQUIRE(bad2.error().code == kanariv::utils::StatusCode::InvalidArg);
 
     // Rejection: rating out of range.
     auto bad3 = parseSmartQuery("rating=9");
     REQUIRE(!bad3.has_value());
-    REQUIRE(bad3.error().code == caudio::utils::StatusCode::InvalidArg);
+    REQUIRE(bad3.error().code == kanariv::utils::StatusCode::InvalidArg);
 
     // Rejection: malformed predicate.
     auto bad4 = parseSmartQuery("rating");
     REQUIRE(!bad4.has_value());
-    REQUIRE(bad4.error().code == caudio::utils::StatusCode::InvalidArg);
+    REQUIRE(bad4.error().code == kanariv::utils::StatusCode::InvalidArg);
 }
 
 TEST_CASE("playlistGetTracks smart playlist evaluation", "[db]") {
@@ -229,17 +229,17 @@ TEST_CASE("playlistGetTracks smart playlist evaluation", "[db]") {
     auto db = std::move(dbRes.value());
 
     // Insert tracks with varied rating/year.
-    caudio::types::Track t1 = makeTrack(1);
+    kanariv::types::Track t1 = makeTrack(1);
     t1.rating = 5;
     t1.year = 1970;
     REQUIRE(db->insertTrack(t1).has_value());
 
-    caudio::types::Track t2 = makeTrack(2);
+    kanariv::types::Track t2 = makeTrack(2);
     t2.rating = 4;
     t2.year = 2005;
     REQUIRE(db->insertTrack(t2).has_value());
 
-    caudio::types::Track t3 = makeTrack(3);
+    kanariv::types::Track t3 = makeTrack(3);
     t3.rating = 5;
     t3.year = 2010;
     REQUIRE(db->insertTrack(t3).has_value());
@@ -276,7 +276,7 @@ TEST_CASE("playlistGetTracks smart playlist evaluation", "[db]") {
     REQUIRE(badpid.has_value());
     auto bad = db->playlistGetTracks(*badpid);
     REQUIRE(!bad.has_value());
-    REQUIRE(bad.error().code == caudio::utils::StatusCode::InvalidArg);
+    REQUIRE(bad.error().code == kanariv::utils::StatusCode::InvalidArg);
 }
 
 TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
@@ -285,28 +285,28 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     auto db = std::move(dbRes.value());
 
     // Insert tracks with varied rating, year, play_count, duration.
-    caudio::types::Track t1 = makeTrack(1);
+    kanariv::types::Track t1 = makeTrack(1);
     t1.rating = 5;
     t1.year = 1970;
     t1.play_count = 100;
     t1.duration = 420.0;
     REQUIRE(db->insertTrack(t1).has_value());
 
-    caudio::types::Track t2 = makeTrack(2);
+    kanariv::types::Track t2 = makeTrack(2);
     t2.rating = 4;
     t2.year = 1985;
     t2.play_count = 42;
     t2.duration = 240.0;
     REQUIRE(db->insertTrack(t2).has_value());
 
-    caudio::types::Track t3 = makeTrack(3);
+    kanariv::types::Track t3 = makeTrack(3);
     t3.rating = 3;
     t3.year = 2000;
     t3.play_count = 7;
     t3.duration = 180.0;
     REQUIRE(db->insertTrack(t3).has_value());
 
-    caudio::types::Track t4 = makeTrack(4);
+    kanariv::types::Track t4 = makeTrack(4);
     t4.rating = 5;
     t4.year = 2010;
     t4.play_count = 0;
@@ -314,7 +314,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     REQUIRE(db->insertTrack(t4).has_value());
 
     // Exact rating filter.
-    caudio::types::TrackQuery q;
+    kanariv::types::TrackQuery q;
     q.rating = 5;
     auto r5 = db->listTracks(&q);
     REQUIRE(r5.has_value());
@@ -323,7 +323,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
         REQUIRE(t.rating == 5);
 
     // Year range inclusive.
-    q = caudio::types::TrackQuery{};
+    q = kanariv::types::TrackQuery{};
     q.year_min = 1980;
     q.year_max = 2005;
     auto ry = db->listTracks(&q);
@@ -335,7 +335,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     }
 
     // One-sided year max only.
-    q = caudio::types::TrackQuery{};
+    q = kanariv::types::TrackQuery{};
     q.year_max = 1975;
     auto ry2 = db->listTracks(&q);
     REQUIRE(ry2.has_value());
@@ -343,7 +343,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     REQUIRE((*ry2)[0].year == 1970);
 
     // Play count range.
-    q = caudio::types::TrackQuery{};
+    q = kanariv::types::TrackQuery{};
     q.play_count_min = 10;
     q.play_count_max = 200;
     auto rp = db->listTracks(&q);
@@ -355,7 +355,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     }
 
     // Duration range.
-    q = caudio::types::TrackQuery{};
+    q = kanariv::types::TrackQuery{};
     q.duration_min = 200.0;
     q.duration_max = 500.0;
     auto rd = db->listTracks(&q);
@@ -367,7 +367,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     }
 
     // Combined filters: rating=5 AND year>=2000.
-    q = caudio::types::TrackQuery{};
+    q = kanariv::types::TrackQuery{};
     q.rating = 5;
     q.year_min = 2000;
     auto rc = db->listTracks(&q);
@@ -381,7 +381,7 @@ TEST_CASE("findByFingerprint and findByPath", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t = makeTrack(42, "/tmp/find_test.mp3");
+    kanariv::types::Track t = makeTrack(42, "/tmp/find_test.mp3");
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     // findByPath success
@@ -485,12 +485,12 @@ TEST_CASE("listTracks after schema init", "[db]") {
 }
 
 TEST_CASE("Database open emits lifecycle log", "[db]") {
-    using namespace caudio::utils;
+    using namespace kanariv::utils;
     std::vector<std::string> out;
     Logger logger([&](LogLevel, std::string_view msg) { out.emplace_back(msg); }, LogLevel::Trace);
-    caudio::db::DatabaseOptions opts;
+    kanariv::db::DatabaseOptions opts;
     opts.logger = &logger;
-    auto dbRes = caudio::db::Database::open(":memory:", opts);
+    auto dbRes = kanariv::db::Database::open(":memory:", opts);
     REQUIRE(dbRes.has_value());
     REQUIRE(out.size() == 1);
     REQUIRE(out[0].find("database opened path=") != std::string::npos);
@@ -500,7 +500,7 @@ TEST_CASE("bookmark add/list/remove", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t = makeTrack(7);
+    kanariv::types::Track t = makeTrack(7);
     auto tr = db->insertTrack(t);
     REQUIRE(tr.has_value());
 
@@ -532,12 +532,12 @@ TEST_CASE("history completion_pct round-trip 0/50/100", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t = makeTrack(8);
+    kanariv::types::Track t = makeTrack(8);
     auto tr = db->insertTrack(t);
     REQUIRE(tr.has_value());
 
     for (int i = 0; i < 3; ++i) {
-        caudio::types::HistoryEntry e;
+        kanariv::types::HistoryEntry e;
         e.track_id = *tr;
         e.started_at = 100 + i;
         e.completed_at = 200 + i;
@@ -546,7 +546,7 @@ TEST_CASE("history completion_pct round-trip 0/50/100", "[db]") {
         REQUIRE(db->historyAdd(e).has_value());
     }
 
-    caudio::types::HistoryQuery q;
+    kanariv::types::HistoryQuery q;
     q.track_id = *tr;
     auto list = db->listHistory(&q);
     REQUIRE(list.has_value());

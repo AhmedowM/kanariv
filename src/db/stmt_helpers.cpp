@@ -1,20 +1,20 @@
 #include <sqlite3.h>
 
-#include <caudio/types/db.hpp>
+#include <kanariv/types/db.hpp>
 #include <cstdint>
 #include <cstring>
 #include <db/stmt_helpers.hpp>
 #include <string>
 #include <string_view>
 
-namespace caudio::db::internal {
+namespace kanariv::db::internal {
 
 std::string_view columnText(sqlite3_stmt* stmt, int col) noexcept {
     auto* p = sqlite3_column_text(stmt, col);
     return p ? reinterpret_cast<const char*>(p) : "";
 }
 
-void fillTrackFromStmt(sqlite3_stmt* stmt, caudio::types::Track& t) {
+void fillTrackFromStmt(sqlite3_stmt* stmt, kanariv::types::Track& t) {
     t.id = sqlite3_column_int64(stmt, 0);
     t.fingerprint.fill(0);
     if (sqlite3_column_bytes(stmt, 1) == 32) {
@@ -44,7 +44,7 @@ void fillTrackFromStmt(sqlite3_stmt* stmt, caudio::types::Track& t) {
     t.last_scanned = sqlite3_column_int64(stmt, 23);
     t.dirty = sqlite3_column_int(stmt, 24) != 0;
     t.library_id = static_cast<int>(sqlite3_column_int(stmt, 25));
-    t.source.kind = static_cast<caudio::types::SourceKind>(sqlite3_column_int(stmt, 26));
+    t.source.kind = static_cast<kanariv::types::SourceKind>(sqlite3_column_int(stmt, 26));
     t.source.key = columnText(stmt, 27);
     t.source.available = sqlite3_column_int(stmt, 28) != 0;
     t.source.display_name = columnText(stmt, 29);
@@ -62,4 +62,4 @@ StmtGuard::~StmtGuard() {
         sqlite3_finalize(s);
 }
 
-} // namespace caudio::db::internal
+} // namespace kanariv::db::internal

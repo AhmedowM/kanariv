@@ -2,11 +2,11 @@
 
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/engine/engine.hpp>
-#include <caudio/types/engine.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <cstdint>
@@ -17,14 +17,14 @@
 #include <system_error>
 #include <thread>
 #include <utility>
-using namespace caudio::db;
-using namespace caudio::engine;
-using namespace caudio::utils;
-using namespace caudio::test_helpers;
+using namespace kanariv::db;
+using namespace kanariv::engine;
+using namespace kanariv::utils;
+using namespace kanariv::test_helpers;
 
 TEST_CASE("shouldMarkPlayed 60pct 90s thresholds", "[engine_history]") {
     // detail::shouldMarkPlayed is in engine namespace detail
-    using caudio::engine::detail::shouldMarkPlayed;
+    using kanariv::engine::detail::shouldMarkPlayed;
     // duration 100s, accumulated playback 59s -> not marked (59%)
     REQUIRE(shouldMarkPlayed(100.0, 59.0, false, 60, 90) == false);
     // 61% accumulated playback is true
@@ -42,7 +42,7 @@ TEST_CASE("shouldMarkPlayed 60pct 90s thresholds", "[engine_history]") {
 }
 
 TEST_CASE("shouldMarkPlayed explicit 60 90 thresholds", "[engine_history]") {
-    using caudio::engine::detail::shouldMarkPlayed;
+    using kanariv::engine::detail::shouldMarkPlayed;
     REQUIRE(shouldMarkPlayed(100.0, 61.0, false, 60, 90) == true);
     REQUIRE(shouldMarkPlayed(100.0, 30.0, false, 60, 90) == false);
     REQUIRE(shouldMarkPlayed(100.0, 80.0, true, 60, 90) == false);
@@ -63,12 +63,12 @@ TEST_CASE("CAS exactly-once markedPlayed atomic", "[engine_history]") {
 }
 
 TEST_CASE("history insert increments play_count and last_played", "[engine_history]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("eng_hist_inc").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t;
+    kanariv::types::Track t;
     t.path = "hist.wav";
     t.duration = 10.0;
     for (int b = 0; b < 32; ++b)
@@ -82,7 +82,7 @@ TEST_CASE("history insert increments play_count and last_played", "[engine_histo
     // ensure queue has track for engine play
     REQUIRE(db->queueEnqueue(1, tid, -1).has_value());
     // engine with small thresholds: 10% and 1 sec, poll 10ms
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = true;
     cfg.pollMs = 10;
@@ -92,7 +92,7 @@ TEST_CASE("history insert increments play_count and last_played", "[engine_histo
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
     const int64_t wallLo = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
                                std::chrono::system_clock::now().time_since_epoch())
                                .count();

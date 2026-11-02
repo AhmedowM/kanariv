@@ -1,10 +1,10 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/reader.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/log.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -14,11 +14,11 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-using namespace caudio::media;
-using namespace caudio::utils;
-using caudio::media::Decoder;
-using caudio::media::FileReader;
-using caudio::media::MemoryReader;
+using namespace kanariv::media;
+using namespace kanariv::utils;
+using kanariv::media::Decoder;
+using kanariv::media::FileReader;
+using kanariv::media::MemoryReader;
 
 TEST_CASE("decode registry probe unsupported", "[decoder]") {
     std::vector<std::byte> sig(32, std::byte{'X'});

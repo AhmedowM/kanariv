@@ -1,7 +1,7 @@
 #include <atomic>
-#include <caudio/service/host.hpp>
-#include <caudio/service/service.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/service/host.hpp>
+#include <kanariv/service/service.hpp>
+#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <cstddef>
 #include <memory>
@@ -11,11 +11,11 @@
 #include <thread>
 #include <utility>
 
-namespace caudio::service {
+namespace kanariv::service {
 
 /**
  * @brief Host state: owned Service, worker thread, stop source, and terminal error.
- * @ingroup caudio_service
+ * @ingroup kanariv_service
  */
 struct HostImpl {
     /** @brief Service owned by the host. Declared first so it outlives the worker. */
@@ -33,7 +33,7 @@ struct HostImpl {
     /** @brief Serializes `wait()` callers without being held during `join()`. */
     std::mutex joinMutex;
     /** @brief Error returned by `Service::run`, when it failed. */
-    std::optional<caudio::utils::Error> terminalError;
+    std::optional<kanariv::utils::Error> terminalError;
 
     /** @brief Worker body: signal readiness, run, record error, signal completion. */
     void run() {
@@ -54,7 +54,7 @@ namespace {
  * @param impl Host state.
  * @return Error copy or nullopt.
  */
-std::optional<caudio::utils::Error> copyError(const HostImpl& impl) {
+std::optional<kanariv::utils::Error> copyError(const HostImpl& impl) {
     std::lock_guard<std::mutex> lock(impl.mutex);
     return impl.terminalError;
 }
@@ -68,7 +68,7 @@ Host::~Host() {
 }
 
 Host::ExpectedHost Host::create(ServiceConfig cfg,
-                                std::shared_ptr<caudio::contracts::IDatabase> db) {
+                                std::shared_ptr<kanariv::contracts::IDatabase> db) {
     // The host contract is in-process by definition; ignore any desktop mode
     // inherited from a shared configuration object.
     cfg.inProcess = true;
@@ -94,7 +94,7 @@ Host::ExpectedHost Host::create(ServiceConfig cfg,
                 impl->worker.join();
             if (err)
                 return std::unexpected{*err};
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::State,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::State,
                                                             "service loop exited during startup")};
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -128,7 +128,7 @@ bool Host::ready() const noexcept {
     return impl_->started.load(std::memory_order_acquire);
 }
 
-std::optional<caudio::utils::Error> Host::error() const {
+std::optional<kanariv::utils::Error> Host::error() const {
     return copyError(*impl_);
 }
 
@@ -140,4 +140,4 @@ const Service& Host::service() const noexcept {
     return *impl_->service;
 }
 
-} // namespace caudio::service
+} // namespace kanariv::service

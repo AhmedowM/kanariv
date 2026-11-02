@@ -4,31 +4,31 @@
 #
 # NOTE: the cache variable does NOT survive try_compile (compiler ABI
 # probes re-run this file in a fresh scope), but the environment does --
-# so callers export CAUDIO_APPLE_CLANG=1 and both forms are honored.
-if(DEFINED ENV{CAUDIO_APPLE_CLANG})
+# so callers export KANARIV_APPLE_CLANG=1 and both forms are honored.
+if(DEFINED ENV{KANARIV_APPLE_CLANG})
   message(STATUS "AppleClang mode: keeping caller-provided compiler "
     "(unsupported)")
   return()
 endif()
 if(DEFINED ENV{LLVM_ROOT})
-  set(_caudio_llvm_root "$ENV{LLVM_ROOT}")
+  set(_kanariv_llvm_root "$ENV{LLVM_ROOT}")
 else()
   execute_process(COMMAND brew --prefix llvm
-    OUTPUT_VARIABLE _caudio_llvm_root OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET RESULT_VARIABLE _caudio_brew_rc)
-  if(NOT _caudio_brew_rc EQUAL 0)
+    OUTPUT_VARIABLE _kanariv_llvm_root OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET RESULT_VARIABLE _kanariv_brew_rc)
+  if(NOT _kanariv_brew_rc EQUAL 0)
     foreach(_cand /opt/homebrew/opt/llvm /usr/local/opt/llvm)
       if(EXISTS "${_cand}/bin/clang")
-        set(_caudio_llvm_root "${_cand}")
+        set(_kanariv_llvm_root "${_cand}")
         break()
       endif()
     endforeach()
   endif()
 endif()
-if(NOT EXISTS "${_caudio_llvm_root}/bin/clang")
+if(NOT EXISTS "${_kanariv_llvm_root}/bin/clang")
   # Allow AppleClang (or any other compiler) when the user explicitly opts in.
-  if(CAUDIO_ALLOW_UNSUPPORTED_COMPILER OR DEFINED ENV{CAUDIO_ALLOW_UNSUPPORTED_COMPILER})
-    message(STATUS "CAUDIO_ALLOW_UNSUPPORTED_COMPILER=ON: keeping caller-provided "
+  if(KANARIV_ALLOW_UNSUPPORTED_COMPILER OR DEFINED ENV{KANARIV_ALLOW_UNSUPPORTED_COMPILER})
+    message(STATUS "KANARIV_ALLOW_UNSUPPORTED_COMPILER=ON: keeping caller-provided "
       "compiler (unsupported on macOS)")
     return()
   endif()
@@ -36,10 +36,10 @@ if(NOT EXISTS "${_caudio_llvm_root}/bin/clang")
     "LLVM Clang required on macOS (brew install llvm). "
     "AppleClang lags our C++23 baseline; GCC yields a dummy audio backend. "
     "Experts: set CMAKE_C/CXX_COMPILER manually and pass "
-    "-DCAUDIO_ALLOW_UNSUPPORTED_COMPILER=ON.")
+    "-DKANARIV_ALLOW_UNSUPPORTED_COMPILER=ON.")
 endif()
-set(CMAKE_C_COMPILER "${_caudio_llvm_root}/bin/clang")
-set(CMAKE_CXX_COMPILER "${_caudio_llvm_root}/bin/clang++")
+set(CMAKE_C_COMPILER "${_kanariv_llvm_root}/bin/clang")
+set(CMAKE_CXX_COMPILER "${_kanariv_llvm_root}/bin/clang++")
 
 # Force brew's own libc++ headers and library. The SDK copy lags our C++23
 # baseline (`std::expected`, `std::print`); nothing else reliably redirects
@@ -55,33 +55,33 @@ set(CMAKE_CXX_COMPILER "${_caudio_llvm_root}/bin/clang++")
 # implementation at all (missing even in LLVM 23); they are polyfilled
 # in-tree (utils/function.hpp, utils/generator.hpp), not a header-search
 # issue.
-if(NOT EXISTS "${_caudio_llvm_root}/include/c++/v1/__config")
+if(NOT EXISTS "${_kanariv_llvm_root}/include/c++/v1/__config")
   message(FATAL_ERROR
-    "brew LLVM libc++ headers not found under ${_caudio_llvm_root}. "
+    "brew LLVM libc++ headers not found under ${_kanariv_llvm_root}. "
     "Reinstall with: brew reinstall llvm")
 endif()
-file(GLOB _caudio_libcxx
-  "${_caudio_llvm_root}/lib/libc++*.dylib"
-  "${_caudio_llvm_root}/lib/c++/libc++*.dylib")
-if(NOT _caudio_libcxx)
+file(GLOB _kanariv_libcxx
+  "${_kanariv_llvm_root}/lib/libc++*.dylib"
+  "${_kanariv_llvm_root}/lib/c++/libc++*.dylib")
+if(NOT _kanariv_libcxx)
   message(FATAL_ERROR
-    "brew LLVM libc++ library not found under ${_caudio_llvm_root}. "
+    "brew LLVM libc++ library not found under ${_kanariv_llvm_root}. "
     "Reinstall with: brew reinstall llvm")
 endif()
-list(GET _caudio_libcxx 0 _caudio_libcxx_first)
-get_filename_component(_caudio_libcxx_dir "${_caudio_libcxx_first}" DIRECTORY)
+list(GET _kanariv_libcxx 0 _kanariv_libcxx_first)
+get_filename_component(_kanariv_libcxx_dir "${_kanariv_libcxx_first}" DIRECTORY)
 add_compile_options(
   $<$<COMPILE_LANGUAGE:CXX>:-nostdinc++>
   $<$<COMPILE_LANGUAGE:CXX>:-stdlib=libc++>
   $<$<COMPILE_LANGUAGE:CXX>:-cxx-isystem>
-  $<$<COMPILE_LANGUAGE:CXX>:${_caudio_llvm_root}/include/c++/v1>)
+  $<$<COMPILE_LANGUAGE:CXX>:${_kanariv_llvm_root}/include/c++/v1>)
 add_link_options(
   -stdlib=libc++
-  "-L${_caudio_libcxx_dir}"
-  "-Wl,-rpath,${_caudio_libcxx_dir}")
-unset(_caudio_llvm_root)
-unset(_caudio_brew_rc)
+  "-L${_kanariv_libcxx_dir}"
+  "-Wl,-rpath,${_kanariv_libcxx_dir}")
+unset(_kanariv_llvm_root)
+unset(_kanariv_brew_rc)
 unset(_cand)
-unset(_caudio_libcxx)
-unset(_caudio_libcxx_first)
-unset(_caudio_libcxx_dir)
+unset(_kanariv_libcxx)
+unset(_kanariv_libcxx_first)
+unset(_kanariv_libcxx_dir)

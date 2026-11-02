@@ -7,12 +7,12 @@ Runs the daemon with `--daemon --foreground` as a supervised child, so a
 death yields the process exit code plus a stderr tail with zero code changes.
 
 Why a script and not a ctest case: the gate needs real audio output (CI
-sets CAUDIO_TEST_NOAUDIO=1, so it could never reproduce there), it runs
+sets KANARIV_TEST_NOAUDIO=1, so it could never reproduce there), it runs
 several minutes (unacceptable in the default suite), and only a supervisor
 process observes daemon death directly.
 
 Usage:
-    py -3 scripts/soak_daemon.py --cli build/dev/caudio.exe
+    py -3 scripts/soak_daemon.py --cli build/dev/kanariv.exe
     py -3 scripts/soak_daemon.py --cli ... --iterations 50   # quick smoke
     py -3 scripts/soak_daemon.py --cli ... --no-audio        # degraded churn
                                                             # (no playback
@@ -74,7 +74,7 @@ class Soak:
     def __init__(self, args):
         self.args = args
         self.cli = str(Path(args.cli).resolve())
-        self.tmp = Path(tempfile.mkdtemp(prefix="caudio-soak-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="kanariv-soak-"))
         self.cfg = self.tmp / "config.json"
         self.db = self.tmp / "library.db"
         self.log = self.tmp / "daemon-stderr.log"
@@ -226,8 +226,8 @@ class Soak:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="caudio daemon loop soak gate")
-    ap.add_argument("--cli", required=True, help="path to the caudio CLI binary")
+    ap = argparse.ArgumentParser(description="kanariv daemon loop soak gate")
+    ap.add_argument("--cli", required=True, help="path to the kanariv CLI binary")
     ap.add_argument("--iterations", type=int, default=300)
     ap.add_argument("--cmd-timeout", type=float, default=15.0)
     ap.add_argument("--ready-timeout", type=float, default=20.0)

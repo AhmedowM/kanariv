@@ -1,5 +1,5 @@
-#include <caudio/db/smart.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/db/smart.hpp>
+#include <kanariv/utils/error.hpp>
 #include <charconv>
 #include <cctype>
 #include <expected>
@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace caudio::db {
+namespace kanariv::db {
 
 namespace {
 
@@ -97,8 +97,8 @@ std::optional<std::string_view> readOp(std::string_view& s) {
 
 } // namespace
 
-std::expected<caudio::types::TrackQuery, caudio::utils::Error> parseSmartQuery(std::string_view q) {
-    caudio::types::TrackQuery tq{};
+std::expected<kanariv::types::TrackQuery, kanariv::utils::Error> parseSmartQuery(std::string_view q) {
+    kanariv::types::TrackQuery tq{};
     q = trim(q);
     if (q.empty())
         return tq;
@@ -114,35 +114,35 @@ std::expected<caudio::types::TrackQuery, caudio::utils::Error> parseSmartQuery(s
             }
         }
         if (opPos == 0 || opPos == pred.size())
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::InvalidArg,
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::InvalidArg,
                 "smart query: malformed predicate '" + std::string(pred) + "'")};
 
         std::string field = std::string(trim(pred.substr(0, opPos)));
         std::string_view rest = pred.substr(opPos);
         auto op = readOp(rest);
         if (!op.has_value())
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::InvalidArg,
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::InvalidArg,
                 "smart query: missing operator in '" + std::string(pred) + "'")};
         std::string value = std::string(trim(rest));
 
         if (field == "rating") {
             if (*op != "=")
-                return std::unexpected{caudio::utils::makeError(
-                    caudio::utils::StatusCode::InvalidArg,
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg,
                     "smart query: rating supports only '='")};
             int64_t v;
             if (!parseInt(value, v) || v < 0 || v > 5)
-                return std::unexpected{caudio::utils::makeError(
-                    caudio::utils::StatusCode::InvalidArg,
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg,
                     "smart query: rating must be an integer 0..5")};
             tq.rating = static_cast<int32_t>(v);
         } else if (field == "year") {
             int64_t v;
             if (!parseInt(value, v))
-                return std::unexpected{caudio::utils::makeError(
-                    caudio::utils::StatusCode::InvalidArg,
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg,
                     "smart query: invalid year value '" + value + "'")};
             if (*op == "=")
                 tq.year = static_cast<int32_t>(v);
@@ -157,8 +157,8 @@ std::expected<caudio::types::TrackQuery, caudio::utils::Error> parseSmartQuery(s
         } else if (field == "play_count") {
             int64_t v;
             if (!parseInt(value, v) || v < 0)
-                return std::unexpected{caudio::utils::makeError(
-                    caudio::utils::StatusCode::InvalidArg,
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg,
                     "smart query: invalid play_count value '" + value + "'")};
             if (*op == "=")
                 tq.play_count_min = v;
@@ -173,8 +173,8 @@ std::expected<caudio::types::TrackQuery, caudio::utils::Error> parseSmartQuery(s
         } else if (field == "duration") {
             double v;
             if (!parseDouble(value, v) || v < 0)
-                return std::unexpected{caudio::utils::makeError(
-                    caudio::utils::StatusCode::InvalidArg,
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg,
                     "smart query: invalid duration value '" + value + "'")};
             if (*op == "=") {
                 tq.duration_min = v;
@@ -189,8 +189,8 @@ std::expected<caudio::types::TrackQuery, caudio::utils::Error> parseSmartQuery(s
                 tq.duration_max = v - 1.0;
         } else if (field == "artist" || field == "album" || field == "genre") {
             if (*op != "=")
-                return std::unexpected{caudio::utils::makeError(
-                    caudio::utils::StatusCode::InvalidArg,
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg,
                     "smart query: " + field + " supports only '='")};
             if (field == "artist")
                 tq.artist = value;
@@ -200,13 +200,13 @@ std::expected<caudio::types::TrackQuery, caudio::utils::Error> parseSmartQuery(s
                 tq.genre = value;
         } else if (field == "search") {
             if (*op != "=")
-                return std::unexpected{caudio::utils::makeError(
-                    caudio::utils::StatusCode::InvalidArg,
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg,
                     "smart query: search supports only '='")};
             tq.search = value;
         } else {
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::InvalidArg,
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::InvalidArg,
                 "smart query: unknown field '" + field + "'")};
         }
     }
@@ -214,4 +214,4 @@ std::expected<caudio::types::TrackQuery, caudio::utils::Error> parseSmartQuery(s
     return tq;
 }
 
-} // namespace caudio::db
+} // namespace kanariv::db

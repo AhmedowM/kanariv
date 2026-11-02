@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/utils/log.hpp>
+#include <kanariv/utils/log.hpp>
 #include <common.hpp>
 #include <filesystem>
 #include <fstream>
@@ -11,7 +11,7 @@
 
 #include "../src/utils/log_sink.hpp"
 
-namespace caudio::utils::test {
+namespace kanariv::utils::test {
 
 bool log_injected() {
     std::vector<std::pair<LogLevel, std::string>> out;
@@ -162,34 +162,34 @@ bool log_trace_filter() {
 bool log_sink_rotation() {
     namespace fs = std::filesystem;
     std::error_code ec;
-    auto dir = fs::temp_directory_path(ec) / "caudio-logtest";
+    auto dir = fs::temp_directory_path(ec) / "kanariv-logtest";
     if (ec)
         return false;
     fs::remove_all(dir, ec);
     fs::create_directories(dir, ec);
     if (ec)
         return false;
-    caudio::test_helpers::registerTempPath(dir);
+    kanariv::test_helpers::registerTempPath(dir);
     FileSinkOptions opts;
     opts.maxBytes = 128;
     opts.generations = 3;
-    auto sink = FileLogSink::open(dir / "caudio.log", opts);
+    auto sink = FileLogSink::open(dir / "kanariv.log", opts);
     if (!sink || !sink->valid())
         return false;
     Logger logger(sink->callback());
     for (int i = 0; i < 40; ++i)
         logger.info("line number {} padding padding", i);
     // Bounded: current + 2 generations exist, the 4th never does.
-    if (!fs::exists(dir / "caudio.log", ec))
+    if (!fs::exists(dir / "kanariv.log", ec))
         return false;
-    if (!fs::exists(dir / "caudio.log.1", ec))
+    if (!fs::exists(dir / "kanariv.log.1", ec))
         return false;
-    if (!fs::exists(dir / "caudio.log.2", ec))
+    if (!fs::exists(dir / "kanariv.log.2", ec))
         return false;
-    if (fs::exists(dir / "caudio.log.3", ec))
+    if (fs::exists(dir / "kanariv.log.3", ec))
         return false;
     // Format: level tag plus the message text.
-    std::ifstream in(dir / "caudio.log");
+    std::ifstream in(dir / "kanariv.log");
     std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     if (content.find("[INFO ]") == std::string::npos)
         return false;
@@ -205,19 +205,19 @@ bool log_sink_rotation() {
 bool log_sink_open_failure() {
     // Directories are not log files: open fails gracefully, no crash.
     std::error_code ec;
-    auto dir = std::filesystem::temp_directory_path(ec) / "caudio-logtest-dir";
+    auto dir = std::filesystem::temp_directory_path(ec) / "kanariv-logtest-dir";
     if (ec)
         return false;
     std::filesystem::create_directories(dir, ec);
-    caudio::test_helpers::registerTempPath(dir);
+    kanariv::test_helpers::registerTempPath(dir);
     auto sink = FileLogSink::open(dir);
     std::filesystem::remove_all(dir, ec);
     return sink == nullptr;
 }
 
-} // namespace caudio::utils::test
+} // namespace kanariv::utils::test
 
-using namespace caudio::utils::test;
+using namespace kanariv::utils::test;
 
 TEST_CASE("Logger injected callback", "[utils][log]") {
     REQUIRE(log_injected());
@@ -248,8 +248,8 @@ TEST_CASE("Logger parseLogLevel mapping", "[utils][log]") {
 }
 
 TEST_CASE("Logger parseLogLevelValue accepts ints", "[utils][log]") {
-    using caudio::utils::LogLevel;
-    using caudio::utils::parseLogLevelValue;
+    using kanariv::utils::LogLevel;
+    using kanariv::utils::parseLogLevelValue;
     REQUIRE(parseLogLevelValue("0") == LogLevel::Trace);
     REQUIRE(parseLogLevelValue("2") == LogLevel::Info);
     REQUIRE(parseLogLevelValue("4") == LogLevel::Error);
@@ -273,13 +273,13 @@ TEST_CASE("FileLogSink open failure is silent", "[utils][log]") {
 }
 
 TEST_CASE("Logger enabled fast check", "[utils][log]") {
-    caudio::utils::Logger logger(nullptr, caudio::utils::LogLevel::Warn);
+    kanariv::utils::Logger logger(nullptr, kanariv::utils::LogLevel::Warn);
     // No callback: nothing would be emitted at any level.
-    REQUIRE(!logger.enabled(caudio::utils::LogLevel::Error));
-    logger.setCallback([](caudio::utils::LogLevel, std::string_view) {});
-    REQUIRE(!logger.enabled(caudio::utils::LogLevel::Info));
-    REQUIRE(logger.enabled(caudio::utils::LogLevel::Warn));
-    REQUIRE(logger.enabled(caudio::utils::LogLevel::Error));
-    logger.setLevel(caudio::utils::LogLevel::Trace);
-    REQUIRE(logger.enabled(caudio::utils::LogLevel::Trace));
+    REQUIRE(!logger.enabled(kanariv::utils::LogLevel::Error));
+    logger.setCallback([](kanariv::utils::LogLevel, std::string_view) {});
+    REQUIRE(!logger.enabled(kanariv::utils::LogLevel::Info));
+    REQUIRE(logger.enabled(kanariv::utils::LogLevel::Warn));
+    REQUIRE(logger.enabled(kanariv::utils::LogLevel::Error));
+    logger.setLevel(kanariv::utils::LogLevel::Trace);
+    REQUIRE(logger.enabled(kanariv::utils::LogLevel::Trace));
 }

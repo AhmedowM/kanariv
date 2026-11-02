@@ -1,12 +1,12 @@
 #include <sqlite3.h>
 
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/engine/engine.hpp>
-#include <caudio/types/engine.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <common.hpp>
 #include <cstdint>
 #include <engine/shuffle.hpp>
@@ -18,10 +18,10 @@
 #include <support/engine_test_helpers.hpp>
 #include <utility>
 #include <vector>
-using namespace caudio::db;
-using namespace caudio::engine;
-using namespace caudio::utils;
-using namespace caudio::test_helpers;
+using namespace kanariv::db;
+using namespace kanariv::engine;
+using namespace kanariv::utils;
+using namespace kanariv::test_helpers;
 
 TEST_CASE("engine queue shuffle creates perm via mt19937", "[engine_queue]") {
     std::string dbPath = tempDbPath("eng_q_shuffle").string();
@@ -29,7 +29,7 @@ TEST_CASE("engine queue shuffle creates perm via mt19937", "[engine_queue]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 4; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = "p" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -38,13 +38,13 @@ TEST_CASE("engine queue shuffle creates perm via mt19937", "[engine_queue]") {
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     }
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = false;
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
     REQUIRE(eng->setShuffle(true).has_value());
     // after shuffle, perm should be size 4 and be a permutation of 0..3
     // verify by checking engine_state blob via raw sqlite
@@ -73,13 +73,13 @@ TEST_CASE("engine queue shuffle creates perm via mt19937", "[engine_queue]") {
 }
 
 TEST_CASE("engine queue repeat Off stops at end", "[engine_queue]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("eng_q_off").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = "p" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -88,14 +88,14 @@ TEST_CASE("engine queue repeat Off stops at end", "[engine_queue]") {
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     }
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = false;
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
-    REQUIRE(eng->setRepeat(caudio::types::RepeatMode::Off).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->setRepeat(kanariv::types::RepeatMode::Off).has_value());
     REQUIRE(eng->play(1).has_value());
     {
         sqlite3* ch = nullptr;
@@ -132,13 +132,13 @@ TEST_CASE("engine queue repeat Off stops at end", "[engine_queue]") {
 }
 
 TEST_CASE("engine queue repeat All loops", "[engine_queue]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("eng_q_queue").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = "q" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -147,14 +147,14 @@ TEST_CASE("engine queue repeat All loops", "[engine_queue]") {
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     }
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = false;
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
-    REQUIRE(eng->setRepeat(caudio::types::RepeatMode::All).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->setRepeat(kanariv::types::RepeatMode::All).has_value());
     REQUIRE(eng->play(1).has_value());
     // queue persists via cursor, count stays 2 after play (not dequeued)
     {
@@ -188,12 +188,12 @@ TEST_CASE("engine queue repeat All loops", "[engine_queue]") {
 }
 
 TEST_CASE("engine queue repeat One seek without dequeue", "[engine_queue]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("eng_q_one").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t;
+    kanariv::types::Track t;
     t.path = "one.wav";
     t.duration = 5.0;
     for (int b = 0; b < 32; ++b)
@@ -203,7 +203,7 @@ TEST_CASE("engine queue repeat One seek without dequeue", "[engine_queue]") {
     REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     // add second track to have queue non-empty for non-shuffle One path? But One with !shuffle uses
     // seek path, not queue
-    caudio::types::Track t2;
+    kanariv::types::Track t2;
     t2.path = "two.wav";
     t2.duration = 5.0;
     for (int b = 0; b < 32; ++b)
@@ -211,14 +211,14 @@ TEST_CASE("engine queue repeat One seek without dequeue", "[engine_queue]") {
     auto r2 = db->insertTrack(t2);
     REQUIRE(r2.has_value());
     REQUIRE(db->queueEnqueue(1, *r2, -1).has_value());
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = false;
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
-    REQUIRE(eng->setRepeat(caudio::types::RepeatMode::One).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->setRepeat(kanariv::types::RepeatMode::One).has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     REQUIRE(eng->next().has_value());
@@ -229,14 +229,14 @@ TEST_CASE("engine queue repeat One seek without dequeue", "[engine_queue]") {
 }
 
 TEST_CASE("engine queue perm persistence blob cursor qid", "[engine_queue]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("eng_q_persist").string();
     {
         auto dbRes = Database::open(dbPath);
         REQUIRE(dbRes.has_value());
         auto db = std::move(dbRes.value());
         for (int i = 0; i < 3; ++i) {
-            caudio::types::Track t;
+            kanariv::types::Track t;
             t.path = "persist" + std::to_string(i) + ".wav";
             t.duration = 1.0;
             for (int b = 0; b < 32; ++b)
@@ -245,21 +245,21 @@ TEST_CASE("engine queue perm persistence blob cursor qid", "[engine_queue]") {
             REQUIRE(r.has_value());
             REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
         }
-        caudio::types::EngineConfig cfg;
+        kanariv::types::EngineConfig cfg;
         cfg.allowSimulatedPlayback = true;
         cfg.enableMonitorThread = false;
         auto eRes = Engine::create(cfg);
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
         REQUIRE(
-            eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+            eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
         REQUIRE(eng->setShuffle(true).has_value());
         REQUIRE(eng->play(1).has_value());
         // cursor should have advanced to 1, queueId 1 persisted
         eng->shutdown();
     }
     // reopen and verify persisted
-    auto e2Res = openEngineWithDatabase(dbPath, caudio::types::EngineConfig{.enableMonitorThread = false});
+    auto e2Res = openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
     REQUIRE(e2Res.has_value());
     auto eng2 = std::move(e2Res.value());
     // after reopen shuffle should still be on (state shuffleEnabled=1)
@@ -279,14 +279,14 @@ TEST_CASE("engine queue perm persistence blob cursor qid", "[engine_queue]") {
 }
 
 TEST_CASE("engine queue invalid repeat returns InvalidArg", "[engine_queue]") {
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = false;
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
     // without db should fail State
-    REQUIRE(!eng->setRepeat((caudio::types::RepeatMode)99).has_value());
+    REQUIRE(!eng->setRepeat((kanariv::types::RepeatMode)99).has_value());
 }
 
 TEST_CASE("shufflePerm deterministic with mt19937 seed 42", "[engine_queue][shuffle]") {
@@ -294,8 +294,8 @@ TEST_CASE("shufflePerm deterministic with mt19937 seed 42", "[engine_queue][shuf
     std::vector<int64_t> b{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     std::mt19937 rng1{42};
     std::mt19937 rng2{42};
-    caudio::engine::detail::shufflePerm(a, rng1);
-    caudio::engine::detail::shufflePerm(b, rng2);
+    kanariv::engine::detail::shufflePerm(a, rng1);
+    kanariv::engine::detail::shufflePerm(b, rng2);
     REQUIRE(a == b);
     // ensure it's a permutation
     std::set<int64_t> s(a.begin(), a.end());
@@ -305,15 +305,15 @@ TEST_CASE("shufflePerm deterministic with mt19937 seed 42", "[engine_queue][shuf
     // different seed should give different perm (with high probability)
     std::vector<int64_t> c{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     std::mt19937 rng3{43};
-    caudio::engine::detail::shufflePerm(c, rng3);
+    kanariv::engine::detail::shufflePerm(c, rng3);
     REQUIRE(c != a);
     // size 0 and 1 are no-ops
     std::vector<int64_t> empty;
     std::mt19937 rng4{42};
-    caudio::engine::detail::shufflePerm(empty, rng4);
+    kanariv::engine::detail::shufflePerm(empty, rng4);
     REQUIRE(empty.empty());
     std::vector<int64_t> one{42};
-    caudio::engine::detail::shufflePerm(one, rng4);
+    kanariv::engine::detail::shufflePerm(one, rng4);
     REQUIRE(one.size() == 1);
     REQUIRE(one[0] == 42);
 }
@@ -321,7 +321,7 @@ TEST_CASE("shufflePerm deterministic with mt19937 seed 42", "[engine_queue][shuf
 TEST_CASE("shufflePerm production overload non-deterministic but valid perm",
           "[engine_queue][shuffle]") {
     std::vector<int64_t> v{0, 1, 2, 3, 4};
-    caudio::engine::detail::shufflePerm(v); // calls random_device overload
+    kanariv::engine::detail::shufflePerm(v); // calls random_device overload
     std::set<int64_t> s(v.begin(), v.end());
     REQUIRE(s.size() == 5);
     for (int i = 0; i < 5; ++i)
@@ -329,13 +329,13 @@ TEST_CASE("shufflePerm production overload non-deterministic but valid perm",
 }
 
 TEST_CASE("engine play resumes when paused", "[engine_queue]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("eng_play_pause").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = "resume" + std::to_string(i) + ".wav";
         t.duration = 10.0;
         for (int b = 0; b < 32; ++b)
@@ -344,20 +344,20 @@ TEST_CASE("engine play resumes when paused", "[engine_queue]") {
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     }
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = false;
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     REQUIRE(eng->pause().has_value());
-    REQUIRE(eng->state() == caudio::types::PlaybackState::Paused);
+    REQUIRE(eng->state() == kanariv::types::PlaybackState::Paused);
     // play when paused should resume, not next
     REQUIRE(eng->play(1).has_value());
-    REQUIRE(eng->state() == caudio::types::PlaybackState::Playing);
+    REQUIRE(eng->state() == kanariv::types::PlaybackState::Playing);
     REQUIRE(eng->currentTrackId() == first);
     // play when playing should restart, not next
     REQUIRE(eng->play(1).has_value());
@@ -367,13 +367,13 @@ TEST_CASE("engine play resumes when paused", "[engine_queue]") {
 }
 
 TEST_CASE("engine prev non-shuffle", "[engine_queue]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("eng_prev").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 3; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = "prev" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -382,13 +382,13 @@ TEST_CASE("engine prev non-shuffle", "[engine_queue]") {
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     }
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = false;
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     REQUIRE(eng->next().has_value());
@@ -401,7 +401,7 @@ TEST_CASE("engine prev non-shuffle", "[engine_queue]") {
 }
 
 TEST_CASE("engine queue persists via cursor non-shuffle", "[engine_queue]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("eng_q_persist_cursor").string();
     int64_t id0 = 0;
     {
@@ -409,7 +409,7 @@ TEST_CASE("engine queue persists via cursor non-shuffle", "[engine_queue]") {
         REQUIRE(dbRes.has_value());
         auto db = std::move(dbRes.value());
         for (int i = 0; i < 4; ++i) {
-            caudio::types::Track t;
+            kanariv::types::Track t;
             t.path = "persist_cursor" + std::to_string(i) + ".wav";
             t.duration = 1.0;
             for (int b = 0; b < 32; ++b)
@@ -420,14 +420,14 @@ TEST_CASE("engine queue persists via cursor non-shuffle", "[engine_queue]") {
                 id0 = *r;
             REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
         }
-        caudio::types::EngineConfig cfg;
+        kanariv::types::EngineConfig cfg;
         cfg.allowSimulatedPlayback = true;
         cfg.enableMonitorThread = false;
         auto eRes = Engine::create(cfg);
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
         REQUIRE(
-            eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+            eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
         REQUIRE(eng->play(1).has_value());
         REQUIRE(eng->next().has_value());
         // queue count should still be 4 (cursor, not dequeue)
@@ -461,7 +461,7 @@ TEST_CASE("engine queue persists via cursor non-shuffle", "[engine_queue]") {
         sqlite3_close(ch);
     }
     auto e2Res = openEngineWithDatabase(
-        dbPath, caudio::types::EngineConfig{.enableMonitorThread = false, .allowSimulatedPlayback = true});
+        dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false, .allowSimulatedPlayback = true});
     REQUIRE(e2Res.has_value());
     auto eng2 = std::move(e2Res.value());
     // next should continue from cursor 2 -> third track
@@ -476,7 +476,7 @@ TEST_CASE("engine play missing file fails without simulation", "[engine_queue]")
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t;
+    kanariv::types::Track t;
     t.path = "no-such-file.wav";
     t.duration = 1.0;
     for (int b = 0; b < 32; ++b)
@@ -484,17 +484,17 @@ TEST_CASE("engine play missing file fails without simulation", "[engine_queue]")
     auto r = db->insertTrack(t);
     REQUIRE(r.has_value());
     REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
-    caudio::types::EngineConfig cfg; // allowSimulatedPlayback defaults to false
+    kanariv::types::EngineConfig cfg; // allowSimulatedPlayback defaults to false
     cfg.enableMonitorThread = false;
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
     auto pr = eng->play(1);
     REQUIRE(!pr.has_value());
     REQUIRE(pr.error().code == StatusCode::NotFound);
     // stays stopped and emits no TrackStarted event
-    REQUIRE(eng->state() == caudio::types::PlaybackState::Stopped);
+    REQUIRE(eng->state() == kanariv::types::PlaybackState::Stopped);
     REQUIRE(!eng->pollEvent().has_value());
     eng.reset();
     safeRemoveDb(dbPath);

@@ -1,6 +1,6 @@
 ---
 title: Release Notes
-description: caudio release history and changelog
+description: kanariv release history and changelog
 ---
 
 # Release Notes
@@ -21,11 +21,11 @@ description: caudio release history and changelog
 
 ## Earlier releases
 
-See the [CHANGELOG.md](https://github.com/AhmedowM/caudio/blob/main/CHANGELOG.md)
+See the [CHANGELOG.md](https://github.com/AhmedowM/kanariv/blob/main/CHANGELOG.md)
 for the complete release history.
 
 ## Versioning
 
-caudio follows semantic versioning. Releases are built from:
+kanariv follows semantic versioning. Releases are built from:
 - Linux: `release-lto-gcc`
 - macOS/Windows: `release-lto-clang`

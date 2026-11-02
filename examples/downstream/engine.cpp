@@ -1,10 +1,10 @@
-#include <caudio/engine/engine.hpp>
-#include <caudio/types/engine.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
 #include <iostream>
 
 int main() {
-    caudio::types::EngineConfig config;
+    kanariv::types::EngineConfig config;
     config.pollMs = 25;
     std::cout << "engine poll interval=" << config.pollMs << " ms\n";
 }

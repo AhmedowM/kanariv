@@ -3,7 +3,7 @@
 /**
  * @file ipc_server.hpp
  * @brief Accept-loop IPC server (daemon side).
- * @ingroup caudio_service
+ * @ingroup kanariv_service
  * @details Listens on a Unix domain socket (POSIX) or named pipe (Windows)
  * and dispatches each connection to the `Service` dispatcher on its own
  * thread. Windows: local API declarations are used when `windows.h` was
@@ -15,9 +15,9 @@
  * server; the public surface never names it.
  */
 
-#include <caudio/fwd.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
+#include <kanariv/fwd.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
 #include <expected>
 #include <filesystem>
 #include <functional>
@@ -26,11 +26,11 @@
 #include <string>
 #include <string_view>
 
-namespace caudio::service {
+namespace kanariv::service {
 
 /**
  * @brief Daemon-side accept loop; one thread per connection.
- * @ingroup caudio_service
+ * @ingroup kanariv_service
  */
 class IpcServer {
   public:
@@ -46,28 +46,28 @@ class IpcServer {
 
     /**
      * @brief Binds the socket/pipe derived from the database path.
-     * @ingroup caudio_service
+     * @ingroup kanariv_service
      * @param dbPath Database path (socket path is derived from it).
      * @param socketPathOverride Explicit path, bypassing derivation.
      * @return Success or `Io` Error (address in use, permission).
      */
-    caudio::utils::Expected<void> listen(const std::filesystem::path& dbPath,
+    kanariv::utils::Expected<void> listen(const std::filesystem::path& dbPath,
                                          std::string_view socketPathOverride = {});
 
     /**
      * @brief Serves connections until the stop token fires.
-     * @ingroup caudio_service
+     * @ingroup kanariv_service
      * @param st Stop token ending the accept loop.
      * @param dispatch Called per request on a connection thread.
      */
     void run(std::stop_token st,
-             std::function<std::expected<caudio::ipc::Result, caudio::utils::Error>(
-                 const caudio::ipc::Command&)>
+             std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
+                 const kanariv::ipc::Command&)>
                  dispatch);
 
     /**
      * @brief Stops accepting and joins connection threads (idempotent).
-     * @ingroup caudio_service
+     * @ingroup kanariv_service
      */
     void shutdown();
 
@@ -79,4 +79,4 @@ class IpcServer {
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace caudio::service
+} // namespace kanariv::service

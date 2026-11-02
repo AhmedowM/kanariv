@@ -1,17 +1,17 @@
 #include <array>
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/engine/engine.hpp>
-#include <caudio/types/engine.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/reader.hpp>
-#include <caudio/player/output.hpp>
-#include <caudio/player/player.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
-#include <caudio/utils/ring.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/player/output.hpp>
+#include <kanariv/player/player.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <cstddef>
@@ -25,27 +25,27 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-using namespace caudio::player;
-using namespace caudio::utils;
-using namespace caudio::db;
-using namespace caudio::engine;
-using namespace caudio::test_helpers;
-using caudio::media::Decoder;
-using caudio::media::FileReader;
+using namespace kanariv::player;
+using namespace kanariv::utils;
+using namespace kanariv::db;
+using namespace kanariv::engine;
+using namespace kanariv::test_helpers;
+using kanariv::media::Decoder;
+using kanariv::media::FileReader;
 
-static_assert(static_cast<int>(caudio::player::State::Stopped) == 0);
-static_assert(static_cast<int>(caudio::player::State::Playing) == 1);
-static_assert(static_cast<int>(caudio::player::State::Paused) == 2);
-static_assert(static_cast<int>(caudio::player::State::Error) == 3);
-static_assert(static_cast<int>(caudio::types::PlaybackState::Stopped) == 0);
-static_assert(static_cast<int>(caudio::types::PlaybackState::Ready) == 1);
-static_assert(static_cast<int>(caudio::types::PlaybackState::Playing) == 2);
-static_assert(static_cast<int>(caudio::types::PlaybackState::Paused) == 3);
-static_assert(!std::is_same_v<caudio::player::State, caudio::types::PlaybackState>);
+static_assert(static_cast<int>(kanariv::player::State::Stopped) == 0);
+static_assert(static_cast<int>(kanariv::player::State::Playing) == 1);
+static_assert(static_cast<int>(kanariv::player::State::Paused) == 2);
+static_assert(static_cast<int>(kanariv::player::State::Error) == 3);
+static_assert(static_cast<int>(kanariv::types::PlaybackState::Stopped) == 0);
+static_assert(static_cast<int>(kanariv::types::PlaybackState::Ready) == 1);
+static_assert(static_cast<int>(kanariv::types::PlaybackState::Playing) == 2);
+static_assert(static_cast<int>(kanariv::types::PlaybackState::Paused) == 3);
+static_assert(!std::is_same_v<kanariv::player::State, kanariv::types::PlaybackState>);
 
 static std::string fixturePath(const std::string& name) {
     for (auto c : {std::string("tests/fixtures/") + name, std::string("../tests/fixtures/") + name,
-                   std::string("C:/Users/Secondary/Projects/caudio-cpp/tests/fixtures/") + name}) {
+                   std::string("C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/") + name}) {
         if (std::filesystem::exists(c))
             return c;
     }
@@ -75,7 +75,7 @@ TEST_CASE("player open invalid path returns NotFound", "[player_integration]") {
 }
 
 TEST_CASE("player seek and volume", "[player_integration]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     auto r = FileReader::open(fixturePath("sample.wav"));
     REQUIRE(r.has_value());
     auto dec = Decoder::open(**r);
@@ -99,13 +99,13 @@ TEST_CASE("player seek and volume", "[player_integration]") {
 }
 
 TEST_CASE("player position time-based via Engine steady_clock", "[player_integration]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("pl_pos").string();
     {
         auto dbRes = Database::open(dbPath);
         REQUIRE(dbRes.has_value());
         auto db = std::move(dbRes.value());
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = fixturePath("sample.wav");
         t.duration = 2.0;
         for (int b = 0; b < 32; ++b)
@@ -113,15 +113,15 @@ TEST_CASE("player position time-based via Engine steady_clock", "[player_integra
         auto ins = db->insertTrack(t);
         REQUIRE(ins.has_value());
         REQUIRE(db->queueEnqueue(1, *ins, -1).has_value());
-        caudio::types::EngineConfig cfg;
+        kanariv::types::EngineConfig cfg;
         cfg.enableMonitorThread = false;
         auto eRes = Engine::create(cfg);
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
         REQUIRE(
-            eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+            eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
         REQUIRE(eng->play(1).has_value());
-        REQUIRE(eng->state() == caudio::types::PlaybackState::Playing);
+        REQUIRE(eng->state() == kanariv::types::PlaybackState::Playing);
         double pos0 = eng->position();
         std::this_thread::sleep_for(std::chrono::milliseconds(120));
         double pos1 = eng->position();
@@ -129,17 +129,17 @@ TEST_CASE("player position time-based via Engine steady_clock", "[player_integra
         REQUIRE(pos1 >= 0.08);
         // pause should freeze position
         REQUIRE(eng->pause().has_value());
-        REQUIRE(eng->state() == caudio::types::PlaybackState::Paused);
+        REQUIRE(eng->state() == kanariv::types::PlaybackState::Paused);
         double paused = eng->position();
         std::this_thread::sleep_for(std::chrono::milliseconds(80));
         REQUIRE(eng->position() == paused);
         // resume should advance
         REQUIRE(eng->resume().has_value());
-        REQUIRE(eng->state() == caudio::types::PlaybackState::Playing);
+        REQUIRE(eng->state() == kanariv::types::PlaybackState::Playing);
         std::this_thread::sleep_for(std::chrono::milliseconds(80));
         REQUIRE(eng->position() > paused);
         REQUIRE(eng->stop().has_value());
-        REQUIRE(eng->state() == caudio::types::PlaybackState::Stopped);
+        REQUIRE(eng->state() == kanariv::types::PlaybackState::Stopped);
     }
     std::error_code ec;
     std::filesystem::remove(dbPath, ec);
@@ -148,7 +148,7 @@ TEST_CASE("player position time-based via Engine steady_clock", "[player_integra
 }
 
 TEST_CASE("player state transitions invalid", "[player_integration]") {
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.enableMonitorThread = false;
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
@@ -175,12 +175,12 @@ TEST_CASE("player decode ogg via ffmpeg", "[player_integration]") {
 }
 
 TEST_CASE("player seek-while-playing race via Engine", "[player_integration][seek]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("seek_race").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t;
+    kanariv::types::Track t;
     t.path = fixturePath("sample.wav");
     t.duration = 5.0;
     for (int b = 0; b < 32; ++b)
@@ -188,18 +188,18 @@ TEST_CASE("player seek-while-playing race via Engine", "[player_integration][see
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     REQUIRE(db->queueEnqueue(1, *ins, -1).has_value());
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.enableMonitorThread = true;
     cfg.pollMs = 10;
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
     REQUIRE(eng->play(1).has_value());
     // Loop the single track: natural end stops on repeat Off, which would
     // end playback mid-test and fail the seeks below (this test races seeks,
     // not end behavior).
-    REQUIRE(eng->setRepeat(caudio::types::RepeatMode::All).has_value());
+    REQUIRE(eng->setRepeat(kanariv::types::RepeatMode::All).has_value());
     // sequential seeks while playing (decode thread races with seek's ring reset)
     // we do small delays to let decode thread interleave but avoid true concurrent seeks which
     // cause data race
@@ -216,7 +216,7 @@ TEST_CASE("player seek-while-playing race via Engine", "[player_integration][see
     }
     REQUIRE(okCount > 5);
     // ensure engine still playing and position is valid
-    REQUIRE(eng->state() == caudio::types::PlaybackState::Playing);
+    REQUIRE(eng->state() == kanariv::types::PlaybackState::Playing);
     // seek to invalid -> should fail InvalidArg
     REQUIRE(!eng->seek(-1.0).has_value());
     REQUIRE(eng->seek(-1.0).error().code == StatusCode::InvalidArg);
@@ -272,13 +272,13 @@ TEST_CASE("race player open concurrent", "[player_integration][race]") {
 }
 
 TEST_CASE("gapless via Player Engine 300ms lookahead", "[player_integration][gapless]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("gapless_player").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = fixturePath("sample.wav");
         t.duration = 0.9;
         for (int b = 0; b < 32; ++b)
@@ -287,7 +287,7 @@ TEST_CASE("gapless via Player Engine 300ms lookahead", "[player_integration][gap
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     }
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.enableMonitorThread = true;
     cfg.pollMs = 10;
     cfg.gaplessMs = 300;
@@ -295,7 +295,7 @@ TEST_CASE("gapless via Player Engine 300ms lookahead", "[player_integration][gap
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     busyWaitUntil([&] { return eng->currentTrackId() != first; }, std::chrono::milliseconds(3000),

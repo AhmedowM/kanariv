@@ -1,10 +1,10 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/reader.hpp>
-#include <caudio/media/source.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/media/source.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <common.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -24,14 +24,14 @@
 #include <unistd.h>
 #endif
 
-using namespace caudio::media;
-using namespace caudio::utils;
-using namespace caudio::test_helpers;
+using namespace kanariv::media;
+using namespace kanariv::utils;
+using namespace kanariv::test_helpers;
 
 namespace {
 
 std::filesystem::path writeTempFile(const std::string& name, const std::vector<std::byte>& data) {
-    auto dir = tempDirPath("caudio_source_tests");
+    auto dir = tempDirPath("kanariv_source_tests");
     auto path = dir / name;
     std::ofstream out(path, std::ios::binary);
     out.write(reinterpret_cast<const char*>(data.data()),

@@ -1,43 +1,43 @@
 /**
  * @file system.cpp
  * @brief History and audio-device command handlers.
- * @ingroup caudio_app
+ * @ingroup kanariv_app
  */
 
 #include <app/app_impl.hpp>
 #include <app/format_internal.hpp>
-#include <caudio/app/app.hpp>
-#include <caudio/client/client.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/math.hpp>
+#include <kanariv/app/app.hpp>
+#include <kanariv/client/client.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/math.hpp>
 #include <cmath>
 #include <format>
 #include <optional>
 #include <string>
 #include <variant>
 
-namespace caudio::app {
+namespace kanariv::app {
 
 AppResult App::status() {
-    return impl_->confirm(impl_->sendRaw(caudio::ipc::Command{caudio::ipc::StatusReq{}}));
+    return impl_->confirm(impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::StatusReq{}}));
 }
 
 AppResult App::info() {
-    return impl_->confirm(impl_->sendRaw(caudio::ipc::Command{caudio::ipc::Info{}}));
+    return impl_->confirm(impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::Info{}}));
 }
 
-AppResult App::setVolume(const caudio::ipc::VolumeSet& volume) {
-    return impl_->confirm(impl_->sendRaw(caudio::ipc::Command{volume}));
+AppResult App::setVolume(const kanariv::ipc::VolumeSet& volume) {
+    return impl_->confirm(impl_->sendRaw(kanariv::ipc::Command{volume}));
 }
 
 AppResult App::historyList(int limit) {
-    caudio::ipc::Command cmd{caudio::ipc::HistoryList{limit}};
+    kanariv::ipc::Command cmd{kanariv::ipc::HistoryList{limit}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
 AppResult App::historyClear() {
-    caudio::ipc::Command cmd{caudio::ipc::HistoryClear{}};
+    kanariv::ipc::Command cmd{kanariv::ipc::HistoryClear{}};
     return impl_->confirm(impl_->sendRaw(cmd), "History cleared");
 }
 
@@ -47,50 +47,50 @@ AppResult App::bookmarkAdd(std::optional<double> position, std::string note,
     if (position.has_value()) {
         pos = *position;
     } else {
-        caudio::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
-        auto ps = probe.send(caudio::ipc::Command{caudio::ipc::StatusReq{}});
+        kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
+        auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
         if (!ps)
             return std::unexpected{ps.error()};
-        auto* st = std::get_if<caudio::ipc::Status>(&*ps);
+        auto* st = std::get_if<kanariv::ipc::Status>(&*ps);
         if (!st) {
-            if (auto* e = std::get_if<caudio::utils::Error>(&*ps))
+            if (auto* e = std::get_if<kanariv::utils::Error>(&*ps))
                 return std::unexpected{*e};
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::State, "status unavailable")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::State, "status unavailable")};
         }
         pos = st->pos;
     }
     if (pos < 0.0)
         pos = 0.0;
     int64_t posMs = (int64_t)std::llround(pos * 1000.0);
-    caudio::ipc::Command cmd{caudio::ipc::BookmarkAdd{posMs, std::move(note), track}};
+    kanariv::ipc::Command cmd{kanariv::ipc::BookmarkAdd{posMs, std::move(note), track}};
     auto res = impl_->sendRaw(cmd);
     if (!res)
         return std::unexpected{res.error()};
-    std::string line = std::format("Bookmark added at {}", caudio::utils::formatClock(pos));
+    std::string line = std::format("Bookmark added at {}", kanariv::utils::formatClock(pos));
     return Outcome{
         .result = std::move(*res), .line = std::move(line), .toStderr = false, .failed = false};
 }
 
 AppResult App::bookmarkList(std::optional<int64_t> track) {
-    caudio::ipc::Command cmd{caudio::ipc::BookmarkList{track}};
+    kanariv::ipc::Command cmd{kanariv::ipc::BookmarkList{track}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
 AppResult App::bookmarkRemove(int64_t id) {
-    caudio::ipc::Command cmd{caudio::ipc::BookmarkRemove{id}};
+    kanariv::ipc::Command cmd{kanariv::ipc::BookmarkRemove{id}};
     return impl_->confirm(impl_->sendRaw(cmd), std::format("Bookmark {} removed", id));
 }
 
 AppResult App::bookmarkGoto(int64_t id) {
-    caudio::ipc::Command cmd{caudio::ipc::BookmarkGoto{id}};
+    kanariv::ipc::Command cmd{kanariv::ipc::BookmarkGoto{id}};
     auto res = impl_->sendRaw(cmd);
     if (!res)
         return std::unexpected{res.error()};
-    if (auto* st = std::get_if<caudio::ipc::Status>(&*res)) {
-        std::string who = caudio::app::trackWho(*st);
+    if (auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
+        std::string who = kanariv::app::trackWho(*st);
         std::string line =
-            std::format("Resuming {} from {}", who, caudio::utils::formatClock(st->pos));
+            std::format("Resuming {} from {}", who, kanariv::utils::formatClock(st->pos));
         return Outcome{
             .result = std::move(*res), .line = std::move(line), .toStderr = false, .failed = false};
     }
@@ -99,17 +99,17 @@ AppResult App::bookmarkGoto(int64_t id) {
 }
 
 AppResult App::deviceList() {
-    caudio::ipc::Command cmd{caudio::ipc::DeviceList{}};
+    kanariv::ipc::Command cmd{kanariv::ipc::DeviceList{}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
 AppResult App::deviceSet(const std::string& id) {
-    caudio::ipc::Command cmd{caudio::ipc::DeviceSet{id}};
+    kanariv::ipc::Command cmd{kanariv::ipc::DeviceSet{id}};
     return impl_->confirm(impl_->sendRaw(cmd), std::format("Default device: {}", id));
 }
 
 AppResult App::deviceTest(std::optional<std::string> id, bool tone) {
-    caudio::ipc::Command cmd{caudio::ipc::DeviceTest{id, tone}};
+    kanariv::ipc::Command cmd{kanariv::ipc::DeviceTest{id, tone}};
     std::string line =
         id.has_value() ? std::format("Device available: {}", *id) : "Default device available";
     if (tone)
@@ -117,4 +117,4 @@ AppResult App::deviceTest(std::optional<std::string> id, bool tone) {
     return impl_->confirm(impl_->sendRaw(cmd), std::move(line));
 }
 
-} // namespace caudio::app
+} // namespace kanariv::app

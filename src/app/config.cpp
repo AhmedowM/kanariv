@@ -1,17 +1,17 @@
 /**
  * @file config.cpp
  * @brief Configuration command handlers.
- * @ingroup caudio_app
+ * @ingroup kanariv_app
  * @details Phase 1: returns outcome data; the frontend renders. Reads
  * answer from the local file without a daemon; writes go through it.
  */
 
 #include <app/app_impl.hpp>
-#include <caudio/app/app.hpp>
-#include <caudio/config.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/app/app.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
 #include <expected>
 #include <format>
 #include <optional>
@@ -19,18 +19,18 @@
 
 #include "config/raw.hpp"
 
-namespace caudio::app {
+namespace kanariv::app {
 
 AppResult App::configGet(const std::string& key) {
     // Answered from the local file: no daemon needed.
-    auto v = caudio::config::detail::configGetRaw(impl_->config_.configPath, key);
+    auto v = kanariv::config::detail::configGetRaw(impl_->config_.configPath, key);
     if (!v)
         return std::unexpected{v.error()};
-    return impl_->confirm(caudio::ipc::Result{caudio::ipc::ConfigValue{key, *v}});
+    return impl_->confirm(kanariv::ipc::Result{kanariv::ipc::ConfigValue{key, *v}});
 }
 
 AppResult App::configSet(const std::string& key, const std::string& value) {
-    caudio::ipc::Command cmd{caudio::ipc::ConfigSet{key, value}};
+    kanariv::ipc::Command cmd{kanariv::ipc::ConfigSet{key, value}};
     auto res = impl_->sendRaw(cmd);
     if (!res)
         return std::unexpected{res.error()};
@@ -38,25 +38,25 @@ AppResult App::configSet(const std::string& key, const std::string& value) {
 }
 
 AppResult App::configList() {
-    caudio::ipc::Command cmd{caudio::ipc::ConfigList{}};
+    kanariv::ipc::Command cmd{kanariv::ipc::ConfigList{}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
 AppResult App::configExport(const std::string& path) {
-    caudio::ipc::Command cmd{caudio::ipc::ConfigExport{path}};
+    kanariv::ipc::Command cmd{kanariv::ipc::ConfigExport{path}};
     return impl_->confirm(impl_->sendRaw(cmd), std::format("Exported config to {}", path));
 }
 
 AppResult App::configImport(const std::string& path) {
-    caudio::ipc::Command cmd{caudio::ipc::ConfigImport{path}};
+    kanariv::ipc::Command cmd{kanariv::ipc::ConfigImport{path}};
     return impl_->confirm(impl_->sendRaw(cmd), std::format("Imported config from {}", path));
 }
 
 AppResult App::configReset(std::optional<std::string> key) {
-    caudio::ipc::Command cmd{caudio::ipc::ConfigReset{key}};
+    kanariv::ipc::Command cmd{kanariv::ipc::ConfigReset{key}};
     std::string line =
         key.has_value() ? std::format("Reset config key '{}'", *key) : "Reset all config";
     return impl_->confirm(impl_->sendRaw(cmd), std::move(line));
 }
 
-} // namespace caudio::app
+} // namespace kanariv::app

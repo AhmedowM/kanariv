@@ -1,21 +1,21 @@
 #include <algorithm>
 #include <array>
-#include <caudio/db/database.hpp>
-#include <caudio/db/maintenance.hpp>
-#include <caudio/db/scan.hpp>
-#include <caudio/db/search.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/media/audio_ext.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/scan.hpp>
-#include <caudio/service/service.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/base64.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/log.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/maintenance.hpp>
+#include <kanariv/db/scan.hpp>
+#include <kanariv/db/search.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/media/audio_ext.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/scan.hpp>
+#include <kanariv/service/service.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/base64.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cctype>
 #include <chrono>
 #include <cstddef>
@@ -49,34 +49,34 @@
 #include "service_status.hpp"
 #include "tag_writer.hpp"
 
-namespace caudio::service {
+namespace kanariv::service {
 
-using caudio::engine::detail::ServiceAccess;
-using namespace caudio::ipc;
-using caudio::ipc::HistoryClear;
-using caudio::ipc::HistoryList;
-using caudio::ipc::Info;
-using caudio::ipc::LibraryAdd;
-using caudio::ipc::LibraryList;
-using caudio::ipc::LibraryMaintenance;
-using caudio::ipc::LibraryRemove;
-using caudio::ipc::LibraryScan;
-using caudio::ipc::LibrarySearch;
-using caudio::ipc::LibraryStats;
-using caudio::ipc::PlaylistAdd;
-using caudio::ipc::PlaylistCreate;
-using caudio::ipc::PlaylistDelete;
-using caudio::ipc::PlaylistExport;
-using caudio::ipc::PlaylistImport;
-using caudio::ipc::PlaylistList;
-using caudio::ipc::PlaylistLoad;
-using caudio::ipc::PlaylistRename;
-using caudio::ipc::PlaylistSave;
-using caudio::ipc::PlaylistTracks;
-using caudio::ipc::Preview;
-using caudio::ipc::TagEdit;
-using caudio::ipc::TagGet;
-using caudio::ipc::TrackRate;
+using kanariv::engine::detail::ServiceAccess;
+using namespace kanariv::ipc;
+using kanariv::ipc::HistoryClear;
+using kanariv::ipc::HistoryList;
+using kanariv::ipc::Info;
+using kanariv::ipc::LibraryAdd;
+using kanariv::ipc::LibraryList;
+using kanariv::ipc::LibraryMaintenance;
+using kanariv::ipc::LibraryRemove;
+using kanariv::ipc::LibraryScan;
+using kanariv::ipc::LibrarySearch;
+using kanariv::ipc::LibraryStats;
+using kanariv::ipc::PlaylistAdd;
+using kanariv::ipc::PlaylistCreate;
+using kanariv::ipc::PlaylistDelete;
+using kanariv::ipc::PlaylistExport;
+using kanariv::ipc::PlaylistImport;
+using kanariv::ipc::PlaylistList;
+using kanariv::ipc::PlaylistLoad;
+using kanariv::ipc::PlaylistRename;
+using kanariv::ipc::PlaylistSave;
+using kanariv::ipc::PlaylistTracks;
+using kanariv::ipc::Preview;
+using kanariv::ipc::TagEdit;
+using kanariv::ipc::TagGet;
+using kanariv::ipc::TrackRate;
 
 namespace {
 
@@ -84,7 +84,7 @@ namespace {
 // using TagLib. Returns {raw_bytes, mime_type} or nullopt when no embedded
 // picture is found or the file cannot be read.
 std::optional<std::pair<std::vector<std::byte>, std::string>>
-extractEmbeddedCoverArt(const std::filesystem::path& path, caudio::utils::Logger* logger) {
+extractEmbeddedCoverArt(const std::filesystem::path& path, kanariv::utils::Logger* logger) {
     TagLib::FileRef file(path.generic_string().c_str());
     if (!file.file()) {
         if (logger)
@@ -154,8 +154,8 @@ namespace detail {
 double durationFromDecoder(const std::filesystem::path& path) noexcept;
 } // namespace detail
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::LibraryScan& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
     std::filesystem::path root;
     if (cmd.path)
         root = std::filesystem::path(*cmd.path);
@@ -165,7 +165,7 @@ Service::Impl::handle(const caudio::ipc::LibraryScan& cmd) {
             pp = std::filesystem::current_path();
         root = pp / "music";
     }
-    auto mode = (cmd.full_hash ? caudio::media::ScanMode::Full : caudio::media::ScanMode::Sampled);
+    auto mode = (cmd.full_hash ? kanariv::media::ScanMode::Full : kanariv::media::ScanMode::Sampled);
     // Prefer scanLibrary if a library matches root -- gives dedup + batched
     // transaction
     if (auto libs = db_->listLibraries(); libs) {
@@ -174,13 +174,13 @@ Service::Impl::handle(const caudio::ipc::LibraryScan& cmd) {
                 std::size_t before = 0;
                 if (auto st = db_->getStats())
                     before = static_cast<std::size_t>(st->num_tracks);
-                auto sr = caudio::db::scanLibrary(*db_, l.id, {}, mode);
+                auto sr = kanariv::db::scanLibrary(*db_, l.id, {}, mode);
                 if (!sr)
                     return std::unexpected{sr.error()};
                 std::size_t after = before;
                 if (auto st = db_->getStats())
                     after = static_cast<std::size_t>(st->num_tracks);
-                return Result{caudio::ipc::ScanReport{after >= before ? after - before : 0}};
+                return Result{kanariv::ipc::ScanReport{after >= before ? after - before : 0}};
             }
         }
     }
@@ -194,7 +194,7 @@ Service::Impl::handle(const caudio::ipc::LibraryScan& cmd) {
                       cmd.full_hash ? "full" : "sampled");
     std::size_t n = 0;
     std::size_t seen = 0;
-    for (auto t : caudio::media::scanTracks(root, mode)) {
+    for (auto t : kanariv::media::scanTracks(root, mode)) {
         ++seen;
         if (auto ex = db_->findByPath(t.path); ex && ex->size == t.size && ex->mtime == t.mtime)
             continue;
@@ -204,31 +204,31 @@ Service::Impl::handle(const caudio::ipc::LibraryScan& cmd) {
     }
     if (logger_)
         logger_->info("scan finished root={} scanned={} added={}", root.generic_string(), seen, n);
-    return Result{caudio::ipc::ScanReport{n}};
+    return Result{kanariv::ipc::ScanReport{n}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::LibrarySearch& cmd) {
-    auto tracks = caudio::db::search(*db_, cmd.query, cmd.limit);
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LibrarySearch& cmd) {
+    auto tracks = kanariv::db::search(*db_, cmd.query, cmd.limit);
     if (!tracks)
         return std::unexpected{tracks.error()};
     // fallback to like handled inside search; if empty still return
-    std::span<const caudio::types::Track> span{*tracks};
-    std::vector<caudio::types::Track> out(span.begin(), span.end());
-    return Result{caudio::ipc::SearchResults{cmd.query, std::move(out)}};
+    std::span<const kanariv::types::Track> span{*tracks};
+    std::vector<kanariv::types::Track> out(span.begin(), span.end());
+    return Result{kanariv::ipc::SearchResults{cmd.query, std::move(out)}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::LibraryStats& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LibraryStats& cmd) {
     auto st = db_->libraryStats(cmd.top_tracks, cmd.top_albums, cmd.top_genres, cmd.top_artists);
     if (!st)
         return std::unexpected{st.error()};
     return Result{std::move(*st)};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::LibraryList& cmd) {
-    caudio::types::TrackQuery q{};
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LibraryList& cmd) {
+    kanariv::types::TrackQuery q{};
     q.limit = cmd.limit;
     q.offset = cmd.offset;
     q.sort = cmd.sort;
@@ -249,64 +249,64 @@ Service::Impl::handle(const caudio::ipc::LibraryList& cmd) {
     return Result{Tracks{std::move(*tracks)}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Info&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Info&) {
     // Get current track from engine status
     int64_t track_id = engine_->currentTrackId();
     if (track_id == 0) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "no track currently playing")};
     }
     auto tr = db_->getTrack(track_id);
     if (!tr)
         return std::unexpected{tr.error()};
-    caudio::ipc::TrackInfo ti{};
+    kanariv::ipc::TrackInfo ti{};
     ti.track = std::move(*tr);
     ti.play_count = ti.track.play_count;
     ti.last_played = ti.track.last_played;
     return Result{std::move(ti)};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::HistoryList& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::HistoryList& cmd) {
     int limit = cmd.limit.value_or(50);
     if (limit <= 0)
         limit = 50;
     auto hist = engine_->listHistory(limit);
     if (!hist)
         return std::unexpected{hist.error()};
-    return Result{caudio::ipc::History{std::move(*hist)}};
+    return Result{kanariv::ipc::History{std::move(*hist)}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::HistoryClear&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::HistoryClear&) {
     auto r = engine_->clearHistory();
     if (!r)
         return std::unexpected{r.error()};
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::BookmarkList& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::BookmarkList& cmd) {
     int64_t tid = cmd.track_id.value_or(engine_->currentTrackId());
     if (tid == 0)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "no current track")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "no current track")};
     auto list = db_->listBookmarks(tid);
     if (!list)
         return std::unexpected{list.error()};
-    return Result{caudio::ipc::Bookmarks{std::move(*list)}};
+    return Result{kanariv::ipc::Bookmarks{std::move(*list)}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::BookmarkAdd& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::BookmarkAdd& cmd) {
     if (cmd.position_ms < 0)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "bookmark: negative position")};
     int64_t tid = cmd.track_id.value_or(engine_->currentTrackId());
     if (tid == 0)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "no current track")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "no current track")};
     if (auto tr = db_->getTrack(tid); !tr)
         return std::unexpected{tr.error()};
     auto r = db_->bookmarkAdd(tid, cmd.position_ms, cmd.note);
@@ -315,16 +315,16 @@ Service::Impl::handle(const caudio::ipc::BookmarkAdd& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::BookmarkRemove& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::BookmarkRemove& cmd) {
     auto r = db_->bookmarkRemove(cmd.id);
     if (!r)
         return std::unexpected{r.error()};
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::BookmarkGoto& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::BookmarkGoto& cmd) {
     auto b = db_->bookmarkGet(cmd.id);
     if (!b)
         return std::unexpected{b.error()};
@@ -336,26 +336,26 @@ Service::Impl::handle(const caudio::ipc::BookmarkGoto& cmd) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::LibraryAdd& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LibraryAdd& cmd) {
     if (cmd.path.empty())
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "library add: missing path")};
     std::filesystem::path p(cmd.path);
     std::error_code ec;
     bool exists = std::filesystem::exists(p, ec);
     if (ec || !exists)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "path not found: " + cmd.path)};
     auto addSingleFile =
-        [&](const std::filesystem::path& fp) -> std::expected<void, caudio::utils::Error> {
-        if (!caudio::media::hasAudioExt(fp))
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::Unsupported, "unsupported file type: " + fp.string())};
-        auto fpRes = caudio::media::internal::computeFingerprint(fp);
+        [&](const std::filesystem::path& fp) -> std::expected<void, kanariv::utils::Error> {
+        if (!kanariv::media::hasAudioExt(fp))
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Unsupported, "unsupported file type: " + fp.string())};
+        auto fpRes = kanariv::media::internal::computeFingerprint(fp);
         if (!fpRes)
             return std::unexpected{fpRes.error()};
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = fp.generic_string();
         t.fingerprint = *fpRes;
         t.duration = detail::durationFromDecoder(fp);
@@ -367,7 +367,7 @@ Service::Impl::handle(const caudio::ipc::LibraryAdd& cmd) {
         if (!ec2)
             t.mtime = static_cast<int64_t>(ftime.time_since_epoch().count());
         // Extract metadata (title, artist, album, etc.)
-        if (auto meta = caudio::media::extractMetadata(t.path); meta) {
+        if (auto meta = kanariv::media::extractMetadata(t.path); meta) {
             t.title = std::move(meta->title);
             t.artist = std::move(meta->artist);
             t.album = std::move(meta->album);
@@ -384,7 +384,7 @@ Service::Impl::handle(const caudio::ipc::LibraryAdd& cmd) {
         }
         auto ins = db_->insertTrack(t);
         if (!ins) {
-            if (ins.error().code == caudio::utils::StatusCode::AlreadyExists) {
+            if (ins.error().code == kanariv::utils::StatusCode::AlreadyExists) {
                 auto existing = db_->findByFingerprint(t.fingerprint);
                 if (existing)
                     return {};
@@ -411,7 +411,7 @@ Service::Impl::handle(const caudio::ipc::LibraryAdd& cmd) {
                 if (iterEc)
                     break;
                 std::error_code e3;
-                if (it->is_regular_file(e3) && !e3 && caudio::media::hasAudioExt(it->path())) {
+                if (it->is_regular_file(e3) && !e3 && kanariv::media::hasAudioExt(it->path())) {
                     auto r = addSingleFile(it->path());
                     if (r)
                         ++added;
@@ -423,7 +423,7 @@ Service::Impl::handle(const caudio::ipc::LibraryAdd& cmd) {
                 if (iterEc)
                     break;
                 std::error_code e3;
-                if (it->is_regular_file(e3) && !e3 && caudio::media::hasAudioExt(it->path())) {
+                if (it->is_regular_file(e3) && !e3 && kanariv::media::hasAudioExt(it->path())) {
                     auto r = addSingleFile(it->path());
                     if (r)
                         ++added;
@@ -436,15 +436,15 @@ Service::Impl::handle(const caudio::ipc::LibraryAdd& cmd) {
         }
         return Result{Empty{}};
     } else {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "not a file or directory: " + cmd.path)};
     }
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::LibraryRemove& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LibraryRemove& cmd) {
     if (cmd.query.empty())
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "library remove: missing id")};
     std::string q = cmd.query;
     // trim
@@ -462,7 +462,7 @@ Service::Impl::handle(const caudio::ipc::LibraryRemove& cmd) {
                 auto r = db_->deleteTrack(id);
                 if (r)
                     return Result{Empty{}};
-                if (r.error().code != caudio::utils::StatusCode::NotFound)
+                if (r.error().code != kanariv::utils::StatusCode::NotFound)
                     return std::unexpected{r.error()};
                 // fallthrough to path lookup
             }
@@ -507,14 +507,14 @@ Service::Impl::handle(const caudio::ipc::LibraryRemove& cmd) {
             return Result{Empty{}};
         }
     }
-    return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+    return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                     "track not found: " + cmd.query)};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::TagEdit& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
     if (cmd.id == 0)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "tag edit: invalid id")};
     static const std::array<std::string_view, 8> allowed{
         "title", "artist", "album", "album_artist", "genre", "year", "track_number", "disc_number"};
@@ -525,12 +525,12 @@ Service::Impl::handle(const caudio::ipc::TagEdit& cmd) {
             break;
         }
     if (!ok)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "invalid field: " + cmd.field)};
     auto trRes = db_->getTrack(cmd.id);
     if (!trRes)
         return std::unexpected{trRes.error()};
-    caudio::types::Track t = std::move(*trRes);
+    kanariv::types::Track t = std::move(*trRes);
     if (cmd.field == "title")
         t.title = cmd.value;
     else if (cmd.field == "artist")
@@ -549,7 +549,7 @@ Service::Impl::handle(const caudio::ipc::TagEdit& cmd) {
                 throw std::invalid_argument("extra");
             t.year = v;
         } catch (...) {
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                             "invalid year: " + cmd.value)};
         }
     } else if (cmd.field == "track_number") {
@@ -560,7 +560,7 @@ Service::Impl::handle(const caudio::ipc::TagEdit& cmd) {
                 throw std::invalid_argument("extra");
             t.track_num = v;
         } catch (...) {
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                             "invalid track_number: " + cmd.value)};
         }
     } else if (cmd.field == "disc_number") {
@@ -571,7 +571,7 @@ Service::Impl::handle(const caudio::ipc::TagEdit& cmd) {
                 throw std::invalid_argument("extra");
             t.disc_num = v;
         } catch (...) {
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                             "invalid disc_number: " + cmd.value)};
         }
     }
@@ -579,21 +579,21 @@ Service::Impl::handle(const caudio::ipc::TagEdit& cmd) {
     // DB row can never diverge from it silently.
     if (!detail::canWriteFileTags(t.path)) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                      "tag write not supported for this format: " +
                                          std::filesystem::path(t.path).extension().string())};
     }
     // A loaded (playing or paused) track holds the file open through the
     // decoder: suspend to release the handles, write + re-register, reopen.
     auto& eng = *engine_;
-    bool loaded = (eng.state() == caudio::types::PlaybackState::Playing ||
-                   eng.state() == caudio::types::PlaybackState::Paused) &&
+    bool loaded = (eng.state() == kanariv::types::PlaybackState::Playing ||
+                   eng.state() == kanariv::types::PlaybackState::Paused) &&
                   eng.currentTrackId() == t.id;
     double resumePos = 0.0;
     bool wasPaused = false;
     if (loaded) {
         resumePos = eng.position();
-        wasPaused = (eng.state() == caudio::types::PlaybackState::Paused);
+        wasPaused = (eng.state() == kanariv::types::PlaybackState::Paused);
         if (auto s = ServiceAccess::suspendCurrentTrack(eng); !s)
             return std::unexpected{s.error()};
     }
@@ -624,8 +624,8 @@ Service::Impl::handle(const caudio::ipc::TagEdit& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::TagGet& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::TagGet& cmd) {
     int64_t trackId = 0;
     if (cmd.id.has_value()) {
         trackId = *cmd.id;
@@ -637,17 +637,17 @@ Service::Impl::handle(const caudio::ipc::TagGet& cmd) {
         trackId = tr->id;
     } else {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                      "tag get: id or path required")};
     }
     auto tr = db_->getTrack(trackId);
     if (!tr) {
         if (tr.error().message.empty())
-            return std::unexpected{caudio::utils::makeError(
+            return std::unexpected{kanariv::utils::makeError(
                 tr.error().code, "track not found: " + std::to_string(trackId))};
         return std::unexpected{tr.error()};
     }
-    caudio::ipc::SingleTrack st{std::move(*tr)};
+    kanariv::ipc::SingleTrack st{std::move(*tr)};
     if (cmd.cover) {
         // Cover art: prefer the stored cover_art_path file, then fall back to
         // embedded cover art (APIC / FLAC picture / MP4 cover art / etc.)
@@ -659,12 +659,12 @@ Service::Impl::handle(const caudio::ipc::TagGet& cmd) {
                                     std::istreambuf_iterator<char>());
                 if (!content.empty()) {
                     st.cover_mime =
-                        caudio::utils::Base64::mimeTypeFromPath(st.track.cover_art_path);
+                        kanariv::utils::Base64::mimeTypeFromPath(st.track.cover_art_path);
                     std::vector<std::byte> data;
                     data.reserve(content.size());
                     for (char c : content)
                         data.push_back(static_cast<std::byte>(c));
-                    st.cover_data = caudio::utils::Base64::encode(
+                    st.cover_data = kanariv::utils::Base64::encode(
                         std::span<const std::byte>(data.data(), data.size()));
                 }
             }
@@ -672,41 +672,41 @@ Service::Impl::handle(const caudio::ipc::TagGet& cmd) {
         if (st.cover_data.empty() && !st.track.path.empty()) {
             auto embedded = extractEmbeddedCoverArt(st.track.path, logger_.get());
             if (embedded) {
-                st.cover_data = caudio::utils::Base64::encode(
+                st.cover_data = kanariv::utils::Base64::encode(
                     std::span<const std::byte>(embedded->first.data(), embedded->first.size()));
                 st.cover_mime = embedded->second;
             }
         }
         if (st.cover_data.empty())
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::NotFound,
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::NotFound,
                 "tag get: no cover art for track " + std::to_string(trackId))};
     }
     return Result{std::move(st)};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlaylistList&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlaylistList&) {
     auto pls = db_->listPlaylists();
     if (!pls)
         return std::unexpected{pls.error()};
-    std::span<const caudio::types::Playlist> span{*pls};
-    std::vector<caudio::types::Playlist> out(span.begin(), span.end());
+    std::span<const kanariv::types::Playlist> span{*pls};
+    std::vector<kanariv::types::Playlist> out(span.begin(), span.end());
     return Result{Playlists{std::move(out)}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlaylistTracks& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlaylistTracks& cmd) {
     auto tracks = db_->playlistGetTracks(cmd.pid);
     if (!tracks)
         return std::unexpected{tracks.error()};
-    std::span<const caudio::types::Track> span{*tracks};
-    std::vector<caudio::types::Track> out(span.begin(), span.end());
+    std::span<const kanariv::types::Track> span{*tracks};
+    std::vector<kanariv::types::Track> out(span.begin(), span.end());
     return Result{PlaylistData{std::move(out), {}}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlaylistLoad& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlaylistLoad& cmd) {
     auto tracks = db_->playlistGetTracks(cmd.pid);
     if (!tracks)
         return std::unexpected{tracks.error()};
@@ -728,7 +728,7 @@ Service::Impl::handle(const caudio::ipc::PlaylistLoad& cmd) {
     }
     std::vector<int64_t> ids;
     ids.reserve(tracks->size());
-    for (auto& t : std::span<const caudio::types::Track>(*tracks))
+    for (auto& t : std::span<const kanariv::types::Track>(*tracks))
         ids.push_back(t.id);
     if (!ids.empty()) {
         auto er = db_->queueEnqueueBatch(qid, ids);
@@ -748,14 +748,14 @@ Service::Impl::handle(const caudio::ipc::PlaylistLoad& cmd) {
     auto st = detail::buildStatus(*engine_, *db_);
     if (!st)
         return std::unexpected{st.error()};
-    return Result{caudio::ipc::PlaylistLoaded{qid, std::move(*st)}};
+    return Result{kanariv::ipc::PlaylistLoaded{qid, std::move(*st)}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlaylistSave& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlaylistSave& cmd) {
     if (cmd.name.empty())
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "empty playlist name")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "empty playlist name")};
     auto pidRes = db_->createPlaylist(cmd.name);
     if (!pidRes)
         return std::unexpected{pidRes.error()};
@@ -767,7 +767,7 @@ Service::Impl::handle(const caudio::ipc::PlaylistSave& cmd) {
     // Queues may hold legacy duplicates; playlists forbid them.
     std::vector<int64_t> seen;
     seen.reserve(items->size());
-    for (auto& it : std::span<const caudio::types::QueueItem>(*items)) {
+    for (auto& it : std::span<const kanariv::types::QueueItem>(*items)) {
         if (std::find(seen.begin(), seen.end(), it.track_id) != seen.end())
             continue;
         seen.push_back(it.track_id);
@@ -778,20 +778,20 @@ Service::Impl::handle(const caudio::ipc::PlaylistSave& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlaylistCreate& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlaylistCreate& cmd) {
     if (cmd.name.empty())
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "playlist create: missing name")};
     int type = cmd.smart_query.empty() ? 0 : 1;
     auto id = db_->createPlaylist(cmd.name, type, cmd.smart_query);
     if (!id)
         return std::unexpected{id.error()};
-    return Result{caudio::ipc::PlaylistCreated{*id, cmd.name}};
+    return Result{kanariv::ipc::PlaylistCreated{*id, cmd.name}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlaylistAdd& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlaylistAdd& cmd) {
     auto pl = db_->getPlaylist(cmd.pid);
     if (!pl)
         return std::unexpected{pl.error()};
@@ -799,10 +799,10 @@ Service::Impl::handle(const caudio::ipc::PlaylistAdd& cmd) {
     if (!tr)
         return std::unexpected{tr.error()};
     if (auto items = db_->playlistGetTracks(cmd.pid)) {
-        for (auto& t : std::span<const caudio::types::Track>(*items)) {
+        for (auto& t : std::span<const kanariv::types::Track>(*items)) {
             if (t.id == cmd.track_id) {
-                return std::unexpected{caudio::utils::makeError(
-                    caudio::utils::StatusCode::AlreadyExists, "already on playlist")};
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::AlreadyExists, "already on playlist")};
             }
         }
     }
@@ -812,43 +812,43 @@ Service::Impl::handle(const caudio::ipc::PlaylistAdd& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlaylistDelete& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlaylistDelete& cmd) {
     auto r = db_->deletePlaylist(cmd.pid);
     if (!r)
         return std::unexpected{r.error()};
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlaylistRename& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlaylistRename& cmd) {
     if (cmd.newName.empty())
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "empty playlist name")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "empty playlist name")};
     auto r = db_->renamePlaylist(cmd.pid, cmd.newName);
     if (!r)
         return std::unexpected{r.error()};
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlaylistExport& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlaylistExport& cmd) {
     auto tracks = db_->playlistGetTracks(cmd.pid);
     if (!tracks)
         return std::unexpected{tracks.error()};
-    std::vector<caudio::types::Track> out;
+    std::vector<kanariv::types::Track> out;
     out.reserve(tracks->size());
-    for (auto& t : std::span<const caudio::types::Track>(*tracks))
+    for (auto& t : std::span<const kanariv::types::Track>(*tracks))
         out.push_back(std::move(t));
     return Result{PlaylistData{std::move(out), cmd.format}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlaylistImport& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) {
     std::filesystem::path path{cmd.path};
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "file not found: " + cmd.path)};
     }
     std::string ext = path.extension().string();
@@ -859,33 +859,33 @@ Service::Impl::handle(const caudio::ipc::PlaylistImport& cmd) {
         std::ifstream ifs(path);
         if (!ifs)
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "failed to open file")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "failed to open file")};
         std::string content((std::istreambuf_iterator<char>(ifs)),
                             std::istreambuf_iterator<char>());
         try {
-            const caudio::utils::Json j = caudio::utils::Json::parse(content);
+            const kanariv::utils::Json j = kanariv::utils::Json::parse(content);
             if (j.contains("tracks") && j["tracks"].isArray()) {
-                const caudio::utils::Json tracks = j["tracks"];
+                const kanariv::utils::Json tracks = j["tracks"];
                 for (std::size_t ti = 0, tn = tracks.size(); ti < tn; ++ti) {
                     auto trackExp = tracks.at(ti);
                     if (!trackExp)
                         continue;
-                    const caudio::utils::Json track = std::move(*trackExp);
+                    const kanariv::utils::Json track = std::move(*trackExp);
                     if (track.contains("path") && track["path"].isString()) {
                         lines.push_back(track["path"].get<std::string>());
                     }
                 }
             }
         } catch (const std::exception& e) {
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::Corrupt, std::string("JSON parse error: ") + e.what())};
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Corrupt, std::string("JSON parse error: ") + e.what())};
         }
     } else {
         // M3U/PLS format
         std::ifstream ifs(path);
         if (!ifs)
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "failed to open file")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "failed to open file")};
         std::string line;
         while (std::getline(ifs, line)) {
             // trim
@@ -917,7 +917,7 @@ Service::Impl::handle(const caudio::ipc::PlaylistImport& cmd) {
     std::vector<int64_t> trackIds;
     trackIds.reserve(lines.size());
     // Separator-insensitive lookup: stored rows mix native and generic forms.
-    auto findTrack = [&](const std::string& line, caudio::types::Track& out) -> bool {
+    auto findTrack = [&](const std::string& line, kanariv::types::Track& out) -> bool {
         if (auto tr = db_->findByPath(line)) {
             out = std::move(*tr);
             return true;
@@ -947,7 +947,7 @@ Service::Impl::handle(const caudio::ipc::PlaylistImport& cmd) {
     };
     size_t matched = 0, skipped = 0, duplicates = 0;
     for (const auto& line : lines) {
-        caudio::types::Track tr;
+        kanariv::types::Track tr;
         if (!findTrack(line, tr)) {
             ++skipped;
             continue;
@@ -960,14 +960,14 @@ Service::Impl::handle(const caudio::ipc::PlaylistImport& cmd) {
         ++matched;
     }
     if (trackIds.empty()) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "no matching tracks found in library")};
     }
     std::string name = cmd.name.value_or(path.stem().string());
     auto pidRes = db_->createPlaylistFromTracks(name, trackIds);
     if (!pidRes)
         return std::unexpected{pidRes.error()};
-    caudio::ipc::PlaylistImportReport rep{};
+    kanariv::ipc::PlaylistImportReport rep{};
     rep.pid = *pidRes;
     rep.name = name;
     rep.matched = matched;
@@ -975,29 +975,29 @@ Service::Impl::handle(const caudio::ipc::PlaylistImport& cmd) {
     rep.duplicates = duplicates;
     auto tracksRes = db_->playlistGetTracks(*pidRes);
     if (tracksRes) {
-        for (auto& t : std::span<const caudio::types::Track>(*tracksRes))
+        for (auto& t : std::span<const kanariv::types::Track>(*tracksRes))
             rep.tracks.push_back(std::move(t));
     }
     return Result{std::move(rep)};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Preview&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Preview&) {
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::TrackRate& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::TrackRate& cmd) {
     if (cmd.track_id == 0)
-        return std::unexpected{caudio::utils::makeError(
-            caudio::utils::StatusCode::InvalidArg, "track rate: invalid id")};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, "track rate: invalid id")};
     if (cmd.rating < 0 || cmd.rating > 5)
-        return std::unexpected{caudio::utils::makeError(
-            caudio::utils::StatusCode::InvalidArg, "track rate: rating must be 0..5")};
-    caudio::db::Database& db = dynamic_cast<caudio::db::Database&>(*db_);
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, "track rate: rating must be 0..5")};
+    kanariv::db::Database& db = dynamic_cast<kanariv::db::Database&>(*db_);
     if (!db.getTrack(cmd.track_id))
-        return std::unexpected{caudio::utils::makeError(
-            caudio::utils::StatusCode::NotFound, "track not found: " +
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::NotFound, "track not found: " +
             std::to_string(cmd.track_id))};
     auto r = db.setRating(cmd.track_id, cmd.rating);
     if (!r)
@@ -1005,14 +1005,14 @@ Service::Impl::handle(const caudio::ipc::TrackRate& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::LibraryMaintenance& cmd) {
-    caudio::db::Database& db = dynamic_cast<caudio::db::Database&>(*db_);
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LibraryMaintenance& cmd) {
+    kanariv::db::Database& db = dynamic_cast<kanariv::db::Database&>(*db_);
     if (cmd.action == "report") {
-        auto report = caudio::db::libraryReport(db, cmd.library_id);
+        auto report = kanariv::db::libraryReport(db, cmd.library_id);
         if (!report)
             return std::unexpected{report.error()};
-        caudio::ipc::LibraryMaintenanceReport rep{};
+        kanariv::ipc::LibraryMaintenanceReport rep{};
         rep.tracks_checked = report->tracks_checked;
         for (const auto& t : report->missing_tracks)
             rep.missing_tracks.push_back(t);
@@ -1021,14 +1021,14 @@ Service::Impl::handle(const caudio::ipc::LibraryMaintenance& cmd) {
         return Result{std::move(rep)};
     }
     if (cmd.action == "prune") {
-        caudio::db::LibraryMaintenanceOptions opts{};
+        kanariv::db::LibraryMaintenanceOptions opts{};
         opts.dry_run = cmd.dry_run;
         opts.prune_missing = true;
-        auto report = caudio::db::libraryApplyMaintenance(db, cmd.library_id, opts);
+        auto report = kanariv::db::libraryApplyMaintenance(db, cmd.library_id, opts);
         if (!report)
             return std::unexpected{report.error()};
         if (cmd.dry_run) {
-            caudio::ipc::LibraryMaintenanceReport rep{};
+            kanariv::ipc::LibraryMaintenanceReport rep{};
             rep.tracks_checked = report->tracks_checked;
             for (const auto& t : report->missing_tracks)
                 rep.missing_tracks.push_back(t);
@@ -1038,10 +1038,10 @@ Service::Impl::handle(const caudio::ipc::LibraryMaintenance& cmd) {
         }
         return Result{Empty{}};
     }
-    return std::unexpected{caudio::utils::makeError(
-        caudio::utils::StatusCode::InvalidArg,
+    return std::unexpected{kanariv::utils::makeError(
+        kanariv::utils::StatusCode::InvalidArg,
         "library maintenance: unknown action '" + cmd.action +
         "' (expected 'report' or 'prune')")};
 }
 
-} // namespace caudio::service
+} // namespace kanariv::service

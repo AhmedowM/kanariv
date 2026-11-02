@@ -1,14 +1,14 @@
 /**
  * @file lifecycle.cpp
  * @brief Daemon lifecycle orchestration (start / shutdown / spawn).
- * @ingroup caudio_app
+ * @ingroup kanariv_app
  * @details Moved verbatim out of the CLI shell (Phase 0): spawn a detached
  * daemon child, wait out a previous daemon's teardown, require a full
  * status round-trip before reporting success, and shut down cleanly.
  * Rendering still happens here; Phase 1 moves it to callers.
  */
 
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -39,12 +39,12 @@
 #endif
 
 #include <app/app_impl.hpp>
-#include <caudio/app/app.hpp>
-#include <caudio/client/client.hpp>
-#include <caudio/config.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/app/app.hpp>
+#include <kanariv/client/client.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <cstdint>
 #include <expected>
@@ -59,7 +59,7 @@
 #include <variant>
 #include <vector>
 
-namespace caudio::app {
+namespace kanariv::app {
 
 namespace {
 // True if the pid file names a live process. A file left by a killed daemon
@@ -92,13 +92,13 @@ bool pidFileAlive(const std::filesystem::path& pidPath) {
 }
 } // namespace
 
-App::App(caudio::config::Config cfg) : impl_(std::make_unique<Impl>()) {
+App::App(kanariv::config::Config cfg) : impl_(std::make_unique<Impl>()) {
     impl_->config_ = std::move(cfg);
 }
 
 App::~App() = default;
 
-void App::setConfig(caudio::config::Config cfg) {
+void App::setConfig(kanariv::config::Config cfg) {
     impl_->config_ = std::move(cfg);
 }
 
@@ -115,18 +115,18 @@ void App::attachPreviewHost(std::function<AppResult(const std::string& file)> ho
 }
 
 std::filesystem::path App::Impl::pidPathForConfig() const {
-    // Canonical pid path -- single source via caudio.config (hash of dbPath + XDG/LOCALAPPDATA)
-    auto r = caudio::config::pidPathFor(config_.dbPath);
+    // Canonical pid path -- single source via kanariv.config (hash of dbPath + XDG/LOCALAPPDATA)
+    auto r = kanariv::config::pidPathFor(config_.dbPath);
     if (r)
         return *r;
     // Fallback when canonical derivation fails: pid file next to the database.
     auto pp = config_.dbPath.parent_path();
     if (pp.empty())
         pp = std::filesystem::current_path();
-    return pp / "caudio.pid";
+    return pp / "kanariv.pid";
 }
 
-std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const caudio::config::Config& cfg) {
+std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const kanariv::config::Config& cfg) {
 #ifdef _WIN32
     wchar_t exeBuf[MAX_PATH]{};
     DWORD len = GetModuleFileNameW(nullptr, exeBuf, MAX_PATH);
@@ -206,7 +206,7 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const caudio::config::
             } else if (!argv0_.empty()) {
                 exePath = argv0_;
             } else {
-                exePath = "./caudio";
+                exePath = "./kanariv";
             }
         }
     }
@@ -226,7 +226,7 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const caudio::config::
             } else if (!argv0_.empty()) {
                 exePath = argv0_;
             } else {
-                exePath = "./caudio";
+                exePath = "./kanariv";
             }
         }
     }
@@ -243,7 +243,7 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const caudio::config::
 }
 
 AppResult App::Impl::startDaemon(bool foreground) {
-    caudio::client::Client client{config_.dbPath, config_.socketPath};
+    kanariv::client::Client client{config_.dbPath, config_.socketPath};
     if (client.probe()) {
         return Outcome{std::nullopt,
                        std::format("daemon already running at {}", config_.socketPath), false,
@@ -302,10 +302,10 @@ AppResult App::Impl::startDaemon(bool foreground) {
         // 1.5 s connect-only budget.
         std::string lastDetail;
         for (int i = 0; i < 50; ++i) {
-            caudio::client::Client probe{config_.dbPath, config_.socketPath};
-            if (auto ps = probe.send(caudio::ipc::Command{caudio::ipc::StatusReq{}},
+            kanariv::client::Client probe{config_.dbPath, config_.socketPath};
+            if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}},
                                      std::chrono::milliseconds{500})) {
-                if (std::get_if<caudio::ipc::Status>(&*ps)) {
+                if (std::get_if<kanariv::ipc::Status>(&*ps)) {
                     return Outcome{std::nullopt,
                                    std::format("daemon started at {}", config_.socketPath), false,
                                    false};
@@ -329,12 +329,12 @@ AppResult App::startDaemon(bool foreground) {
 }
 
 AppResult App::shutdownDaemon() {
-    caudio::client::Client client{impl_->config_.dbPath, impl_->config_.socketPath};
-    auto cmd = caudio::ipc::Command{caudio::ipc::Shutdown{}};
+    kanariv::client::Client client{impl_->config_.dbPath, impl_->config_.socketPath};
+    auto cmd = kanariv::ipc::Command{kanariv::ipc::Shutdown{}};
     auto res = client.send(cmd, std::chrono::milliseconds{2000});
     if (!res) {
         // if daemon not running, report
-        if (res.error().code == caudio::utils::StatusCode::State) {
+        if (res.error().code == kanariv::utils::StatusCode::State) {
             return Outcome::fail("shutdown: daemon not running");
         }
         // even if send failed, attempt to poll pid file
@@ -362,23 +362,23 @@ AppResult App::shutdownDaemon() {
     return Outcome{std::nullopt, "daemon stopped", false, false};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-App::Impl::sendRaw(const caudio::ipc::Command& cmd, std::chrono::milliseconds timeout) {
-    caudio::client::Client client{config_.dbPath, config_.socketPath};
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+App::Impl::sendRaw(const kanariv::ipc::Command& cmd, std::chrono::milliseconds timeout) {
+    kanariv::client::Client client{config_.dbPath, config_.socketPath};
     auto res = client.send(cmd, timeout);
     if (!res)
         return std::unexpected{res.error()};
-    if (std::holds_alternative<caudio::utils::Error>(*res))
-        return std::unexpected{std::get<caudio::utils::Error>(*res)};
+    if (std::holds_alternative<kanariv::utils::Error>(*res))
+        return std::unexpected{std::get<kanariv::utils::Error>(*res)};
     return std::move(*res);
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-App::Impl::sendPlay(const caudio::ipc::Command& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+App::Impl::sendPlay(const kanariv::ipc::Command& cmd) {
     auto res = sendRaw(cmd);
     if (!res) {
         const auto& e = res.error();
-        if (e.code == caudio::utils::StatusCode::State && e.message == "daemon not running") {
+        if (e.code == kanariv::utils::StatusCode::State && e.message == "daemon not running") {
             if (!startDaemon(false)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 auto retry = sendRaw(cmd);
@@ -404,7 +404,7 @@ BatchResult BatchReport::fail(std::string message) {
     return BatchReport{std::nullopt, "", std::move(message), 1};
 }
 
-AppResult App::Impl::confirm(std::expected<caudio::ipc::Result, caudio::utils::Error>&& res,
+AppResult App::Impl::confirm(std::expected<kanariv::ipc::Result, kanariv::utils::Error>&& res,
                              std::optional<std::string> line) {
     auto owned = std::move(res);
     if (!owned)
@@ -412,4 +412,4 @@ AppResult App::Impl::confirm(std::expected<caudio::ipc::Result, caudio::utils::E
     return Outcome{std::move(*owned), std::move(line), false};
 }
 
-} // namespace caudio::app
+} // namespace kanariv::app

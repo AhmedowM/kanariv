@@ -1,18 +1,18 @@
-# combined is the opt-in shared libcaudio: utils/player/db/engine/media
+# combined is the opt-in shared libkanariv: utils/player/db/engine/media
 # linked into a single shared lib. ipc/service/client/app/config ship
 # as separate *_shared targets (daemon IPC has no shared ABI); config sources
-# compile into ipc statically. Built whenever CAUDIO_BUILD_SHARED is on.
+# compile into ipc statically. Built whenever KANARIV_BUILD_SHARED is on.
 #
 # Links component object files directly instead of WHOLE_ARCHIVE-ing static
 # archives. This avoids duplicate symbols from overlapping transitive deps
 # (player->media, db->media, engine->player+media+utils, all->utils) and
 # removes the need for --allow-multiple-definition.
-if(CAUDIO_BUILD_SHARED)
+if(KANARIV_BUILD_SHARED)
   add_library(combined SHARED)
-  add_library(caudio::combined ALIAS combined)
-  set_target_properties(combined PROPERTIES OUTPUT_NAME caudio VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR} PDB_NAME caudio_)
+  add_library(kanariv::combined ALIAS combined)
+  set_target_properties(combined PROPERTIES OUTPUT_NAME kanariv VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR} PDB_NAME kanariv_)
   if(MSVC)
-    # The CLI executable is also named caudio and uses the default caudio.ilk.
+    # The CLI executable is also named kanariv and uses the default kanariv.ilk.
     # Avoid an incremental-link state collision when Ninja links both targets.
     target_link_options(combined PRIVATE /INCREMENTAL:NO)
   endif()
@@ -37,7 +37,7 @@ if(CAUDIO_BUILD_SHARED)
     $<TARGET_OBJECTS:app_objects>
   )
   target_link_libraries(combined PRIVATE
-    caudio::sqlite3
+    kanariv::sqlite3
     blake3
     tag
     FFmpeg::avcodec FFmpeg::avformat FFmpeg::avutil FFmpeg::swresample
@@ -45,7 +45,7 @@ if(CAUDIO_BUILD_SHARED)
   if(UNIX AND NOT APPLE AND NOT ANDROID)
     target_link_libraries(combined PRIVATE rt)
   endif()
-  if(CAUDIO_ENABLE_SANITIZERS)
-    caudio_apply_sanitizers(combined)
+  if(KANARIV_ENABLE_SANITIZERS)
+    kanariv_apply_sanitizers(combined)
   endif()
 endif()

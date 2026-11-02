@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace caudio::db::internal {
+namespace kanariv::db::internal {
 
 std::string escapeLike(std::string_view term) {
     std::string result;
@@ -101,4 +101,4 @@ std::string sanitizeFtsTerm(std::string_view term) {
     return final;
 }
 
-} // namespace caudio::db::internal
+} // namespace kanariv::db::internal

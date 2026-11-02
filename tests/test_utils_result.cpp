@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/result.hpp>
 #include <string>
-namespace caudio::utils::test {
+namespace kanariv::utils::test {
 
 bool result_toString_all() {
     if (std::string(toString(StatusCode::Ok)).compare("Ok") != 0)
@@ -70,9 +70,9 @@ bool result_noexcept_check() {
     return noexcept(toString(StatusCode::Ok));
 }
 
-} // namespace caudio::utils::test
+} // namespace kanariv::utils::test
 
-using namespace caudio::utils::test;
+using namespace kanariv::utils::test;
 
 TEST_CASE("StatusCode toString maps all codes", "[utils][StatusCode]") {
     REQUIRE(result_toString_all());

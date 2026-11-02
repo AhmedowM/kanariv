@@ -12,7 +12,7 @@ export function getStaticPaths() {
       props: {
         alias,
         members: (model.compounds || []).filter((compound) => {
-          const namespace = `caudio::${alias.id}`;
+          const namespace = `kanariv::${alias.id}`;
           return (compound.name === namespace || compound.name.startsWith(`${namespace}::`)) &&
             !compound.name.startsWith(`${namespace}::detail::`);
         }),
@@ -65,7 +65,7 @@ const pageTitle = compound ? `${compound.name} API` : `${alias?.name || 'API'} R
         {model.generated ? (
           members.length > 0 ? <div class="members">{members.map((item) => <a class="compound-link" href={`/reference/api/${item.id}/`}><strong>{item.name}</strong><span>{item.brief || item.kind}</span></a>)}</div> :
             <p class="empty">No {alias.name} compounds were found in the generated XML model.</p>
-        ) : <p class="empty">The custom API model is waiting for Doxygen XML. Generate it with <code>CAUDIO_BUILD_DOCS=ON</code>, then rebuild this site.</p>}
+        ) : <p class="empty">The custom API model is waiting for Doxygen XML. Generate it with <code>KANARIV_BUILD_DOCS=ON</code>, then rebuild this site.</p>}
       </>
     )}
   </article>
@@ -74,23 +74,23 @@ const pageTitle = compound ? `${compound.name} API` : `${alias?.name || 'API'} R
 <style>
   .api-page { padding: 2rem 0 5rem; }
   .back-link { display: inline-block; margin-bottom: 2rem; }
-  .eyebrow { color: var(--caudio-brand); font-size: .78rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
-  .summary { color: var(--caudio-text-muted); font-size: 1.15rem; }
-  .location, .empty { color: var(--caudio-text-muted); }
+  .eyebrow { color: var(--kanariv-brand); font-size: .78rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+  .summary { color: var(--kanariv-text-muted); font-size: 1.15rem; }
+  .location, .empty { color: var(--kanariv-text-muted); }
   .members { display: grid; gap: .85rem; }
-  .member, .compound-link { display: block; padding: 1rem 1.1rem; background: var(--caudio-surface); border: 1px solid var(--caudio-border); border-radius: 12px; }
+  .member, .compound-link { display: block; padding: 1rem 1.1rem; background: var(--kanariv-surface); border: 1px solid var(--kanariv-border); border-radius: 12px; }
   .member h3 { margin-top: 0; overflow-wrap: anywhere; }
-  .member p { color: var(--caudio-text-muted); }
+  .member p { color: var(--kanariv-text-muted); }
   .member h4 { margin-bottom: .35rem; }
   .member dl { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: .35rem 1rem; }
   .member dt { font-weight: 650; }
-  .member dd { margin: 0; color: var(--caudio-text-muted); }
-  .api-note { margin-top: 1rem; padding: .8rem 1rem; border-left: 3px solid var(--caudio-brand); background: color-mix(in srgb, var(--caudio-brand) 7%, var(--caudio-surface)); }
+  .member dd { margin: 0; color: var(--kanariv-text-muted); }
+  .api-note { margin-top: 1rem; padding: .8rem 1rem; border-left: 3px solid var(--kanariv-brand); background: color-mix(in srgb, var(--kanariv-brand) 7%, var(--kanariv-surface)); }
   .api-note p { margin: .25rem 0 0; }
-  .compound-link { display: grid; gap: .3rem; color: var(--caudio-text); text-decoration: none; }
-  .compound-link span { color: var(--caudio-text-muted); }
-  .compound-link:hover { border-color: var(--caudio-brand); text-decoration: none; }
+  .compound-link { display: grid; gap: .3rem; color: var(--kanariv-text); text-decoration: none; }
+  .compound-link span { color: var(--kanariv-text-muted); }
+  .compound-link:hover { border-color: var(--kanariv-brand); text-decoration: none; }
   .chips { display: flex; flex-wrap: wrap; gap: .5rem; padding: 0; list-style: none; }
-  .chips li { padding: .35rem .6rem; border: 1px solid var(--caudio-border); border-radius: 999px; }
+  .chips li { padding: .35rem .6rem; border: 1px solid var(--kanariv-border); border-radius: 999px; }
   .enum-values { padding-left: 1.2rem; }
 </style>

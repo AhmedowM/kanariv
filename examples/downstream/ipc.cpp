@@ -1,8 +1,8 @@
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
 #include <iostream>
 
 int main() {
-    caudio::ipc::Command command{caudio::ipc::StatusReq{}};
+    kanariv::ipc::Command command{kanariv::ipc::StatusReq{}};
     std::cout << "command variant index=" << command.index() << '\n';
 }

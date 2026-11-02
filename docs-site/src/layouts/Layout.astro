@@ -38,7 +38,7 @@ const showTOC = headings && headings.length > 0;
       html[data-theme="dark"] { color-scheme: dark; background: #10131b; }
       body { background: inherit; }
     </style>
-    <title>{title} — caudio docs</title>
+    <title>{title} — kanariv docs</title>
     {description && <meta name="description" content={description} />}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script is:inline>
@@ -73,8 +73,8 @@ const showTOC = headings && headings.length > 0;
 
     <footer class="docs-footer">
       <div class="footer-inner">
-        <p>© {new Date().getFullYear()} caudio. MIT License.</p>
-        <a href="https://github.com/AhmedowM/caudio" target="_blank" rel="noopener">
+        <p>© {new Date().getFullYear()} kanariv. MIT License.</p>
+        <a href="https://github.com/AhmedowM/kanariv" target="_blank" rel="noopener">
           GitHub
         </a>
       </div>
@@ -83,7 +83,7 @@ const showTOC = headings && headings.length > 0;
     <style>
       /* ── Page entrance animation ── */
       .page-enter {
-        animation: pageFadeIn var(--caudio-duration-base) var(--caudio-ease-out) both;
+        animation: pageFadeIn var(--kanariv-duration-base) var(--kanariv-ease-out) both;
       }
 
       @keyframes pageFadeIn {
@@ -103,8 +103,8 @@ const showTOC = headings && headings.length > 0;
         font-family:
           -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
           Arial, sans-serif;
-        background: var(--caudio-bg);
-        color: var(--caudio-text);
+        background: var(--kanariv-bg);
+        color: var(--kanariv-text);
         line-height: 1.6;
         transition:
           background 0.35s ease,
@@ -145,10 +145,10 @@ const showTOC = headings && headings.length > 0;
       /* ── Footer ── */
       .docs-footer {
         margin-top: auto;
-        border-top: 1px solid var(--caudio-border);
+        border-top: 1px solid var(--kanariv-border);
         padding: 2rem 1.5rem;
-        background: var(--caudio-surface);
-        color: var(--caudio-text-muted);
+        background: var(--kanariv-surface);
+        color: var(--kanariv-text-muted);
         font-size: 0.875rem;
       }
 
@@ -162,18 +162,18 @@ const showTOC = headings && headings.length > 0;
       }
 
       .footer-inner a {
-        color: var(--caudio-brand);
+        color: var(--kanariv-brand);
         text-decoration: none;
         transition: color 0.2s ease;
       }
 
       .footer-inner a:hover {
-        color: var(--caudio-brand-emphasize);
+        color: var(--kanariv-brand-emphasize);
         text-decoration: underline;
       }
 
       [data-theme="light"] .footer-inner a {
-        color: var(--caudio-brand);
+        color: var(--kanariv-brand);
       }
 
       /* ── Reduced motion ── */

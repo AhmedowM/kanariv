@@ -4,7 +4,7 @@
 # Legs are build + install + smoke + measure (no tests; correctness is
 # gated by ci.yml, not here).
 #
-# - FFmpeg: deps-private trimmed asset (DEPS_PAT) via CAUDIO_TRIMMED_ROOT,
+# - FFmpeg: deps-private trimmed asset (DEPS_PAT) via KANARIV_TRIMMED_ROOT,
 #   else system provider. The winning provider is recorded per leg.
 # - Apple legs do NOT install brew llvm; they use --toolchain apple
 #   (xcrun resolves the compiler) plus --allow-unsupported-compiler, because
@@ -79,7 +79,7 @@ jobs:
         exclude:
           - { compiler: brew, arch: x86_64 }
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
       DEPS_REPO: "AhmedowM/deps-private"
     steps:
       - name: Checkout
@@ -119,17 +119,17 @@ jobs:
         if: ${{ !inputs.force_system }}
         env:
           GH_TOKEN: ${{ secrets.DEPS_PAT }}
-          CAUDIO_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
+          KANARIV_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
         run: |
           if gh release download "${{ inputs.deps_tag }}" \
             --repo "${{ env.DEPS_REPO }}" \
             --pattern "ffmpeg-trimmed-8.1.2-macos-${{ matrix.arch }}.tar.gz" \
             --dir . \
             --clobber; then
-            mkdir -p "$CAUDIO_TRIMMED_ROOT"
-            tar -xzf ffmpeg-trimmed-8.1.2-macos-${{ matrix.arch }}.tar.gz -C "$CAUDIO_TRIMMED_ROOT"
-            echo "CAUDIO_TRIMMED_ROOT=$CAUDIO_TRIMMED_ROOT" >> "$GITHUB_ENV"
-            echo "trim_root=$CAUDIO_TRIMMED_ROOT" >> "$GITHUB_OUTPUT"
+            mkdir -p "$KANARIV_TRIMMED_ROOT"
+            tar -xzf ffmpeg-trimmed-8.1.2-macos-${{ matrix.arch }}.tar.gz -C "$KANARIV_TRIMMED_ROOT"
+            echo "KANARIV_TRIMMED_ROOT=$KANARIV_TRIMMED_ROOT" >> "$GITHUB_ENV"
+            echo "trim_root=$KANARIV_TRIMMED_ROOT" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::trimmed FFmpeg unavailable -- leg uses system provider"
             echo "trim_root=" >> "$GITHUB_OUTPUT"
@@ -145,12 +145,12 @@ jobs:
           set -o pipefail
           TRIMMED=""
           if [ -n "${{ steps.trimdl.outputs.trim_root }}" ]; then
-            echo "provider=trimmed (CAUDIO_TRIMMED_ROOT cascade)" >> "$GITHUB_OUTPUT"
+            echo "provider=trimmed (KANARIV_TRIMMED_ROOT cascade)" >> "$GITHUB_OUTPUT"
             TRIMMED="--trimmed-ffmpeg --ffmpeg-root ${{ steps.trimdl.outputs.trim_root }}"
           else
             echo "provider=system" >> "$GITHUB_OUTPUT"
           fi
-          python scripts/configure.py "${{ matrix.family }}" --toolchain "$TOOLCHAIN" --arch "${{ matrix.arch }}" $TRIMMED --build-dir "$BUILD_DIR" --define CAUDIO_BUNDLE_FFMPEG_MACOS=ON $EXTRA 2>&1 | tee configure.log
+          python scripts/configure.py "${{ matrix.family }}" --toolchain "$TOOLCHAIN" --arch "${{ matrix.arch }}" $TRIMMED --build-dir "$BUILD_DIR" --define KANARIV_BUNDLE_FFMPEG_MACOS=ON $EXTRA 2>&1 | tee configure.log
           echo "build_dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
           echo "toolchain=$TOOLCHAIN" >> "$GITHUB_OUTPUT"
           echo "extra=$EXTRA" >> "$GITHUB_OUTPUT"
@@ -159,7 +159,7 @@ jobs:
         run: |
           set -o pipefail
           START=$SECONDS
-          python scripts/configure.py "${{ matrix.family }}" --toolchain "${{ steps.cfg.outputs.toolchain }}" --arch "${{ matrix.arch }}" --build-dir "${{ steps.cfg.outputs.build_dir }}" --define CAUDIO_BUNDLE_FFMPEG_MACOS=ON ${{ steps.cfg.outputs.extra }} --build 2>&1 | tee build.log
+          python scripts/configure.py "${{ matrix.family }}" --toolchain "${{ steps.cfg.outputs.toolchain }}" --arch "${{ matrix.arch }}" --build-dir "${{ steps.cfg.outputs.build_dir }}" --define KANARIV_BUNDLE_FFMPEG_MACOS=ON ${{ steps.cfg.outputs.extra }} --build 2>&1 | tee build.log
           echo "build_seconds=$((SECONDS - START))" | tee -a build.log
 
       - name: Install + smoke + measure
@@ -171,7 +171,7 @@ jobs:
           echo "provider=${{ steps.cfg.outputs.provider }} build_dir=$BUILD_DIR"
           echo "=== staged tree (proves what ships) ==="
           find "$RUNNER_TEMP/stage" -type f | sort
-          BIN="$RUNNER_TEMP/stage/bin/caudio"
+          BIN="$RUNNER_TEMP/stage/bin/kanariv"
           test -x "$BIN" || (echo "staged binary missing" && exit 1)
           "$BIN" --version
           otool -L "$BIN" | head -n 12 || true
@@ -218,7 +218,7 @@ jobs:
         family: [release, release-lto, minsize, minsize-lto]
         arch: ${{ fromJSON(inputs.run_linux_arm && '["x86_64", "arm64"]' || '["x86_64"]') }}
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
       DEPS_REPO: "AhmedowM/deps-private"
     steps:
       - name: Checkout
@@ -263,17 +263,17 @@ jobs:
         if: ${{ !inputs.force_system }}
         env:
           GH_TOKEN: ${{ secrets.DEPS_PAT }}
-          CAUDIO_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
+          KANARIV_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
         run: |
           if gh release download "${{ inputs.deps_tag }}" \
             --repo "${{ env.DEPS_REPO }}" \
             --pattern "ffmpeg-trimmed-8.1.2-linux-${{ matrix.arch }}.tar.gz" \
             --dir . \
             --clobber; then
-            mkdir -p "$CAUDIO_TRIMMED_ROOT"
-            tar -xzf ffmpeg-trimmed-8.1.2-linux-${{ matrix.arch }}.tar.gz -C "$CAUDIO_TRIMMED_ROOT"
-            echo "CAUDIO_TRIMMED_ROOT=$CAUDIO_TRIMMED_ROOT" >> "$GITHUB_ENV"
-            echo "trim_root=$CAUDIO_TRIMMED_ROOT" >> "$GITHUB_OUTPUT"
+            mkdir -p "$KANARIV_TRIMMED_ROOT"
+            tar -xzf ffmpeg-trimmed-8.1.2-linux-${{ matrix.arch }}.tar.gz -C "$KANARIV_TRIMMED_ROOT"
+            echo "KANARIV_TRIMMED_ROOT=$KANARIV_TRIMMED_ROOT" >> "$GITHUB_ENV"
+            echo "trim_root=$KANARIV_TRIMMED_ROOT" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::trimmed FFmpeg unavailable -- leg uses system provider"
             echo "trim_root=" >> "$GITHUB_OUTPUT"
@@ -289,12 +289,12 @@ jobs:
           set -o pipefail
           TRIMMED=""
           if [ -n "${{ steps.trimdl.outputs.trim_root }}" ]; then
-            echo "provider=trimmed (CAUDIO_TRIMMED_ROOT cascade)" >> "$GITHUB_OUTPUT"
+            echo "provider=trimmed (KANARIV_TRIMMED_ROOT cascade)" >> "$GITHUB_OUTPUT"
             TRIMMED="--trimmed-ffmpeg --ffmpeg-root ${{ steps.trimdl.outputs.trim_root }}"
           else
             echo "provider=system" >> "$GITHUB_OUTPUT"
           fi
-          python scripts/configure.py "${{ matrix.family }}" --toolchain "$TOOLCHAIN" $TRIMMED --build-dir "$BUILD_DIR" --define CAUDIO_BUNDLE_FFMPEG_MACOS=ON 2>&1 | tee configure.log
+          python scripts/configure.py "${{ matrix.family }}" --toolchain "$TOOLCHAIN" $TRIMMED --build-dir "$BUILD_DIR" --define KANARIV_BUNDLE_FFMPEG_MACOS=ON 2>&1 | tee configure.log
           echo "build_dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
           echo "toolchain=$TOOLCHAIN" >> "$GITHUB_OUTPUT"
 
@@ -302,7 +302,7 @@ jobs:
         run: |
           set -o pipefail
           START=$SECONDS
-          python scripts/configure.py "${{ matrix.family }}" --toolchain "${{ steps.cfg.outputs.toolchain }}" --build-dir "${{ steps.cfg.outputs.build_dir }}" --define CAUDIO_BUNDLE_FFMPEG_MACOS=ON --build 2>&1 | tee build.log
+          python scripts/configure.py "${{ matrix.family }}" --toolchain "${{ steps.cfg.outputs.toolchain }}" --build-dir "${{ steps.cfg.outputs.build_dir }}" --define KANARIV_BUNDLE_FFMPEG_MACOS=ON --build 2>&1 | tee build.log
           echo "build_seconds=$((SECONDS - START))" | tee -a build.log
 
       - name: Install + smoke + measure
@@ -313,7 +313,7 @@ jobs:
           echo "provider=${{ steps.cfg.outputs.provider }} build_dir=$BUILD_DIR"
           echo "=== staged tree (proves what ships) ==="
           find "$RUNNER_TEMP/stage" -type f | sort
-          BIN="$RUNNER_TEMP/stage/bin/caudio"
+          BIN="$RUNNER_TEMP/stage/bin/kanariv"
           test -x "$BIN" || (echo "staged binary missing" && exit 1)
           SMOKE_RC=0
           PORT_RC=0
@@ -374,7 +374,7 @@ jobs:
         exclude:
           - { compiler: msvc, arch: arm64 }
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
       DEPS_REPO: "AhmedowM/deps-private"
     steps:
       - name: Checkout
@@ -426,7 +426,7 @@ jobs:
             fi
             mkdir -p "$TROOT"
             tar -xzf ffmpeg-trimmed-8.1.2-windows-${{ matrix.arch }}.tar.gz -C "$TROOT"
-            echo "CAUDIO_TRIMMED_ROOT=$TROOT" >> "$GITHUB_ENV"
+            echo "KANARIV_TRIMMED_ROOT=$TROOT" >> "$GITHUB_ENV"
             echo "trim_root=$TROOT" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::trimmed FFmpeg unavailable -- leg uses system provider"
@@ -444,12 +444,12 @@ jobs:
           set -o pipefail
           TRIMMED=""
           if [ -n "${{ steps.trimdl.outputs.trim_root }}" ]; then
-            echo "provider=trimmed (CAUDIO_TRIMMED_ROOT cascade)" >> "$GITHUB_OUTPUT"
+            echo "provider=trimmed (KANARIV_TRIMMED_ROOT cascade)" >> "$GITHUB_OUTPUT"
             TRIMMED="--trimmed-ffmpeg --ffmpeg-root ${{ steps.trimdl.outputs.trim_root }}"
           else
             echo "provider=system" >> "$GITHUB_OUTPUT"
           fi
-          python scripts/configure.py "${{ matrix.family }}" --toolchain "$TOOLCHAIN" --arch "${{ matrix.arch }}" $TRIMMED --build-dir "$BUILD_DIR" --define CAUDIO_BUNDLE_FFMPEG_MACOS=ON 2>&1 | tee configure.log
+          python scripts/configure.py "${{ matrix.family }}" --toolchain "$TOOLCHAIN" --arch "${{ matrix.arch }}" $TRIMMED --build-dir "$BUILD_DIR" --define KANARIV_BUNDLE_FFMPEG_MACOS=ON 2>&1 | tee configure.log
           echo "build_dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
           echo "toolchain=$TOOLCHAIN" >> "$GITHUB_OUTPUT"
         shell: bash
@@ -458,7 +458,7 @@ jobs:
         run: |
           set -o pipefail
           START=$SECONDS
-          python scripts/configure.py "${{ matrix.family }}" --toolchain "${{ steps.cfg.outputs.toolchain }}" --arch "${{ matrix.arch }}" --build-dir "${{ steps.cfg.outputs.build_dir }}" --define CAUDIO_BUNDLE_FFMPEG_MACOS=ON --build 2>&1 | tee build.log
+          python scripts/configure.py "${{ matrix.family }}" --toolchain "${{ steps.cfg.outputs.toolchain }}" --arch "${{ matrix.arch }}" --build-dir "${{ steps.cfg.outputs.build_dir }}" --define KANARIV_BUNDLE_FFMPEG_MACOS=ON --build 2>&1 | tee build.log
           echo "build_seconds=$((SECONDS - START))" | tee -a build.log
         shell: bash
 
@@ -470,7 +470,7 @@ jobs:
           echo "provider=${{ steps.cfg.outputs.provider }} build_dir=$BUILD_DIR"
           echo "=== staged tree (proves what ships) ==="
           find "$RUNNER_TEMP/stage" -type f | sort
-          BIN="$RUNNER_TEMP/stage/bin/caudio.exe"
+          BIN="$RUNNER_TEMP/stage/bin/kanariv.exe"
           test -x "$BIN" || (echo "staged binary missing" && exit 1)
           "$BIN" --version
           echo "bin_bytes=$(stat -c%s "$BIN")"

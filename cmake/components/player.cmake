@@ -1,17 +1,17 @@
-# player.cmake -- caudio::player (miniaudio output + gapless playback).
-# The module re-exports caudio.media and keeps reader/decoder aliases in
-# caudio.player; their partition sources are retained for compatibility but
+# player.cmake -- kanariv::player (miniaudio output + gapless playback).
+# The module re-exports kanariv.media and keeps reader/decoder aliases in
+# kanariv.player; their partition sources are retained for compatibility but
 # are no longer compiled into this target.
-set(CAUDIO_PLAYER_MODULE_SOURCES
-  modules/caudio/player.cppm
-  modules/caudio/player/core.cppm
-  modules/caudio/player/output.cppm
+set(KANARIV_PLAYER_MODULE_SOURCES
+  modules/kanariv/player.cppm
+  modules/kanariv/player/core.cppm
+  modules/kanariv/player/output.cppm
 )
-set(CAUDIO_PLAYER_SOURCES
+set(KANARIV_PLAYER_SOURCES
   src/player/output.cpp
   src/player/core.cpp
 )
-caudio_add_component(player SOURCES ${CAUDIO_PLAYER_SOURCES} MODULE_SOURCES ${CAUDIO_PLAYER_MODULE_SOURCES} DEPS caudio::utils caudio::types INCLUDES vendor PRIVATE_DEPS caudio::media)
+kanariv_add_component(player SOURCES ${KANARIV_PLAYER_SOURCES} MODULE_SOURCES ${KANARIV_PLAYER_MODULE_SOURCES} DEPS kanariv::utils kanariv::types INCLUDES vendor PRIVATE_DEPS kanariv::media)
 # GCC cannot parse Apple's ObjC-blocks system headers pulled in by miniaudio's
 # CoreAudio backend; Apple Clang-only. Local mac devs (Xcode Clang) keep full
 # audio; GNU-on-macOS CI builds fall back to the other backends (NOAUDIO anyway).
@@ -44,10 +44,10 @@ target_compile_definitions(player_objects PRIVATE
   MA_NO_FLAC=1
   MA_NO_MP3=1
 )
-if(CAUDIO_ENABLE_MODULES)
+if(KANARIV_ENABLE_MODULES)
   ca_set_module_warnings(player)
 endif()
 
-if(CAUDIO_BUILD_SHARED)
-  caudio_add_shared_variant(player EXTRA_DEPS caudio::utils_shared caudio::media_shared)
+if(KANARIV_BUILD_SHARED)
+  kanariv_add_shared_variant(player EXTRA_DEPS kanariv::utils_shared kanariv::media_shared)
 endif()

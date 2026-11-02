@@ -66,7 +66,7 @@ foreach(_entry IN LISTS _ffmpeg_libs)
   endif()
 endforeach()
 
-# avcodec's major is the ABI identity used by the installed caudioConfig.cmake.
+# avcodec's major is the ABI identity used by the installed kanarivConfig.cmake.
 set(FFmpeg_VERSION "")
 if(FFmpeg_AVCODEC_INCLUDE_DIR)
   set(_ffmpeg_version_header "${FFmpeg_AVCODEC_INCLUDE_DIR}/libavcodec/version_major.h")

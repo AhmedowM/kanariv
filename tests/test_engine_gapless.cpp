@@ -1,9 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/engine/engine.hpp>
-#include <caudio/types/engine.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <cstdint>
@@ -13,19 +13,19 @@
 #include <system_error>
 #include <thread>
 #include <utility>
-using namespace caudio::db;
-using namespace caudio::engine;
-using namespace caudio::utils;
-using namespace caudio::test_helpers;
+using namespace kanariv::db;
+using namespace kanariv::engine;
+using namespace kanariv::utils;
+using namespace kanariv::test_helpers;
 
 TEST_CASE("gapless CAS arms once via Engine", "[engine_gapless]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("gapless_cas").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = "cas" + std::to_string(i) + ".wav";
         t.duration = 0.8;
         for (int b = 0; b < 32; ++b)
@@ -34,7 +34,7 @@ TEST_CASE("gapless CAS arms once via Engine", "[engine_gapless]") {
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     }
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = true;
     cfg.pollMs = 10;
@@ -44,7 +44,7 @@ TEST_CASE("gapless CAS arms once via Engine", "[engine_gapless]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     // gapless should arm once when remaining <=0.3 (pos>=0.5) and trigger next via engineTick
@@ -66,13 +66,13 @@ TEST_CASE("gapless CAS arms once via Engine", "[engine_gapless]") {
 }
 
 TEST_CASE("gapless 300ms lookahead triggers next once", "[engine_gapless]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("gapless").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = "gap" + std::to_string(i) + ".wav";
         t.duration = 0.8;
         for (int b = 0; b < 32; ++b)
@@ -81,7 +81,7 @@ TEST_CASE("gapless 300ms lookahead triggers next once", "[engine_gapless]") {
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     }
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = true;
     cfg.pollMs = 10;
@@ -91,7 +91,7 @@ TEST_CASE("gapless 300ms lookahead triggers next once", "[engine_gapless]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     // duration 0.8, gap 0.3 -> when remaining <=0.3 (pos>=0.5) should arm and trigger next
@@ -114,13 +114,13 @@ TEST_CASE("gapless 300ms lookahead triggers next once", "[engine_gapless]") {
 }
 
 TEST_CASE("gapless not triggered when remaining > gap", "[engine_gapless]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("gapless_notrig").string();
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         t.path = "gap_n" + std::to_string(i) + ".wav";
         t.duration = 5.0;
         for (int b = 0; b < 32; ++b)
@@ -129,7 +129,7 @@ TEST_CASE("gapless not triggered when remaining > gap", "[engine_gapless]") {
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     }
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;
     cfg.enableMonitorThread = true;
     cfg.pollMs = 10;
@@ -137,7 +137,7 @@ TEST_CASE("gapless not triggered when remaining > gap", "[engine_gapless]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<caudio::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     // duration 5s, gap 0.3 -> remaining 4.8 > gap, should not trigger within 200ms

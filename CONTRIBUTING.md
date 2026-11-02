@@ -1,4 +1,4 @@
-#Contributing to caudio - cpp
+#Contributing to kanariv - cpp
 
 ## Development Setup
 
@@ -9,9 +9,9 @@
 | **Compiler** | GCC 13+ / LLVM Clang 19+ / AppleClang from Xcode 26 | GCC 13 supports the headers build; GCC 14+ is required for modules. C++23 is required. |
 | **CMake** | 3.31+ | Required for module dependency scanning and `FILE_SET CXX_MODULES` |
 | **Ninja** | 1.11+ | **Required** -- C++23 modules only work reliably with Ninja generator |
-| **FFmpeg** | recent (tools + dev packages) | `libavformat`, `libavcodec`, `libavutil`, `libswresample`. CI uses Ubuntu system FFmpeg; auto-fetched if not found when `CAUDIO_WITH_FETCH_FFMPEG=ON` |
-| **Doxygen** | 1.9+ | Required for `CAUDIO_BUILD_DOCS=ON`; `dot` (Graphviz) is optional for graphs |
-| **Catch2** | 3.16.0 | System package preferred, else shallow-fetched via `FetchContent` when `CAUDIO_ENABLE_TESTS=ON` |
+| **FFmpeg** | recent (tools + dev packages) | `libavformat`, `libavcodec`, `libavutil`, `libswresample`. CI uses Ubuntu system FFmpeg; auto-fetched if not found when `KANARIV_WITH_FETCH_FFMPEG=ON` |
+| **Doxygen** | 1.9+ | Required for `KANARIV_BUILD_DOCS=ON`; `dot` (Graphviz) is optional for graphs |
+| **Catch2** | 3.16.0 | System package preferred, else shallow-fetched via `FetchContent` when `KANARIV_ENABLE_TESTS=ON` |
 | **Git** | 2.30+ | For `git describe --tags` version stamping |
 
 > **Windows note:** first configures fetch shallow dependency copies per
@@ -27,8 +27,8 @@ builds aligned with CI and can configure, build, test, package, and select a
 toolchain in one command.
 
 ```sh
-git clone https://github.com/AhmedowM/caudio.git
-cd caudio
+git clone https://github.com/AhmedowM/kanariv.git
+cd kanariv
 
 # Recommended: development build with examples, tests, and four jobs
 python scripts/configure.py dev --toolchain clang --jobs 4 --build --test
@@ -36,7 +36,7 @@ python scripts/configure.py dev --toolchain clang --jobs 4 --build --test
 # Optional modules build (GCC 14+, LLVM Clang 19+, or MSVC 2022)
 python scripts/configure.py modules --toolchain clang --build
 
-# Build the Android FFmpeg dependency, then the native caudio library
+# Build the Android FFmpeg dependency, then the native kanariv library
 python scripts/build-ffmpeg.py --android-ndk D:\android-ndk-r30 `
   --android-abi arm64-v8a --android-api 24 --prefix build\ffmpeg-android-arm64
 python scripts/configure.py android --ndk D:\android-ndk-r30 `
@@ -70,7 +70,7 @@ Bare CMake remains supported for packaging and custom integrations:
 ```sh
 cmake -S . -B build/custom -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
-  -DCAUDIO_ENABLE_TESTS=ON
+  -DKANARIV_ENABLE_TESTS=ON
 cmake --build build/custom --parallel 4
 ctest --test-dir build/custom --output-on-failure --parallel 4
 ```
@@ -102,17 +102,17 @@ ctest --test-dir build -j4 --output-on-failure
 ./build/dev-clang-ninja-x64/test_engine_queue --success
 
 #Manual CLI smoke test
-./build/caudio --version
-./build/caudio start
-./build/caudio status
-./build/caudio shutdown
+./build/kanariv --version
+./build/kanariv start
+./build/kanariv status
+./build/kanariv shutdown
 ```
 
 > **Audio tests beep:** `AudioOutput::create` (`ma_device_start`) beeps on desktop.
-> For silent/headless runs: `CAUDIO_TEST_NOAUDIO=1 ctest --test-dir build --output-on-failure -j4` -- tests that would beep
-> check `caudio::test::noAudio()` / `CAUDIO_SKIP_IF_NOAUDIO()` in `tests/common.hpp`
-> and `SKIP` when set. CI sets `CAUDIO_TEST_NOAUDIO=1` automatically. For silent
-> ring exercises without a device use `caudio::test::makeDummyRing()` (no `ma_device_init`).
+> For silent/headless runs: `KANARIV_TEST_NOAUDIO=1 ctest --test-dir build --output-on-failure -j4` -- tests that would beep
+> check `kanariv::test::noAudio()` / `KANARIV_SKIP_IF_NOAUDIO()` in `tests/common.hpp`
+> and `SKIP` when set. CI sets `KANARIV_TEST_NOAUDIO=1` automatically. For silent
+> ring exercises without a device use `kanariv::test::makeDummyRing()` (no `ma_device_init`).
 
 ### Documentation
 
@@ -125,7 +125,7 @@ cmake --build --preset docs --parallel 4
 # Open: build/docs/docs/html/index.html
 ```
 
-Man page is at `docs/man/caudio.1` -- preview with `man ./docs/man/caudio.1` or `groff -man -Tascii docs/man/caudio.1 | less`.
+Man page is at `docs/man/kanariv.1` -- preview with `man ./docs/man/kanariv.1` or `groff -man -Tascii docs/man/kanariv.1 | less`.
 
 The documentation site in `docs-site/` must be updated whenever a change
 affects user-visible behavior or the public development workflow, even when no
@@ -152,7 +152,7 @@ The site build also regenerates the custom Doxygen API model and search index.
   ```
 - **Linter:** `clang-tidy` using `.clang-tidy` (optional, not enforced in CI yet).
 - **Naming:** `PascalCase` for types, `camelCase` for functions/variables, `snake_case` for files and locals. Match surrounding code; do not add `k`-prefix constants.
-- **Headers/modules:** public API lives in `include/caudio/` (`*.hpp`), and
+- **Headers/modules:** public API lives in `include/kanariv/` (`*.hpp`), and
   sources in `src/` (`*.cpp`). C++23 modules (`*.cppm`) mirror the headers;
   do not add new module-only APIs.
 - **Errors:** return `std::expected<T, utils::Error>` and use the existing
@@ -192,28 +192,28 @@ refactor(cmake): SANITIZERS target-scoped, sqlite dedup
    ```sh
    git checkout -b feat/my-feature
    ```
-2. **Implement** with tests. No logic changes to `src/` without corresponding test updates. New IPC commands need a `Command` variant in `include/caudio/ipc/command.hpp`, a `Service::handle()` overload in `src/service/dispatch_*.cpp`, plus `tests/test_ipc.cpp` coverage.
+2. **Implement** with tests. No logic changes to `src/` without corresponding test updates. New IPC commands need a `Command` variant in `include/kanariv/ipc/command.hpp`, a `Service::handle()` overload in `src/service/dispatch_*.cpp`, plus `tests/test_ipc.cpp` coverage.
 3. **Configure and test** locally:
    ```sh
-   cmake -B build -G Ninja -DCAUDIO_ENABLE_TESTS=ON
+   cmake -B build -G Ninja -DKANARIV_ENABLE_TESTS=ON
    cmake --build build -j4
    ctest --test-dir build -j4
-   cmake -B build -G Ninja -DCAUDIO_BUILD_DOCS=ON && cmake --build build --target doc-check
+   cmake -B build -G Ninja -DKANARIV_BUILD_DOCS=ON && cmake --build build --target doc-check
    ```
 4. **Format** changed files with `clang-format`.
 5. **Push** and open a PR against `main`. Include:
    - Summary of changes (Added/Changed/Fixed).
    - Any `BREAKING CHANGE` notes.
-   - Screenshots or `caudio --help` output for CLI changes.
+   - Screenshots or `kanariv --help` output for CLI changes.
 6. **CI** must pass (build + tests on Linux/Windows/macOS if configured).
 7. **Review** -- address feedback; squash or rebase as requested.
 
 ## Project Structure
 
 ```
-caudio/
-  include/caudio/        # Public API (headers are canonical)
-    caudio.hpp alongside umbrellas: utils.hpp, player.hpp, db.hpp,
+kanariv/
+  include/kanariv/        # Public API (headers are canonical)
+    kanariv.hpp alongside umbrellas: utils.hpp, player.hpp, db.hpp,
     engine.hpp, version.hpp, ipc.hpp, client.hpp, service.hpp, config.hpp
     db/ engine/ player/ ipc/ client/ service/  # per-area headers
     utils/               # error/result/log/ring/queue/thread/math
@@ -221,7 +221,7 @@ caudio/
     utils/ player/ db/ engine/ ipc/ service/ client/
     service/dispatch_*.cpp  # Service::handle() per command group
     service/service_paths.* service/service_status.* service/service_audio.*
-                         # (*.cppm mirrors sit beside sources; CAUDIO_ENABLE_MODULES=ON)
+                         # (*.cppm mirrors sit beside sources; KANARIV_ENABLE_MODULES=ON)
   cli/src/shell/        # Executable only: main, Shell dispatch, parse helpers
   cmake/components/      # Per-component build files (utils/player/db/engine/cli/combined)
   tests/                 # Catch2 tests (tests/common.hpp helpers)
@@ -233,8 +233,8 @@ caudio/
 
 Open an issue with:
 
-- `caudio --version` and `cmake --version` / compiler version
-- Config: `caudio config list --json` if relevant
+- `kanariv --version` and `cmake --version` / compiler version
+- Config: `kanariv config list --json` if relevant
 - Repro steps and expected vs actual behavior
 - Logs: set `--log-level debug` or check daemon output
 

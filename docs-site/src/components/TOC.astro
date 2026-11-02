@@ -50,7 +50,7 @@ const tocItems = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--caudio-text);
+    color: var(--kanariv-text);
   }
 
   .toc-toggle {
@@ -60,20 +60,20 @@ const tocItems = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     width: max-content;
     min-width: 2.5rem;
     padding: 0.65rem;
-    color: var(--caudio-text);
+    color: var(--kanariv-text);
     background: transparent;
     border: 0;
     border-radius: 8px;
     text-align: left;
     gap: 0.6rem;
   }
-  .toc-toggle:hover { color: var(--caudio-brand); background: var(--caudio-surface-muted); }
+  .toc-toggle:hover { color: var(--kanariv-brand); background: var(--kanariv-surface-muted); }
   .toc-icon { display: grid; gap: 3px; }
   .toc-icon i { display: block; width: 4px; height: 4px; border-radius: 999px; background: currentColor; }
   .toc-title { display: none; }
   .toc-toggle[aria-expanded="true"] { width: 100%; }
   .toc-toggle[aria-expanded="true"] .toc-title { display: inline; }
-  .toc-chevron { color: var(--caudio-brand); transition: transform 160ms ease; }
+  .toc-chevron { color: var(--kanariv-brand); transition: transform 160ms ease; }
   .toc-toggle[aria-expanded="true"] .toc-chevron { transform: rotate(180deg); }
 
   /* ── TOC list ── */
@@ -99,7 +99,7 @@ const tocItems = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     display: block;
     padding: 0.35rem 0.6rem;
     font-size: 0.8rem;
-    color: var(--caudio-text-muted);
+    color: var(--kanariv-text-muted);
     text-decoration: none;
     border-radius: 8px;
     margin: 0.05rem 0;
@@ -115,15 +115,15 @@ const tocItems = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
 
   .toc-link:hover {
     background-color: rgba(255, 255, 255, 0.05);
-    color: var(--caudio-text);
+    color: var(--kanariv-text);
     transform: translateX(4px);
   }
 
   .toc-link.active {
-    background-color: var(--caudio-brand-subtle);
-    color: var(--caudio-brand);
+    background-color: var(--kanariv-brand-subtle);
+    color: var(--kanariv-brand);
     font-weight: 500;
-    box-shadow: inset 0 0 0 1px var(--caudio-brand);
+    box-shadow: inset 0 0 0 1px var(--kanariv-brand);
   }
 
   /* ── Reduced motion ── */

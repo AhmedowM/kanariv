@@ -4,15 +4,15 @@
 # ci.yml. The ELF and Mach-O halves of the shared-by-default build need a real
 # Linux/macOS host, which this workflow provides. Each leg builds the shipping
 # intent (minsize -- shared is the default) with tests on, then checks the
-# things that only exist on Unix: the explicit CAUDIO_API export boundary and
+# things that only exist on Unix: the explicit KANARIV_API export boundary and
 # the installed tree.
 #
 # Gates (fatal):
-#   - build + ctest with CAUDIO_TEST_NOAUDIO=1
-#   - every component lib exports caudio symbols and no vendor symbols
+#   - build + ctest with KANARIV_TEST_NOAUDIO=1
+#   - every component lib exports kanariv symbols and no vendor symbols
 #   - the vendor libs (sqlite3, blake3, tag) still export their own ABI
 #   - the installed tree runs, with and without an explicit loader path
-#   - a downstream find_package(caudio) consumer links caudio::app and runs
+#   - a downstream find_package(kanariv) consumer links kanariv::app and runs
 #   - no staged binary references the build tree
 #   - the runtime archive carries every component lib the CLI needs
 # Informational (::warning + step summary, never fatal):
@@ -21,7 +21,7 @@
 #
 # Legs mirror the shipping (release.yml) and dev (ci.yml) toolchains so both
 # halves are covered: clang-21 + gcc-16 on Linux, AppleClang + brew LLVM on
-# macOS. Tests force CAUDIO_BUILD_STATIC=ON, so one build covers both flavours.
+# macOS. Tests force KANARIV_BUILD_STATIC=ON, so one build covers both flavours.
 
 name: Shared ABI (manual)
 
@@ -33,7 +33,7 @@ name: Shared ABI (manual)
   #     - "CMakeLists.txt"
   #     - "cmake/**"
   #     - "scripts/configure.py"
-  #     - "include/caudio/**"
+  #     - "include/kanariv/**"
   #     - ".github/workflows/shared-abi.yml"
   # pull_request:
   #   branches: [master]
@@ -41,7 +41,7 @@ name: Shared ABI (manual)
   #     - "CMakeLists.txt"
   #     - "cmake/**"
   #     - "scripts/configure.py"
-  #     - "include/caudio/**"
+  #     - "include/kanariv/**"
   #     - ".github/workflows/shared-abi.yml"
 
 permissions:
@@ -57,15 +57,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
       BUILD_DIR: build/${{ matrix.label }}
       # Identical args for configure/build/test: configure.py always emits the
       # intent defaults, so repeating the same flags is idempotent.
       CFG: >-
         minsize --toolchain ${{ matrix.toolchain }}
         --build-dir build/${{ matrix.label }}
-        --define CAUDIO_BUILD_SHARED=ON
-        --define CAUDIO_ENABLE_TESTS=ON
+        --define KANARIV_BUILD_SHARED=ON
+        --define KANARIV_ENABLE_TESTS=ON
         ${{ matrix.bundled }}
     strategy:
       fail-fast: false
@@ -190,14 +190,14 @@ jobs:
           {
             echo "### Exported ABI surface (${{ matrix.label }})"
             echo
-            echo "| library | exported | caudio | notes |"
+            echo "| library | exported | kanariv | notes |"
             echo "|---|---|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
 
           failed=0
-          # Components plus the combined libcaudio. Vendor libs are checked
+          # Components plus the combined libkanariv. Vendor libs are checked
           # below: they are separate shared objects that keep their own ABI.
-          for name in utils config media player db engine ipc client service app caudio; do
+          for name in utils config media player db engine ipc client service app kanariv; do
             lib="$BUILD_DIR/lib${name}.${ext}"
             if [ ! -e "$lib" ]; then
               echo "::error::missing shared library: $lib"
@@ -206,19 +206,19 @@ jobs:
             fi
             symbols="$(nm_symbols "$lib" || true)"
             total="$(printf '%s\n' "$symbols" | grep -c . || true)"
-            caudio="$(printf '%s\n' "$symbols" | grep -c 'caudio' || true)"
-            # CAUDIO_API is the whole ABI. A vendor symbol (or a hidden
+            kanariv="$(printf '%s\n' "$symbols" | grep -c 'kanariv' || true)"
+            # KANARIV_API is the whole ABI. A vendor symbol (or a hidden
             # helper) escaping a component lib means the visibility preset
             # stopped applying, so the surface is no longer deliberate.
             leaks="$(printf '%s\n' "$symbols" | grep -E '^_?(sqlite3_|blake3_|avcodec_|avformat_|avutil_|swr_|swresample_|ma_)|TagLib' || true)"
             leak_count="$(printf '%s\n' "$leaks" | grep -c . || true)"
-            echo "| lib${name}.${ext} | ${total} | ${caudio} | ${leak_count} vendor |" >> "$GITHUB_STEP_SUMMARY"
-            if [ "$caudio" -lt 1 ]; then
-              echo "::error::lib${name}.${ext} exports no caudio symbols (CAUDIO_API boundary lost)"
+            echo "| lib${name}.${ext} | ${total} | ${kanariv} | ${leak_count} vendor |" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$kanariv" -lt 1 ]; then
+              echo "::error::lib${name}.${ext} exports no kanariv symbols (KANARIV_API boundary lost)"
               failed=1
             fi
             if [ "$leak_count" -ne 0 ]; then
-              echo "::error::lib${name}.${ext} exports non-caudio symbols:"
+              echo "::error::lib${name}.${ext} exports non-kanariv symbols:"
               printf '%s\n' "$leaks" | head -n 10 || true
               failed=1
             fi
@@ -247,7 +247,7 @@ jobs:
           check_vendor blake3 '^_?blake3_' 'blake3_*'
           check_vendor tag 'TagLib' 'TagLib'
 
-          echo "=== sample exports (bench: the surface is caudio:: only) ==="
+          echo "=== sample exports (bench: the surface is kanariv:: only) ==="
           nm_symbols "$BUILD_DIR/libutils.${ext}" | head -n 5 || true
 
           if [ "$failed" -ne 0 ]; then exit 1; fi
@@ -262,9 +262,9 @@ jobs:
           echo "=== staged tree ==="
           find "$STAGE" -type f | sort
 
-          BIN="$STAGE/bin/caudio"
+          BIN="$STAGE/bin/kanariv"
           if [ ! -x "$BIN" ]; then
-            echo "::error::staged caudio binary is missing or not executable"
+            echo "::error::staged kanariv binary is missing or not executable"
             exit 1
           fi
 
@@ -276,13 +276,13 @@ jobs:
             BARE="env -u LD_LIBRARY_PATH"
           fi
 
-          echo "=== caudio --version (explicit loader path: gate) ==="
+          echo "=== kanariv --version (explicit loader path: gate) ==="
           $LOADER "$BIN" --version
 
           # Relocatability gate: the runtime archive has to work unpacked, so
           # the installed libs must resolve each other without a loader path
           # (cmake/Install.cmake sets the RPATHs).
-          echo "=== caudio --version (no loader path: gate) ==="
+          echo "=== kanariv --version (no loader path: gate) ==="
           if $BARE "$BIN" --version; then
             echo "- installed tree resolves its own libraries without a loader path" >> "$GITHUB_STEP_SUMMARY"
           else
@@ -355,27 +355,27 @@ jobs:
 
           cat > "$CONSUMER/CMakeLists.txt" <<'EOF'
           cmake_minimum_required(VERSION 3.28)
-          project(caudio_shared_abi_smoke CXX)
+          project(kanariv_shared_abi_smoke CXX)
           set(CMAKE_CXX_STANDARD 23)
           set(CMAKE_CXX_STANDARD_REQUIRED ON)
-          find_package(caudio CONFIG REQUIRED)
+          find_package(kanariv CONFIG REQUIRED)
           add_executable(smoke main.cpp)
-          target_link_libraries(smoke PRIVATE caudio::app caudio::utils)
+          target_link_libraries(smoke PRIVATE kanariv::app kanariv::utils)
           EOF
 
           # Calls one exported function per linked component, so the boundary
           # is exercised at link and at run time.
           cat > "$CONSUMER/main.cpp" <<'EOF'
-          #include <caudio/app/paths.hpp>
-          #include <caudio/utils/error.hpp>
-          #include <caudio/utils/result.hpp>
-          #include <caudio/version.hpp>
+          #include <kanariv/app/paths.hpp>
+          #include <kanariv/utils/error.hpp>
+          #include <kanariv/utils/result.hpp>
+          #include <kanariv/version.hpp>
           #include <print>
 
           int main() {
-              const auto err = caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "shared-abi-smoke");
-              const bool glob = caudio::app::hasGlobChars("*.mp3");
-              std::println("caudio shared ABI smoke: {} glob={} error={}", caudio::version::shortVersion(), glob, err);
+              const auto err = kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "shared-abi-smoke");
+              const bool glob = kanariv::app::hasGlobChars("*.mp3");
+              std::println("kanariv shared ABI smoke: {} glob={} error={}", kanariv::version::shortVersion(), glob, err);
               return glob ? 0 : 1;
           }
           EOF
@@ -415,7 +415,7 @@ jobs:
             -DCMAKE_CXX_STANDARD=23
           cmake --build "$CONSUMER/build"
           $LOADER "$CONSUMER/build/smoke"
-          echo "- downstream find_package(caudio) consumer linked caudio::app and ran" >> "$GITHUB_STEP_SUMMARY"
+          echo "- downstream find_package(kanariv) consumer linked kanariv::app and ran" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Package and inspect archives
         run: |
@@ -445,7 +445,7 @@ jobs:
           # targets into the runtime component), the vendor libs it links and
           # the bundled FFmpeg.
           missing=""
-          for name in utils config media player db engine ipc client service app caudio sqlite3 blake3 tag; do
+          for name in utils config media player db engine ipc client service app kanariv sqlite3 blake3 tag; do
             if ! grep -qE "lib${name}\.(so|dylib|[0-9])" "$rtlist"; then
               missing="$missing $name"
             fi
@@ -463,7 +463,7 @@ jobs:
             echo "::error::no dev archive was produced"
             exit 1
           fi
-          for want in "include/caudio/version.hpp" "lib/cmake/caudio/caudioConfig.cmake"; do
+          for want in "include/kanariv/version.hpp" "lib/cmake/kanariv/kanarivConfig.cmake"; do
             if ! grep -qE "^${want}\$" "$devlist"; then
               echo "::error::dev archive is missing ${want}"
               exit 1

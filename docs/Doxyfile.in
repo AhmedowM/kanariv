@@ -1,11 +1,11 @@
-# Doxyfile.in for caudio -- configured via CMake
+# Doxyfile.in for kanariv -- configured via CMake
 # @CMAKE_CURRENT_SOURCE_DIR@ and @CMAKE_CURRENT_BINARY_DIR@ substituted by configure_file
-# Usage: cmake -B build -G Ninja -DCAUDIO_BUILD_DOCS=ON && cmake --build build --target doc-check
+# Usage: cmake -B build -G Ninja -DKANARIV_BUILD_DOCS=ON && cmake --build build --target doc-check
 #
 # INPUT is the installed public surface (include/): src/ internals are
 # deliberately NOT documented (they are not installed either).
 
-PROJECT_NAME           = "caudio"
+PROJECT_NAME           = "kanariv"
 PROJECT_NUMBER         = "@PROJECT_VERSION@"
 OUTPUT_DIRECTORY       = "@CMAKE_CURRENT_BINARY_DIR@"
 INPUT                  = "@CMAKE_CURRENT_SOURCE_DIR@/include"

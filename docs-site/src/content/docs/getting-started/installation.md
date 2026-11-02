@@ -1,11 +1,11 @@
 ---
 title: Installation
-description: Build and install caudio from source on Linux, Windows, macOS, and FreeBSD
+description: Build and install kanariv from source on Linux, Windows, macOS, and FreeBSD
 ---
 
 # Installation
 
-caudio is built from source with CMake. The preferred method is the project's
+kanariv is built from source with CMake. The preferred method is the project's
 intent-driven configure script, which keeps local builds aligned with CI.
 
 ## Prerequisites
@@ -18,7 +18,7 @@ intent-driven configure script, which keeps local builds aligned with CI.
 | Git | 2.30+ | For version stamping from `git describe --tags` |
 | Compiler | GCC 13+, LLVM Clang 19+, AppleClang (Xcode 26), or MSVC 2022 | C++23 required; GCC 14+ for modules |
 | FFmpeg | Recent dev packages | `libavformat`, `libavcodec`, `libavutil`, `libswresample` |
-| Doxygen | 1.9+ | Only required for `CAUDIO_BUILD_DOCS=ON` |
+| Doxygen | 1.9+ | Only required for `KANARIV_BUILD_DOCS=ON` |
 
 ### Windows notes
 
@@ -32,8 +32,8 @@ intent-driven configure script, which keeps local builds aligned with CI.
 Clone the repository:
 
 ```sh
-git clone https://github.com/AhmedowM/caudio.git
-cd caudio
+git clone https://github.com/AhmedowM/kanariv.git
+cd kanariv
 ```
 
 Configure a development tree with tests and examples:
@@ -72,13 +72,13 @@ Useful for packaging or integrating into an existing build:
 cmake -S . -B build/custom -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CXX_STANDARD=23 \
-  -DCAUDIO_ENABLE_TESTS=ON \
-  -DCAUDIO_BUILD_SHARED=ON
+  -DKANARIV_ENABLE_TESTS=ON \
+  -DKANARIV_BUILD_SHARED=ON
 cmake --build build/custom --parallel 4
 ctest --test-dir build/custom --output-on-failure --parallel 4
 ```
 
-For modules, add `-DCAUDIO_ENABLE_MODULES=ON` and use Ninja.
+For modules, add `-DKANARIV_ENABLE_MODULES=ON` and use Ninja.
 
 ## Platform-specific notes
 
@@ -119,7 +119,7 @@ this repository's scope.
 To run tests without an audio device:
 
 ```sh
-CAUDIO_TEST_NOAUDIO=1 ctest --test-dir build --output-on-failure -j4
+KANARIV_TEST_NOAUDIO=1 ctest --test-dir build --output-on-failure -j4
 ```
 
 ## Installing

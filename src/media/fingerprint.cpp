@@ -1,8 +1,8 @@
 ﻿#include <blake3.h>
 
 #include <array>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -12,19 +12,19 @@
 #include <media/fingerprint.hpp>
 #include <system_error>
 
-namespace caudio::media::internal {
+namespace kanariv::media::internal {
 
-std::expected<std::array<uint8_t, 32>, caudio::utils::Error>
+std::expected<std::array<uint8_t, 32>, kanariv::utils::Error>
 computeFingerprint(const std::filesystem::path& path) {
     std::error_code ec;
     auto sz = std::filesystem::file_size(path, ec);
     if (ec)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, ec.message())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, ec.message())};
     std::ifstream f(path, std::ios::binary);
     if (!f)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "cannot open file")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "cannot open file")};
     blake3_hasher hasher;
     blake3_hasher_init(&hasher);
     thread_local std::array<std::byte, sample> buf{};
@@ -51,4 +51,4 @@ computeFingerprint(const std::filesystem::path& path) {
     return out;
 }
 
-} // namespace caudio::media::internal
+} // namespace kanariv::media::internal

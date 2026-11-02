@@ -2,17 +2,17 @@
 
 /**
  * @file app_impl.hpp
- * @brief Private implementation of caudio::app::App.
- * @ingroup caudio_app
+ * @brief Private implementation of kanariv::app::App.
+ * @ingroup kanariv_app
  * @details Holds all private methods and data of App. Lives in src/
  * (not installed) so downstream consumers never see them.
  */
 
-#include <caudio/app/app.hpp>
-#include <caudio/config.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/app/app.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <expected>
 #include <filesystem>
@@ -22,7 +22,7 @@
 #include <string_view>
 #include <vector>
 
-namespace caudio::app {
+namespace kanariv::app {
 
 struct App::Impl {
     /**
@@ -31,8 +31,8 @@ struct App::Impl {
      * @param timeout Per-attempt timeout (default 2 s).
      * @return Server result, or the transport/server error.
      */
-    std::expected<caudio::ipc::Result, caudio::utils::Error>
-    sendRaw(const caudio::ipc::Command& cmd,
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    sendRaw(const kanariv::ipc::Command& cmd,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{2000});
 
     /**
@@ -41,7 +41,7 @@ struct App::Impl {
      * @param line Human success line; nullopt means bare-render the result.
      * @return Outcome data for the frontend; errors surface unchanged.
      */
-    AppResult confirm(std::expected<caudio::ipc::Result, caudio::utils::Error>&& res,
+    AppResult confirm(std::expected<kanariv::ipc::Result, kanariv::utils::Error>&& res,
                       std::optional<std::string> line = std::nullopt);
 
     /**
@@ -49,7 +49,7 @@ struct App::Impl {
      * @param cfg Config selecting db/socket paths for the child.
      * @return Success, or the OS error code when spawning failed.
      */
-    std::expected<void, std::uint32_t> spawnDaemon(const caudio::config::Config& cfg);
+    std::expected<void, std::uint32_t> spawnDaemon(const kanariv::config::Config& cfg);
 
     /**
      * @brief Derives the pid-file path for the bound config.
@@ -61,8 +61,8 @@ struct App::Impl {
      * @brief Sends a play-like command, autostarting a down daemon.
      * @param cmd IPC command to send.
      */
-    std::expected<caudio::ipc::Result, caudio::utils::Error>
-    sendPlay(const caudio::ipc::Command& cmd);
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    sendPlay(const kanariv::ipc::Command& cmd);
 
     /**
      * @brief Starts the daemon (foreground service or background spawn).
@@ -76,13 +76,13 @@ struct App::Impl {
      * @brief Human track label for the last transport result.
      * @return Track label, or "unknown track" for non-status results.
      */
-    std::string transportWho(const std::expected<caudio::ipc::Result, caudio::utils::Error>& res);
+    std::string transportWho(const std::expected<kanariv::ipc::Result, kanariv::utils::Error>& res);
 
-    caudio::config::Config config_; ///< Bound config (db/socket/log paths).
+    kanariv::config::Config config_; ///< Bound config (db/socket/log paths).
     std::string argv0_;             ///< Executable path for POSIX re-spawn.
     std::function<AppResult(bool foreground)> daemonHost_{}; ///< Injected foreground daemon host.
     std::function<AppResult(const std::string& file)>
         previewHost_{}; ///< Injected local preview host.
 };
 
-} // namespace caudio::app
+} // namespace kanariv::app

@@ -14,7 +14,7 @@ Configure flags and the pinned version are parsed from
 cmake/FFmpegTrimmed.cmake (single source of truth -- the module's list
 items contain no spaces, so token extraction is exact). Produces a shared-
 only install tree (<prefix>/bin, include, lib) suitable for
-CAUDIO_TRIMMED_ROOT. Host-arch only by default; Android cross-compiles are
+KANARIV_TRIMMED_ROOT. Host-arch only by default; Android cross-compiles are
 supported with --android-ndk, --android-abi, and --android-api.
 
 --pack tars the prefix for deps-private upload. The asset name encodes the
@@ -53,9 +53,9 @@ def trim_flags_file() -> Path:
 
 def parse_trim_version(text: str) -> str:
     """Extract pinned version from cmake/FFmpegTrimmed.cmake."""
-    m = re.search(r'set\(CAUDIO_FFMPEG_TRIM_VERSION\s+"([^"]+)"', text)
+    m = re.search(r'set\(KANARIV_FFMPEG_TRIM_VERSION\s+"([^"]+)"', text)
     if not m:
-        print("[ERROR] CAUDIO_FFMPEG_TRIM_VERSION not found in FFmpegTrimmed.cmake",
+        print("[ERROR] KANARIV_FFMPEG_TRIM_VERSION not found in FFmpegTrimmed.cmake",
               file=sys.stderr)
         sys.exit(1)
     return m.group(1)
@@ -212,7 +212,7 @@ def fetch_tarball(url: str, dest: Path, dry_run: bool) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Build trimmed decode-only FFmpeg.")
     ap.add_argument("--prefix", type=Path,
-                    help="install prefix (becomes CAUDIO_TRIMMED_ROOT). Default: ./build/ffmpeg")
+                    help="install prefix (becomes KANARIV_TRIMMED_ROOT). Default: ./build/ffmpeg")
     ap.add_argument("--source-tarball", default=None,
                     help="FFmpeg source tarball URL (default: ffmpeg.org release for pinned version)")
     ap.add_argument("--source-dir", type=Path, default=None,
@@ -375,7 +375,7 @@ def main() -> None:
                 shutil.copy2(dll, bindir / dll.name)
 
     print(f"trimmed FFmpeg {version} installed to {prefix}")
-    print(f"configure with: -DCAUDIO_TRIMMED_ROOT={prefix}")
+    print(f"configure with: -DKANARIV_TRIMMED_ROOT={prefix}")
     if args.pack:
         out = (args.pack if args.pack != "auto" else
                str(prefix.parent / asset_name(version, args.android_abi if android else None)))

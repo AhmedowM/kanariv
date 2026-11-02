@@ -1,9 +1,9 @@
-#include <caudio/types/engine.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/service/service.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/service/service.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -16,25 +16,25 @@
 
 #include "service_impl.hpp"
 
-namespace caudio::service {
+namespace kanariv::service {
 
-using caudio::engine::detail::ServiceAccess;
-using namespace caudio::ipc;
-using caudio::ipc::Next;
-using caudio::ipc::Pause;
-using caudio::ipc::Play;
-using caudio::ipc::Prev;
-using caudio::ipc::Restart;
-using caudio::ipc::Resume;
-using caudio::ipc::Seek;
-using caudio::ipc::StatusReq;
-using caudio::ipc::StatusWait;
-using caudio::ipc::Stop;
-using caudio::ipc::VolumeSet;
+using kanariv::engine::detail::ServiceAccess;
+using namespace kanariv::ipc;
+using kanariv::ipc::Next;
+using kanariv::ipc::Pause;
+using kanariv::ipc::Play;
+using kanariv::ipc::Prev;
+using kanariv::ipc::Restart;
+using kanariv::ipc::Resume;
+using kanariv::ipc::Seek;
+using kanariv::ipc::StatusReq;
+using kanariv::ipc::StatusWait;
+using kanariv::ipc::Stop;
+using kanariv::ipc::VolumeSet;
 
 // Play command: start/resume playback of active queue
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Play&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Play&) {
     int64_t aq = engine_->activeQueueId();
     auto r = engine_->play(aq);
     if (!r)
@@ -43,8 +43,8 @@ Service::Impl::handle(const caudio::ipc::Play&) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Pause&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Pause&) {
     auto r = engine_->pause();
     if (!r)
         return std::unexpected{r.error()};
@@ -52,8 +52,8 @@ Service::Impl::handle(const caudio::ipc::Pause&) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Resume&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Resume&) {
     auto r = engine_->resume();
     if (!r)
         return std::unexpected{r.error()};
@@ -61,8 +61,8 @@ Service::Impl::handle(const caudio::ipc::Resume&) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Restart&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Restart&) {
     // restart: seek to 0, ensure playing
     auto r = engine_->seek(0.0);
     if (!r) {
@@ -75,15 +75,15 @@ Service::Impl::handle(const caudio::ipc::Restart&) {
         return statusResult();
     }
     // ensure playing
-    if (engine_->state() == caudio::types::PlaybackState::Paused) {
+    if (engine_->state() == kanariv::types::PlaybackState::Paused) {
         (void)engine_->resume();
     }
     updateShmStatus();
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Stop&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Stop&) {
     auto r = engine_->stop();
     if (!r)
         return std::unexpected{r.error()};
@@ -91,8 +91,8 @@ Service::Impl::handle(const caudio::ipc::Stop&) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Next&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Next&) {
     auto r = engine_->next();
     if (!r)
         return std::unexpected{r.error()};
@@ -100,8 +100,8 @@ Service::Impl::handle(const caudio::ipc::Next&) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Prev&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Prev&) {
     auto r = engine_->prev();
     if (!r)
         return std::unexpected{r.error()};
@@ -109,10 +109,10 @@ Service::Impl::handle(const caudio::ipc::Prev&) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Seek& s) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Seek& s) {
     if (!std::isfinite(s.seconds) || s.seconds < 0) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "seek: invalid seconds")};
     }
     auto r = engine_->seek(s.seconds);
@@ -122,13 +122,13 @@ Service::Impl::handle(const caudio::ipc::Seek& s) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::StatusReq&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::StatusReq&) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::StatusWait& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::StatusWait& cmd) {
     // Capture the current status sequence, then wait until it changes (a
     // status-changing operation incremented it) or the timeout elapses.
     uint64_t seq = status_seq_.load(std::memory_order_acquire);
@@ -139,8 +139,8 @@ Service::Impl::handle(const caudio::ipc::StatusWait& cmd) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::VolumeSet& v) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
     float cur = engine_->volume();
     float target = cur;
     bool hasTarget = false;
@@ -149,7 +149,7 @@ Service::Impl::handle(const caudio::ipc::VolumeSet& v) {
     if (v.level.has_value()) {
         float lvl = *v.level;
         if (!std::isfinite(lvl)) {
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                             "volume: invalid level")};
         }
         // clamp 0-100 -> 0.0-1.0
@@ -212,8 +212,8 @@ Service::Impl::handle(const caudio::ipc::VolumeSet& v) {
             return std::unexpected{r.error()};
     }
     updateShmStatus();
-    caudio::ipc::VolumeInfo vi{engine_->volume(), engine_->volume() == 0.0f};
+    kanariv::ipc::VolumeInfo vi{engine_->volume(), engine_->volume() == 0.0f};
     return Result{vi};
 }
 
-} // namespace caudio::service
+} // namespace kanariv::service

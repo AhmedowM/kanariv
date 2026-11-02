@@ -1,17 +1,17 @@
 ---
 title: Guides
-description: Practical guides for building, configuring, and using caudio.
+description: Practical guides for building, configuring, and using kanariv.
 ---
 
 # Guides
 
-Practical walkthroughs for building caudio, managing a local library, and
+Practical walkthroughs for building kanariv, managing a local library, and
 using the command-line client. Start with the guide that matches the job you
 are doing, then use the CLI and configuration references for exact options.
 
 ## Build and configure
 
-- [Build from Source](/guides/build-from-source) — configure and compile caudio
+- [Build from Source](/guides/build-from-source) — configure and compile kanariv
 - [Configuration](/guides/configuration) — configure the daemon, database, and audio device
 - [C++23 Modules](/guides/modules) — opt into named modules
 

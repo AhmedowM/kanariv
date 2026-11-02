@@ -1,8 +1,8 @@
-#include <caudio/config.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/log.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -21,30 +21,30 @@
 
 #include "config_detail.hpp"
 
-namespace caudio::config::detail {
+namespace kanariv::config::detail {
 
 std::filesystem::path defaultDbPath() {
 #ifdef _WIN32
     const char* localApp = std::getenv("LOCALAPPDATA");
     if (localApp && localApp[0] != '\0') {
-        return std::filesystem::path(localApp) / "caudio" / "library.db";
+        return std::filesystem::path(localApp) / "kanariv" / "library.db";
     }
 #endif
     const char* xdgData = std::getenv("XDG_DATA_HOME");
     std::filesystem::path base;
     if (xdgData && xdgData[0] != '\0') {
-        base = std::filesystem::path(xdgData) / "caudio";
+        base = std::filesystem::path(xdgData) / "kanariv";
     } else {
         const char* home = std::getenv("HOME");
         if (!home || home[0] == '\0')
             home = std::getenv("USERPROFILE");
         if (home && home[0] != '\0') {
-            base = std::filesystem::path(home) / ".local" / "share" / "caudio";
+            base = std::filesystem::path(home) / ".local" / "share" / "kanariv";
         } else {
             std::error_code ec;
-            base = std::filesystem::temp_directory_path(ec) / "caudio";
+            base = std::filesystem::temp_directory_path(ec) / "kanariv";
             if (ec)
-                base = std::filesystem::path("/tmp/caudio");
+                base = std::filesystem::path("/tmp/kanariv");
         }
     }
     return base / "library.db";
@@ -54,24 +54,24 @@ std::filesystem::path defaultConfigPath() {
 #ifdef _WIN32
     const char* localApp = std::getenv("LOCALAPPDATA");
     if (localApp && localApp[0] != '\0') {
-        return std::filesystem::path(localApp) / "caudio" / "config.json";
+        return std::filesystem::path(localApp) / "kanariv" / "config.json";
     }
 #endif
     const char* xdgCfg = std::getenv("XDG_CONFIG_HOME");
     std::filesystem::path base;
     if (xdgCfg && xdgCfg[0] != '\0') {
-        base = std::filesystem::path(xdgCfg) / "caudio";
+        base = std::filesystem::path(xdgCfg) / "kanariv";
     } else {
         const char* home = std::getenv("HOME");
         if (!home || home[0] == '\0')
             home = std::getenv("USERPROFILE");
         if (home && home[0] != '\0') {
-            base = std::filesystem::path(home) / ".config" / "caudio";
+            base = std::filesystem::path(home) / ".config" / "kanariv";
         } else {
             std::error_code ec;
-            base = std::filesystem::temp_directory_path(ec) / "caudio";
+            base = std::filesystem::temp_directory_path(ec) / "kanariv";
             if (ec)
-                base = std::filesystem::path("/tmp/caudio");
+                base = std::filesystem::path("/tmp/kanariv");
         }
     }
     return base / "config.json";
@@ -81,29 +81,29 @@ std::filesystem::path legacyConfigPath() {
 #ifdef _WIN32
     const char* home = std::getenv("USERPROFILE");
     if (home && home[0] != '\0') {
-        return std::filesystem::path(home) / ".config" / "caudio" / "config.json";
+        return std::filesystem::path(home) / ".config" / "kanariv" / "config.json";
     }
 #endif
     return {};
 }
 
-caudio::utils::Expected<std::string> readFileString(const std::filesystem::path& p) {
+kanariv::utils::Expected<std::string> readFileString(const std::filesystem::path& p) {
     std::ifstream in(p);
     if (!in) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "cannot open config")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "cannot open config")};
     }
     std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     return content;
 }
 
-} // namespace caudio::config::detail
+} // namespace kanariv::config::detail
 
-namespace caudio::config {
+namespace kanariv::config {
 
-using caudio::utils::Json;
+using kanariv::utils::Json;
 
-caudio::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
+kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
     Config cfg{};
     cfg.dbPath = detail::defaultDbPath();
     cfg.configPath = path.empty() ? detail::defaultConfigPath() : path;
@@ -154,7 +154,7 @@ caudio::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
             cfg.logLevel = j["logLevel"].get<int>();
         } else if (j.contains("logLevel") && j["logLevel"].isString()) {
             // Tolerate hand-written names ("info"); canonical form is numeric.
-            if (auto lvl = caudio::utils::parseLogLevelValue(j["logLevel"].get<std::string>()))
+            if (auto lvl = kanariv::utils::parseLogLevelValue(j["logLevel"].get<std::string>()))
                 cfg.logLevel = std::to_underlying(*lvl);
         }
         if (j.contains("socketPath") && j["socketPath"].isString()) {
@@ -185,17 +185,17 @@ caudio::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
         if (j.contains("log_level") && j["log_level"].isInteger()) {
             cfg.logLevel = j["log_level"].get<int>();
         } else if (j.contains("log_level") && j["log_level"].isString()) {
-            if (auto lvl = caudio::utils::parseLogLevelValue(j["log_level"].get<std::string>()))
+            if (auto lvl = kanariv::utils::parseLogLevelValue(j["log_level"].get<std::string>()))
                 cfg.logLevel = std::to_underlying(*lvl);
         }
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
     return cfg;
 }
 
-caudio::utils::Expected<void> saveConfig(const Config& cfg) {
+kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
     try {
         std::filesystem::path dir = cfg.configPath.parent_path();
         if (!dir.empty()) {
@@ -215,19 +215,19 @@ caudio::utils::Expected<void> saveConfig(const Config& cfg) {
         std::ofstream out(cfg.configPath);
         if (!out) {
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "cannot write config")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "cannot write config")};
         }
         out << j.dump(2);
         return {};
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
-} // namespace caudio::config
+} // namespace kanariv::config
 
-namespace caudio::config::detail_paths {
+namespace kanariv::config::detail_paths {
 
 std::string hex8ForDb(const std::filesystem::path& dbPath) {
     std::string input = dbPath.generic_string();
@@ -243,94 +243,94 @@ std::filesystem::path baseDirForSocket() {
 #ifdef _WIN32
     const char* localApp = std::getenv("LOCALAPPDATA");
     if (localApp && localApp[0] != '\0') {
-        return std::filesystem::path(localApp) / "caudio";
+        return std::filesystem::path(localApp) / "kanariv";
     }
 #endif
     const char* xdgRuntime = std::getenv("XDG_RUNTIME_DIR");
     if (xdgRuntime && xdgRuntime[0] != '\0') {
-        return std::filesystem::path(xdgRuntime) / "caudio";
+        return std::filesystem::path(xdgRuntime) / "kanariv";
     }
     const char* xdgData = std::getenv("XDG_DATA_HOME");
     if (xdgData && xdgData[0] != '\0') {
-        return std::filesystem::path(xdgData) / "caudio";
+        return std::filesystem::path(xdgData) / "kanariv";
     }
     const char* home = std::getenv("HOME");
     if (!home || home[0] == '\0')
         home = std::getenv("USERPROFILE");
     if (home && home[0] != '\0') {
-        return std::filesystem::path(home) / ".local" / "share" / "caudio";
+        return std::filesystem::path(home) / ".local" / "share" / "kanariv";
     }
     std::error_code ec;
-    auto base = std::filesystem::temp_directory_path(ec) / "caudio";
+    auto base = std::filesystem::temp_directory_path(ec) / "kanariv";
     if (ec)
-        base = std::filesystem::path("/tmp/caudio");
+        base = std::filesystem::path("/tmp/kanariv");
     return base;
 }
 
-} // namespace caudio::config::detail_paths
+} // namespace kanariv::config::detail_paths
 
-namespace caudio::config {
+namespace kanariv::config {
 
-caudio::utils::Expected<std::string> socketPathFor(const std::filesystem::path& dbPath) {
+kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path& dbPath) {
     try {
         std::string hex = detail_paths::hex8ForDb(dbPath);
 #ifdef _WIN32
-        return std::string("\\\\.\\pipe\\caudio-") + hex;
+        return std::string("\\\\.\\pipe\\kanariv-") + hex;
 #else
         auto base = detail_paths::baseDirForSocket();
-        return (base / ("caudio-" + hex + ".sock")).generic_string();
+        return (base / ("kanariv-" + hex + ".sock")).generic_string();
 #endif
     } catch (const std::exception& e) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Io, e.what())};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
     } catch (...) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "socketPathFor failed")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "socketPathFor failed")};
     }
 }
 
-caudio::utils::Expected<std::filesystem::path> pidPathFor(const std::filesystem::path& dbPath) {
+kanariv::utils::Expected<std::filesystem::path> pidPathFor(const std::filesystem::path& dbPath) {
     try {
         std::string hex = detail_paths::hex8ForDb(dbPath);
         auto base = detail_paths::baseDirForSocket();
-        return base / ("caudio-" + hex + ".pid");
+        return base / ("kanariv-" + hex + ".pid");
     } catch (const std::exception& e) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Io, e.what())};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
     } catch (...) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "pidPathFor failed")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "pidPathFor failed")};
     }
 }
 
-caudio::utils::Expected<std::filesystem::path> lockPathFor(const std::filesystem::path& dbPath) {
+kanariv::utils::Expected<std::filesystem::path> lockPathFor(const std::filesystem::path& dbPath) {
     try {
         std::string hex = detail_paths::hex8ForDb(dbPath);
         auto base = detail_paths::baseDirForSocket();
-        return base / ("caudio-" + hex + ".lock");
+        return base / ("kanariv-" + hex + ".lock");
     } catch (const std::exception& e) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Io, e.what())};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
     } catch (...) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "lockPathFor failed")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "lockPathFor failed")};
     }
 }
 
-caudio::utils::Expected<std::filesystem::path> logPathFor(const std::filesystem::path& dbPath) {
+kanariv::utils::Expected<std::filesystem::path> logPathFor(const std::filesystem::path& dbPath) {
     try {
         auto parent = dbPath.parent_path();
         if (!parent.empty())
-            return parent / "caudio.log";
+            return parent / "kanariv.log";
         std::error_code ec;
         auto tmp = std::filesystem::temp_directory_path(ec);
         if (ec)
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "logPathFor failed")};
-        return tmp / "caudio.log";
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "logPathFor failed")};
+        return tmp / "kanariv.log";
     } catch (const std::exception& e) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Io, e.what())};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
     } catch (...) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "logPathFor failed")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "logPathFor failed")};
     }
 }
 
-} // namespace caudio::config
+} // namespace kanariv::config

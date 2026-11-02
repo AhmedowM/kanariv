@@ -1,16 +1,16 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <caudio/config.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/player/output.hpp>
-#include <caudio/service/service.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/log.hpp>
-#include <caudio/utils/result.hpp>
-#include <caudio/utils/ring.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/player/output.hpp>
+#include <kanariv/service/service.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <cmath>
 #include <expected>
@@ -30,62 +30,62 @@
 #include "service_impl.hpp"
 #include "service_paths.hpp"
 
-namespace caudio::service {
+namespace kanariv::service {
 
-using namespace caudio::ipc;
-using namespace caudio::config;
-using caudio::ipc::ConfigExport;
-using caudio::ipc::ConfigGet;
-using caudio::ipc::ConfigImport;
-using caudio::ipc::ConfigList;
-using caudio::ipc::ConfigReset;
-using caudio::ipc::ConfigSet;
-using caudio::ipc::DeviceList;
-using caudio::ipc::DeviceSet;
-using caudio::ipc::DeviceTest;
-using caudio::ipc::Shutdown;
+using namespace kanariv::ipc;
+using namespace kanariv::config;
+using kanariv::ipc::ConfigExport;
+using kanariv::ipc::ConfigGet;
+using kanariv::ipc::ConfigImport;
+using kanariv::ipc::ConfigList;
+using kanariv::ipc::ConfigReset;
+using kanariv::ipc::ConfigSet;
+using kanariv::ipc::DeviceList;
+using kanariv::ipc::DeviceSet;
+using kanariv::ipc::DeviceTest;
+using kanariv::ipc::Shutdown;
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::ConfigGet& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::ConfigGet& cmd) {
     auto p = detail::resolveConfigPath(config_.configPath, config_.dbPath);
-    auto vRes = caudio::config::detail::configGetRaw(p, cmd.key);
+    auto vRes = kanariv::config::detail::configGetRaw(p, cmd.key);
     if (!vRes)
         return std::unexpected{vRes.error()};
     return Result{ConfigValue{cmd.key, *vRes}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::ConfigSet& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::ConfigSet& cmd) {
     auto p = detail::resolveConfigPath(config_.configPath, config_.dbPath);
     // logLevel applies live: validate first (garbage is rejected, never
     // stored), canonicalize names to ints on write, then setLevel.
     bool isLevel = (cmd.key == "logLevel" || cmd.key == "log_level");
-    caudio::utils::LogLevel newLevel = caudio::utils::LogLevel::Info;
+    kanariv::utils::LogLevel newLevel = kanariv::utils::LogLevel::Info;
     std::string storedValue = cmd.value;
     if (isLevel) {
-        auto lvl = caudio::utils::parseLogLevelValue(cmd.value);
+        auto lvl = kanariv::utils::parseLogLevelValue(cmd.value);
         if (!lvl)
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                          "invalid logLevel '" + cmd.value +
                                              "' (expected trace|debug|info|warn|error or 0-4)")};
         newLevel = *lvl;
         storedValue = std::to_string(std::to_underlying(newLevel));
     }
-    auto sRes = caudio::config::detail::configSetRaw(p, cmd.key, storedValue);
+    auto sRes = kanariv::config::detail::configSetRaw(p, cmd.key, storedValue);
     if (!sRes)
         return std::unexpected{sRes.error()};
     if (isLevel && logger_) {
         logger_->setLevel(newLevel);
-        logger_->info("log level set to {}", caudio::utils::toString(newLevel));
+        logger_->info("log level set to {}", kanariv::utils::toString(newLevel));
     }
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::ConfigList&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::ConfigList&) {
     auto p = detail::resolveConfigPath(config_.configPath, config_.dbPath);
-    auto lRes = caudio::config::detail::configListRaw(p);
+    auto lRes = kanariv::config::detail::configListRaw(p);
     if (!lRes)
         return std::unexpected{lRes.error()};
     ConfigValues cvs{};
@@ -95,30 +95,30 @@ Service::Impl::handle(const caudio::ipc::ConfigList&) {
     return Result{std::move(cvs)};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::ConfigExport& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::ConfigExport& cmd) {
     auto src = detail::resolveConfigPath(config_.configPath, config_.dbPath);
     std::filesystem::path dst{cmd.path};
     std::error_code ec;
     if (!std::filesystem::exists(src, ec)) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "config not found")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "config not found")};
     }
     std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing, ec);
     if (ec)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, ec.message())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, ec.message())};
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::ConfigImport& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::ConfigImport& cmd) {
     std::filesystem::path src{cmd.path};
     auto dst = detail::resolveConfigPath(config_.configPath, config_.dbPath);
     std::error_code ec;
     if (!std::filesystem::exists(src, ec)) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "import path not found")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "import path not found")};
     }
     // Validate BEFORE touching the live config: syntax, object shape, and
     // known-key types. Unknown keys are ignored (forward compatibility).
@@ -127,21 +127,21 @@ Service::Impl::handle(const caudio::ipc::ConfigImport& cmd) {
         std::ifstream ifs(src, std::ios::binary);
         if (!ifs)
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "import file unreadable")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "import file unreadable")};
         content =
             std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
     }
-    auto parsed = caudio::utils::Json::tryParse(content);
+    auto parsed = kanariv::utils::Json::tryParse(content);
     if (!parsed)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Corrupt,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
                                                         "import is not valid JSON")};
     if (!parsed->isObject())
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "import must be a JSON object")};
-    auto checkString = [&](const char* key) -> std::optional<caudio::utils::Error> {
+    auto checkString = [&](const char* key) -> std::optional<kanariv::utils::Error> {
         auto v = parsed->at(key);
         if (v && !v->isString())
-            return caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+            return kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                             std::string("import key '") + key +
                                                 "' must be a string");
         return std::nullopt;
@@ -155,9 +155,9 @@ Service::Impl::handle(const caudio::ipc::ConfigImport& cmd) {
         if (!v || v->isNull() || v->isNumber())
             continue;
         // Names are tolerated (loadConfig canonicalizes); garbage is not.
-        if (v->isString() && caudio::utils::parseLogLevelValue(v->get<std::string>()))
+        if (v->isString() && kanariv::utils::parseLogLevelValue(v->get<std::string>()))
             continue;
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         std::string("import key '") + k +
                                                             "' must be a number or level name")};
     }
@@ -165,47 +165,47 @@ Service::Impl::handle(const caudio::ipc::ConfigImport& cmd) {
     std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing, ec);
     if (ec)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, ec.message())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, ec.message())};
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::ConfigReset& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::ConfigReset& cmd) {
     auto p = detail::resolveConfigPath(config_.configPath, config_.dbPath);
     if (cmd.key.has_value() && !cmd.key->empty()) {
-        auto r = caudio::config::detail::configDeleteRaw(p, *cmd.key);
+        auto r = kanariv::config::detail::configDeleteRaw(p, *cmd.key);
         if (!r)
             return std::unexpected{r.error()};
     } else if (cmd.key.has_value() && cmd.key->empty()) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "empty key")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "empty key")};
     } else {
-        auto r = caudio::config::detail::configResetAllRaw(p);
+        auto r = kanariv::config::detail::configResetAllRaw(p);
         if (!r)
             return std::unexpected{r.error()};
     }
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::Shutdown&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::Shutdown&) {
     shutdownRequested_.store(true, std::memory_order_release);
     // defer actual shutdown to run loop to avoid deadlock
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::DeviceList&) {
-    auto devList = caudio::player::enumerateDevices();
-    caudio::ipc::Devices result;
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::DeviceList&) {
+    auto devList = kanariv::player::enumerateDevices();
+    kanariv::ipc::Devices result;
     result.devices = std::move(devList.devices);
     return Result{std::move(result)};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::DeviceSet& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::DeviceSet& cmd) {
     // Validate device exists
-    auto devList = caudio::player::enumerateDevices();
+    auto devList = kanariv::player::enumerateDevices();
     bool found = false;
     for (const auto& d : devList.devices) {
         if (d.id == cmd.id) {
@@ -214,12 +214,12 @@ Service::Impl::handle(const caudio::ipc::DeviceSet& cmd) {
         }
     }
     if (!found) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "device not found: " + cmd.id)};
     }
     // Save to config
     auto cfgPath = detail::resolveConfigPath(config_.configPath, config_.dbPath);
-    auto res = caudio::config::detail::configSetRaw(cfgPath, "device", cmd.id);
+    auto res = kanariv::config::detail::configSetRaw(cfgPath, "device", cmd.id);
     if (!res) {
         return std::unexpected{res.error()};
     }
@@ -228,8 +228,8 @@ Service::Impl::handle(const caudio::ipc::DeviceSet& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::DeviceTest& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::DeviceTest& cmd) {
     // Get device ID to test
     std::string testId;
     if (cmd.id.has_value()) {
@@ -237,7 +237,7 @@ Service::Impl::handle(const caudio::ipc::DeviceTest& cmd) {
     } else {
         // Use current config device
         auto cfgPath = detail::resolveConfigPath(config_.configPath, config_.dbPath);
-        auto devRes = caudio::config::detail::configGetRaw(cfgPath, "device");
+        auto devRes = kanariv::config::detail::configGetRaw(cfgPath, "device");
         if (devRes) {
             testId = *devRes;
         } else {
@@ -245,7 +245,7 @@ Service::Impl::handle(const caudio::ipc::DeviceTest& cmd) {
         }
     }
     // Enumeration check: verify the id resolves against listed devices.
-    auto devList = caudio::player::enumerateDevices();
+    auto devList = kanariv::player::enumerateDevices();
     bool found = false;
     for (const auto& d : devList.devices) {
         if (d.id == testId || (testId == "auto" && d.isDefault)) {
@@ -254,7 +254,7 @@ Service::Impl::handle(const caudio::ipc::DeviceTest& cmd) {
         }
     }
     if (!found && testId != "auto") {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "device not found: " + testId)};
     }
     // Tone test: generate and play an audible sine wave through the device.
@@ -265,9 +265,9 @@ Service::Impl::handle(const caudio::ipc::DeviceTest& cmd) {
         constexpr double durationSec = 1.0;
         constexpr std::size_t ringCapacity = 2048; // ~42 ms of audio
 
-        caudio::utils::SpscRing<float> ring(ringCapacity, channels);
-        auto out = caudio::player::AudioOutput::create(
-            caudio::player::AudioOutput::Config{sampleRate, channels, &ring, 0.3f, nullptr});
+        kanariv::utils::SpscRing<float> ring(ringCapacity, channels);
+        auto out = kanariv::player::AudioOutput::create(
+            kanariv::player::AudioOutput::Config{sampleRate, channels, &ring, 0.3f, nullptr});
         if (!out)
             return std::unexpected{out.error()};
 
@@ -308,4 +308,4 @@ Service::Impl::handle(const caudio::ipc::DeviceTest& cmd) {
     return Result{Empty{}};
 }
 
-} // namespace caudio::service
+} // namespace kanariv::service

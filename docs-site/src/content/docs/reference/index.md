@@ -1,6 +1,6 @@
 ---
 title: Reference
-description: Reference documentation for the caudio CLI, configuration, and C++ API.
+description: Reference documentation for the kanariv CLI, configuration, and C++ API.
 ---
 
 # Reference

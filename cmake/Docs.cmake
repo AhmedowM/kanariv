@@ -1,12 +1,12 @@
-# Docs.cmake -- Doxygen documentation target (enabled via CAUDIO_BUILD_DOCS=ON).
+# Docs.cmake -- Doxygen documentation target (enabled via KANARIV_BUILD_DOCS=ON).
 # How to build docs:
-#   cmake -B build -G Ninja -DCAUDIO_BUILD_DOCS=ON
+#   cmake -B build -G Ninja -DKANARIV_BUILD_DOCS=ON
 #   cmake --build build --target doc-check
 #     generates HTML to build/docs/docs/html and XML to build/docs/docs/xml
-# Requires Doxygen when CAUDIO_BUILD_DOCS=ON. Graphviz/dot remains optional.
+# Requires Doxygen when KANARIV_BUILD_DOCS=ON. Graphviz/dot remains optional.
 # Single Doxyfile template: docs/Doxyfile.in (configured via configure_file @VAR@).
 
-function(caudio_add_docs)
+function(kanariv_add_docs)
   find_package(Doxygen REQUIRED OPTIONAL_COMPONENTS dot)
   if(DOXYGEN_DOT_FOUND)
     set(DOXYGEN_HAVE_DOT YES)
@@ -21,9 +21,9 @@ function(caudio_add_docs)
     "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile"
     @ONLY
   )
-  set(_caudio_doxyfile "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
+  set(_kanariv_doxyfile "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
 
-  doxygen_add_docs(doc CONFIG_FILE "${_caudio_doxyfile}" COMMENT "Generating Doxygen docs")
+  doxygen_add_docs(doc CONFIG_FILE "${_kanariv_doxyfile}" COMMENT "Generating Doxygen docs")
   if(TARGET doc)
     # Doxygen on Windows does not auto-create intermediate dirs for nested HTML_OUTPUT;
     # ensure the build-tree output directory exists (docs stay out of the source tree).

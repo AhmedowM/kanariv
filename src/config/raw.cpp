@@ -1,42 +1,42 @@
 #include "raw.hpp"
 
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/result.hpp>
 #include <filesystem>
 #include <fstream>
 #include <string>
 
 #include "config_detail.hpp"
 
-namespace caudio::config::detail {
+namespace kanariv::config::detail {
 
-using caudio::utils::Json;
+using kanariv::utils::Json;
 
-caudio::utils::Expected<std::string> configGetRaw(const std::filesystem::path& p,
+kanariv::utils::Expected<std::string> configGetRaw(const std::filesystem::path& p,
                                                   std::string_view key) {
     std::error_code ec;
     if (!std::filesystem::exists(p, ec)) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "config not found")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "config not found")};
     }
     auto fileRes = readFileString(p);
     if (!fileRes)
         return std::unexpected{fileRes.error()};
     std::string content = std::move(*fileRes);
     if (content.empty()) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "key not found: " + std::string(key))};
     }
     try {
         const Json j = Json::parse(content);
         if (!j.isObject()) {
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Corrupt,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
                                                             "config is not an object")};
         }
         std::string k(key);
         if (!j.contains(k)) {
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                             "key not found: " + k)};
         }
         const Json v = j[k];
@@ -47,11 +47,11 @@ caudio::utils::Expected<std::string> configGetRaw(const std::filesystem::path& p
         return v.dump();
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
-caudio::utils::Expected<void> configSetRaw(const std::filesystem::path& p, std::string_view key,
+kanariv::utils::Expected<void> configSetRaw(const std::filesystem::path& p, std::string_view key,
                                            std::string_view value) {
     Json j = Json::object();
     std::error_code ec;
@@ -97,17 +97,17 @@ caudio::utils::Expected<void> configSetRaw(const std::filesystem::path& p, std::
         std::ofstream out(p);
         if (!out) {
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "cannot write config")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "cannot write config")};
         }
         out << j.dump(2);
         return {};
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
-caudio::utils::Expected<std::vector<RawConfigValue>> configListRaw(const std::filesystem::path& p) {
+kanariv::utils::Expected<std::vector<RawConfigValue>> configListRaw(const std::filesystem::path& p) {
     std::error_code ec;
     if (!std::filesystem::exists(p, ec))
         return std::vector<RawConfigValue>{};
@@ -148,38 +148,38 @@ caudio::utils::Expected<std::vector<RawConfigValue>> configListRaw(const std::fi
         return out;
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
-caudio::utils::Expected<void> configDeleteRaw(const std::filesystem::path& p,
+kanariv::utils::Expected<void> configDeleteRaw(const std::filesystem::path& p,
                                               std::string_view key) {
     if (key.empty()) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "empty key")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "empty key")};
     }
     std::error_code ec;
     if (!std::filesystem::exists(p, ec)) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "config not found")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "config not found")};
     }
     auto fileRes = readFileString(p);
     if (!fileRes)
         return std::unexpected{fileRes.error()};
     std::string content = std::move(*fileRes);
     if (content.empty()) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "key not found: " + std::string(key))};
     }
     try {
         Json j = Json::parse(content);
         if (!j.isObject()) {
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Corrupt,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
                                                             "config is not an object")};
         }
         std::string k(key);
         if (!j.contains(k)) {
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                             "key not found: " + k)};
         }
         j.erase(k);
@@ -189,31 +189,31 @@ caudio::utils::Expected<void> configDeleteRaw(const std::filesystem::path& p,
         std::ofstream out(p);
         if (!out) {
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "cannot write config")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "cannot write config")};
         }
         out << j.dump(2);
         return {};
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
-caudio::utils::Expected<void> configResetAllRaw(const std::filesystem::path& p) {
+kanariv::utils::Expected<void> configResetAllRaw(const std::filesystem::path& p) {
     try {
         std::error_code ec;
         if (std::filesystem::exists(p, ec)) {
             std::filesystem::remove(p, ec);
             if (ec) {
                 return std::unexpected{
-                    caudio::utils::makeError(caudio::utils::StatusCode::Io, ec.message())};
+                    kanariv::utils::makeError(kanariv::utils::StatusCode::Io, ec.message())};
             }
         }
         return {};
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
-} // namespace caudio::config::detail
+} // namespace kanariv::config::detail

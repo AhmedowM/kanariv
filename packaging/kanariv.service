@@ -1,0 +1,11 @@
+[Unit]
+Description=kanariv headless music player daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/kanariv --foreground
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

@@ -1,4 +1,4 @@
-# Android NDK toolchain wrapper for caudio.
+# Android NDK toolchain wrapper for kanariv.
 #
 # The NDK toolchain does the compiler/sysroot/API setup. This wrapper keeps
 # Android-specific project defaults in one place and remains usable from both
@@ -23,19 +23,19 @@ set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES
   "${CMAKE_TRY_COMPILE_PLATFORM_VARIABLES}" CACHE STRING
   "Android platform variables propagated to try_compile" FORCE)
 
-set(CAUDIO_BUILD_CLI OFF CACHE BOOL
-  "Build the caudio executable" FORCE)
-set(CAUDIO_BUILD_STATIC OFF CACHE BOOL
+set(KANARIV_BUILD_CLI OFF CACHE BOOL
+  "Build the kanariv executable" FORCE)
+set(KANARIV_BUILD_STATIC OFF CACHE BOOL
   "Build static component libraries" FORCE)
-set(CAUDIO_BUILD_SHARED ON CACHE BOOL
+set(KANARIV_BUILD_SHARED ON CACHE BOOL
   "Build per-component shared libraries" FORCE)
-set(CAUDIO_ENABLE_TESTS OFF CACHE BOOL "Build tests" FORCE)
-set(CAUDIO_ENABLE_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
-set(CAUDIO_ENABLE_MODULES OFF CACHE BOOL
+set(KANARIV_ENABLE_TESTS OFF CACHE BOOL "Build tests" FORCE)
+set(KANARIV_ENABLE_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
+set(KANARIV_ENABLE_MODULES OFF CACHE BOOL
   "Build/install C++23 module interfaces" FORCE)
-set(CAUDIO_BUILD_DOCS OFF CACHE BOOL
+set(KANARIV_BUILD_DOCS OFF CACHE BOOL
   "Build Doxygen documentation" FORCE)
-set(CAUDIO_ENABLE_SANITIZERS OFF CACHE BOOL
+set(KANARIV_ENABLE_SANITIZERS OFF CACHE BOOL
   "Enable sanitizers" FORCE)
 
 include("${CMAKE_ANDROID_NDK}/build/cmake/android.toolchain.cmake")

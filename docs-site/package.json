@@ -1,9 +1,9 @@
 {
-  "name": "caudio-docs",
+  "name": "kanariv-docs",
   "type": "module",
   "version": "0.1.0",
   "packageManager": "npm@11.20.0",
-  "description": "Documentation site for caudio — headless local music player and C++23 library",
+  "description": "Documentation site for kanariv — headless local music player and C++23 library",
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",

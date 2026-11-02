@@ -1,9 +1,9 @@
-#include <caudio/media/audio_ext.hpp>
-#include <caudio/media/reader.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/media/audio_ext.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/utils/error.hpp>
 #include <iostream>
 
 int main() {
     std::cout << std::boolalpha
-              << caudio::media::hasAudioExt("track.flac") << '\n';
+              << kanariv::media::hasAudioExt("track.flac") << '\n';
 }

@@ -1,11 +1,11 @@
 #include <sqlite3.h>
 
-#include <caudio/db/database.hpp>
-#include <caudio/db/json.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/json.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <db/database_access.hpp>
@@ -22,11 +22,11 @@
 #include <string>
 #include <utility>
 
-namespace caudio::db {
+namespace kanariv::db {
 
-using caudio::utils::Json;
+using kanariv::utils::Json;
 
-std::expected<void, caudio::utils::Error> exportJson(contracts::IDatabase& db_,
+std::expected<void, kanariv::utils::Error> exportJson(contracts::IDatabase& db_,
                                                      const std::filesystem::path& outPath) {
     Database& db = dynamic_cast<Database&>(db_);
     auto tracks = db.listTracks(nullptr);
@@ -35,50 +35,50 @@ std::expected<void, caudio::utils::Error> exportJson(contracts::IDatabase& db_,
     Json root;
     root["tracks"] = Json::array();
     for (auto& t : *tracks) {
-        root["tracks"].push_back(caudio::utils::trackToJson(t));
+        root["tracks"].push_back(kanariv::utils::trackToJson(t));
     }
     std::ofstream f(outPath, std::ios::binary);
     if (!f)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "cannot open output")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "cannot open output")};
     f << root.dump(2);
     if (!f)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "write failed")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "write failed")};
     return {};
 }
 
-std::expected<void, caudio::utils::Error> importJson(contracts::IDatabase& db_,
+std::expected<void, kanariv::utils::Error> importJson(contracts::IDatabase& db_,
                                                      const std::filesystem::path& inPath) {
     Database& db = dynamic_cast<Database&>(db_);
     std::ifstream f(inPath, std::ios::binary);
     if (!f)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "cannot open input")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "cannot open input")};
     std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     if (content.empty())
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, "empty file")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, "empty file")};
     Json root;
     try {
         root = Json::parse(content);
     } catch (const std::exception& e) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, e.what())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
     if (!root.contains("tracks"))
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, "missing tracks array")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, "missing tracks array")};
     const Json tracks = root["tracks"];
     if (!tracks.isArray()) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, "missing tracks array")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, "missing tracks array")};
     }
     std::unique_lock lk{DatabaseAccess::mutex(db)};
     sqlite3* h = DatabaseAccess::handleLocked(db);
     if (!h)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     auto txRes = DbTransaction::begin(h);
     if (!txRes)
         return std::unexpected{txRes.error()};
@@ -90,12 +90,12 @@ std::expected<void, caudio::utils::Error> importJson(contracts::IDatabase& db_,
             corrupt = true;
             break;
         }
-        auto tr = caudio::utils::trackFromJson(*jt);
+        auto tr = kanariv::utils::trackFromJson(*jt);
         if (!tr) {
             corrupt = true;
             break;
         }
-        caudio::types::Track t = *tr;
+        kanariv::types::Track t = *tr;
         SqliteStatement stmt;
         if (auto e =
                 stmt.prepare(h, "INSERT INTO tracks (fingerprint, path, size, mtime, duration, "
@@ -138,7 +138,7 @@ std::expected<void, caudio::utils::Error> importJson(contracts::IDatabase& db_,
         stmt.bindInt(22, t.last_scanned);
         stmt.bindInt(23, t.dirty ? 1 : 0);
         stmt.bindInt(24, t.library_id ? t.library_id : 1);
-        const auto source = caudio::types::normalizedSource(t);
+        const auto source = kanariv::types::normalizedSource(t);
         stmt.bindInt(25, static_cast<int>(source.kind));
         stmt.bindText(26, source.key);
         stmt.bindInt(27, source.available ? 1 : 0);
@@ -194,7 +194,7 @@ std::expected<void, caudio::utils::Error> importJson(contracts::IDatabase& db_,
                 upd.bindInt(21, t.last_scanned);
                 upd.bindInt(22, t.dirty ? 1 : 0);
                 upd.bindInt(23, t.library_id ? t.library_id : 1);
-                const auto updatedSource = caudio::types::normalizedSource(t);
+                const auto updatedSource = kanariv::types::normalizedSource(t);
                 upd.bindInt(24, static_cast<int>(updatedSource.kind));
                 upd.bindText(25, updatedSource.key);
                 upd.bindInt(26, updatedSource.available ? 1 : 0);
@@ -221,11 +221,11 @@ std::expected<void, caudio::utils::Error> importJson(contracts::IDatabase& db_,
     if (corrupt) {
         (void)tx.rollback();
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Corrupt, "import corrupt")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, "import corrupt")};
     }
     if (auto c = tx.commit(); !c)
         return std::unexpected{c.error()};
     return {};
 }
 
-} // namespace caudio::db
+} // namespace kanariv::db

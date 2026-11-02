@@ -1,9 +1,9 @@
-#include <caudio/db/database.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/engine/engine.hpp>
-#include <caudio/types/engine.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -16,8 +16,8 @@
 #include <thread>
 #include <utility>
 #include <vector>
-using namespace caudio::engine;
-using namespace caudio::db;
+using namespace kanariv::engine;
+using namespace kanariv::db;
 
 namespace {
 
@@ -29,29 +29,29 @@ std::string findSample() {
             return s;
         }
     };
-    if (auto* env = std::getenv("CAUDIO_SAMPLE")) {
+    if (auto* env = std::getenv("KANARIV_SAMPLE")) {
         if (std::filesystem::exists(env))
             return toAbs(env);
     }
-    if (auto* env = std::getenv("CAUDIO_FIXTURE")) {
+    if (auto* env = std::getenv("KANARIV_FIXTURE")) {
         if (std::filesystem::exists(env))
             return toAbs(env);
     }
     for (auto* c : {"tests/fixtures/sample.wav", "./tests/fixtures/sample.wav",
                     "../tests/fixtures/sample.wav",
-                    "C:/Users/Secondary/Projects/caudio-cpp/tests/fixtures/sample.wav",
-                    "C:/Users/Secondary/Projects/caudio/tests/fixtures/sample.wav"}) {
+                    "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav",
+                    "C:/Users/Secondary/Projects/kanariv/tests/fixtures/sample.wav"}) {
         if (std::filesystem::exists(c))
             return toAbs(c);
     }
-    if (auto* env = std::getenv("CAUDIO_SAMPLE"))
+    if (auto* env = std::getenv("KANARIV_SAMPLE"))
         return toAbs(env);
-    if (std::filesystem::exists("C:/Users/Secondary/Projects/caudio-cpp/tests/fixtures/sample.wav"))
-        return "C:/Users/Secondary/Projects/caudio-cpp/tests/fixtures/sample.wav";
+    if (std::filesystem::exists("C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav"))
+        return "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav";
     return "tests/fixtures/sample.wav";
 }
 
-std::expected<std::unique_ptr<Database>, caudio::utils::Error>
+std::expected<std::unique_ptr<Database>, kanariv::utils::Error>
 openDbWithFallback(const std::string& path, std::string& used) {
     auto r = Database::open(path);
     if (r) {
@@ -75,7 +75,7 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath) {
     std::cout << "[engine_demo] queue empty, populating 2 demo tracks sample='" << samplePath
               << "'\n";
     for (int i = 0; i < 2; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         for (int b = 0; b < 32; ++b)
             t.fingerprint[b] = static_cast<uint8_t>(0xC0 + i * 32 + b);
         t.path = samplePath;
@@ -86,7 +86,7 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath) {
         t.channels = 1;
         t.bitrate = 128;
         t.title = "engine_demo Track " + std::to_string(i + 1);
-        t.artist = "caudio demo";
+        t.artist = "kanariv demo";
         t.album = "engine_demo";
         t.genre = "Demo";
         t.year = 2026;
@@ -95,7 +95,7 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath) {
         auto ins = db.insertTrack(t);
         int64_t tid = 0;
         if (!ins) {
-            if (ins.error().code == caudio::utils::StatusCode::AlreadyExists) {
+            if (ins.error().code == kanariv::utils::StatusCode::AlreadyExists) {
                 auto ex = db.findByFingerprint(t.fingerprint);
                 if (ex)
                     tid = ex->id;
@@ -149,13 +149,13 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    caudio::types::EngineConfig cfg;
+    kanariv::types::EngineConfig cfg;
     cfg.pollMs = 10;
     cfg.gaplessMs = 300;
     cfg.enableMonitorThread = true;
     cfg.historyThresholdPct = 60;
     cfg.historyThresholdSecs = 90;
-    caudio::types::EngineCallbacks cbs;
+    kanariv::types::EngineCallbacks cbs;
     cbs.on_track_started = [](int64_t tid) {
         std::cout << "[engine_demo] callback onTrackStarted track " << tid << "\n";
     };
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
     cbs.on_track_ended = [](int64_t tid, double pct) {
         std::cout << "[engine_demo] callback onTrackEnded track " << tid << " pct=" << pct << "\n";
     };
-    cbs.on_error = [](caudio::utils::StatusCode r, std::string_view msg) {
+    cbs.on_error = [](kanariv::utils::StatusCode r, std::string_view msg) {
         std::cout << "[engine_demo] callback onError " << static_cast<int>(r) << " " << msg << "\n";
     };
     cfg.callbacks = cbs;
@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
                       << " dur=" << ev->duration << " msg='" << ev->msg << "'\n";
         }
         if (i == 10) {
-            caudio::types::EngineEvent buf[64];
+            kanariv::types::EngineEvent buf[64];
             size_t n = 0;
             (void)engine->drainEvents(buf, 64, &n);
             if (n > 0) {
@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
             }
         }
     }
-    caudio::types::EngineEvent buf[64];
+    kanariv::types::EngineEvent buf[64];
     size_t n = 0;
     (void)engine->drainEvents(buf, 64, &n);
     std::cout << "[engine_demo] final drain " << n << " events\n";

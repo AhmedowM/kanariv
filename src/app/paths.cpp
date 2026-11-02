@@ -1,14 +1,14 @@
 /**
  * @file paths.cpp
  * @brief File/glob/path utilities shared by all frontends.
- * @ingroup caudio_app
+ * @ingroup kanariv_app
  * @details Moved verbatim out of the CLI shell (Phase 0).
  */
 
 #include <algorithm>
 #include <app/paths_internal.hpp>
-#include <caudio/app/paths.hpp>
-#include <caudio/media/audio_ext.hpp>
+#include <kanariv/app/paths.hpp>
+#include <kanariv/media/audio_ext.hpp>
 #include <cctype>
 #include <cstddef>
 #include <filesystem>
@@ -17,7 +17,7 @@
 #include <system_error>
 #include <vector>
 
-namespace caudio::app {
+namespace kanariv::app {
 
 namespace {
 
@@ -68,7 +68,7 @@ void expandAddToken(const std::string& token, bool recursive, std::vector<std::s
             if (!it->is_regular_file(e2) || e2)
                 continue;
             std::string fn = it->path().filename().generic_string();
-            if (wildcardMatch(pat, fn) && caudio::media::hasAudioExt(it->path())) {
+            if (wildcardMatch(pat, fn) && kanariv::media::hasAudioExt(it->path())) {
                 auto abs = std::filesystem::absolute(it->path(), e2);
                 hits.push_back(e2 ? it->path().generic_string() : abs.generic_string());
             }
@@ -91,7 +91,7 @@ void expandAddToken(const std::string& token, bool recursive, std::vector<std::s
                 if (ec)
                     break;
                 std::error_code e2;
-                if (it->is_regular_file(e2) && !e2 && caudio::media::hasAudioExt(it->path())) {
+                if (it->is_regular_file(e2) && !e2 && kanariv::media::hasAudioExt(it->path())) {
                     auto abs = std::filesystem::absolute(it->path(), e2);
                     hits.push_back(e2 ? it->path().generic_string() : abs.generic_string());
                 }
@@ -102,7 +102,7 @@ void expandAddToken(const std::string& token, bool recursive, std::vector<std::s
                 if (ec)
                     break;
                 std::error_code e2;
-                if (it->is_regular_file(e2) && !e2 && caudio::media::hasAudioExt(it->path())) {
+                if (it->is_regular_file(e2) && !e2 && kanariv::media::hasAudioExt(it->path())) {
                     auto abs = std::filesystem::absolute(it->path(), e2);
                     hits.push_back(e2 ? it->path().generic_string() : abs.generic_string());
                 }
@@ -145,4 +145,4 @@ bool isNumeric(const std::string& s) {
     return true;
 }
 
-} // namespace caudio::app
+} // namespace kanariv::app

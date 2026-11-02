@@ -1,6 +1,6 @@
 #pragma once
 #include <atomic>
-#include <caudio/utils/ring.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -19,26 +19,26 @@
 /**
  * @file common.hpp
  * @brief Shared test helpers (temp paths, busy-wait, NOAUDIO switch).
- * @ingroup caudio_test
+ * @ingroup kanariv_test
  */
 
 /// @brief Test-only helpers for headless/CI audio control.
-namespace caudio::test {
+namespace kanariv::test {
 
 /**
  * @brief Returns true when audio device tests should be skipped.
- * @details Checks compile definition `CAUDIO_TEST_NOAUDIO_BUILD` first, then
- * falls back to env `CAUDIO_TEST_NOAUDIO` for values `1`, `true`, `True`.
+ * @details Checks compile definition `KANARIV_TEST_NOAUDIO_BUILD` first, then
+ * falls back to env `KANARIV_TEST_NOAUDIO` for values `1`, `true`, `True`.
  * When true, tests that would call `AudioOutput::create` / `ma_device_start`
- * and beep should `SKIP` instead. Set in CI via `CAUDIO_TEST_NOAUDIO=1`.
- * @return true if `CAUDIO_TEST_NOAUDIO_BUILD` is defined or
- * `CAUDIO_TEST_NOAUDIO` is `1`/`true`/`True`.
+ * and beep should `SKIP` instead. Set in CI via `KANARIV_TEST_NOAUDIO=1`.
+ * @return true if `KANARIV_TEST_NOAUDIO_BUILD` is defined or
+ * `KANARIV_TEST_NOAUDIO` is `1`/`true`/`True`.
  */
 inline bool noAudio() noexcept {
-#ifdef CAUDIO_TEST_NOAUDIO_BUILD
+#ifdef KANARIV_TEST_NOAUDIO_BUILD
     return true;
 #endif
-    const char* v = std::getenv("CAUDIO_TEST_NOAUDIO");
+    const char* v = std::getenv("KANARIV_TEST_NOAUDIO");
     return v && (std::string(v) == "1" || std::string(v) == "true" || std::string(v) == "True");
 }
 
@@ -47,32 +47,32 @@ inline bool noAudio() noexcept {
  * @param sampleRate Sample rate hint (unused, for API symmetry with AudioOutput::Config).
  * @param channels Channel count for the ring (default 2).
  * @param frames Capacity in frames (default 8192).
- * @return `caudio::utils::SpscRing<float>` ready for `fillForTest` exercises.
+ * @return `kanariv::utils::SpscRing<float>` ready for `fillForTest` exercises.
  * @details Test-only helper -- does NOT call `AudioOutput::create` or
  * `ma_device_init`/`ma_device_start`, so no beep. Example:
- * `auto ring = caudio::test::makeDummyRing(48000, 2);`
+ * `auto ring = kanariv::test::makeDummyRing(48000, 2);`
  */
-inline caudio::utils::SpscRing<float> makeDummyRing(uint32_t sampleRate = 48000,
+inline kanariv::utils::SpscRing<float> makeDummyRing(uint32_t sampleRate = 48000,
                                                     uint32_t channels = 2, size_t frames = 8192) {
     (void)sampleRate;
-    return caudio::utils::SpscRing<float>{frames, channels};
+    return kanariv::utils::SpscRing<float>{frames, channels};
 }
 
-} // namespace caudio::test
+} // namespace kanariv::test
 
 /**
- * @brief Catch2 helper: skip current test when `CAUDIO_TEST_NOAUDIO=1`.
- * @details Usage: `CAUDIO_SKIP_IF_NOAUDIO();` at top of a TEST_CASE that
+ * @brief Catch2 helper: skip current test when `KANARIV_TEST_NOAUDIO=1`.
+ * @details Usage: `KANARIV_SKIP_IF_NOAUDIO();` at top of a TEST_CASE that
  * would otherwise beep via `AudioOutput::create`. Expands to `SKIP(...)`.
  */
-#define CAUDIO_SKIP_IF_NOAUDIO()                                                                   \
+#define KANARIV_SKIP_IF_NOAUDIO()                                                                   \
     do {                                                                                           \
-        if (caudio::test::noAudio()) {                                                             \
-            SKIP("CAUDIO_TEST_NOAUDIO=1 - audio device test skipped (no beep)");                   \
+        if (kanariv::test::noAudio()) {                                                             \
+            SKIP("KANARIV_TEST_NOAUDIO=1 - audio device test skipped (no beep)");                   \
         }                                                                                          \
     } while (0)
 
-namespace caudio::test_helpers {
+namespace kanariv::test_helpers {
 
 /**
  * @brief Paths created by the test helpers, removed at process exit.
@@ -160,4 +160,4 @@ inline void safeRemoveDb(const std::string& p) {
     std::filesystem::remove(p + "-shm", ec);
 }
 
-} // namespace caudio::test_helpers
+} // namespace kanariv::test_helpers

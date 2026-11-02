@@ -22,16 +22,16 @@
 #include <xiphcomment.h>
 
 #include <algorithm>
-#include <caudio/db/database.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/utils/error.hpp>
 #include <cctype>
 #include <cstdint>
 #include <media/fingerprint.hpp>
 #include <string>
 #include <system_error>
 
-namespace caudio::service::detail {
+namespace kanariv::service::detail {
 namespace {
 
 TagLib::String toTagString(const std::string& s) {
@@ -54,12 +54,12 @@ void setXiphText(TagLib::Ogg::XiphComment* xc, const char* key, const std::strin
     xc->addField(key, toTagString(v), true);
 }
 
-void setXiphExtras(TagLib::Ogg::XiphComment* xc, const caudio::types::Track& t) {
+void setXiphExtras(TagLib::Ogg::XiphComment* xc, const kanariv::types::Track& t) {
     setXiphText(xc, "ALBUMARTIST", t.album_artist);
     setXiphText(xc, "DISCNUMBER", t.disc_num > 0 ? std::to_string(t.disc_num) : std::string{});
 }
 
-void setId3v2Extras(TagLib::ID3v2::Tag* t2, const caudio::types::Track& t) {
+void setId3v2Extras(TagLib::ID3v2::Tag* t2, const kanariv::types::Track& t) {
     setId3v2Text(t2, "TPE2", t.album_artist);
     if (t.disc_num > 0)
         setId3v2Text(t2, "TPOS", std::to_string(t.disc_num));
@@ -67,7 +67,7 @@ void setId3v2Extras(TagLib::ID3v2::Tag* t2, const caudio::types::Track& t) {
         t2->removeFrames("TPOS");
 }
 
-void setApeExtras(TagLib::APE::Tag* ape, const caudio::types::Track& t) {
+void setApeExtras(TagLib::APE::Tag* ape, const kanariv::types::Track& t) {
     if (t.album_artist.empty())
         ape->removeItem("Album Artist");
     else
@@ -93,16 +93,16 @@ bool canWriteFileTags(const std::filesystem::path& p) {
            ext == ".aiff" || ext == ".aif" || ext == ".ape" || ext == ".mpc" || ext == ".wv";
 }
 
-caudio::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
-                                            const caudio::types::Track& t) {
+kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
+                                            const kanariv::types::Track& t) {
     if (!canWriteFileTags(p)) {
-        return std::unexpected(caudio::utils::makeError(
-            caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg,
             "tag write not supported for this format: " + p.extension().string()));
     }
     TagLib::FileRef f(p.generic_string().c_str());
     if (f.isNull() || !f.file() || !f.tag()) {
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Io,
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
                                                         "taglib cannot open file for tag write"));
     }
     auto* tag = f.tag();
@@ -179,15 +179,15 @@ caudio::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
             asf->removeItem("WM/PartOfSet");
     }
     if (!f.save()) {
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Io,
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
                                                         "taglib failed to save file tags"));
     }
     return {};
 }
 
-caudio::utils::Expected<caudio::types::Track> reregisterTrackRow(caudio::contracts::IDatabase& db,
-                                                                 caudio::types::Track t) {
-    auto fpRes = caudio::media::internal::computeFingerprint(t.path);
+kanariv::utils::Expected<kanariv::types::Track> reregisterTrackRow(kanariv::contracts::IDatabase& db,
+                                                                 kanariv::types::Track t) {
+    auto fpRes = kanariv::media::internal::computeFingerprint(t.path);
     if (!fpRes)
         return std::unexpected{fpRes.error()};
     t.fingerprint = *fpRes;
@@ -196,7 +196,7 @@ caudio::utils::Expected<caudio::types::Track> reregisterTrackRow(caudio::contrac
         t.size = static_cast<int64_t>(sz);
     if (auto mt = std::filesystem::last_write_time(t.path, ec); !ec)
         t.mtime = static_cast<int64_t>(mt.time_since_epoch().count());
-    if (auto meta = caudio::media::extractMetadata(t.path); meta) {
+    if (auto meta = kanariv::media::extractMetadata(t.path); meta) {
         if (meta->duration > 0)
             t.duration = meta->duration;
         t.sample_rate = static_cast<uint32_t>(meta->sample_rate);
@@ -208,4 +208,4 @@ caudio::utils::Expected<caudio::types::Track> reregisterTrackRow(caudio::contrac
     return t;
 }
 
-} // namespace caudio::service::detail
+} // namespace kanariv::service::detail

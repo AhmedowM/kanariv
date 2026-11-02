@@ -26,4 +26,4 @@ CheckOptions:
 # Known accepted warnings (do not fix upstream):
 # - nlohmann_json TU-local template (-Wtemplate-names-tu-local) -- vendored header, suppressed via HeaderFilterRegex
 # - ffmpeg.cppm global-module warning (-Wglobal-module) -- import in global module fragment is required
-# - modules/caudio/database.cppm [[nodiscard]] stepDone 8 sites -- intentional fire-and-forget in writer path
+# - modules/kanariv/database.cppm [[nodiscard]] stepDone 8 sites -- intentional fire-and-forget in writer path

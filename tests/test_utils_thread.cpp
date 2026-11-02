@@ -1,12 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
-#include <caudio/utils/thread.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/thread.hpp>
 #include <chrono>
 #include <stop_token>
 #include <thread>
 #include <vector>
-namespace caudio::utils::test {
+namespace kanariv::utils::test {
 
 bool thread_sleep_timing() {
     auto s = std::chrono::steady_clock::now();
@@ -114,9 +114,9 @@ bool thread_sleepForMs() {
     return true;
 }
 
-} // namespace caudio::utils::test
+} // namespace kanariv::utils::test
 
-using namespace caudio::utils::test;
+using namespace kanariv::utils::test;
 
 TEST_CASE("Thread sleepFor timing", "[utils][thread]") {
     REQUIRE(thread_sleep_timing());

@@ -3,11 +3,11 @@
 /**
  * @file function.hpp
  * @brief Portable move-only type-erased callable.
- * @ingroup caudio_utils
+ * @ingroup kanariv_utils
  * @details `std::move_only_function` (C++23 P0288) is Complete in
  * libstdc++ and MSVC STL but has no libc++ implementation (not even
  * experimental), so a macOS/brew-LLVM build cannot name it. This header
- * provides `caudio::utils::MoveOnlyFunction<R(Args...)>` with the subset
+ * provides `kanariv::utils::MoveOnlyFunction<R(Args...)>` with the subset
  * used here (default/empty construct, move-only, call, bool check).
  * Always use this type instead of `std::move_only_function` directly.
  *
@@ -21,11 +21,11 @@
 #include <type_traits>
 #include <utility>
 
-namespace caudio::utils {
+namespace kanariv::utils {
 
 /**
  * @brief Move-only type-erased callable.
- * @ingroup caudio_utils
+ * @ingroup kanariv_utils
  * @tparam Sig Function signature `R(Args...)`.
  */
 template <typename Sig>
@@ -34,9 +34,9 @@ class MoveOnlyFunction;
 template <typename R, typename... Args>
 class MoveOnlyFunction<R(Args...)> {
   public:
-    /// @brief Constructs an empty callable. @ingroup caudio_utils
+    /// @brief Constructs an empty callable. @ingroup kanariv_utils
     MoveOnlyFunction() noexcept = default;
-    /// @brief Constructs an empty callable from nullptr. @ingroup caudio_utils
+    /// @brief Constructs an empty callable from nullptr. @ingroup kanariv_utils
     MoveOnlyFunction(std::nullptr_t) noexcept {}
     MoveOnlyFunction(const MoveOnlyFunction&) = delete;
     MoveOnlyFunction& operator=(const MoveOnlyFunction&) = delete;
@@ -45,7 +45,7 @@ class MoveOnlyFunction<R(Args...)> {
 
     /**
      * @brief Constructs from any invocable target.
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @tparam F Callable type (stored by decay, moved in).
      * @param f Target to wrap.
      */
@@ -55,7 +55,7 @@ class MoveOnlyFunction<R(Args...)> {
     MoveOnlyFunction(F&& f) : ptr_(std::make_unique<Model<std::decay_t<F>>>(std::forward<F>(f))) {}
 
     /**
-     * @brief Assigns an empty target. @ingroup caudio_utils
+     * @brief Assigns an empty target. @ingroup kanariv_utils
      * @return *this
      */
     MoveOnlyFunction& operator=(std::nullptr_t) noexcept {
@@ -65,7 +65,7 @@ class MoveOnlyFunction<R(Args...)> {
 
     /**
      * @brief Assigns a new invocable target.
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @tparam F Callable type.
      * @param f Target to wrap.
      * @return *this
@@ -80,7 +80,7 @@ class MoveOnlyFunction<R(Args...)> {
 
     /**
      * @brief Invokes the target.
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @param args Arguments forwarded to the target.
      * @return Target result (empty call is UB, as with `std::function`).
      */
@@ -88,7 +88,7 @@ class MoveOnlyFunction<R(Args...)> {
         return ptr_->call(std::forward<Args>(args)...);
     }
 
-    /// @brief Checks for a target. @ingroup caudio_utils
+    /// @brief Checks for a target. @ingroup kanariv_utils
     /// @return true when non-empty.
     explicit operator bool() const noexcept {
         return ptr_ != nullptr;
@@ -117,4 +117,4 @@ class MoveOnlyFunction<R(Args...)> {
     std::unique_ptr<Concept> ptr_;
 };
 
-} // namespace caudio::utils
+} // namespace kanariv::utils

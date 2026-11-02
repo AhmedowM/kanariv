@@ -3,10 +3,10 @@
 /**
  * @file output_formatter.hpp
  * @brief Output formatting for CLI results: table and JSON output.
- * @ingroup caudio_app
+ * @ingroup kanariv_app
  */
 
-#include <caudio/ipc/result.hpp>
+#include <kanariv/ipc/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
@@ -15,15 +15,15 @@
 #include <string_view>
 #include <utility>
 
-namespace caudio::app::cli {
+namespace kanariv::app::cli {
 
 /**
  * @brief Formats CLI results for human-readable table output or JSON.
- * @ingroup caudio_client
+ * @ingroup kanariv_client
  *
  * Provides print() for formatted output and printWithStatus() for exit code handling.
  * Supports all Result variant types: Status, QueueTracks, VolumeInfo, LibraryStats, etc.
- * JSON mode uses caudio::utils::Json pretty-printing (2-space indent).
+ * JSON mode uses kanariv::utils::Json pretty-printing (2-space indent).
  */
 class OutputFormatter {
     bool json_{false};
@@ -37,7 +37,7 @@ class OutputFormatter {
     /** @brief Ellipsizes overlong table cells. */
     static std::string truncateField(const std::string& s, std::size_t maxLen = 40);
     /** @brief Shared track-detail block for SingleTrack/TrackInfo. */
-    static void printTrackDetail(std::ostream& os, const caudio::types::Track& t);
+    static void printTrackDetail(std::ostream& os, const kanariv::types::Track& t);
 
   public:
     /**
@@ -71,11 +71,11 @@ class OutputFormatter {
      * In JSON mode: pretty-prints entire Result as JSON.
      * In table mode: dispatches to type-specific formatter for each Result alternative.
      */
-    void print(const caudio::ipc::Result& r, std::ostream& os) const;
+    void print(const kanariv::ipc::Result& r, std::ostream& os) const;
 
     /**
      * @brief Restrict track-table output to an allowlist of columns.
-     * @ingroup caudio_client
+     * @ingroup kanariv_client
      * @param columns Comma-separated column names (id, title, artist, album,
      * genre, year, rating, duration, path). Empty clears the filter (all
      * columns). Unknown names are ignored; never a free format string.
@@ -92,7 +92,7 @@ class OutputFormatter {
      * Routes Error variants to err stream, others to out stream.
      * Suitable for CLI main() to return appropriate exit code.
      */
-    int printWithStatus(const caudio::ipc::Result& r, std::ostream& out, std::ostream& err) const;
+    int printWithStatus(const kanariv::ipc::Result& r, std::ostream& out, std::ostream& err) const;
 };
 
-} // namespace caudio::app::cli
+} // namespace kanariv::app::cli

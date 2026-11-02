@@ -4,13 +4,13 @@
 #include <string>
 #include <thread>
 
-import caudio.player;
-import caudio.utils;
+import kanariv.player;
+import kanariv.utils;
 
-using namespace caudio::player;
-using namespace caudio::utils;
+using namespace kanariv::player;
+using namespace kanariv::utils;
 
-namespace caudio::examples {
+namespace kanariv::examples {
 
 class MiniPlayer {
   public:
@@ -48,10 +48,10 @@ class MiniPlayer {
     }
 }; // class MiniPlayer
 
-} // namespace caudio::examples
+} // namespace kanariv::examples
 
 int main(int argc, char** argv) {
-    using namespace caudio::examples;
+    using namespace kanariv::examples;
 
     std::string path;
     if (argc > 1) {

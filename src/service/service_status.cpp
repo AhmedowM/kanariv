@@ -17,21 +17,21 @@
 #include <cstring>
 #endif
 
-#include <caudio/config.hpp>
-#include <caudio/contracts/database.hpp>
-#include <caudio/engine.hpp>
-#include <caudio/ipc.hpp>
-#include <caudio/player.hpp>
-#include <caudio/utils.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/version.hpp>
-#include <caudio/windows_fwd.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/contracts/database.hpp>
+#include <kanariv/engine.hpp>
+#include <kanariv/ipc.hpp>
+#include <kanariv/player.hpp>
+#include <kanariv/utils.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/version.hpp>
+#include <kanariv/windows_fwd.hpp>
 
-namespace caudio::service::detail {
-std::expected<caudio::ipc::Status, caudio::utils::Error>
-buildStatus(caudio::engine::Engine& eng, caudio::contracts::IDatabase& db) {
-    caudio::ipc::Status s{};
-    s.version = std::string(caudio::version::version());
+namespace kanariv::service::detail {
+std::expected<kanariv::ipc::Status, kanariv::utils::Error>
+buildStatus(kanariv::engine::Engine& eng, kanariv::contracts::IDatabase& db) {
+    kanariv::ipc::Status s{};
+    s.version = std::string(kanariv::version::version());
     s.state = eng.state();
     s.pos = eng.position();
     s.dur = eng.duration();
@@ -64,4 +64,4 @@ buildStatus(caudio::engine::Engine& eng, caudio::contracts::IDatabase& db) {
     return s;
 }
 
-} // namespace caudio::service::detail
+} // namespace kanariv::service::detail

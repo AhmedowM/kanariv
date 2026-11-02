@@ -1,0 +1,462 @@
+.TH KANARIV 1 "" "kanariv" "User Commands"
+.SH NAME
+kanariv \- C++23 headless music player daemon and CLI
+.SH SYNOPSIS
+.B kanariv
+[\fIOPTIONS\fR]
+\fISUBCOMMAND\fR [\fIARGS\fR]...
+.br
+.B kanariv
+[\fIOPTIONS\fR]
+[\fIPATH\fR ...] [\fB\-\-save\fR]
+.br
+.B kanariv
+[\fIOPTIONS\fR]
+\fBstart\fR [\fB\-\-foreground\fR]
+.br
+.B kanariv
+\fBseek\fR \fITIME\fR
+.br
+.B kanariv
+\fBvolume\fR [\fILEVEL\fR]
+.br
+.B kanariv
+\fBqueue\fR \fISUBCOMMAND\fR
+.br
+.B kanariv
+\fBplaylist\fR \fISUBCOMMAND\fR
+.br
+.B kanariv
+\fBlibrary\fR \fISUBCOMMAND\fR
+.br
+.B kanariv
+\fBconfig\fR \fISUBCOMMAND\fR
+.br
+.B kanariv
+\fBtag\fR \fISUBCOMMAND\fR
+.br
+.B kanariv
+\fBhistory\fR \fISUBCOMMAND\fR
+.br
+.B kanariv
+\fBbookmark\fR \fISUBCOMMAND\fR
+.br
+.B kanariv
+\fBdevice\fR \fISUBCOMMAND\fR
+.SH DESCRIPTION
+.B kanariv
+is a C++23 headless music player. It consists of a background daemon
+(\fBkanariv start\fR) and a CLI that communicates with the daemon over a
+local IPC channel (Unix Domain Socket on POSIX, Named Pipe on Windows)
+using a JSON protocol with a 4\-byte big\-endian length prefix.
+Audio decoding uses FFmpeg (libavformat/avcodec/avutil/swresample).
+The library is split into components: \fBkanariv::utils\fR, \fBkanariv::player\fR,
+\fBkanariv::db\fR, \fBkanariv::engine\fR, \fBkanariv::ipc\fR, \fBkanariv::service\fR,
+\fBkanariv::client\fR, \fBkanariv::config\fR, \fBkanariv::app\fR (plus
+\fBkanariv::version\fR).
+.PP
+Shared\-memory status (\fBAtomicShmStatus\fR) is published on dispatch for
+low\-latency polling without IPC round\-trips.
+.SH OPTIONS
+.TP
+.BR \-\-config " \fIFILE\fR"
+Config file path. Default is XDG config home on POSIX
+(\fB$XDG_CONFIG_HOME/kanariv/config.json\fR or \fB~/.config/kanariv/config.json\fR)
+and \fB%LOCALAPPDATA%/kanariv/config.json\fR on Windows.
+.TP
+.BR \-\-log\-level " \fILEVEL\fR"
+Daemon log level: \fBtrace\fR|\fBdebug\fR|\fBinfo\fR|\fBwarn\fR|\fBerror\fR.
+.TP
+.BR \-\-device " \fIDEVICE\fR"
+Audio output device ID. Overrides config.
+.TP
+.BR \-\-version
+Show version (\fBkanariv::version::version()\fR) and exit.
+.TP
+.BR \-h ", " \-\-help
+Print help and exit.
+.TP
+.BR \-\-daemon ", " \-\-foreground
+Internal daemon flags. Do not pass manually; used by \fBkanariv start\fR
+when spawning the background process.
+.SH COMMANDS
+.SS Daemon lifecycle
+.TP
+.B start [\-\-foreground]
+Start daemon. By default spawns a background process (fork/CreateProcess
+with \fBDETACHED_PROCESS\fR) and polls for socket readiness. With
+\fB\-\-foreground\fR runs in the foreground (for systemd or debugging).
+Creates DB parent directories if needed and derives the socket path
+from the DB path via \fBkanariv::config::socketPathFor\fR.
+.TP
+.B shutdown
+Stop daemon. Sends \fBShutdown\fR IPC command and polls for socket and
+pid file removal. Reports an error if the daemon is still running.
+.SS Playback control
+.TP
+.B play
+Start playback. If paused, resumes; if playing, restarts; if stopped,
+replays the stopped track (or starts from queue head when nothing was
+stopped). Starts the daemon first when it is not running.
+.TP
+.B pause
+Pause playback, preserving position. Warns without failing when nothing
+is playing.
+.TP
+.B resume
+Resume from paused position. Warns without failing when already playing;
+plays from cursor when stopped.
+.TP
+.B restart
+Seek to 0 and ensure playing state.
+.TP
+.B stop
+Stop playback and clear current track. A later play replays the stopped
+track.
+.TP
+.B next
+Advance to next track. Handles \fBRepeatMode::One\fR and shuffle. At queue
+end wraps to the head (reshuffling when shuffle is on), in every repeat
+mode. Natural track end behaves the same except with repeat
+\fBoff\fR, which stops instead of wrapping.
+.TP
+.B prev
+Go to previous track. Warns without failing at queue start.
+.TP
+.B seek \fITIME\fR
+Seek to position. \fITIME\fR can be absolute (\fBmm:ss\fR, \fBhh:mm:ss\fR,
+or seconds, e.g. \fB1:30\fR or \fB90\fR) or relative (\fB+N\fR/\fB\-N\fR).
+Clock components are ranged (\fBss\fR < 60, and \fBmm\fR < 60 inside
+\fBhh:mm:ss\fR); out-of-range input is rejected. Relative
+seeks fetch current position via \fBStatusReq\fR and clamp to 0.
+Prints nothing on success; errors go to stderr.
+.TP
+.B status [\-\-json] [\-\-watch] [\-\-follow] [\-\-interval \fIMS\fR]
+Show playback status (state, position, duration, volume, shuffle,
+repeat, track id/title/artist/path, queue size/index). \fB\-\-json\fR
+emits JSON. \fB\-\-watch\fR/\fB\-\-follow\fR polls continuously every
+\fB\-\-interval\fR ms (default 1000) with timestamps in text mode or
+compact JSON per line in JSON mode.
+.TP
+.B volume [\fILEVEL\fR]
+Get or set volume. \fILEVEL\fR: \fB0\fR\-100 (absolute), \fB+N\fR/\fB\-N\fR
+(delta, clamped), \fBmute\fR/\fBunmute\fR. Absolute \fB0\fR counts as
+\fBmute\fR. Muting remembers the current level; \fBunmute\fR restores it.
+No argument prints current volume (\fBVolume: muted\fR when muted).
+.TP
+.B info [\-\-json]
+Show detailed info for the currently playing track (metadata + play
+statistics).
+.TP
+.B version [\-\-json]
+Print the version and build details: compiler, C++ standard, runtime
+library, build mode, operating system, and architecture. Needs no daemon
+and does not read config. \fB\-\-version\fR is a shorthand that prints only
+the version string.
+.SS Queue
+.TP
+.B queue list [\-\-json]
+List all queues (id, name, track count, active marker). \fBqueue
+queues\fR is a hidden alias.
+.TP
+.B queue tracks [\-\-order added|playback] [\-\-json]
+List tracks in the active queue in playback order (shuffle order by
+default) or insertion order (\fB\-\-order added\fR). The current track
+row is marked with \fB>\fR (green on color terminals).
+.TP
+.B queue switch \fIQID\fR
+Switch active queue by ID. Engine validates that the queue exists.
+Switching resets the cursor to the head.
+.TP
+.B queue create \fINAME\fR
+Create a new empty queue named \fINAME\fR.
+.TP
+.B queue delete \fIQID\fR
+Delete queue \fIQID\fR. The active queue cannot be deleted.
+.TP
+.B queue add [\fIPATH\fR ...] [\-\-id \fIID\fR] [\-\-search] [\-\-recursive] [\-\-json]
+Add files to the queue. Each \fIPATH\fR is a file, folder, or glob
+(expanded client-side and sorted); missing library rows are added
+automatically with metadata. \fB\-\-id\fR adds one library track by id.
+\fB\-\-search\fR adds FTS matches for a single query. Already-queued
+tracks warn and are skipped. Prints per-track confirmations plus a total.
+\fB\-\-playlist \fIPID\fR\fR appends playlist tracks instead of paths;
+with \fB\-\-replace\fR the active queue is cleared first.
+.TP
+.B queue remove [\fIPATH\fR ...] [\-\-id \fIID\fR] [\-\-pos \fIPOS\fR] [\-\-recursive] [\-\-json]
+Remove from the active queue by file/folder/glob, library id
+(\fB\-\-id\fR), or queue position (\fB\-\-pos\fR). The three selectors
+are exclusive; a bare number is rejected. Prints one confirmation per
+removed track.
+.TP
+.B queue move \fIFROM\fR \fITO\fR
+Move track within queue from index \fIFROM\fR to \fITO\fR (atomic
+clear+re\-enqueue transaction).
+.TP
+.B queue clear
+Clear entire queue atomically. Playback of the current track continues.
+.TP
+.B queue shuffle [\fIon\fR|\fIoff\fR]
+Set shuffle mode. No argument toggles. The resulting state is printed.
+.TP
+.B queue repeat [\fIoff\fR|\fIone\fR|\fIall\fR]
+Set repeat mode (\fBall\fR maps to
+\fBRepeatMode::All\fR). No argument cycles \fBoff\fR \-> \fBall\fR \->
+\fBone\fR \-> \fBoff\fR and prints the new mode.
+.SS Playlist
+.TP
+.B playlist list [\-\-json]
+List all playlists.
+.TP
+.B playlist create \fINAME\fR
+Create an empty playlist named \fINAME\fR.
+.TP
+.B playlist add \fIPID\fR [\-\-id \fIID\fR ...] [\fIPATH\fR ...]
+Add library tracks (by id) or files (auto-added to the library) to
+playlist \fIPID\fR. Re-adds warn and are skipped.
+.TP
+.B playlist tracks \fIPID\fR [\-\-json]
+List tracks in playlist \fIPID\fR under a \fBPlaylist (N tracks):\fR header.
+.TP
+.B playlist load \fIPID\fR [\-\-play] [\-\-replace]
+Load playlist \fIPID\fR into a new queue (playback and the current queue
+stay intact). With \fB\-\-play\fR switches to the new queue and starts
+playback. With \fB\-\-replace\fR overwrites the active queue instead.
+.TP
+.B playlist save \fINAME\fR [\-\-queue \fIQID\fR]
+Save queue as a new playlist named \fINAME\fR. Optionally specify queue
+ID (default active queue).
+.TP
+.B playlist delete \fIPID\fR
+Delete playlist \fIPID\fR.
+.TP
+.B playlist rename \fIPID\fR \fINAME\fR
+Rename playlist \fIPID\fR to \fINAME\fR.
+.TP
+.B playlist export \fIPID\fR \fIPATH\fR [\-\-format m3u|pls|json]
+Export playlist \fIPID\fR to file \fIPATH\fR. Formats: \fBm3u\fR (default),
+\fBpls\fR, \fBjson\fR.
+.TP
+.B playlist import \fIPATH\fR [\-\-name \fINAME\fR]
+Import playlist from file \fIPATH\fR. If \fB\-\-name\fR omitted, derived
+from filename. Lines are matched against the library
+(separator-insensitive); unmatched lines are skipped and already-listed
+tracks counted as duplicates. The report names matched, skipped, and
+duplicate counts.
+.SS Library
+.TP
+.B library scan [\-\-path \fIPATH\fR] [\-\-full\-hash] [\-\-json]
+Scan library for audio files. Default path is the music directory
+adjacent to the DB. Prints how many tracks were newly added.
+\fB\-\-full\-hash\fR uses full-file BLAKE3 instead of the default
+sampled fingerprint (slower). The two fingerprint modes are
+incompatible: rescanning the same files with a different mode re-adds
+them as new tracks.
+.TP
+.B library search \fIQUERY\fR [\-\-limit \fIN\fR] [\-\-json]
+FTS5 search with \fBLIKE\fR fallback over metadata and filename.
+Prints a match table with the query highlighted on color terminals.
+.TP
+.B library stats [\-\-most\-played \fIN\fR] [\-\-queue all|\fIQID\fR] [\-\-playlist \fIPID\fR] [\-\-json]
+Show library counts (tracks/queues/playlists). With
+\fB\-\-most\-played \fIN\fR\fR also shows totals and the top-N most
+played (\fB0\fR for totals only). \fB\-\-queue\fR and
+\fB\-\-playlist\fR append brief overviews (repeatable);
+\fB\-\-json\fR takes neither.
+.TP
+.B library list [\-\-query \fIQ\fR] [\-\-artist \fIA\fR] [\-\-album \fIA\fR] [\-\-genre \fIG\fR] [\-\-limit \fIN\fR] [\-\-offset \fIN\fR] [\-\-json]
+List library tracks with optional filtering and pagination.
+.TP
+.B library add \fIPATH\fR [\-\-recursive]
+Add file or directory to library with metadata extraction.
+.TP
+.B library remove \fIID\fR
+Remove track from library by ID or path. The confirmation names the
+track; files on disk are untouched.
+.SS Tags
+.TP
+.B tag edit \fIID\fR \fIFIELD\fR \fIVALUE\fR
+Edit track tag. \fIFIELD\fR: \fBtitle\fR|\fBartist\fR|\fBalbum\fR|\fBalbum_artist\fR|\fBgenre\fR|\fByear\fR|\fBtrack_number\fR|\fBdisc_number\fR.
+File first: the audio file is retagged in place, then the database row is re-registered under the same id. Editing the loaded track suspends and resumes playback around the write. Formats outside the writable set (mp3/flac/m4a/mp4/ogg/opus/wma/asf/wav/aiff/ape/mpc/wv) are rejected.
+.TP
+.B tag get \fIID\fR [\fIFIELD\fR] [\-\-json]
+Get track tags for track \fIID\fR, or one field with \fIFIELD\fR.
+.SS History
+.TP
+.B history list [\-\-limit \fIN\fR] [\-\-json]
+List playback history. Default limit 50.
+.TP
+.B history clear
+Clear playback history.
+.SS Bookmarks
+.TP
+.B bookmark add [\fITIME\fR] [\-\-note \fITEXT\fR] [\-\-track \fIID\fR] [\-\-json]
+Add a bookmark. \fITIME\fR accepts mm:ss, hh:mm:ss, or seconds and defaults to
+the current playback position. \fB\-\-track\fR defaults to the current track.
+.TP
+.B bookmark list [\-\-track \fIID\fR] [\-\-json]
+List bookmarks for a track. Defaults to the current track.
+.TP
+.B bookmark remove \fIID\fR [\-\-json]
+Remove bookmark \fIID\fR.
+.TP
+.B bookmark goto \fIID\fR [\-\-json]
+Play the bookmarked track and seek to the bookmark position.
+.SS Device
+.TP
+.B device list [\-\-json]
+List audio output devices (via miniaudio enumeration).
+.TP
+.B device set \fIID\fR
+Set default audio output device.
+.TP
+.B device test [\-\-id \fIID\fR]
+Check audio device is available (enumeration only, no sound). Defaults to current config device.
+.SS Config
+.TP
+.B config get \fIKEY\fR [\-\-json]
+Get config value for \fIKEY\fR. Answered from the local file; needs no
+daemon.
+.TP
+.B config set \fIKEY\fR \fIVALUE\fR
+Set config value. \fIVALUE\fR is stored as JSON or plain string.
+Prints nothing on success.
+\fBlogLevel\fR also accepts \fBtrace\fR|\fBdebug\fR|\fBinfo\fR|\fBwarn\fR|\fBerror\fR
+(stored numeric) and applies to a running daemon immediately.
+.TP
+.B config list [\-\-json]
+List all config key/value pairs.
+.TP
+.B config export \fIPATH\fR
+Copy config file to \fIPATH\fR.
+.TP
+.B config import \fIPATH\fR
+Validate \fIPATH\fR as a JSON object with correctly typed keys, then
+replace the live config. Invalid files are rejected untouched.
+.TP
+.B config reset [\fIKEY\fR]
+Reset config \fIKEY\fR or all keys to defaults.
+.SS Direct play
+.TP
+.B kanariv [\fIPATH\fR ...] [\-\-save]
+Play files right away in a new queue: each \fIPATH\fR is a file, folder,
+or glob. Files are fingerprinted into the library; the queue itself is
+temporary (purged on daemon shutdown) unless \fB\-\-save\fR keeps it
+permanently. A path matching a subcommand name must be written with a
+directory prefix (e.g. \fB./status\fR); on Windows an absolute path
+must use backslashes or a directory prefix, since a leading \fB/\fR
+parses as a flag.
+.SH EXAMPLES
+.TP
+Start daemon and play a file:
+.B kanariv start
+.br
+kanariv queue add ~/Music/album/track.flac
+.br
+kanariv play
+.br
+kanariv status
+.TP
+Search and queue:
+.B kanariv library search
+                                   "beatles" --limit 10
+.br
+.B kanariv queue add
+                                   "beatles" --search
+.br
+.B kanariv next; kanariv status --json
+.TP
+Library scan and stats:
+.B kanariv library scan --path ~/Music --full-hash
+.br
+.B kanariv library stats --top-tracks 10 --json
+.TP
+Live status polling (for scripts/TUI):
+.B kanariv status --watch --interval 200
+.TP
+Volume control:
+.B kanariv volume 75
+.br
+kanariv volume +5
+.br
+kanariv volume mute
+.br
+kanariv volume
+.TP
+Playlist workflows:
+.B kanariv playlist save "My Mix";
+kanariv playlist export 1 /tmp/mix.m3u --format m3u
+.br
+.B kanariv playlist import /tmp/
+        mix.m3u --name "Imported"
+.SH FILES
+.TP
+.I ~/.config/kanariv/config.json (POSIX)
+.TP
+.I
+        %LOCALAPPDATA%\\kanariv\\config.json (Windows) Default config file. Overridden by \fB\-\-
+    config\fR. Stores DB path,
+    socket path, device, log level,
+    etc.
+.TP
+.I ~/.local/share/kanariv/kanariv.db (POSIX)
+.TP
+.I %LOCALAPPDATA%\\kanariv\\kanariv.db (Windows)
+Default SQLite database path. Contains tracks,
+    queues, playlists, history,
+    FTS5 index. Parent directories are created automatically.
+.TP
+.I /tmp/kanariv-
+            <hash>.sock (POSIX).
+.TP
+.I \\\\.\\pipe\\kanariv-
+            <hash> (Windows) IPC socket / named pipe.
+Canonical path derived from DB path hash via
+\fBkanariv::config::socketPathFor\fR. Hash is BLAKE3 of the DB path.
+POSIX base is \fB$XDG_RUNTIME_DIR\fR, else \fB$XDG_DATA_HOME\fR, else
+\fB/tmp/kanariv\fR.
+.TP
+.I
+/tmp/kanariv-<hash>.pid
+or %LOCALAPPDATA%/kanariv/
+kanariv.pid Daemon pid file.
+Path derived from DB path via \fBkanariv::config::pidPathFor\fR.
+.TP
+.I
+/dev/shm/kanariv-<hash> (POSIX) or
+named shared memory (Windows)
+SHM status block (\fBAtomicShmStatus\fR), published on dispatch.
+.TP
+.I
+<db-dir>/kanariv.log
+Daemon log file (next to the database). Level via \fB\-\-log\-level\fR or
+config; rotated at 1 MB keeping \fBkanariv.log.1\fR and \fBkanariv.log.2\fR.
+.SH EXIT STATUS
+.TP
+.B 0
+Success (including \fBstart\fR when the daemon is already running).
+.TP
+.B 1
+General error: unknown command, runtime failure, I/O error. Details go to stderr.
+.TP
+.B 105
+Daemon not running or invalid state for the requested operation (e.g. queue empty,
+not playing). Start the daemon with \fBkanariv start\fR or check the current state.
+.TP
+.B 106
+Invalid argument: missing or malformed option, out-of-range value, validation
+failure. Check \fB\-\-help\fR for valid grammars.
+.TP
+.B 109
+Requested entity not found: track, device, playlist, or queue id does not exist.
+.SH SEE ALSO
+.BR cmake (1),
+.BR ninja (1),
+.BR doxygen (1),
+.BR ffmpeg (1)
+.PP
+Project docs: \fBdocs/html/index.html\fR (Doxygen).
+.SH AUTHOR
+Written by the kanariv contributors.
+.PP
+Report bugs at <https://github.com/AhmedowM/kanariv/issues>.

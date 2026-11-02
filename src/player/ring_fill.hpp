@@ -1,14 +1,14 @@
 #pragma once
 
 #include <algorithm>
-#include <caudio/utils/ring.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <span>
 
-namespace caudio::player::detail {
+namespace kanariv::player::detail {
 
-inline void fillFromRing(std::span<float> out, caudio::utils::SpscRing<float>* ring,
+inline void fillFromRing(std::span<float> out, kanariv::utils::SpscRing<float>* ring,
                          uint32_t channels, float volume) noexcept {
     if (out.empty())
         return;
@@ -27,4 +27,4 @@ inline void fillFromRing(std::span<float> out, caudio::utils::SpscRing<float>* r
     }
 }
 
-} // namespace caudio::player::detail
+} // namespace kanariv::player::detail

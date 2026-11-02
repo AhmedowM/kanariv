@@ -1,13 +1,13 @@
 ﻿#include <atomic>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/reader.hpp>
-#include <caudio/player/output.hpp>
-#include <caudio/player/player.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/log.hpp>
-#include <caudio/utils/math.hpp>
-#include <caudio/utils/result.hpp>
-#include <caudio/utils/ring.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/player/output.hpp>
+#include <kanariv/player/player.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/math.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-namespace caudio::player {
+namespace kanariv::player {
 
 /// Player state and playback components, hidden from the public header.
 struct Player::Impl {
@@ -35,7 +35,7 @@ struct Player::Impl {
     // Playback components
     std::unique_ptr<media::Reader> reader_;
     std::unique_ptr<media::Decoder> decoder_;
-    std::unique_ptr<caudio::utils::SpscRing<float>> ring_;
+    std::unique_ptr<kanariv::utils::SpscRing<float>> ring_;
     std::unique_ptr<AudioOutput> output_;
 
     // Threading
@@ -54,7 +54,7 @@ struct Player::Impl {
     std::atomic<float> volume_{1.0f};
 
     std::string lastError_;
-    caudio::utils::Logger* logger_{nullptr};
+    kanariv::utils::Logger* logger_{nullptr};
 
     bool init(const PlayerOptions& opts);
     Player::ExpectedVoid open(std::string_view path);
@@ -80,7 +80,7 @@ Player::Player() : impl_(std::make_unique<Impl>()) {}
 Player::ExpectedPlayer Player::create(const PlayerOptions& opts) {
     auto p = std::unique_ptr<Player>(new Player());
     if (!p->impl_->init(opts)) {
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::Device,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Device,
                                                     std::string_view("player init failed")});
     }
     return std::unique_ptr<Player>(std::move(p));
@@ -150,10 +150,10 @@ bool Player::Impl::init(const PlayerOptions& opts) {
 
 Player::ExpectedVoid Player::Impl::open(std::string_view path) {
     if (path.empty()) {
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
                                                     std::string_view("empty path")});
     }
-    auto readerResult = caudio::media::FileReader::open(path);
+    auto readerResult = kanariv::media::FileReader::open(path);
     if (!readerResult) {
         lastError_ = readerResult.error().message;
         state_.store(State::Error, std::memory_order_release);
@@ -169,7 +169,7 @@ Player::ExpectedVoid Player::Impl::open(std::string_view path) {
 
 Player::ExpectedVoid Player::Impl::openReader(std::unique_ptr<media::Reader> reader) {
     if (!reader) {
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
                                                     std::string_view("null reader")});
     }
 
@@ -203,7 +203,7 @@ Player::ExpectedVoid Player::Impl::openReader(std::unique_ptr<media::Reader> rea
     if (ch == 0)
         ch = 2;
 
-    ring_ = std::make_unique<caudio::utils::SpscRing<float>>(8192, ch);
+    ring_ = std::make_unique<kanariv::utils::SpscRing<float>>(8192, ch);
 
     // Create audio output
     AudioOutput::Config cfg;
@@ -241,14 +241,14 @@ Player::ExpectedVoid Player::Impl::openReader(std::unique_ptr<media::Reader> rea
 Player::ExpectedVoid Player::Impl::play() {
     if (!decoder_ || !output_ || !ring_) {
         return std::unexpected(
-            caudio::utils::Error{caudio::utils::StatusCode::State, std::string_view("not opened")});
+            kanariv::utils::Error{kanariv::utils::StatusCode::State, std::string_view("not opened")});
     }
 
     State expected = State::Stopped;
     if (!state_.compare_exchange_strong(expected, State::Playing, std::memory_order_acq_rel)) {
         expected = State::Paused;
         if (!state_.compare_exchange_strong(expected, State::Playing, std::memory_order_acq_rel)) {
-            return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::State,
+            return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
                                                         std::string_view("already playing")});
         }
     }
@@ -272,7 +272,7 @@ Player::ExpectedVoid Player::Impl::play() {
 Player::ExpectedVoid Player::Impl::pause() {
     State expected = State::Playing;
     if (!state_.compare_exchange_strong(expected, State::Paused, std::memory_order_acq_rel)) {
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::State,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
                                                     std::string_view("not playing")});
     }
 
@@ -296,7 +296,7 @@ Player::ExpectedVoid Player::Impl::resume() {
     State expected = State::Paused;
     if (!state_.compare_exchange_strong(expected, State::Playing, std::memory_order_acq_rel)) {
         return std::unexpected(
-            caudio::utils::Error{caudio::utils::StatusCode::State, std::string_view("not paused")});
+            kanariv::utils::Error{kanariv::utils::StatusCode::State, std::string_view("not paused")});
     }
 
     isPlaying_.store(true, std::memory_order_release);
@@ -320,10 +320,10 @@ Player::ExpectedVoid Player::Impl::stop() {
 Player::ExpectedVoid Player::Impl::seek(double seconds) {
     if (!decoder_ || !ring_) {
         return std::unexpected(
-            caudio::utils::Error{caudio::utils::StatusCode::State, std::string_view("not opened")});
+            kanariv::utils::Error{kanariv::utils::StatusCode::State, std::string_view("not opened")});
     }
     if (seconds < 0.0 || std::isnan(seconds) || std::isinf(seconds)) {
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
                                                     std::string_view("bad seconds")});
     }
 
@@ -356,10 +356,10 @@ Player::ExpectedVoid Player::Impl::seek(double seconds) {
 
 Player::ExpectedVoid Player::Impl::setVolume(float volume) {
     if (std::isnan(volume) || std::isinf(volume)) {
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
                                                     std::string_view("bad volume")});
     }
-    float vol = caudio::utils::clampVolume(volume);
+    float vol = kanariv::utils::clampVolume(volume);
     volume_.store(vol, std::memory_order_relaxed);
     if (output_) {
         output_->setVolume(vol);
@@ -518,4 +518,4 @@ int64_t Player::Impl::nowMs() noexcept {
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
-} // namespace caudio::player
+} // namespace kanariv::player

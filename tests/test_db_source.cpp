@@ -1,20 +1,20 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/contracts/database.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/types/record.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/contracts/database.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/record.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstdint>
 #include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
 
-using namespace caudio::db;
-using namespace caudio::utils;
-using namespace caudio::types;
+using namespace kanariv::db;
+using namespace kanariv::utils;
+using namespace kanariv::types;
 
 static Track makeSourceTrack(int idx, SourceKind kind, std::string key) {
     Track t;

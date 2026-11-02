@@ -3,13 +3,13 @@
 /**
  * @file mpsc_queue.hpp
  * @brief Multi-producer single-consumer bounded queue.
- * @ingroup caudio_utils
+ * @ingroup kanariv_utils
  * @details Internal header: lives in `src/`, not installed. Used by the
  * engine event queue and the database writer thread.
  */
 
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <condition_variable>
 #include <cstddef>
 #include <expected>
@@ -20,11 +20,11 @@
 #include <utility>
 #include <vector>
 
-namespace caudio::utils {
+namespace kanariv::utils {
 
 /**
  * @brief Bounded MPSC queue with blocking and non-blocking operations.
- * @ingroup caudio_utils
+ * @ingroup kanariv_utils
  * @tparam T Element type (stored as `std::optional<T>` internally).
  * @details Thread-safety and lock ordering:
  * - Single `mutable std::mutex mutex_` protects `cap_`, `buf_`, `wr_`, `rd_`.
@@ -44,7 +44,7 @@ class MpscQueue {
   public:
     /**
      * @brief Constructs a queue with given capacity.
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @param capacity Maximum number of elements (0 is normalized to 1).
      */
     explicit MpscQueue(std::size_t capacity = 64) : cap_(capacity), buf_(capacity) {
@@ -61,7 +61,7 @@ class MpscQueue {
 
     /**
      * @brief Returns capacity.
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @return Capacity (normalized, never 0).
      */
     [[nodiscard]] std::size_t capacity() const noexcept {
@@ -70,7 +70,7 @@ class MpscQueue {
 
     /**
      * @brief Returns number of elements currently queued.
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @return `wr_ - rd_` (computed under lock).
      */
     [[nodiscard]] std::size_t size() const noexcept {
@@ -80,7 +80,7 @@ class MpscQueue {
 
     /**
      * @brief Checks if queue is empty.
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @return true if `wr_ == rd_` (under lock).
      */
     [[nodiscard]] bool empty() const noexcept {
@@ -90,7 +90,7 @@ class MpscQueue {
 
     /**
      * @brief Pushes a copy into the queue (non-blocking).
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @tparam U Value type (defaults to T); must be copy-constructible.
      * @param value Value to copy.
      * @return `Expected<void>` success (`{}`) or error `Busy` if full.
@@ -115,7 +115,7 @@ class MpscQueue {
 
     /**
      * @brief Pushes by move into the queue (non-blocking).
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @param value Value to move.
      * @return `Expected<void>` success or `Busy` if full.
      * @details Same locking/notification as copy-push. Error code:
@@ -135,7 +135,7 @@ class MpscQueue {
 
     /**
      * @brief Constructs an element in-place (non-blocking).
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @tparam Args Constructor argument types for T.
      * @param args Arguments forwarded to T's constructor.
      * @return `Expected<void>` success or `Busy` if full.
@@ -156,7 +156,7 @@ class MpscQueue {
 
     /**
      * @brief Pops an element (non-blocking).
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @return `Expected<T>` with value on success, or `State` if empty.
      * @details Locks, checks `wr_ == rd_`, moves value from `rd_ % cap_`,
      * resets optional, increments `rd_`. Error code: `StatusCode::State`
@@ -175,7 +175,7 @@ class MpscQueue {
 
     /**
      * @brief Blocking pop that waits until an element arrives or stop requested.
-     * @ingroup caudio_utils
+     * @ingroup kanariv_utils
      * @param st Optional stop_token; if stop requested, returns nullopt.
      * @return `std::optional<T>` with value, or nullopt if stopped/empty.
      * @details Uses `cv_.wait(lk, st, predicate)` with predicate `wr_ != rd_`.
@@ -207,4 +207,4 @@ class MpscQueue {
     std::condition_variable_any cv_;    ///< Notified on push/emplace.
 };
 
-} // namespace caudio::utils
+} // namespace kanariv::utils

@@ -1,5 +1,5 @@
 #pragma once
-#include <caudio/utils/error.hpp>
+#include <kanariv/utils/error.hpp>
 #include <cerrno>
 #include <charconv>
 #include <chrono>
@@ -12,10 +12,10 @@
 #include <string_view>
 #include <system_error>
 
-namespace caudio::app::cli::parse {
+namespace kanariv::app::cli::parse {
 
-// Use std::string for error message to keep header standalone (no caudio::utils dependency).
-// App module wraps errors into caudio::utils::Error.
+// Use std::string for error message to keep header standalone (no kanariv::utils dependency).
+// App module wraps errors into kanariv::utils::Error.
 
 // Parse a whole non-empty token as double (nullopt = invalid). Uses strtod
 // instead of the floating-point std::from_chars overloads: Apple libc++
@@ -216,4 +216,4 @@ inline std::chrono::duration<double> durationFromSeconds(double s) {
     return std::chrono::duration<double>{s};
 }
 
-} // namespace caudio::app::cli::parse
+} // namespace kanariv::app::cli::parse

@@ -1,28 +1,28 @@
 #include <sqlite3.h>
 
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <db/stmt_helpers.hpp>
 #include <db/transaction.hpp>
 #include <expected>
 #include <string>
 #include <utility>
 
-namespace caudio::db {
+namespace kanariv::db {
 
 DbTransaction::DbTransaction(sqlite3* db, bool committed) : db_(db), committed_(committed) {}
 
-std::expected<DbTransaction, caudio::utils::Error> DbTransaction::begin(sqlite3* db) {
+std::expected<DbTransaction, kanariv::utils::Error> DbTransaction::begin(sqlite3* db) {
     if (!db) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "null db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "null db")};
     }
     char* err = nullptr;
     internal::SqliteErrGuard guard{err};
     int rc = sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
         std::string msg = err ? err : "BEGIN failed";
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Internal, msg)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg)};
     }
     return DbTransaction{db, false};
 }
@@ -51,9 +51,9 @@ DbTransaction& DbTransaction::operator=(DbTransaction&& o) noexcept {
     return *this;
 }
 
-std::expected<void, caudio::utils::Error> DbTransaction::commit() {
+std::expected<void, kanariv::utils::Error> DbTransaction::commit() {
     if (!db_) {
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Internal,
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
                                                         "no active DbTransaction"));
     }
     char* err = nullptr;
@@ -61,16 +61,16 @@ std::expected<void, caudio::utils::Error> DbTransaction::commit() {
     int rc = sqlite3_exec(db_, "COMMIT", nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
         std::string msg = err ? err : "commit failed";
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Internal, msg));
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg));
     }
     committed_ = true;
     db_ = nullptr;
     return {};
 }
 
-std::expected<void, caudio::utils::Error> DbTransaction::rollback() {
+std::expected<void, kanariv::utils::Error> DbTransaction::rollback() {
     if (!db_) {
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Internal,
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
                                                         "no active DbTransaction"));
     }
     char* err = nullptr;
@@ -78,11 +78,11 @@ std::expected<void, caudio::utils::Error> DbTransaction::rollback() {
     int rc = sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
         std::string msg = err ? err : "rollback failed";
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Internal, msg));
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg));
     }
     committed_ = true;
     db_ = nullptr;
     return {};
 }
 
-} // namespace caudio::db
+} // namespace kanariv::db

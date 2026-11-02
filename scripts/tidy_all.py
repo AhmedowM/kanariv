@@ -167,7 +167,7 @@ def run_headers(args: argparse.Namespace, tidy: str, db: Path) -> int:
             if "_deps" not in f and "/vendor/" not in f:
                 fallback = db_flags(e)
                 break
-    inc = repo_root() / "include" / "caudio"
+    inc = repo_root() / "include" / "kanariv"
     headers = sorted(inc.rglob("*.hpp"))
     if args.export_fixes:
         outdir = Path(args.export_fixes)

@@ -1,4 +1,4 @@
-#include <caudio/utils/print.hpp>
+#include <kanariv/utils/print.hpp>
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
@@ -14,7 +14,7 @@
 #include <thread>
 #include <utils/log_sink.hpp>
 
-namespace caudio::utils {
+namespace kanariv::utils {
 
 namespace {
 
@@ -127,7 +127,7 @@ void FileLogSink::Impl::writeLine(LogLevel lvl, std::string_view msg) {
     }
     if (opts.teeStderr) {
         try {
-            caudio::println(std::cerr, "[{}] {}", levelTag(lvl), msg);
+            kanariv::println(std::cerr, "[{}] {}", levelTag(lvl), msg);
         } catch (...) {
         }
     }
@@ -157,4 +157,4 @@ std::filesystem::path FileLogSink::Impl::indexedPath(int i) const {
     return std::filesystem::path(path.string() + "." + std::to_string(i));
 }
 
-} // namespace caudio::utils
+} // namespace kanariv::utils

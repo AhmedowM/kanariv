@@ -1,12 +1,12 @@
-# caudio
+# kanariv
 
-[![CI](https://github.com/AhmedowM/caudio/actions/workflows/ci.yml/badge.svg)](https://github.com/AhmedowM/caudio/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/github/v/release/AhmedowM/caudio)](CHANGELOG.md)
+[![CI](https://github.com/AhmedowM/kanariv/actions/workflows/ci.yml/badge.svg)](https://github.com/AhmedowM/kanariv/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/release/AhmedowM/kanariv)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![C++](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
 [![CMake](https://img.shields.io/badge/CMake-%3E%3D3.28-red)](CMakeLists.txt)
 
-`caudio` is a headless, local music player and a reusable C++23 library. It
+`kanariv` is a headless, local music player and a reusable C++23 library. It
 decodes audio with FFmpeg, stores the library and playback state in SQLite,
 and exposes a command-line client backed by a daemon. There is no GUI and no
 cloud service.
@@ -105,8 +105,8 @@ See [`vendor/README.md`](vendor/README.md) for upstream links and provenance.
 ### 1. Clone
 
 ```sh
-git clone https://github.com/AhmedowM/caudio.git
-cd caudio
+git clone https://github.com/AhmedowM/kanariv.git
+cd kanariv
 ```
 
 ### 2. Choose a configure method
@@ -160,20 +160,20 @@ FFmpeg root, or CI-equivalent invocation.
 
 #### Bare CMake
 
-Bare CMake is useful for packaging, unusual generators, or integrating caudio
+Bare CMake is useful for packaging, unusual generators, or integrating kanariv
 into an existing build:
 
 ```sh
 cmake -S . -B build/custom -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CXX_STANDARD=23 \
-  -DCAUDIO_ENABLE_TESTS=ON \
-  -DCAUDIO_BUILD_SHARED=ON
+  -DKANARIV_ENABLE_TESTS=ON \
+  -DKANARIV_BUILD_SHARED=ON
 cmake --build build/custom --parallel 4
 ctest --test-dir build/custom --output-on-failure --parallel 4
 ```
 
-For modules, add `-DCAUDIO_ENABLE_MODULES=ON` and use Ninja. For a complete
+For modules, add `-DKANARIV_ENABLE_MODULES=ON` and use Ninja. For a complete
 list of project options, inspect the [configuration reference](#configuration).
 
 ### Platform notes
@@ -197,7 +197,7 @@ Headless test runs can avoid opening an audio device:
 ```sh
 python scripts/configure.py ci --toolchain clang --build-dir build/ci \
   --build --test
-# The ci intent enables CAUDIO_TEST_NOAUDIO.
+# The ci intent enables KANARIV_TEST_NOAUDIO.
 ```
 
 ## Quick start
@@ -205,30 +205,30 @@ python scripts/configure.py ci --toolchain clang --build-dir build/ci \
 After building with the `dev` intent:
 
 ```sh
-./build/dev/caudio library scan --path ~/Music
-./build/dev/caudio library search "miles davis" --limit 10
-./build/dev/caudio queue add ~/Music/Kind\ of\ Blue/*.flac
-./build/dev/caudio play
-./build/dev/caudio status --watch --interval 1000
+./build/dev/kanariv library scan --path ~/Music
+./build/dev/kanariv library search "miles davis" --limit 10
+./build/dev/kanariv queue add ~/Music/Kind\ of\ Blue/*.flac
+./build/dev/kanariv play
+./build/dev/kanariv status --watch --interval 1000
 ```
 
 The daemon can also be managed explicitly:
 
 ```sh
-./build/dev/caudio start
-./build/dev/caudio status --json
-./build/dev/caudio pause
-./build/dev/caudio shutdown
+./build/dev/kanariv start
+./build/dev/kanariv status --json
+./build/dev/kanariv pause
+./build/dev/kanariv shutdown
 ```
 
 Or play a path directly without creating a permanent library queue:
 
 ```sh
-./build/dev/caudio ~/Music/album/track.flac
-./build/dev/caudio ~/Music/album --recursive --save
+./build/dev/kanariv ~/Music/album/track.flac
+./build/dev/kanariv ~/Music/album --recursive --save
 ```
 
-Run `caudio --help` or `caudio <command> --help` for the complete CLI
+Run `kanariv --help` or `kanariv <command> --help` for the complete CLI
 reference. Most commands communicate with the daemon; configuration commands
 work without one, and playback commands can start it automatically.
 
@@ -238,65 +238,65 @@ Important cache options:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `CAUDIO_BUILD_SHARED` | `ON` | Build per-component shared libraries |
-| `CAUDIO_BUILD_STATIC` | Depends on shared mode | Build static component libraries |
-| `CAUDIO_BUILD_CLI` | `ON` | Build the `caudio` executable |
-| `CAUDIO_ENABLE_TESTS` | `OFF` | Build Catch2 tests |
-| `CAUDIO_ENABLE_EXAMPLES` | `OFF` | Build the examples |
-| `CAUDIO_ENABLE_MODULES` | `OFF` | Build/install C++23 module interfaces |
-| `CAUDIO_ENABLE_SANITIZERS` | `OFF` | Enable AddressSanitizer and UndefinedBehaviorSanitizer where supported |
-| `CAUDIO_BUILD_DOCS` | `OFF` | Build public API documentation (HTML and XML) with Doxygen |
-| `CAUDIO_TEST_NOAUDIO` | `OFF` | Skip tests that require an audio device |
-| `CAUDIO_ENABLE_CLANG_TIDY` | `OFF` | Run clang-tidy during the build |
-| `CAUDIO_USE_TRIMMED_FFMPEG` | `OFF` | Use a decode-only trimmed FFmpeg build |
+| `KANARIV_BUILD_SHARED` | `ON` | Build per-component shared libraries |
+| `KANARIV_BUILD_STATIC` | Depends on shared mode | Build static component libraries |
+| `KANARIV_BUILD_CLI` | `ON` | Build the `kanariv` executable |
+| `KANARIV_ENABLE_TESTS` | `OFF` | Build Catch2 tests |
+| `KANARIV_ENABLE_EXAMPLES` | `OFF` | Build the examples |
+| `KANARIV_ENABLE_MODULES` | `OFF` | Build/install C++23 module interfaces |
+| `KANARIV_ENABLE_SANITIZERS` | `OFF` | Enable AddressSanitizer and UndefinedBehaviorSanitizer where supported |
+| `KANARIV_BUILD_DOCS` | `OFF` | Build public API documentation (HTML and XML) with Doxygen |
+| `KANARIV_TEST_NOAUDIO` | `OFF` | Skip tests that require an audio device |
+| `KANARIV_ENABLE_CLANG_TIDY` | `OFF` | Run clang-tidy during the build |
+| `KANARIV_USE_TRIMMED_FFMPEG` | `OFF` | Use a decode-only trimmed FFmpeg build |
 | `FFmpeg_ROOT` | unset | Override the FFmpeg installation |
 
 ## Use as a library
 
-The public headers under [`include/caudio/`](include/caudio/) are canonical.
+The public headers under [`include/kanariv/`](include/kanariv/) are canonical.
 Install exports provide these targets:
 
 | Target | Responsibility |
 | --- | --- |
-| `caudio::utils` | Errors, logging, JSON, queues, threads, and versioning |
-| `caudio::types` | Shared value types |
-| `caudio::contracts` | Backend-neutral interfaces |
-| `caudio::media` | Reading, decoding, metadata, and library discovery (`Source`, `PathSource`, `DescriptorSource`, `Reader`) |
-| `caudio::player` | Audio output and playback primitives |
-| `caudio::db` | SQLite storage and FTS5 search |
-| `caudio::engine` | Queue, shuffle, repeat, history, and playback state |
-| `caudio::ipc` | Daemon protocol, framing, and configuration |
-| `caudio::client` | Daemon client and output formatting |
-| `caudio::service` | Daemon service (`Service`) and in-process service host (`Host`) |
-| `caudio::config` | Configuration management (`Config`, `RuntimePaths`, canonical path helpers) |
+| `kanariv::utils` | Errors, logging, JSON, queues, threads, and versioning |
+| `kanariv::types` | Shared value types |
+| `kanariv::contracts` | Backend-neutral interfaces |
+| `kanariv::media` | Reading, decoding, metadata, and library discovery (`Source`, `PathSource`, `DescriptorSource`, `Reader`) |
+| `kanariv::player` | Audio output and playback primitives |
+| `kanariv::db` | SQLite storage and FTS5 search |
+| `kanariv::engine` | Queue, shuffle, repeat, history, and playback state |
+| `kanariv::ipc` | Daemon protocol, framing, and configuration |
+| `kanariv::client` | Daemon client and output formatting |
+| `kanariv::service` | Daemon service (`Service`) and in-process service host (`Host`) |
+| `kanariv::config` | Configuration management (`Config`, `RuntimePaths`, canonical path helpers) |
 
 ```cmake
-find_package(caudio CONFIG REQUIRED)
+find_package(kanariv CONFIG REQUIRED)
 
 add_executable(my_player main.cpp)
-target_link_libraries(my_player PRIVATE caudio::engine caudio::db)
+target_link_libraries(my_player PRIVATE kanariv::engine kanariv::db)
 ```
 
 ```cpp
-#include <caudio.hpp>
+#include <kanariv.hpp>
 #include <memory>
 #include <print>
 
 int main() {
-    auto database = caudio::db::Database::open(":memory:");
+    auto database = kanariv::db::Database::open(":memory:");
     if (!database) {
         std::println(stderr, "database open failed: {}", database.error().message);
         return 1;
     }
 
-    auto engine = caudio::engine::Engine::create();
+    auto engine = kanariv::engine::Engine::create();
     if (!engine) {
         std::println(stderr, "engine create failed: {}", engine.error().message);
         return 1;
     }
 
     if (auto result = engine.value()->attachDatabase(
-            std::shared_ptr<caudio::db::Database>(std::move(database.value())));
+            std::shared_ptr<kanariv::db::Database>(std::move(database.value())));
         !result) {
         std::println(stderr, "database attach failed: {}", result.error().message);
         return 1;
@@ -308,40 +308,40 @@ int main() {
 
 ### Media sources
 
-`caudio::media::Source` is an abstract factory for readers over a media source.
+`kanariv::media::Source` is an abstract factory for readers over a media source.
 Two implementations ship with the library:
 
-- `caudio::media::PathSource` — backed by an ordinary filesystem path; seekable
+- `kanariv::media::PathSource` — backed by an ordinary filesystem path; seekable
   and re-openable. Preserves existing desktop behavior.
-- `caudio::media::DescriptorSource` — backed by a caller-supplied native file
+- `kanariv::media::DescriptorSource` — backed by a caller-supplied native file
   descriptor (`FileDescriptor`). Single-use: ownership transfers to the reader
   on the first successful `open()`. Descriptors are never persisted; a host
   reopens the source per operation using a stable source identity.
 
 ```cpp
-#include <caudio/media/reader.hpp>
-#include <caudio/media/source.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/media/source.hpp>
 
-caudio::media::PathSource source{"/Music/track.flac"};
+kanariv::media::PathSource source{"/Music/track.flac"};
 auto reader = source.open(); // FileReader
 ```
 
 ### Service host (in-process)
 
-`caudio::service::Host` runs a `caudio::service::Service` in-process without
+`kanariv::service::Host` runs a `kanariv::service::Service` in-process without
 desktop daemon scaffolding (no lock file, PID file, socket, IPC server, or
 shared memory). It owns the worker thread and exposes `requestStop()`,
 `wait()`, `stop()`, `running()`, `ready()`, `error()`, and `service()`. Use
-`ServiceConfig::inProcess` with explicit `caudio::config::RuntimePaths` for
+`ServiceConfig::inProcess` with explicit `kanariv::config::RuntimePaths` for
 host-private directories such as Android app-private storage.
 
 ```cpp
-#include <caudio/service/host.hpp>
+#include <kanariv/service/host.hpp>
 
-caudio::service::ServiceConfig cfg;
-cfg.runtime.database = "/data/app/caudio/caudio.db";
-cfg.runtime.logs = "/data/app/caudio/logs";
-auto host = caudio::service::Host::create(cfg);
+kanariv::service::ServiceConfig cfg;
+cfg.runtime.database = "/data/app/kanariv/kanariv.db";
+cfg.runtime.logs = "/data/app/kanariv/logs";
+auto host = kanariv::service::Host::create(cfg);
 // ... use host->service() ...
 host->stop();
 ```
@@ -349,14 +349,14 @@ host->stop();
 Runnable examples are in [`examples/`](examples/): the original minimal
 player, player/database demo, and engine queue/history demo. The
 [`examples/downstream/`](examples/downstream/) project is intentionally
-separate from the repository build: it uses `find_package(caudio CONFIG
+separate from the repository build: it uses `find_package(kanariv CONFIG
 REQUIRED)` and demonstrates one small consumer per public component, followed
 by database/engine composition, media discovery, configuration backup, and
-the minimal player. Build it against an installed caudio tree with:
+the minimal player. Build it against an installed kanariv tree with:
 
 ```sh
 cmake -S examples/downstream -B build/examples-downstream \
-  -DCMAKE_PREFIX_PATH=/path/to/caudio/prefix
+  -DCMAKE_PREFIX_PATH=/path/to/kanariv/prefix
 cmake --build build/examples-downstream --parallel 4
 ```
 
@@ -373,7 +373,7 @@ The standalone examples are grouped as follows:
 - `mini_player.cpp` is the complete one-file playback example.
 
 Module-only consumers are in [`examples/modules/`](examples/modules/). They
-use `import caudio.*` rather than public headers and require a module-enabled
+use `import kanariv.*` rather than public headers and require a module-enabled
 installation plus a compiler that supports C++23 import-graph scanning.
 
 ## C++23 modules
@@ -387,18 +387,18 @@ python scripts/configure.py modules --toolchain clang \
 ```
 
 ```cpp
-import caudio.media;
+import kanariv.media;
 
 int main() {
-    auto tracks = caudio::media::scanTracksToVector(".");
+    auto tracks = kanariv::media::scanTracksToVector(".");
     return tracks ? 0 : 1;
 }
 ```
 
-Available named modules include `caudio`, `caudio.utils`, `caudio.media`,
-`caudio.player`, `caudio.db`, `caudio.engine`, `caudio.ipc`,
-`caudio.service`, and `caudio.client`, with partitions such as
-`caudio.db:scan`. Consumers rebuild BMIs with their own compiler; prebuilt
+Available named modules include `kanariv`, `kanariv.utils`, `kanariv.media`,
+`kanariv.player`, `kanariv.db`, `kanariv.engine`, `kanariv.ipc`,
+`kanariv.service`, and `kanariv.client`, with partitions such as
+`kanariv.db:scan`. Consumers rebuild BMIs with their own compiler; prebuilt
 BMIs are not portable across compilers or incompatible flags.
 
 ## Documentation and packaging
@@ -415,7 +415,7 @@ cmake --build build/dev --target package
 ```
 
 The generated API documentation is under the build documentation directory.
-The CLI man page is [`docs/man/caudio.1`](docs/man/caudio.1). Packages use ZIP
+The CLI man page is [`docs/man/kanariv.1`](docs/man/kanariv.1). Packages use ZIP
 on Windows and TGZ elsewhere.
 
 ## Contributing
@@ -425,4 +425,4 @@ requirements, documentation, and pull-request guidance.
 
 ## License
 
-caudio is released under the [MIT License](LICENSE).
+kanariv is released under the [MIT License](LICENSE).

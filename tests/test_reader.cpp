@@ -1,9 +1,9 @@
 #include <array>
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/media/reader.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -12,16 +12,16 @@
 #include <ios>
 #include <string>
 #include <vector>
-using namespace caudio::media;
-using namespace caudio::utils;
-using caudio::media::FileReader;
-using caudio::media::MemoryReader;
+using namespace kanariv::media;
+using namespace kanariv::utils;
+using kanariv::media::FileReader;
+using kanariv::media::MemoryReader;
 
 // Helper to create a temp file with RIFF header
 static std::filesystem::path makeTempFile(const std::string& name, std::vector<std::byte> data) {
     // Use test-specific subdir to avoid parallel test race on shared directory
     static std::atomic<int> testId{0};
-    auto dir = std::filesystem::temp_directory_path() / "caudio_reader_tests" /
+    auto dir = std::filesystem::temp_directory_path() / "kanariv_reader_tests" /
                std::to_string(testId.fetch_add(1));
     std::filesystem::create_directories(dir);
     auto p = dir / name;

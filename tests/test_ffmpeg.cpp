@@ -1,18 +1,18 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/reader.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <filesystem>
 #include <string>
 #include <vector>
-using namespace caudio::media;
-using namespace caudio::utils;
-using caudio::media::Decoder;
-using caudio::media::FileReader;
-using caudio::media::MemoryReader;
+using namespace kanariv::media;
+using namespace kanariv::utils;
+using kanariv::media::Decoder;
+using kanariv::media::FileReader;
+using kanariv::media::MemoryReader;
 
 namespace {
 

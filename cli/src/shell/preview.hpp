@@ -8,16 +8,16 @@
  * orchestrator via App::attachPreviewHost.
  */
 
-#include <caudio/app/app.hpp>
+#include <kanariv/app/app.hpp>
 #include <string>
 
-namespace caudio::app::cli::detail {
+namespace kanariv::app::cli::detail {
 
 /**
  * @brief Previews a local file in a throwaway player (no daemon, no queue).
  * @param file Path to the audio file.
  * @return Outcome data; blocks until playback finishes.
  */
-caudio::app::AppResult runLocalPreview(const std::string& file);
+kanariv::app::AppResult runLocalPreview(const std::string& file);
 
-} // namespace caudio::app::cli::detail
+} // namespace kanariv::app::cli::detail

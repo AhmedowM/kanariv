@@ -1,7 +1,7 @@
 #include <sqlite3.h>
 
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <db/statement.hpp>
@@ -11,7 +11,7 @@
 #include <string>
 #include <string_view>
 
-namespace caudio::db {
+namespace kanariv::db {
 
 SqliteStatement::~SqliteStatement() {
     if (stmt_)
@@ -32,7 +32,7 @@ SqliteStatement& SqliteStatement::operator=(SqliteStatement&& o) noexcept {
     return *this;
 }
 
-std::expected<void, caudio::utils::Error> SqliteStatement::prepare(sqlite3* db,
+std::expected<void, kanariv::utils::Error> SqliteStatement::prepare(sqlite3* db,
                                                                    std::string_view sql) {
     if (stmt_)
         sqlite3_finalize(stmt_);
@@ -40,7 +40,7 @@ std::expected<void, caudio::utils::Error> SqliteStatement::prepare(sqlite3* db,
     int rc = sqlite3_prepare_v2(db, sql.data(), static_cast<int>(sql.size()), &stmt_, nullptr);
     if (rc != SQLITE_OK) {
         std::string msg = db ? sqlite3_errmsg(db) : "prepare failed";
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Internal, msg)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg)};
     }
     return {};
 }
@@ -112,4 +112,4 @@ sqlite3_stmt* SqliteStatement::get() const noexcept {
     return stmt_;
 }
 
-} // namespace caudio::db
+} // namespace kanariv::db

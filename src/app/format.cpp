@@ -1,14 +1,14 @@
 /**
  * @file format.cpp
  * @brief Display formatting shared by all frontends.
- * @ingroup caudio_app
+ * @ingroup kanariv_app
  * @details Moved verbatim out of the CLI shell (Phase 0).
  */
 
 #include <app/format_internal.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/record_json.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/record_json.hpp>
 #include <cmath>
 #include <filesystem>
 #include <ostream>
@@ -16,9 +16,9 @@
 #include <string_view>
 #include <vector>
 
-namespace caudio::app {
+namespace kanariv::app {
 
-std::string trackWho(const caudio::ipc::Status& st) {
+std::string trackWho(const kanariv::ipc::Status& st) {
     if (!st.artist.empty() && !st.title.empty())
         return st.artist + " - " + st.title;
     if (!st.artist.empty())
@@ -33,7 +33,7 @@ std::string trackWho(const caudio::ipc::Status& st) {
     return "unknown track";
 }
 
-std::string addedLabel(const caudio::types::Track& t) {
+std::string addedLabel(const kanariv::types::Track& t) {
     std::string fn = std::filesystem::path(t.path).filename().generic_string();
     std::string who;
     if (!t.artist.empty() && !t.title.empty())
@@ -49,7 +49,7 @@ std::string addedLabel(const caudio::types::Track& t) {
     return "track " + std::to_string(t.id);
 }
 
-void writePlaylistText(std::ostream& os, const std::vector<caudio::types::Track>& tracks,
+void writePlaylistText(std::ostream& os, const std::vector<kanariv::types::Track>& tracks,
                        std::string_view format) {
     if (format == "m3u") {
         os << "#EXTM3U\n";
@@ -83,15 +83,15 @@ void writePlaylistText(std::ostream& os, const std::vector<caudio::types::Track>
     }
 }
 
-void writePlaylistJson(std::ostream& os, const std::vector<caudio::types::Track>& tracks) {
-    caudio::utils::Json j;
-    j["format"] = "caudio-playlist";
+void writePlaylistJson(std::ostream& os, const std::vector<kanariv::types::Track>& tracks) {
+    kanariv::utils::Json j;
+    j["format"] = "kanariv-playlist";
     j["version"] = 1;
-    j["tracks"] = caudio::utils::Json::array();
+    j["tracks"] = kanariv::utils::Json::array();
     for (const auto& t : tracks) {
-        j["tracks"].push_back(caudio::utils::trackToJson(t));
+        j["tracks"].push_back(kanariv::utils::trackToJson(t));
     }
     os << j.dump(2) << "\n";
 }
 
-} // namespace caudio::app
+} // namespace kanariv::app

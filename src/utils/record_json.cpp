@@ -1,9 +1,9 @@
 #include <array>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/math.hpp>
-#include <caudio/utils/record_json.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/math.hpp>
+#include <kanariv/utils/record_json.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstdint>
 #include <exception>
 #include <expected>
@@ -11,7 +11,7 @@
 #include <string_view>
 #include <utility>
 
-namespace caudio::utils {
+namespace kanariv::utils {
 
 namespace {
 
@@ -31,7 +31,7 @@ std::array<uint8_t, 32> fallbackFingerprint(std::string_view path) noexcept {
 
 } // namespace
 
-Json trackToJson(const caudio::types::Track& t) {
+Json trackToJson(const kanariv::types::Track& t) {
     Json j;
     j["id"] = t.id;
     j["size"] = t.size;
@@ -54,9 +54,9 @@ Json trackToJson(const caudio::types::Track& t) {
     j["fingerprint"] = toHex(t.fingerprint);
     j["path"] = t.path;
     {
-        const auto source = caudio::types::normalizedSource(t);
+        const auto source = kanariv::types::normalizedSource(t);
         Json s;
-        s["kind"] = std::string(caudio::types::sourceKindName(source.kind));
+        s["kind"] = std::string(kanariv::types::sourceKindName(source.kind));
         s["key"] = source.key;
         s["display_name"] = source.display_name;
         s["available"] = source.available;
@@ -71,9 +71,9 @@ Json trackToJson(const caudio::types::Track& t) {
     return j;
 }
 
-std::expected<caudio::types::Track, Error> trackFromJson(const Json& j) {
+std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
     try {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         auto getI64 = [&](const char* k, int64_t& out, int64_t def = 0) {
             if (j.contains(k) && !j[k].isNull()) {
                 if (j[k].isNumber())
@@ -137,7 +137,7 @@ std::expected<caudio::types::Track, Error> trackFromJson(const Json& j) {
             t.library_id = 1;
         getI64("deleted_at", t.deleted_at, 0);
         getStr("path", t.path);
-        t.source.kind = caudio::types::SourceKind::path;
+        t.source.kind = kanariv::types::SourceKind::path;
         t.source.key = t.path;
         t.source.display_name = t.path;
         t.source.available = true;
@@ -146,7 +146,7 @@ std::expected<caudio::types::Track, Error> trackFromJson(const Json& j) {
             std::string kindName = "path";
             if (s.contains("kind") && s["kind"].isString())
                 kindName = s["kind"].get<std::string>();
-            auto parsedKind = caudio::types::sourceKindFromName(kindName);
+            auto parsedKind = kanariv::types::sourceKindFromName(kindName);
             if (!parsedKind) {
                 return std::unexpected{
                     makeError(StatusCode::Corrupt, "invalid source kind: " + kindName)};
@@ -164,7 +164,7 @@ std::expected<caudio::types::Track, Error> trackFromJson(const Json& j) {
                 t.source.available = s["available"].get<bool>();
             else
                 t.source.available = true;
-            if (t.source.kind == caudio::types::SourceKind::path && t.source.key.empty())
+            if (t.source.kind == kanariv::types::SourceKind::path && t.source.key.empty())
                 t.source.key = t.path;
         }
         getStr("title", t.title);
@@ -188,4 +188,4 @@ std::expected<caudio::types::Track, Error> trackFromJson(const Json& j) {
     }
 }
 
-} // namespace caudio::utils
+} // namespace kanariv::utils

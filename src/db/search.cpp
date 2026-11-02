@@ -1,10 +1,10 @@
 #include <sqlite3.h>
 
-#include <caudio/db/database.hpp>
-#include <caudio/db/search.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/search.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <db/database_access.hpp>
 #include <db/fts.hpp>
 #include <db/statement.hpp>
@@ -16,15 +16,15 @@
 #include <utility>
 #include <vector>
 
-namespace caudio::db {
+namespace kanariv::db {
 
 // TU-local row mapper (alias for internal::fillTrackFromStmt).
-static void fillTrackSearch(sqlite3_stmt* s, caudio::types::Track& out) {
+static void fillTrackSearch(sqlite3_stmt* s, kanariv::types::Track& out) {
     internal::fillTrackFromStmt(s, out);
 }
 
 // TU-local single FTS5 MATCH query.
-static std::expected<std::vector<caudio::types::Track>, caudio::utils::Error>
+static std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 tryFtsQuery(sqlite3* h, std::string_view query, int limit) {
     const char* sql =
         "SELECT t.id, t.fingerprint, t.path, t.deleted_at, t.size, t.mtime, t.duration, "
@@ -40,29 +40,29 @@ tryFtsQuery(sqlite3* h, std::string_view query, int limit) {
     }
     st.bindText(1, query);
     st.bindInt(2, limit > 0 ? limit : 50);
-    std::vector<caudio::types::Track> out;
+    std::vector<kanariv::types::Track> out;
     while (st.step()) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         fillTrackSearch(st.get(), t);
         out.push_back(std::move(t));
     }
     return out;
 }
 
-std::expected<std::vector<caudio::types::Track>, caudio::utils::Error>
+std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 searchFts(contracts::IDatabase& db_, std::string_view query, int limit) {
     Database& db = dynamic_cast<Database&>(db_);
     if (query.empty())
-        return std::vector<caudio::types::Track>{};
+        return std::vector<kanariv::types::Track>{};
     std::string sanitized = internal::sanitizeFtsTerm(query);
     if (sanitized.empty())
-        return std::vector<caudio::types::Track>{};
+        return std::vector<kanariv::types::Track>{};
     std::string ftsQ = sanitized;
     std::shared_lock lock(DatabaseAccess::mutex(db));
     sqlite3* h = DatabaseAccess::handle(db);
     if (!h)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     auto r = tryFtsQuery(h, ftsQ, limit);
     if (r && !r->empty())
         return r;
@@ -91,27 +91,27 @@ searchFts(contracts::IDatabase& db_, std::string_view query, int limit) {
     st.bindText(5, pat);
     st.bindText(6, pat);
     st.bindInt(7, limit > 0 ? limit : 50);
-    std::vector<caudio::types::Track> out;
+    std::vector<kanariv::types::Track> out;
     while (st.step()) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         internal::fillTrackFromStmt(st.get(), t);
         out.push_back(std::move(t));
     }
     return out;
 }
 
-std::expected<std::vector<caudio::types::Track>, caudio::utils::Error>
+std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 searchLike(contracts::IDatabase& db_, std::string_view query, int limit) {
     Database& db = dynamic_cast<Database&>(db_);
     if (query.empty())
-        return std::vector<caudio::types::Track>{};
+        return std::vector<kanariv::types::Track>{};
     std::string esc = internal::escapeLike(query);
     std::string pat = "%" + esc + "%";
     std::shared_lock lock(DatabaseAccess::mutex(db));
     sqlite3* h = DatabaseAccess::handle(db);
     if (!h)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     const char* likeSql =
         "SELECT id, fingerprint, path, deleted_at, size, mtime, duration, sample_rate, channels, "
         "bitrate, title, artist, album, album_artist, genre, year, track_num, disc_num, "
@@ -131,9 +131,9 @@ searchLike(contracts::IDatabase& db_, std::string_view query, int limit) {
     st.bindText(5, pat);
     st.bindText(6, pat);
     st.bindInt(7, limit > 0 ? limit : 50);
-    std::vector<caudio::types::Track> out;
+    std::vector<kanariv::types::Track> out;
     while (st.step()) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         internal::fillTrackFromStmt(st.get(), t);
         out.push_back(std::move(t));
     }
@@ -144,10 +144,10 @@ std::string sanitizeFtsTerm(std::string_view term) {
     return internal::sanitizeFtsTerm(term);
 }
 
-std::expected<std::vector<caudio::types::Track>, caudio::utils::Error>
+std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 search(contracts::IDatabase& db_, std::string_view query, int limit) {
     Database& db = dynamic_cast<Database&>(db_);
     return searchFts(db, query, limit);
 }
 
-} // namespace caudio::db
+} // namespace kanariv::db

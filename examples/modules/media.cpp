@@ -1,7 +1,7 @@
 #include <iostream>
-import caudio.media;
+import kanariv.media;
 
 int main() {
-    auto tracks = caudio::media::scanTracksToVector(".");
+    auto tracks = kanariv::media::scanTracksToVector(".");
     std::cout << (tracks ? tracks->size() : 0) << " tracks\n";
 }

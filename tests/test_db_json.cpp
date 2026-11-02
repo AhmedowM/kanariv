@@ -1,11 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/contracts/database.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/db/json.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/record_json.hpp>
+#include <kanariv/contracts/database.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/json.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/record_json.hpp>
 #include <common.hpp>
 #include <cstdint>
 #include <filesystem>
@@ -14,12 +14,12 @@
 #include <string>
 #include <system_error>
 #include <utility>
-using namespace caudio::db;
-using namespace caudio::utils;
-using namespace caudio::test_helpers;
+using namespace kanariv::db;
+using namespace kanariv::utils;
+using namespace kanariv::test_helpers;
 
 TEST_CASE("trackToJson and trackFromJson roundtrip ordered", "[db_json]") {
-    caudio::types::Track t;
+    kanariv::types::Track t;
     t.id = 1;
     t.path = "/music/a.mp3";
     t.title = "Title";
@@ -39,14 +39,14 @@ TEST_CASE("trackToJson and trackFromJson roundtrip ordered", "[db_json]") {
     t.library_id = 1;
     for (int b = 0; b < 32; ++b)
         t.fingerprint[b] = (uint8_t)b;
-    const auto j = caudio::utils::trackToJson(t);
+    const auto j = kanariv::utils::trackToJson(t);
     REQUIRE(j.contains("title"));
     REQUIRE(j["title"].get<std::string>() == "Title");
     REQUIRE(j["fingerprint"].get<std::string>().size() == 64);
     // Json preserves insertion order; just check all fields present
     REQUIRE(j.contains("path"));
     REQUIRE(j.contains("artist"));
-    auto t2Res = caudio::utils::trackFromJson(j);
+    auto t2Res = kanariv::utils::trackFromJson(j);
     REQUIRE(t2Res.has_value());
     auto t2 = *t2Res;
     REQUIRE(t2.title == t.title);
@@ -61,7 +61,7 @@ TEST_CASE("exportJson and importJson roundtrip", "[db_json]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t;
+    kanariv::types::Track t;
     t.path = "/tmp/j.mp3";
     t.title = "JsonTrack";
     t.artist = "JsonArtist";
@@ -100,7 +100,7 @@ TEST_CASE("importJson handles duplicate fingerprint upsert", "[db_json]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    caudio::types::Track t;
+    kanariv::types::Track t;
     t.path = "/tmp/dup.mp3";
     t.title = "Dup";
     for (int b = 0; b < 32; ++b)
@@ -127,7 +127,7 @@ TEST_CASE("trackFromJson invalid fingerprint falls back", "[db_json]") {
     j["title"] = "T";
     j["fingerprint"] = "zzzz"; // invalid hex length
     j["library_id"] = 1;
-    auto r = caudio::utils::trackFromJson(j);
+    auto r = kanariv::utils::trackFromJson(j);
     REQUIRE(r.has_value());
     // should have generated fallback fingerprint not empty
     bool allZero = true;

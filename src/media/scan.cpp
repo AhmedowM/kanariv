@@ -1,11 +1,11 @@
 #include <blake3.h>
 
 #include <array>
-#include <caudio/media/audio_ext.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/scan.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/generator.hpp>
+#include <kanariv/media/audio_ext.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/scan.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/generator.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -15,9 +15,9 @@
 #include <system_error>
 #include <utility>
 
-namespace caudio::media {
+namespace kanariv::media {
 
-caudio::utils::Generator<caudio::types::Track> scanTracks(const std::filesystem::path& root,
+kanariv::utils::Generator<kanariv::types::Track> scanTracks(const std::filesystem::path& root,
                                                           ScanMode mode) {
     std::error_code ec;
     if (!std::filesystem::exists(root, ec))
@@ -25,8 +25,8 @@ caudio::utils::Generator<caudio::types::Track> scanTracks(const std::filesystem:
     for (auto it = std::filesystem::recursive_directory_iterator(
              root, std::filesystem::directory_options::skip_permission_denied, ec);
          it != std::filesystem::recursive_directory_iterator(); ++it) {
-        if (it->is_regular_file(ec) && caudio::media::hasAudioExt(it->path())) {
-            caudio::types::Track t;
+        if (it->is_regular_file(ec) && kanariv::media::hasAudioExt(it->path())) {
+            kanariv::types::Track t;
             t.path = it->path().generic_string();
             std::error_code e2;
             auto sz = it->file_size(e2);
@@ -52,7 +52,7 @@ caudio::utils::Generator<caudio::types::Track> scanTracks(const std::filesystem:
                     blake3_hasher_finalize(&hasher, t.fingerprint.data(), t.fingerprint.size());
                 }
             }
-            if (auto meta = caudio::media::extractMetadata(t.path); meta) {
+            if (auto meta = kanariv::media::extractMetadata(t.path); meta) {
                 t.title = std::move(meta->title);
                 t.artist = std::move(meta->artist);
                 t.album = std::move(meta->album);
@@ -71,12 +71,12 @@ caudio::utils::Generator<caudio::types::Track> scanTracks(const std::filesystem:
     }
 }
 
-std::expected<std::vector<caudio::types::Track>, caudio::utils::Error>
+std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode) {
-    std::vector<caudio::types::Track> out;
+    std::vector<kanariv::types::Track> out;
     for (auto t : scanTracks(root, mode))
         out.push_back(std::move(t));
     return out;
 }
 
-} // namespace caudio::media
+} // namespace kanariv::media

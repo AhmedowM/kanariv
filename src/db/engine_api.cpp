@@ -1,7 +1,7 @@
 #include <sqlite3.h>
 
-#include <caudio/db/database.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/utils/error.hpp>
 #include <cstring>
 #include <db/database_access.hpp>
 #include <db/stmt_helpers.hpp>
@@ -14,23 +14,23 @@
 #include <utility>
 #include <vector>
 
-namespace caudio::db {
+namespace kanariv::db {
 
-std::expected<bool, caudio::utils::Error> Database::queueExists(int64_t qid) {
+std::expected<bool, kanariv::utils::Error> Database::queueExists(int64_t qid) {
     auto queue = getQueue(qid);
     if (!queue) {
-        if (queue.error().code == caudio::utils::StatusCode::NotFound)
+        if (queue.error().code == kanariv::utils::StatusCode::NotFound)
             return false;
         return std::unexpected(queue.error());
     }
     return true;
 }
 
-std::expected<caudio::types::PlaybackStats, caudio::utils::Error> Database::playbackStats() {
+std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::playbackStats() {
     auto stats = getStats();
     if (!stats)
         return std::unexpected(stats.error());
-    return caudio::types::PlaybackStats{
+    return kanariv::types::PlaybackStats{
         stats->num_tracks,    stats->num_playlists, stats->num_queue_items,  stats->num_history,
         stats->num_bookmarks, stats->num_libraries, stats->total_duration_ms};
 }
@@ -39,14 +39,14 @@ bool Database::isOpen() const noexcept {
     return DatabaseAccess::handle(const_cast<Database&>(*this)) != nullptr;
 }
 
-std::expected<caudio::types::Track, caudio::utils::Error> Database::queueTrackAt(int64_t qid,
+std::expected<kanariv::types::Track, kanariv::utils::Error> Database::queueTrackAt(int64_t qid,
                                                                                  int64_t position) {
     if (qid == 0)
         qid = 1;
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
     int64_t trackId = 0;
     {
         std::shared_lock lock(DatabaseAccess::mutex(*this));
@@ -54,24 +54,24 @@ std::expected<caudio::types::Track, caudio::utils::Error> Database::queueTrackAt
         const char* sql =
             "SELECT track_id FROM queue WHERE queue_id=? ORDER BY position LIMIT 1 OFFSET ?";
         if (sqlite3_prepare_v2(handle, sql, -1, &raw, nullptr) != SQLITE_OK)
-            return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Internal,
+            return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
                                                             sqlite3_errmsg(handle)));
         internal::StmtGuard statement(raw);
         sqlite3_bind_int64(raw, 1, qid);
         sqlite3_bind_int64(raw, 2, position);
         if (sqlite3_step(raw) != SQLITE_ROW)
             return std::unexpected(
-                caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "not found"));
+                kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "not found"));
         trackId = sqlite3_column_int64(raw, 0);
     }
     return getTrack(trackId);
 }
 
-std::expected<caudio::types::EngineState, caudio::utils::Error> Database::loadEngineState() {
+std::expected<kanariv::types::EngineState, kanariv::utils::Error> Database::loadEngineState() {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
     std::shared_lock lock(DatabaseAccess::mutex(*this));
     const char* sqlNew = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, "
                          "volume, shuffle_perm, active_queue_id FROM engine_state WHERE id=1";
@@ -85,18 +85,18 @@ std::expected<caudio::types::EngineState, caudio::utils::Error> Database::loadEn
         hasActiveQueue = false;
         if (sqlite3_prepare_v2(handle, sqlOld, -1, &raw, nullptr) != SQLITE_OK)
             return std::unexpected(
-                caudio::utils::makeError(caudio::utils::StatusCode::Internal, "prepare failed"));
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
     }
     internal::StmtGuard statement(raw);
-    caudio::types::EngineState state;
+    kanariv::types::EngineState state;
     int rc = sqlite3_step(raw);
     if (rc == SQLITE_DONE)
         return state;
     if (rc != SQLITE_ROW)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "load failed"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "load failed"));
     state.shuffle_enabled = sqlite3_column_int(raw, 0);
-    state.repeat_mode = static_cast<caudio::types::RepeatMode>(sqlite3_column_int(raw, 1));
+    state.repeat_mode = static_cast<kanariv::types::RepeatMode>(sqlite3_column_int(raw, 1));
     state.cursor_pos = sqlite3_column_int64(raw, 2);
     state.current_track_id = sqlite3_column_int64(raw, 3);
     state.volume = static_cast<float>(sqlite3_column_double(raw, 4));
@@ -148,12 +148,12 @@ std::expected<caudio::types::EngineState, caudio::utils::Error> Database::loadEn
     return state;
 }
 
-std::expected<void, caudio::utils::Error>
-Database::saveEngineState(const caudio::types::EngineState& state) {
+std::expected<void, kanariv::utils::Error>
+Database::saveEngineState(const kanariv::types::EngineState& state) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
     std::unique_lock lock(DatabaseAccess::mutex(*this));
     auto transaction = DbTransaction::begin(handle);
     if (!transaction)
@@ -173,13 +173,13 @@ Database::saveEngineState(const caudio::types::EngineState& state) {
         hasNewColumns = false;
         if (sqlite3_prepare_v2(handle, sqlOld, -1, &raw, nullptr) != SQLITE_OK)
             return std::unexpected(
-                caudio::utils::makeError(caudio::utils::StatusCode::Internal, "prepare failed"));
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
     }
     internal::StmtGuard statement(raw);
     if (state.shuffle_perm.size() >
         static_cast<size_t>(std::numeric_limits<int>::max() / static_cast<int>(sizeof(int64_t))))
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::NoMem, "perm too large"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NoMem, "perm too large"));
     sqlite3_bind_int(raw, 1, state.shuffle_enabled);
     sqlite3_bind_int(raw, 2, static_cast<int>(state.repeat_mode));
     if (state.shuffle_enabled && !state.shuffle_perm.empty())
@@ -197,7 +197,7 @@ Database::saveEngineState(const caudio::types::EngineState& state) {
     }
     if (sqlite3_step(raw) != SQLITE_DONE)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "step failed"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "step failed"));
     sqlite3_stmt* optional = nullptr;
     if (sqlite3_prepare_v2(handle, "UPDATE engine_state SET pre_mute_volume=? WHERE id=1", -1,
                            &optional, nullptr) == SQLITE_OK) {
@@ -208,17 +208,17 @@ Database::saveEngineState(const caudio::types::EngineState& state) {
     return transaction->commit();
 }
 
-std::expected<void, caudio::utils::Error>
+std::expected<void, kanariv::utils::Error>
 Database::saveEngineShuffle(bool enabled, std::span<const int64_t> permutation,
                             int64_t cursorPosition) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
     if (permutation.size() >
         static_cast<size_t>(std::numeric_limits<int>::max() / static_cast<int>(sizeof(int64_t))))
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::NoMem, "perm too large"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NoMem, "perm too large"));
     std::unique_lock lock(DatabaseAccess::mutex(*this));
     auto transaction = DbTransaction::begin(handle);
     if (!transaction)
@@ -228,7 +228,7 @@ Database::saveEngineShuffle(bool enabled, std::span<const int64_t> permutation,
                       "shuffle_enabled=? WHERE id=1";
     if (sqlite3_prepare_v2(handle, sql, -1, &raw, nullptr) != SQLITE_OK)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "prepare failed"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
     internal::StmtGuard statement(raw);
     if (enabled && !permutation.empty())
         sqlite3_bind_blob(raw, 1, permutation.data(),
@@ -239,15 +239,15 @@ Database::saveEngineShuffle(bool enabled, std::span<const int64_t> permutation,
     sqlite3_bind_int(raw, 3, enabled ? 1 : 0);
     if (sqlite3_step(raw) != SQLITE_DONE)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "step failed"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "step failed"));
     return transaction->commit();
 }
 
-std::expected<void, caudio::utils::Error> Database::saveEngineCursor(int64_t cursorPosition) {
+std::expected<void, kanariv::utils::Error> Database::saveEngineCursor(int64_t cursorPosition) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
     std::unique_lock lock(DatabaseAccess::mutex(*this));
     auto transaction = DbTransaction::begin(handle);
     if (!transaction)
@@ -256,22 +256,22 @@ std::expected<void, caudio::utils::Error> Database::saveEngineCursor(int64_t cur
     if (sqlite3_prepare_v2(handle, "UPDATE engine_state SET cursor_pos=? WHERE id=1", -1, &raw,
                            nullptr) != SQLITE_OK)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "prepare failed"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
     internal::StmtGuard statement(raw);
     sqlite3_bind_int64(raw, 1, cursorPosition);
     if (sqlite3_step(raw) != SQLITE_DONE)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "step failed"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "step failed"));
     return transaction->commit();
 }
 
-std::expected<void, caudio::utils::Error>
+std::expected<void, kanariv::utils::Error>
 Database::markPlayed(int64_t trackId, int64_t startedAt, int64_t completedAt, int64_t positionMs,
                      double completionPct, int64_t queueId) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
     std::unique_lock lock(DatabaseAccess::mutex(*this));
     auto transaction = DbTransaction::begin(handle);
     if (!transaction)
@@ -281,24 +281,24 @@ Database::markPlayed(int64_t trackId, int64_t startedAt, int64_t completedAt, in
         if (sqlite3_prepare_v2(handle, "SELECT play_count FROM tracks WHERE id=?", -1, &select,
                                nullptr) != SQLITE_OK)
             return std::unexpected(
-                caudio::utils::makeError(caudio::utils::StatusCode::Internal, "prepare failed"));
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
         internal::StmtGuard selectStatement(select);
         sqlite3_bind_int64(select, 1, trackId);
         if (sqlite3_step(select) != SQLITE_ROW)
             return std::unexpected(
-                caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "track not found"));
+                kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "track not found"));
         const int64_t playCount = sqlite3_column_int64(select, 0) + 1;
         sqlite3_stmt* update = nullptr;
         if (sqlite3_prepare_v2(handle, "UPDATE tracks SET play_count=?, last_played=? WHERE id=?",
                                -1, &update, nullptr) != SQLITE_OK)
             return std::unexpected(
-                caudio::utils::makeError(caudio::utils::StatusCode::Internal, "prepare failed"));
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
         internal::StmtGuard updateStatement(update);
         sqlite3_bind_int64(update, 1, playCount);
         sqlite3_bind_int64(update, 2, completedAt);
         sqlite3_bind_int64(update, 3, trackId);
         if (sqlite3_step(update) != SQLITE_DONE)
-            return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Internal,
+            return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
                                                             "track update failed"));
     }
     {
@@ -307,7 +307,7 @@ Database::markPlayed(int64_t trackId, int64_t startedAt, int64_t completedAt, in
                           "completion_pct, queue_id) VALUES (?,?,?,?,?,?)";
         if (sqlite3_prepare_v2(handle, sql, -1, &insert, nullptr) != SQLITE_OK)
             return std::unexpected(
-                caudio::utils::makeError(caudio::utils::StatusCode::Internal, "prepare failed"));
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
         internal::StmtGuard insertStatement(insert);
         sqlite3_bind_int64(insert, 1, trackId);
         sqlite3_bind_int64(insert, 2, startedAt);
@@ -316,18 +316,18 @@ Database::markPlayed(int64_t trackId, int64_t startedAt, int64_t completedAt, in
         sqlite3_bind_double(insert, 5, completionPct);
         sqlite3_bind_int64(insert, 6, queueId > 0 ? queueId : 1);
         if (sqlite3_step(insert) != SQLITE_DONE)
-            return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Internal,
+            return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
                                                             "history insert failed"));
     }
     return transaction->commit();
 }
 
-std::expected<std::vector<caudio::types::HistoryEntry>, caudio::utils::Error>
+std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
 Database::engineHistoryList(int limit) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
     std::shared_lock lock(DatabaseAccess::mutex(*this));
     std::string sql = "SELECT h.id, h.track_id, h.started_at, h.completed_at, h.position_ms, "
                       "h.completion_pct, h.queue_id, t.title, t.artist, t.path, t.duration "
@@ -338,13 +338,13 @@ Database::engineHistoryList(int limit) {
     sqlite3_stmt* raw = nullptr;
     if (sqlite3_prepare_v2(handle, sql.c_str(), -1, &raw, nullptr) != SQLITE_OK)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, sqlite3_errmsg(handle)));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, sqlite3_errmsg(handle)));
     internal::StmtGuard statement(raw);
     if (limit > 0)
         sqlite3_bind_int(raw, 1, limit);
-    std::vector<caudio::types::HistoryEntry> entries;
+    std::vector<kanariv::types::HistoryEntry> entries;
     while (sqlite3_step(raw) == SQLITE_ROW) {
-        caudio::types::HistoryEntry entry;
+        kanariv::types::HistoryEntry entry;
         entry.id = sqlite3_column_int64(raw, 0);
         entry.track_id = sqlite3_column_int64(raw, 1);
         entry.started_at = sqlite3_column_int64(raw, 2);
@@ -366,18 +366,18 @@ Database::engineHistoryList(int limit) {
     return entries;
 }
 
-std::expected<void, caudio::utils::Error> Database::engineHistoryClear() {
+std::expected<void, kanariv::utils::Error> Database::engineHistoryClear() {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
     std::unique_lock lock(DatabaseAccess::mutex(*this));
     char* error = nullptr;
     internal::SqliteErrGuard errorGuard(error);
     if (sqlite3_exec(handle, "DELETE FROM history", nullptr, nullptr, &error) != SQLITE_OK)
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Internal,
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
                                                         error ? error : "clear history failed"));
     return {};
 }
 
-} // namespace caudio::db
+} // namespace kanariv::db

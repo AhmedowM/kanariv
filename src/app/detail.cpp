@@ -8,14 +8,14 @@
 
 #include <app/detail.hpp>
 #include <app/format_internal.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/protocol.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/types/format.hpp>
-#include <caudio/types/record.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/print.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/protocol.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/types/format.hpp>
+#include <kanariv/types/record.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/print.hpp>
 #include <cstdint>
 #include <format>
 #include <set>
@@ -23,7 +23,7 @@
 #include <string>
 #include <variant>
 
-namespace caudio::app::detail {
+namespace kanariv::app::detail {
 
 namespace {
 
@@ -82,125 +82,125 @@ void appendBlock(std::string& blob, const std::string& text) {
     }
 }
 
-void renderInto(std::string& blob, const caudio::ipc::Result& res) {
+void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
     std::ostringstream os;
     std::visit(
         Overloaded{
-            [&os](const caudio::ipc::Status& v) {
-                std::string stateStr(caudio::types::toString(v.state));
+            [&os](const kanariv::ipc::Status& v) {
+                std::string stateStr(kanariv::types::toString(v.state));
                 std::string posStr = formatTime(v.pos);
                 std::string durStr = formatTime(v.dur);
                 int volPct = static_cast<int>(v.vol * 100.0f);
-                caudio::println(os, "State: {}", stateStr);
-                caudio::println(os, "Pos: {} / {}", posStr, durStr);
+                kanariv::println(os, "State: {}", stateStr);
+                kanariv::println(os, "Pos: {} / {}", posStr, durStr);
                 if (v.muted)
-                    caudio::println(os, "Volume: muted");
+                    kanariv::println(os, "Volume: muted");
                 else
-                    caudio::println(os, "Volume: {}%", volPct);
-                caudio::println(os, "Shuffle: {} Repeat: {}", v.shuffle ? "on" : "off",
-                                caudio::types::toString(v.repeat));
+                    kanariv::println(os, "Volume: {}%", volPct);
+                kanariv::println(os, "Shuffle: {} Repeat: {}", v.shuffle ? "on" : "off",
+                                kanariv::types::toString(v.repeat));
                 if (!v.artist.empty() && !v.title.empty()) {
-                    caudio::println(os, "Track: {} - {} [id: {}]", truncateField(v.artist, 40),
+                    kanariv::println(os, "Track: {} - {} [id: {}]", truncateField(v.artist, 40),
                                     truncateField(v.title, 40), v.track_id);
                 } else if (!v.artist.empty() || !v.title.empty()) {
-                    caudio::println(os, "Track: {} [id: {}]", truncateField(v.artist + v.title, 40),
+                    kanariv::println(os, "Track: {} [id: {}]", truncateField(v.artist + v.title, 40),
                                     v.track_id);
                 } else if (v.track_id != 0) {
-                    caudio::println(os, "Track: [id: {}]", v.track_id);
+                    kanariv::println(os, "Track: [id: {}]", v.track_id);
                 }
                 if (!v.path.empty()) {
-                    caudio::println(os, "Path: {}", v.path);
+                    kanariv::println(os, "Path: {}", v.path);
                 }
                 if (v.track_id != 0 && v.q_size > 0) {
-                    caudio::println(os, "Queue: track {} of {}", v.q_idx + 1, v.q_size);
+                    kanariv::println(os, "Queue: track {} of {}", v.q_idx + 1, v.q_size);
                 } else {
-                    caudio::println(os, "Queue: {} tracks", v.q_size);
+                    kanariv::println(os, "Queue: {} tracks", v.q_size);
                 }
                 if (!v.version.empty()) {
-                    caudio::println(os, "Version: {}", v.version);
+                    kanariv::println(os, "Version: {}", v.version);
                 }
             },
-            [&os](const caudio::ipc::QueueTracks& v) {
-                std::span<const caudio::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
-                caudio::println(os, "Queue ({} tracks):", tracksSpan.size());
-                caudio::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
+            [&os](const kanariv::ipc::QueueTracks& v) {
+                std::span<const kanariv::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
+                kanariv::println(os, "Queue ({} tracks):", tracksSpan.size());
+                kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                 "Title", "Dur");
                 for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
                     const auto& t = tracksSpan[i];
-                    caudio::println(os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
+                    kanariv::println(os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
                                     truncateField(t.artist, 40), truncateField(t.title, 40),
                                     formatTime(t.duration));
                 }
             },
-            [&os](const caudio::ipc::Queues& v) {
-                caudio::println(os, "Queues ({}):", v.entries.size());
-                caudio::println(os, "{:>3} {:>6}  {:<40} {:>8} {:>6} {:>4}", "#", "ID", "Name",
+            [&os](const kanariv::ipc::Queues& v) {
+                kanariv::println(os, "Queues ({}):", v.entries.size());
+                kanariv::println(os, "{:>3} {:>6}  {:<40} {:>8} {:>6} {:>4}", "#", "ID", "Name",
                                 "Tracks", "Active", "Temp");
                 for (std::size_t i = 0; i < v.entries.size(); ++i) {
                     const auto& q = v.entries[i];
-                    caudio::println(os, "{:3} {:6}  {:<40} {:>8} {:>6} {:>4}", i, q.id,
+                    kanariv::println(os, "{:3} {:6}  {:<40} {:>8} {:>6} {:>4}", i, q.id,
                                     truncateField(q.name.empty() ? "(unnamed)" : q.name, 40),
                                     q.tracks, q.active ? "*" : "", q.temp ? "yes" : "");
                 }
             },
-            [&os](const caudio::ipc::PlaylistData& v) {
-                std::span<const caudio::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
-                caudio::println(os, "Playlist ({} tracks):", tracksSpan.size());
-                caudio::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
+            [&os](const kanariv::ipc::PlaylistData& v) {
+                std::span<const kanariv::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
+                kanariv::println(os, "Playlist ({} tracks):", tracksSpan.size());
+                kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                 "Title", "Dur");
                 for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
                     const auto& t = tracksSpan[i];
-                    caudio::println(os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
+                    kanariv::println(os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
                                     truncateField(t.artist, 40), truncateField(t.title, 40),
                                     formatTime(t.duration));
                 }
             },
-            [&os](const caudio::types::LibraryStats& v) {
+            [&os](const kanariv::types::LibraryStats& v) {
                 if (!v.top_tracks) {
-                    caudio::println(os, "Tracks: {} Queues: {} Playlists: {}", v.tracks, v.queues,
+                    kanariv::println(os, "Tracks: {} Queues: {} Playlists: {}", v.tracks, v.queues,
                                     v.playlists);
                     return;
                 }
-                caudio::println(os, "Library Stats (Detailed):");
-                caudio::println(os, "  Tracks:      {}", v.tracks);
-                caudio::println(os, "  Queues:      {}", v.queues);
-                caudio::println(os, "  Playlists:   {}", v.playlists);
+                kanariv::println(os, "Library Stats (Detailed):");
+                kanariv::println(os, "  Tracks:      {}", v.tracks);
+                kanariv::println(os, "  Queues:      {}", v.queues);
+                kanariv::println(os, "  Playlists:   {}", v.playlists);
                 double totalDurSec = v.total_duration_ms / 1000.0;
                 double totalPlaySec = v.total_play_time_ms / 1000.0;
-                caudio::println(os, "  Total Duration:  {}", formatTime(totalDurSec));
-                caudio::println(os, "  Total Play Time: {}", formatTime(totalPlaySec));
+                kanariv::println(os, "  Total Duration:  {}", formatTime(totalDurSec));
+                kanariv::println(os, "  Total Play Time: {}", formatTime(totalPlaySec));
                 if (!v.top_tracks->empty()) {
-                    caudio::println(os, "\n  Most Played Tracks:");
-                    caudio::println(os, "  {:>3} {:>6}  {:<40} {:<40} {:>8} {:>10}", "#", "ID",
+                    kanariv::println(os, "\n  Most Played Tracks:");
+                    kanariv::println(os, "  {:>3} {:>6}  {:<40} {:<40} {:>8} {:>10}", "#", "ID",
                                     "Artist", "Title", "Dur", "Plays");
                     for (std::size_t i = 0; i < v.top_tracks->size(); ++i) {
                         const auto& t = (*v.top_tracks)[i];
-                        caudio::println(os, "  {:3} {:6}  {:<40} {:<40} {:>8} {:>10}", i + 1, t.id,
+                        kanariv::println(os, "  {:3} {:6}  {:<40} {:<40} {:>8} {:>10}", i + 1, t.id,
                                         truncateField(t.artist, 40), truncateField(t.title, 40),
                                         formatTime(t.duration), t.play_count);
                     }
                 }
             },
-            [&os](const caudio::utils::Error& v) {
-                caudio::println(os, "Error: {} {}", caudio::utils::toString(v.code), v.message);
+            [&os](const kanariv::utils::Error& v) {
+                kanariv::println(os, "Error: {} {}", kanariv::utils::toString(v.code), v.message);
             },
             [&os, &res](const auto&) {
-                caudio::println(os, "{}", caudio::ipc::toJson(res).dump(2));
+                kanariv::println(os, "{}", kanariv::ipc::toJson(res).dump(2));
             }},
         res);
     appendBlock(blob, os.str());
 }
 
-int printAddedText(const caudio::ipc::Result& res, std::set<int64_t>& seen, std::string& out,
+int printAddedText(const kanariv::ipc::Result& res, std::set<int64_t>& seen, std::string& out,
                    std::string& err) {
-    auto* qt = std::get_if<caudio::ipc::QueueTracks>(&res);
+    auto* qt = std::get_if<kanariv::ipc::QueueTracks>(&res);
     if (!qt) {
         renderInto(out, res);
         return 0;
     }
     int added = 0;
     for (auto& t : qt->tracks) {
-        std::string label = caudio::app::addedLabel(t);
+        std::string label = kanariv::app::addedLabel(t);
         if (seen.contains(t.id)) {
             emitLine(err, std::format("already in queue: {}", label));
         } else {
@@ -219,12 +219,12 @@ void countLineText(int added, std::string& out) {
         emitLine(out, std::format("{} tracks added", added));
 }
 
-void renderErrorInto(std::string& err, const caudio::utils::Error& e) {
+void renderErrorInto(std::string& err, const kanariv::utils::Error& e) {
     std::ostringstream os;
-    caudio::println(os, "Error: {} {}", caudio::utils::toString(e.code), e.message);
+    kanariv::println(os, "Error: {} {}", kanariv::utils::toString(e.code), e.message);
     appendBlock(err, os.str());
-    if (e.code == caudio::utils::StatusCode::State && e.message == "daemon not running")
-        emitLine(err, "hint: run `caudio start` to start the daemon");
+    if (e.code == kanariv::utils::StatusCode::State && e.message == "daemon not running")
+        emitLine(err, "hint: run `kanariv start` to start the daemon");
 }
 
-} // namespace caudio::app::detail
+} // namespace kanariv::app::detail

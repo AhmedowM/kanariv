@@ -1,9 +1,9 @@
 ---
 title: Download
-description: Download caudio builds and source packages.
+description: Download kanariv builds and source packages.
 ---
 
-# Download caudio
+# Download kanariv
 
 Prebuilt downloads are not published yet. This page will become the stable
 home for release artifacts once the first public build is deployed.
@@ -21,8 +21,8 @@ home for release artifacts once the first public build is deployed.
 Until releases are published, build directly from the repository:
 
 ```sh
-git clone https://github.com/AhmedowM/caudio.git
-cd caudio
+git clone https://github.com/AhmedowM/kanariv.git
+cd kanariv
 python scripts/configure.py dev --toolchain clang --jobs 4 --build --test
 ```
 

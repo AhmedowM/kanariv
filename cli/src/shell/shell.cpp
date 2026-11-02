@@ -19,24 +19,24 @@
 
 #include <CLI/CLI.hpp>
 #include <app/detail.hpp>
-#include <caudio/app/app.hpp>
-#include <caudio/app/paths.hpp>
-#include <caudio/client/client.hpp>
-#include <caudio/config.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/protocol.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/service/service.hpp>
-#include <caudio/types/format.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/base64.hpp>
-#include <caudio/utils/json.hpp>
-#include <caudio/utils/log.hpp>
-#include <caudio/utils/math.hpp>
-#include <caudio/utils/print.hpp>
-#include <caudio/utils/result.hpp>
-#include <caudio/version.hpp>
+#include <kanariv/app/app.hpp>
+#include <kanariv/app/paths.hpp>
+#include <kanariv/client/client.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/protocol.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/service/service.hpp>
+#include <kanariv/types/format.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/base64.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/math.hpp>
+#include <kanariv/utils/print.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/version.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -63,34 +63,34 @@
 #include "preview.hpp"
 #include "shell.hpp"
 
-namespace caudio::app::cli {
+namespace kanariv::app::cli {
 
 namespace detail {
-// Single source: delegate to caudio::app::cli::parse::parseTime (parse.hpp) and adapt error type.
+// Single source: delegate to kanariv::app::cli::parse::parseTime (parse.hpp) and adapt error type.
 // parse.hpp returns expected<double,string>; app layer wraps string into utils::Error.
-std::expected<double, caudio::utils::Error> parseTime(std::string_view s) {
-    auto r = caudio::app::cli::parse::parseTime(s);
+std::expected<double, kanariv::utils::Error> parseTime(std::string_view s) {
+    auto r = kanariv::app::cli::parse::parseTime(s);
     if (!r)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, r.error())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, r.error())};
     return *r;
 }
-// Single source: delegate to caudio::app::cli::parse::parseSeek and adapt error type.
-std::expected<double, caudio::utils::Error> parseSeek(std::string_view s) {
-    auto r = caudio::app::cli::parse::parseSeek(s);
+// Single source: delegate to kanariv::app::cli::parse::parseSeek and adapt error type.
+std::expected<double, kanariv::utils::Error> parseSeek(std::string_view s) {
+    auto r = kanariv::app::cli::parse::parseSeek(s);
     if (!r)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, r.error())};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, r.error())};
     return *r;
 }
-// Single source: delegate to caudio::app::cli::parse::parseVolume and adapt error type.
-std::expected<caudio::ipc::VolumeSet, caudio::utils::Error> parseVolume(std::string_view s) {
-    auto r = caudio::app::cli::parse::parseVolume(s);
+// Single source: delegate to kanariv::app::cli::parse::parseVolume and adapt error type.
+std::expected<kanariv::ipc::VolumeSet, kanariv::utils::Error> parseVolume(std::string_view s) {
+    auto r = kanariv::app::cli::parse::parseVolume(s);
     if (!r)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, r.error())};
-    caudio::app::cli::parse::ParsedVolume pv = *r;
-    caudio::ipc::VolumeSet vs{};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, r.error())};
+    kanariv::app::cli::parse::ParsedVolume pv = *r;
+    kanariv::ipc::VolumeSet vs{};
     vs.level = pv.level;
     vs.mute = pv.mute;
     vs.deltaPct = pv.deltaPct;
@@ -103,7 +103,7 @@ std::chrono::duration<double> parseDuration(std::string_view s) {
     return std::chrono::duration<double>{*t};
 }
 
-std::string statusLine(const caudio::ipc::Status& st) {
+std::string statusLine(const kanariv::ipc::Status& st) {
     std::string s{std::format("{}", st.state)};
     std::string who;
     if (!st.artist.empty() && !st.title.empty())
@@ -112,34 +112,34 @@ std::string statusLine(const caudio::ipc::Status& st) {
         who = st.artist + st.title;
     if (!who.empty())
         s += " " + who;
-    s += " [" + caudio::utils::formatClock(st.pos) + "/" + caudio::utils::formatClock(st.dur) + "]";
+    s += " [" + kanariv::utils::formatClock(st.pos) + "/" + kanariv::utils::formatClock(st.dur) + "]";
     return s;
 }
 
 // Map StatusCode to a finer exit code (F-13).
 // 0 = success, 1 = general error, 105 = daemon not running / bad state,
 // 106 = invalid argument, 109 = not found.
-int exitCodeForError(const caudio::utils::Error& e) {
+int exitCodeForError(const kanariv::utils::Error& e) {
     switch (e.code) {
-        case caudio::utils::StatusCode::InvalidArg:
+        case kanariv::utils::StatusCode::InvalidArg:
             return 106;
-        case caudio::utils::StatusCode::NotFound:
+        case kanariv::utils::StatusCode::NotFound:
             return 109;
-        case caudio::utils::StatusCode::State:
+        case kanariv::utils::StatusCode::State:
             return 105;
         default:
             return 1;
     }
 }
 
-int renderError(const caudio::utils::Error& e) {
+int renderError(const kanariv::utils::Error& e) {
     std::string text;
-    caudio::app::detail::renderErrorInto(text, e);
-    caudio::println(std::cerr, "{}", text);
+    kanariv::app::detail::renderErrorInto(text, e);
+    kanariv::println(std::cerr, "{}", text);
     return exitCodeForError(e);
 }
 
-int renderJson(const caudio::ipc::Result& r) {
+int renderJson(const kanariv::ipc::Result& r) {
     OutputFormatter fmt{true};
     fmt.print(r, std::cout);
     return 0;
@@ -158,13 +158,13 @@ bool useColor() {
 
 // Renders a Phase-1 outcome: errors (with hint), JSON results, human
 // lines, bare results, or silent success, in that order.
-int render(caudio::app::AppResult res, bool asJson, std::string_view columns = {}) {
+int render(kanariv::app::AppResult res, bool asJson, std::string_view columns = {}) {
     if (!res)
         return renderError(res.error());
     auto outcome = std::move(*res);
     if (outcome.failed) {
         if (outcome.line)
-            caudio::println(std::cerr, "{}", *outcome.line);
+            kanariv::println(std::cerr, "{}", *outcome.line);
         return 1;
     }
     if (outcome.quiet && !asJson)
@@ -173,9 +173,9 @@ int render(caudio::app::AppResult res, bool asJson, std::string_view columns = {
         return renderJson(*outcome.result);
     if (outcome.line) {
         if (outcome.toStderr)
-            caudio::println(std::cerr, "{}", *outcome.line);
+            kanariv::println(std::cerr, "{}", *outcome.line);
         else
-            caudio::println(std::cout, "{}", *outcome.line);
+            kanariv::println(std::cout, "{}", *outcome.line);
         return 0;
     }
     if (outcome.result) {
@@ -189,12 +189,12 @@ int render(caudio::app::AppResult res, bool asJson, std::string_view columns = {
 
 // Flushes a batch report: stderr blob, JSON payload under --json,
 // stdout blob in text mode, then the recorded exit code.
-int renderBatch(caudio::app::BatchResult res, bool asJson) {
+int renderBatch(kanariv::app::BatchResult res, bool asJson) {
     if (!res)
         return renderError(res.error());
     auto& rep = *res;
     if (!rep.err.empty())
-        caudio::println(std::cerr, "{}", rep.err);
+        kanariv::println(std::cerr, "{}", rep.err);
     if (asJson) {
         if (rep.json) {
             renderJson(*rep.json);
@@ -203,7 +203,7 @@ int renderBatch(caudio::app::BatchResult res, bool asJson) {
         return rep.exitCode;
     }
     if (!rep.out.empty())
-        caudio::println(std::cout, "{}", rep.out);
+        kanariv::println(std::cout, "{}", rep.out);
     return rep.exitCode;
 }
 
@@ -251,25 +251,25 @@ int renderVersion(bool asJson) {
 #else
     constexpr std::string_view build = "debug";
 #endif
-    const std::string full(caudio::version::version());
-    const std::string shortv(caudio::version::shortVersion());
-    const std::string commit(caudio::version::versionCommit());
+    const std::string full(kanariv::version::version());
+    const std::string shortv(kanariv::version::shortVersion());
+    const std::string commit(kanariv::version::versionCommit());
     const std::string stdv = std::to_string(__cplusplus);
     if (asJson) {
-        caudio::println(
+        kanariv::println(
             R"({{"version":"{}","short":"{}","commit":"{}","compiler":"{}","std":"{}","runtime":"{}","build":"{}","os":"{}","arch":"{}"}})",
             full, shortv, commit, compiler, stdv, runtime, build, platform, arch);
         return 0;
     }
-    caudio::println("caudio {}", full);
-    caudio::println("  short:    {}", shortv);
-    caudio::println("  commit:   {}", commit);
-    caudio::println("  compiler: {}", compiler);
-    caudio::println("  std:      {}", stdv);
-    caudio::println("  runtime:  {}", runtime);
-    caudio::println("  build:    {}", build);
-    caudio::println("  os:       {}", platform);
-    caudio::println("  arch:     {}", arch);
+    kanariv::println("kanariv {}", full);
+    kanariv::println("  short:    {}", shortv);
+    kanariv::println("  commit:   {}", commit);
+    kanariv::println("  compiler: {}", compiler);
+    kanariv::println("  std:      {}", stdv);
+    kanariv::println("  runtime:  {}", runtime);
+    kanariv::println("  build:    {}", build);
+    kanariv::println("  os:       {}", platform);
+    kanariv::println("  arch:     {}", arch);
     return 0;
 }
 
@@ -278,10 +278,10 @@ using detail::parseSeek;
 using detail::parseTime;
 using detail::parseVolume;
 
-Shell::Shell(caudio::config::Config cfg)
+Shell::Shell(kanariv::config::Config cfg)
     : config_(cfg), app_(std::move(cfg)),
-      cli_(std::make_unique<CLI::App>("caudio - terminal player")) {
-    cli_->set_version_flag("--version", std::string(caudio::version::version()));
+      cli_(std::make_unique<CLI::App>("kanariv - terminal player")) {
+    cli_->set_version_flag("--version", std::string(kanariv::version::version()));
 }
 
 Shell::~Shell() = default;
@@ -713,7 +713,7 @@ int Shell::run(int argc, char** argv) {
     if (!configPathStr.empty())
         config_.configPath = std::filesystem::path(configPathStr);
     {
-        auto loaded = caudio::config::loadConfig(config_.configPath);
+        auto loaded = kanariv::config::loadConfig(config_.configPath);
         if (loaded) {
             config_ = *loaded;
             if (!configPathStr.empty())
@@ -725,7 +725,7 @@ int Shell::run(int argc, char** argv) {
                 auto parent = config_.configPath.parent_path();
                 if (!parent.empty())
                     std::filesystem::create_directories(parent, ec3);
-                (void)caudio::config::saveConfig(config_);
+                (void)kanariv::config::saveConfig(config_);
             }
         } else {
             // loadConfig failed (e.g. corrupt); keep current config_ which has robust defaults
@@ -741,9 +741,9 @@ int Shell::run(int argc, char** argv) {
     if (!deviceStr.empty())
         config_.device = deviceStr;
     if (!logLevelStr.empty()) {
-        auto lvl = caudio::utils::parseLogLevel(logLevelStr);
+        auto lvl = kanariv::utils::parseLogLevel(logLevelStr);
         if (!lvl) {
-            caudio::println(std::cerr,
+            kanariv::println(std::cerr,
                             "--log-level: invalid '{}' (expected trace|debug|info|warn|error)",
                             logLevelStr);
             return 1;
@@ -751,7 +751,7 @@ int Shell::run(int argc, char** argv) {
         config_.logLevel = std::to_underlying(*lvl);
     }
     if (config_.socketPath.empty() && !config_.dbPath.empty()) {
-        auto sp = caudio::config::socketPathFor(config_.dbPath);
+        auto sp = kanariv::config::socketPathFor(config_.dbPath);
         if (sp)
             config_.socketPath = *sp;
     }
@@ -770,22 +770,22 @@ int Shell::run(int argc, char** argv) {
     // preview, so the app layer stays free of the player dependency.
     app_.attachPreviewHost(detail::runLocalPreview);
     // Inject the foreground daemon host: the CLI (not app) owns service startup.
-    app_.attachDaemonHost([this](bool foreground) -> caudio::app::AppResult {
-        caudio::service::ServiceConfig scfg;
+    app_.attachDaemonHost([this](bool foreground) -> kanariv::app::AppResult {
+        kanariv::service::ServiceConfig scfg;
         scfg.dbPath = config_.dbPath;
         scfg.socketPath = config_.socketPath;
         scfg.configPath = config_.configPath;
         scfg.logLevel = config_.logLevel;
         scfg.logToStderr = foreground;
         scfg.autoResumeOnPlay = config_.autoResumeOnPlay;
-        auto db = caudio::db::Database::open(scfg.dbPath.generic_string());
+        auto db = kanariv::db::Database::open(scfg.dbPath.generic_string());
         if (!db) {
-            return caudio::app::Outcome::fail(std::format(
+            return kanariv::app::Outcome::fail(std::format(
                 "start failed: {} (db: {})", db.error().message, config_.dbPath.generic_string()));
         }
-        auto svc = caudio::service::Service::create(scfg, std::move(db.value()));
+        auto svc = kanariv::service::Service::create(scfg, std::move(db.value()));
         if (!svc) {
-            return caudio::app::Outcome::fail(std::format(
+            return kanariv::app::Outcome::fail(std::format(
                 "start failed: {} (db: {})", svc.error().message, config_.dbPath.generic_string()));
         }
         auto starting = std::format("starting daemon foreground at {} db={}", config_.socketPath,
@@ -793,17 +793,17 @@ int Shell::run(int argc, char** argv) {
         std::stop_source ss;
         auto res = svc.value()->run(ss.get_token());
         if (!res) {
-            return caudio::app::Outcome::fail(std::format("daemon error: {} (dbPath={})",
+            return kanariv::app::Outcome::fail(std::format("daemon error: {} (dbPath={})",
                                                           res.error().message,
                                                           config_.dbPath.generic_string()));
         }
-        return caudio::app::Outcome{std::nullopt, std::move(starting), false, false};
+        return kanariv::app::Outcome{std::nullopt, std::move(starting), false, false};
     });
     // Internal daemon mode: if --daemon present, run Service foreground immediately (child process)
     if (daemonFlag) {
         return detail::render(app_.startDaemon(true), false);
     }
-    // Direct play: `caudio PATH... [--save]` with no subcommand. Files are
+    // Direct play: `kanariv PATH... [--save]` with no subcommand. Files are
     // fingerprinted into the library; the queue itself is temporary unless
     // --save keeps it. Output is human-readable text.
     bool anySub = false;
@@ -815,27 +815,27 @@ int Shell::run(int argc, char** argv) {
     }
     if (!posPaths.empty() || posSave) {
         if (anySub) {
-            caudio::println(std::cerr, "paths and --save take no subcommand");
+            kanariv::println(std::cerr, "paths and --save take no subcommand");
             return 1;
         }
         if (posPaths.empty()) {
-            caudio::println(std::cerr, "need a PATH (audio file, folder, or glob)");
+            kanariv::println(std::cerr, "need a PATH (audio file, folder, or glob)");
             return 1;
         }
         std::vector<std::string> files;
         std::vector<std::string> unmatched;
         for (auto& tok : posPaths)
-            caudio::app::expandAddToken(tok, false, files, unmatched);
+            kanariv::app::expandAddToken(tok, false, files, unmatched);
         bool hardFail = false;
         for (auto& u : unmatched) {
-            if (caudio::app::hasGlobChars(u)) {
-                caudio::println(std::cerr, "No files matched: {}", u);
+            if (kanariv::app::hasGlobChars(u)) {
+                kanariv::println(std::cerr, "No files matched: {}", u);
             } else {
                 std::error_code ec;
                 if (std::filesystem::is_directory(u, ec) && !ec)
-                    caudio::println(std::cerr, "No files matched: {}", u);
+                    kanariv::println(std::cerr, "No files matched: {}", u);
                 else {
-                    caudio::println(std::cerr, "no such file: {}", u);
+                    kanariv::println(std::cerr, "no such file: {}", u);
                     hardFail = true;
                 }
             }
@@ -867,7 +867,7 @@ int Shell::run(int argc, char** argv) {
     if (seekCmd->parsed()) {
         auto parsed = detail::parseSeek(seekStr);
         if (!parsed) {
-            caudio::println(std::cerr,
+            kanariv::println(std::cerr,
                             "seek: '{}': {} (expected mm:ss, hh:mm:ss, seconds, or +N/-N)", seekStr,
                             parsed.error().message);
             return 1;
@@ -887,22 +887,22 @@ int Shell::run(int argc, char** argv) {
         // behavior. Phase 1 will replace it with a status-stream API.
         if (statusWatch) {
             if (statusInterval <= 0) {
-                caudio::println(std::cerr, "status: --interval must be positive (got {})",
+                kanariv::println(std::cerr, "status: --interval must be positive (got {})",
                                 statusInterval);
                 return 1;
             }
             using namespace std::chrono;
             OutputFormatter fmt{jsonFlag};
             while (true) {
-                caudio::client::Client client{config_.dbPath, config_.socketPath};
+                kanariv::client::Client client{config_.dbPath, config_.socketPath};
                 // waitForStatus blocks until the status changes or the
                 // interval elapses, avoiding wasteful polling.
                 auto res =
                     client.waitForStatus(milliseconds{statusInterval});
                 if (!res) {
-                    caudio::ipc::Result errRes{res.error()};
+                    kanariv::ipc::Result errRes{res.error()};
                     if (jsonFlag) {
-                        caudio::println(std::cerr, "{}", caudio::ipc::toJson(errRes).dump());
+                        kanariv::println(std::cerr, "{}", kanariv::ipc::toJson(errRes).dump());
                     } else {
                         fmt.print(errRes, std::cerr);
                     }
@@ -919,20 +919,20 @@ int Shell::run(int argc, char** argv) {
 #endif
                     char buf[32];
                     std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
-                    // caudio::print(std::cout, output);
-                    if (auto* st = std::get_if<caudio::ipc::Status>(&*res)) {
-                        caudio::print(std::cout, "\r\33[2K[{}] {}", buf, detail::statusLine(*st));
+                    // kanariv::print(std::cout, output);
+                    if (auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
+                        kanariv::print(std::cout, "\r\33[2K[{}] {}", buf, detail::statusLine(*st));
                         std::cout.flush();
                     } else {
-                        caudio::println(std::cout, "[{}]", buf);
+                        kanariv::println(std::cout, "[{}]", buf);
                         fmt.print(*res, std::cout);
                     }
                 } else {
                     // Compact JSON per line for streaming to avoid multi-line log spam
-                    caudio::println(std::cout, "{}", caudio::ipc::toJson(*res).dump());
+                    kanariv::println(std::cout, "{}", kanariv::ipc::toJson(*res).dump());
                 }
                 std::cout << std::flush;
-                if (std::holds_alternative<caudio::utils::Error>(*res))
+                if (std::holds_alternative<kanariv::utils::Error>(*res))
                     return 1;
             }
         }
@@ -941,7 +941,7 @@ int Shell::run(int argc, char** argv) {
     if (volumeCmd->parsed()) {
         auto pv = detail::parseVolume(volumeArg);
         if (!pv) {
-            caudio::println(std::cerr, "volume: '{}': {} (expected 0-100, +N/-N, mute, or unmute)",
+            kanariv::println(std::cerr, "volume: '{}': {} (expected 0-100, +N/-N, mute, or unmute)",
                             volumeArg, pv.error().message);
             return 1;
         }
@@ -1043,7 +1043,7 @@ int Shell::run(int argc, char** argv) {
         }
         if (libStats->parsed()) {
             if (libStatsJson && (!libStatsQueues.empty() || !libStatsPlaylists.empty())) {
-                caudio::println(std::cerr, "library stats: --json takes no --queue or --playlist");
+                kanariv::println(std::cerr, "library stats: --json takes no --queue or --playlist");
                 return 1;
             }
             return detail::renderBatch(
@@ -1092,8 +1092,8 @@ int Shell::run(int argc, char** argv) {
         if (tagEdit->parsed())
             return detail::render(app_.tagEdit(tagEditId, tagEditField, tagEditValue), tagEditJson);
         if (tagGet->parsed()) {
-            if (!tagGetField.empty() && !caudio::app::isTagField(tagGetField)) {
-                caudio::println(std::cerr,
+            if (!tagGetField.empty() && !kanariv::app::isTagField(tagGetField)) {
+                kanariv::println(std::cerr,
                                 "tag get: unknown field '{}' (expected one of "
                                 "title|artist|album|album_artist|genre|year|"
                                 "track_number|disc_number|cover)",
@@ -1107,36 +1107,36 @@ int Shell::run(int argc, char** argv) {
                 return detail::renderError(tv.error());
             if (!tagGetOut.empty() && tagGetField == "cover") {
                 // --out only applies to cover art: decode base64 and write to file.
-                auto decoded = caudio::utils::Base64::decode(tv->value);
+                auto decoded = kanariv::utils::Base64::decode(tv->value);
                 if (!decoded)
                     return detail::renderError(decoded.error());
                 std::ofstream ofs(tagGetOut, std::ios::binary);
                 if (!ofs)
                     return detail::renderError(
-                        caudio::utils::makeError(caudio::utils::StatusCode::Io,
+                        kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
                                                  "tag get: cannot open output '" +
                                                      tagGetOut + "'"));
                 if (decoded->size() > static_cast<std::size_t>(
                                          std::numeric_limits<std::streamsize>::max()))
                     return detail::renderError(
-                        caudio::utils::makeError(caudio::utils::StatusCode::Io,
+                        kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
                                                  "tag get: cover art is too large to write"));
                 ofs.write(reinterpret_cast<const char*>(decoded->data()),
                           static_cast<std::streamsize>(decoded->size()));
                 ofs.flush();
                 if (!ofs)
                     return detail::renderError(
-                        caudio::utils::makeError(caudio::utils::StatusCode::Io,
+                        kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
                                                  "tag get: write failed for '" +
                                                      tagGetOut + "'"));
-                caudio::println(std::cout, "Wrote cover art ({} bytes) to {}",
+                kanariv::println(std::cout, "Wrote cover art ({} bytes) to {}",
                                 decoded->size(), tagGetOut);
                 return 0;
             }
             if (tagGetJson)
-                caudio::println("{}", tv->json);
+                kanariv::println("{}", tv->json);
             else
-                caudio::println("{}", tv->value);
+                kanariv::println("{}", tv->value);
             return 0;
         }
         std::cout << tagCmd->help() << "\n";
@@ -1162,7 +1162,7 @@ int Shell::run(int argc, char** argv) {
             if (!bmAddTime.empty()) {
                 auto parsed = detail::parseTime(bmAddTime);
                 if (!parsed) {
-                    caudio::println(std::cerr,
+                    kanariv::println(std::cerr,
                                     "bookmark add: '{}': {} (expected mm:ss, hh:mm:ss, or seconds)",
                                     bmAddTime, parsed.error().message);
                     return 1;
@@ -1192,24 +1192,24 @@ int Shell::run(int argc, char** argv) {
         // resume afterwards. Best-effort and silent: daemon-less runs and
         // mid-preview failures just preview. Only resumes if still paused
         // (the user may have driven the daemon from elsewhere meanwhile).
-        auto daemonState = [this]() -> std::optional<caudio::types::PlaybackState> {
-            caudio::client::Client probe{config_.dbPath, config_.socketPath};
-            auto pres = probe.send(caudio::ipc::Command{caudio::ipc::StatusReq{}},
+        auto daemonState = [this]() -> std::optional<kanariv::types::PlaybackState> {
+            kanariv::client::Client probe{config_.dbPath, config_.socketPath};
+            auto pres = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}},
                                    std::chrono::milliseconds{2000});
             if (!pres)
                 return std::nullopt;
-            if (auto* st = std::get_if<caudio::ipc::Status>(&*pres))
+            if (auto* st = std::get_if<kanariv::ipc::Status>(&*pres))
                 return st->state;
             return std::nullopt;
         };
         bool ducked = false;
         if (!previewKeepPlaying) {
             auto state = daemonState();
-            if (state == caudio::types::PlaybackState::Playing)
+            if (state == kanariv::types::PlaybackState::Playing)
                 ducked = app_.pause().has_value();
         }
         auto rc = detail::render(app_.previewFile(previewFile), false);
-        if (ducked && daemonState() == caudio::types::PlaybackState::Paused)
+        if (ducked && daemonState() == kanariv::types::PlaybackState::Paused)
             (void)app_.resume();
         return rc;
     }
@@ -1230,7 +1230,7 @@ int Shell::run(int argc, char** argv) {
                 k = cfgResetKey;
             else if (cfgReset->count("key") > 0 && cfgResetKey.empty()) {
                 // explicit empty string passed -> treat as error
-                caudio::println(std::cerr, "config reset: empty key (omit --key to reset all)");
+                kanariv::println(std::cerr, "config reset: empty key (omit --key to reset all)");
                 return 1;
             }
             return detail::render(app_.configReset(k), cfgResetJson);
@@ -1259,4 +1259,4 @@ int Shell::run(int argc, char** argv) {
     return 0;
 }
 
-} // namespace caudio::app::cli
+} // namespace kanariv::app::cli

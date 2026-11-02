@@ -1,0 +1,64 @@
+module;
+#include <kanariv/ipc/command.hpp>
+
+export module kanariv.ipc:command;
+
+export namespace kanariv::ipc {
+using ::kanariv::ipc::Command;
+using ::kanariv::ipc::CommandAlternative;
+using ::kanariv::ipc::CommandType;
+using ::kanariv::ipc::ConfigExport;
+using ::kanariv::ipc::ConfigGet;
+using ::kanariv::ipc::ConfigImport;
+using ::kanariv::ipc::ConfigList;
+using ::kanariv::ipc::ConfigReset;
+using ::kanariv::ipc::ConfigSet;
+using ::kanariv::ipc::DeviceList;
+using ::kanariv::ipc::DeviceSet;
+using ::kanariv::ipc::DeviceTest;
+using ::kanariv::ipc::HistoryClear;
+using ::kanariv::ipc::HistoryList;
+using ::kanariv::ipc::Info;
+using ::kanariv::ipc::LibraryAdd;
+using ::kanariv::ipc::LibraryList;
+using ::kanariv::ipc::LibraryRemove;
+using ::kanariv::ipc::LibraryScan;
+using ::kanariv::ipc::LibrarySearch;
+using ::kanariv::ipc::LibraryStats;
+using ::kanariv::ipc::Next;
+using ::kanariv::ipc::Pause;
+using ::kanariv::ipc::Play;
+using ::kanariv::ipc::PlayFiles;
+using ::kanariv::ipc::PlaylistAdd;
+using ::kanariv::ipc::PlaylistCreate;
+using ::kanariv::ipc::PlaylistDelete;
+using ::kanariv::ipc::PlaylistExport;
+using ::kanariv::ipc::PlaylistImport;
+using ::kanariv::ipc::PlaylistList;
+using ::kanariv::ipc::PlaylistLoad;
+using ::kanariv::ipc::PlaylistRename;
+using ::kanariv::ipc::PlaylistSave;
+using ::kanariv::ipc::PlaylistTracks;
+using ::kanariv::ipc::Prev;
+using ::kanariv::ipc::Preview;
+using ::kanariv::ipc::QueueAdd;
+using ::kanariv::ipc::QueueClear;
+using ::kanariv::ipc::QueueCreate;
+using ::kanariv::ipc::QueueDelete;
+using ::kanariv::ipc::QueueList;
+using ::kanariv::ipc::QueueMove;
+using ::kanariv::ipc::QueueQueues;
+using ::kanariv::ipc::QueueRemove;
+using ::kanariv::ipc::QueueRepeat;
+using ::kanariv::ipc::QueueShuffle;
+using ::kanariv::ipc::QueueSwitch;
+using ::kanariv::ipc::Restart;
+using ::kanariv::ipc::Resume;
+using ::kanariv::ipc::Seek;
+using ::kanariv::ipc::Shutdown;
+using ::kanariv::ipc::StatusReq;
+using ::kanariv::ipc::Stop;
+using ::kanariv::ipc::TagEdit;
+using ::kanariv::ipc::TagGet;
+using ::kanariv::ipc::VolumeSet;
+} // namespace kanariv::ipc

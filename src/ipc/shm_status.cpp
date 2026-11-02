@@ -1,10 +1,10 @@
 ﻿#include <algorithm>
 #include <atomic>
 #include <bit>
-#include <caudio/ipc/shm_status.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
-#include <caudio/windows_fwd.hpp>
+#include <kanariv/ipc/shm_status.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/windows_fwd.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -20,7 +20,7 @@
 #include <unistd.h>
 #endif
 
-namespace caudio::ipc {
+namespace kanariv::ipc {
 
 // Helpers for bit_cast atomic operations
 double atomicLoadDouble(const std::atomic<uint64_t>& a) noexcept {
@@ -50,14 +50,14 @@ struct ShmRaw {
 // description on failure (empty string on success).
 std::string openShmRaw(const std::string& name, bool create, ShmRaw& raw) {
 #ifdef _WIN32
-    std::string fullName = "caudio-" + name + "-status";
+    std::string fullName = "kanariv-" + name + "-status";
 #elif defined(__ANDROID__)
     (void)name;
     (void)create;
     (void)raw;
     return "shared memory status is unavailable on Android";
 #else
-    std::string fullName = "/caudio-" + name + "-status";
+    std::string fullName = "/kanariv-" + name + "-status";
     int flags = O_RDWR;
     if (create)
         flags |= O_CREAT;
@@ -161,7 +161,7 @@ ShmStatusReader::ExpectedShm ShmStatusReader::openReadOnly(const std::string& na
     ShmRaw raw;
     std::string err = openShmRaw(name, false, raw);
     if (!err.empty())
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Io, err)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, err)};
     ShmStatusReader reader;
     reader.map_ = raw.map;
     reader.size_ = raw.size;
@@ -247,7 +247,7 @@ ShmStatusWriter::ExpectedShm ShmStatusWriter::create(const std::string& name) {
     ShmRaw raw;
     std::string err = openShmRaw(name, true, raw);
     if (!err.empty())
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Io, err)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, err)};
     ShmStatusWriter writer;
     writer.map_ = raw.map;
     writer.size_ = raw.size;
@@ -346,4 +346,4 @@ void ShmStatusWriter::close() noexcept {
     closeShmRaw(map_, size_, handle_, create_, name_);
 }
 
-} // namespace caudio::ipc
+} // namespace kanariv::ipc

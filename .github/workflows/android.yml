@@ -1,7 +1,7 @@
 # Android NDK compatibility matrix (manual observatory).
 #
 # Each leg builds the trimmed FFmpeg dependency for one NDK/ABI pair and then
-# builds caudio through scripts/configure.py. Keep the default matrix small
+# builds kanariv through scripts/configure.py. Keep the default matrix small
 # enough for routine checks; expand ndk_versions when qualifying a new NDK.
 
 name: Android (manual)
@@ -84,7 +84,7 @@ jobs:
             --jobs "$(nproc)" \
             2>&1 | tee "ffmpeg-${{ matrix.ndk }}-${{ matrix.abi }}.log"
 
-      - name: Configure and build caudio
+      - name: Configure and build kanariv
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
@@ -97,7 +97,7 @@ jobs:
             --build-dir "$BUILD_DIR" \
             --jobs "$(nproc)" \
             --build \
-            2>&1 | tee "caudio-${{ matrix.ndk }}-${{ matrix.abi }}.log"
+            2>&1 | tee "kanariv-${{ matrix.ndk }}-${{ matrix.abi }}.log"
 
       - name: Upload build logs
         if: always()
@@ -106,6 +106,6 @@ jobs:
           name: android-${{ matrix.ndk }}-${{ matrix.abi }}-logs
           path: |
             ffmpeg-${{ matrix.ndk }}-${{ matrix.abi }}.log
-            caudio-${{ matrix.ndk }}-${{ matrix.abi }}.log
+            kanariv-${{ matrix.ndk }}-${{ matrix.abi }}.log
             ${{ env.BUILD_DIR }}/CMakeCache.txt
           if-no-files-found: warn

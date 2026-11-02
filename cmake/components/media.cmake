@@ -1,13 +1,13 @@
-# media.cmake -- caudio::media (reader/decoder/FFmpeg metadata/scan discovery).
-set(CAUDIO_MEDIA_MODULE_SOURCES
-  modules/caudio/media.cppm
-  modules/caudio/media/reader.cppm
-  modules/caudio/media/source.cppm
-  modules/caudio/media/decoder.cppm
-  modules/caudio/media/audio_ext.cppm
-  modules/caudio/media/scan.cppm
+# media.cmake -- kanariv::media (reader/decoder/FFmpeg metadata/scan discovery).
+set(KANARIV_MEDIA_MODULE_SOURCES
+  modules/kanariv/media.cppm
+  modules/kanariv/media/reader.cppm
+  modules/kanariv/media/source.cppm
+  modules/kanariv/media/decoder.cppm
+  modules/kanariv/media/audio_ext.cppm
+  modules/kanariv/media/scan.cppm
 )
-set(CAUDIO_MEDIA_SOURCES
+set(KANARIV_MEDIA_SOURCES
   src/media/reader.cpp
   src/media/source.cpp
   src/media/decoder.cpp
@@ -15,7 +15,7 @@ set(CAUDIO_MEDIA_SOURCES
   src/media/scan.cpp
   src/media/fingerprint.cpp
 )
-caudio_add_component(media SOURCES ${CAUDIO_MEDIA_SOURCES} MODULE_SOURCES ${CAUDIO_MEDIA_MODULE_SOURCES} DEPS caudio::utils caudio::types)
+kanariv_add_component(media SOURCES ${KANARIV_MEDIA_SOURCES} MODULE_SOURCES ${KANARIV_MEDIA_MODULE_SOURCES} DEPS kanariv::utils kanariv::types)
 ca_set_module_warnings(media)
 # FFmpeg (sole decoder backend) is used only by src/media/decoders/ffmpeg.cpp
 # (via ffmpeg_impl.hpp), so link it here PRIVATE. STATIC private deps propagate
@@ -38,9 +38,9 @@ if(_ff_inc)
   target_include_directories(media_objects SYSTEM PRIVATE ${_ff_inc})
 endif()
 
-if(CAUDIO_BUILD_SHARED)
-  caudio_add_shared_variant(media EXTRA_DEPS caudio::utils_shared)
-  if(CAUDIO_BUILD_STATIC)
+if(KANARIV_BUILD_SHARED)
+  kanariv_add_shared_variant(media EXTRA_DEPS kanariv::utils_shared)
+  if(KANARIV_BUILD_STATIC)
     target_link_libraries(media_shared PRIVATE FFmpeg::avcodec FFmpeg::avformat FFmpeg::avutil FFmpeg::swresample blake3)
   endif()
 endif()

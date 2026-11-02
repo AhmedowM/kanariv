@@ -5,31 +5,31 @@ description: Playback controls, gapless playback, queue management
 
 # Playback
 
-caudio provides gapless playback with sample-accurate seeking, managed through
-the command-line client or the C++ `caudio::player` and `caudio::engine`
+kanariv provides gapless playback with sample-accurate seeking, managed through
+the command-line client or the C++ `kanariv::player` and `kanariv::engine`
 libraries.
 
 ## Basic playback
 
 ```sh
-caudio play          # Start or resume
-caudio pause         # Pause
-caudio resume        # Resume from paused
-caudio stop          # Stop
-caudio seek 120.5    # Seek to 120.5 seconds
-caudio status        # Show current status
-caudio status --json # Status as JSON
+kanariv play          # Start or resume
+kanariv pause         # Pause
+kanariv resume        # Resume from paused
+kanariv stop          # Stop
+kanariv seek 120.5    # Seek to 120.5 seconds
+kanariv status        # Show current status
+kanariv status --json # Status as JSON
 ```
 
 ## Queue management
 
 ```sh
-caudio queue add ~/Music/track.flac          # Add track
-caudio queue add ~/Music/*.flac --pos 0      # Add at position
-caudio queue list                            # List queue
-caudio queue clear                           # Clear queue
-caudio queue shuffle                         # Shuffle queue
-caudio queue repeat on|one|off               # Set repeat mode
+kanariv queue add ~/Music/track.flac          # Add track
+kanariv queue add ~/Music/*.flac --pos 0      # Add at position
+kanariv queue list                            # List queue
+kanariv queue clear                           # Clear queue
+kanariv queue shuffle                         # Shuffle queue
+kanariv queue repeat on|one|off               # Set repeat mode
 ```
 
 ## Playback state machine
@@ -62,13 +62,13 @@ Track transitions are gapless by default:
 ### Player
 
 ```cpp
-#include <caudio/player/player.hpp>
+#include <kanariv/player/player.hpp>
 
-auto opts = caudio::player::PlayerOptions{};
+auto opts = kanariv::player::PlayerOptions{};
 opts.sampleRate = 48000;
 opts.channels = 2;
 
-auto player = caudio::player::Player::create(opts);
+auto player = kanariv::player::Player::create(opts);
 player.value()->open("/path/to/track.flac");
 player.value()->play();
 ```
@@ -76,9 +76,9 @@ player.value()->play();
 ### Engine
 
 ```cpp
-#include <caudio/engine/engine.hpp>
+#include <kanariv/engine/engine.hpp>
 
-auto engine = caudio::engine::Engine::create();
+auto engine = kanariv::engine::Engine::create();
 engine.value()->attachDatabase(database);
 engine.value()->play();
 ```

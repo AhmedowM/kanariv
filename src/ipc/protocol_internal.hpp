@@ -3,71 +3,71 @@
 /**
  * @file protocol_internal.hpp
  * @brief Internal IPC JSON helpers -- not part of the public API.
- * @ingroup caudio_ipc
+ * @ingroup kanariv_ipc
  * @details Declares the JSON serialization helpers for enums, playlists,
  * and errors used by `src/ipc/protocol.cpp`. Lives in `src/` (not installed)
  * so downstream consumers never see them.
  */
 
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
 #include <expected>
 #include <string>
 #include <string_view>
 
-namespace caudio::ipc::detail {
+namespace kanariv::ipc::detail {
 
-using Json = caudio::utils::Json;
+using Json = kanariv::utils::Json;
 
 /**
  * @brief Convert StatusCode enum to string representation.
- * @ingroup caudio_ipc
+ * @ingroup kanariv_ipc
  * @param r Status code to convert.
  * @return String representation (e.g., "Ok", "InvalidArg", "NotFound").
  */
-std::string resultCodeToString(caudio::utils::StatusCode r);
+std::string resultCodeToString(kanariv::utils::StatusCode r);
 
 /**
  * @brief Convert string to StatusCode enum.
- * @ingroup caudio_ipc
+ * @ingroup kanariv_ipc
  * @param sv String to parse.
  * @return StatusCode enum value, or error if unknown.
  */
-std::expected<caudio::utils::StatusCode, caudio::utils::Error>
+std::expected<kanariv::utils::StatusCode, kanariv::utils::Error>
 resultCodeFromString(std::string_view sv);
 
 /**
  * @brief Convert Playlist struct to JSON object.
- * @ingroup caudio_ipc
+ * @ingroup kanariv_ipc
  * @param p Playlist to convert.
  * @return JSON object with all playlist fields.
  */
-Json playlistToJson(const caudio::types::Playlist& p);
+Json playlistToJson(const kanariv::types::Playlist& p);
 
 /**
  * @brief Convert JSON object to Playlist struct.
- * @ingroup caudio_ipc
+ * @ingroup kanariv_ipc
  * @param j JSON object with playlist fields.
  * @return Playlist struct, or error if parsing fails.
  */
-std::expected<caudio::types::Playlist, caudio::utils::Error> playlistFromJson(const Json& j);
+std::expected<kanariv::types::Playlist, kanariv::utils::Error> playlistFromJson(const Json& j);
 
 /**
  * @brief Convert Error struct to JSON object.
- * @ingroup caudio_ipc
+ * @ingroup kanariv_ipc
  * @param e Error to convert.
  * @return JSON object with type, code, code_value, and message fields.
  */
-Json errorToJson(const caudio::utils::Error& e);
+Json errorToJson(const kanariv::utils::Error& e);
 
 /**
  * @brief Convert JSON object to Error struct.
- * @ingroup caudio_ipc
+ * @ingroup kanariv_ipc
  * @param j JSON object with code/code_value and message fields.
  * @return Error struct, or error if parsing fails.
  */
-std::expected<caudio::utils::Error, caudio::utils::Error> errorFromJson(const Json& j);
+std::expected<kanariv::utils::Error, kanariv::utils::Error> errorFromJson(const Json& j);
 
-} // namespace caudio::ipc::detail
+} // namespace kanariv::ipc::detail

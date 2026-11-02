@@ -1,0 +1,25 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+# FFmpeg is required -- FindFFmpeg.cmake ships alongside this config. The
+# avcodec major recorded at build time pins the ABI so a consumer with a
+# different system FFmpeg fails loudly instead of linking a mismatched one.
+set(_kanariv_saved_module_path "${CMAKE_MODULE_PATH}")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+if("" STREQUAL "@KANARIV_FFMPEG_AVCODEC_MAJOR@")
+  find_dependency(FFmpeg)
+else()
+  find_dependency(FFmpeg @KANARIV_FFMPEG_AVCODEC_MAJOR@ EXACT)
+endif()
+set(CMAKE_MODULE_PATH "${_kanariv_saved_module_path}")
+unset(_kanariv_saved_module_path)
+
+# nlohmann_json is private (backend for src/utils/json.cpp behind the opaque
+# kanariv::utils::Json facade): nothing installed needs it, so no
+# find_dependency here. Only Threads + FFmpeg propagate downstream.
+
+include("${CMAKE_CURRENT_LIST_DIR}/kanarivTargets.cmake")
+
+check_required_components(kanariv)

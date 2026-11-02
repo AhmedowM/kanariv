@@ -10,9 +10,9 @@
 
 #include <array>
 #include <atomic>
-#include <caudio/config.hpp>
-#include <caudio/ipc/protocol.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/ipc/protocol.hpp>
+#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -29,7 +29,7 @@
 #include <unistd.h>
 #endif
 
-namespace caudio::client {
+namespace kanariv::client {
 
 struct IpcClient::Impl {
     /** @brief Connected socket/named pipe path. */
@@ -47,7 +47,7 @@ struct IpcClient::Impl {
      * @param data Byte span to send (already framed with length prefix).
      * @return void on success, Error on send failure or not connected.
      */
-    caudio::utils::Expected<void> rawSend(std::span<const std::byte> data);
+    kanariv::utils::Expected<void> rawSend(std::span<const std::byte> data);
 
     /**
      * @brief Receive a framed response.
@@ -55,18 +55,18 @@ struct IpcClient::Impl {
      * Enforces 16MB max frame size.
      * @return Payload bytes (without length header) on success, Error on failure.
      */
-    caudio::utils::Expected<std::vector<std::byte>> rawRecv();
+    kanariv::utils::Expected<std::vector<std::byte>> rawRecv();
 };
 
 IpcClient::IpcClient() : impl_(std::make_unique<Impl>()) {}
 
-caudio::utils::Expected<IpcClient> IpcClient::connect(const std::filesystem::path& dbPath,
+kanariv::utils::Expected<IpcClient> IpcClient::connect(const std::filesystem::path& dbPath,
                                                       std::string_view socketPathOverride) {
-    caudio::utils::Expected<std::string> sp;
+    kanariv::utils::Expected<std::string> sp;
     if (!socketPathOverride.empty()) {
         sp = std::string(socketPathOverride.data(), socketPathOverride.size());
     } else {
-        sp = caudio::config::socketPathFor(dbPath);
+        sp = kanariv::config::socketPathFor(dbPath);
     }
     if (!sp)
         return std::unexpected{sp.error()};
@@ -94,7 +94,7 @@ caudio::utils::Expected<IpcClient> IpcClient::connect(const std::filesystem::pat
         }
         if (h == INVALID_HANDLE_VALUE) {
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io,
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
                                          "CreateFileW connect failed: " + std::to_string(err))};
         }
     }
@@ -109,20 +109,20 @@ caudio::utils::Expected<IpcClient> IpcClient::connect(const std::filesystem::pat
     int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "socket failed")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "socket failed")};
     }
     sockaddr_un addr{};
     addr.sun_family = AF_UNIX;
     if (path.size() >= sizeof(addr.sun_path)) {
         ::close(fd);
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "socket path too long")};
     }
     std::memcpy(addr.sun_path, path.c_str(), path.size() + 1);
     if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
         ::close(fd);
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "connect failed")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "connect failed")};
     }
     IpcClient c;
     c.impl_->pipeHandle = fd;
@@ -140,14 +140,14 @@ IpcClient::IpcClient(IpcClient&& other) noexcept = default;
 
 IpcClient& IpcClient::operator=(IpcClient&& other) noexcept = default;
 
-caudio::utils::Expected<caudio::ipc::Result> IpcClient::send(const caudio::ipc::Command& cmd) {
+kanariv::utils::Expected<kanariv::ipc::Result> IpcClient::send(const kanariv::ipc::Command& cmd) {
     if (!impl_)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::State, "not connected")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "not connected")};
     uint32_t id = impl_->nextId.fetch_add(1) + 1;
-    caudio::ipc::IpcRequest req{id, cmd};
-    std::string json = caudio::ipc::serializeRequest(req);
-    auto framed = caudio::ipc::frame(json);
+    kanariv::ipc::IpcRequest req{id, cmd};
+    std::string json = kanariv::ipc::serializeRequest(req);
+    auto framed = kanariv::ipc::frame(json);
 
     if (auto e = impl_->rawSend(framed); !e)
         return std::unexpected{e.error()};
@@ -163,7 +163,7 @@ caudio::utils::Expected<caudio::ipc::Result> IpcClient::send(const caudio::ipc::
     for (auto b : *raw)
         replyStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
 
-    auto repExp = caudio::ipc::deserializeReply(replyStr);
+    auto repExp = kanariv::ipc::deserializeReply(replyStr);
     if (!repExp)
         return std::unexpected{repExp.error()};
     if (!repExp->result)
@@ -187,11 +187,11 @@ void IpcClient::close() noexcept {
 #endif
 }
 
-caudio::utils::Expected<void> IpcClient::Impl::rawSend(std::span<const std::byte> data) {
+kanariv::utils::Expected<void> IpcClient::Impl::rawSend(std::span<const std::byte> data) {
 #ifdef _WIN32
     if (pipeHandle == -1) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::State, "not connected")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "not connected")};
     }
     std::size_t sent = 0;
     while (sent < data.size()) {
@@ -201,8 +201,8 @@ caudio::utils::Expected<void> IpcClient::Impl::rawSend(std::span<const std::byte
                               static_cast<DWORD>(data.size() - sent), &w, nullptr);
         if (ok == 0) {
             DWORD err = ::GetLastError();
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::Io, "WriteFile failed: " + std::to_string(err))};
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Io, "WriteFile failed: " + std::to_string(err))};
         }
         sent += w;
     }
@@ -210,7 +210,7 @@ caudio::utils::Expected<void> IpcClient::Impl::rawSend(std::span<const std::byte
 #else
     if (pipeHandle < 0) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::State, "not connected")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "not connected")};
     }
     std::size_t sent = 0;
     while (sent < data.size()) {
@@ -221,7 +221,7 @@ caudio::utils::Expected<void> IpcClient::Impl::rawSend(std::span<const std::byte
             if (errno == EINTR)
                 continue;
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "send failed")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "send failed")};
         }
         sent += static_cast<std::size_t>(n);
     }
@@ -229,11 +229,11 @@ caudio::utils::Expected<void> IpcClient::Impl::rawSend(std::span<const std::byte
 #endif
 }
 
-caudio::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
+kanariv::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
 #ifdef _WIN32
     if (pipeHandle == -1) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::State, "not connected")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "not connected")};
     }
     std::array<std::byte, 4> hdr{};
     std::size_t got = 0;
@@ -244,12 +244,12 @@ caudio::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
                              &r, nullptr);
         if (ok == 0) {
             DWORD err = ::GetLastError();
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::Io, "ReadFile hdr failed: " + std::to_string(err))};
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Io, "ReadFile hdr failed: " + std::to_string(err))};
         }
         if (r == 0)
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "pipe closed")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "pipe closed")};
         got += r;
     }
     std::uint32_t len = (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
@@ -258,7 +258,7 @@ caudio::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
                         static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
     if (len > 16 * 1024 * 1024) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "frame too large")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
     }
     std::vector<std::byte> payload(len);
     got = 0;
@@ -269,19 +269,19 @@ caudio::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
                              static_cast<DWORD>(len - got), &r, nullptr);
         if (ok == 0) {
             DWORD err = ::GetLastError();
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::Io, "ReadFile payload failed: " + std::to_string(err))};
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Io, "ReadFile payload failed: " + std::to_string(err))};
         }
         if (r == 0)
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "pipe closed")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "pipe closed")};
         got += r;
     }
     return payload;
 #else
     if (pipeHandle < 0) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::State, "not connected")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "not connected")};
     }
     std::array<std::byte, 4> hdr{};
     std::size_t got = 0;
@@ -292,11 +292,11 @@ caudio::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
             if (errno == EINTR)
                 continue;
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "recv hdr failed")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "recv hdr failed")};
         }
         if (n == 0)
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "peer closed")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "peer closed")};
         got += static_cast<std::size_t>(n);
     }
     std::uint32_t len = (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
@@ -305,7 +305,7 @@ caudio::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
                         static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
     if (len > 16 * 1024 * 1024) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "frame too large")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
     }
     std::vector<std::byte> payload(len);
     got = 0;
@@ -316,15 +316,15 @@ caudio::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
             if (errno == EINTR)
                 continue;
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "recv payload failed")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "recv payload failed")};
         }
         if (n == 0)
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Io, "peer closed")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "peer closed")};
         got += static_cast<std::size_t>(n);
     }
     return payload;
 #endif
 }
 
-} // namespace caudio::client
+} // namespace kanariv::client

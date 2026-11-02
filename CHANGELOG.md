@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING** Project renamed from `caudio` to `kanariv`. The C++ namespace
+  is now `kanariv::`, public headers live under `include/kanariv/`, the CMake
+  package is `find_package(kanariv CONFIG REQUIRED)` with `kanariv::<component>`
+  targets, the CLI binary is `kanariv` (`kanariv.exe`), build options use the
+  `KANARIV_*` prefix, and runtime paths moved to `~/.config/kanariv` and
+  `~/.local/share/kanariv` (`kanariv.db`, `kanariv.log`).
+
 ### Added
 - `library stats --top-tracks/--top-albums/--top-genres/--top-artists`
   listening reports with multi-artist splitting (`0192df0`)

@@ -1,8 +1,8 @@
 #include <sqlite3.h>
 
 #include <atomic>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -19,18 +19,18 @@
 #include <utils/function.hpp>
 #include <utils/mpsc_queue.hpp>
 
-namespace caudio::db {
+namespace kanariv::db {
 
 // Private implementation: all heavyweight members (queue, worker thread,
 // synchronization) live here so the internal header stays include-light.
 struct WriterThread::Impl {
     explicit Impl(std::size_t writeBatchSize)
-        : queue_(std::make_unique<caudio::utils::MpscQueue<WriteOperation>>(
+        : queue_(std::make_unique<kanariv::utils::MpscQueue<WriteOperation>>(
               writeBatchSize > 0 ? writeBatchSize : 256)) {}
 
     void worker(std::stop_token st);
 
-    std::unique_ptr<caudio::utils::MpscQueue<WriteOperation>> queue_;
+    std::unique_ptr<kanariv::utils::MpscQueue<WriteOperation>> queue_;
     sqlite3* db_{nullptr};
     std::jthread thread_{};
     std::mutex mtx_;
@@ -43,7 +43,7 @@ WriteOperation::WriteOperation() = default;
 
 WriteOperation::WriteOperation(
     std::string s, std::unique_ptr<SqliteStatement> st,
-    caudio::utils::MoveOnlyFunction<void(std::expected<void, caudio::utils::Error>)> c)
+    kanariv::utils::MoveOnlyFunction<void(std::expected<void, kanariv::utils::Error>)> c)
     : sql(std::move(s)), stmt(std::move(st)), cb(std::move(c)) {}
 
 WriteOperation::WriteOperation(WriteOperation&&) noexcept = default;
@@ -88,9 +88,9 @@ void WriterThread::close() {
     }
 }
 
-std::expected<void, caudio::utils::Error> WriterThread::push(
+std::expected<void, kanariv::utils::Error> WriterThread::push(
     std::string sql, std::unique_ptr<SqliteStatement> stmt,
-    caudio::utils::MoveOnlyFunction<void(std::expected<void, caudio::utils::Error>)> cb) {
+    kanariv::utils::MoveOnlyFunction<void(std::expected<void, kanariv::utils::Error>)> cb) {
     WriteOperation op{std::move(sql), std::move(stmt), std::move(cb)};
     auto r = impl_->queue_->push(std::move(op));
     if (!r)
@@ -102,13 +102,13 @@ std::expected<void, caudio::utils::Error> WriterThread::push(
     return {};
 }
 
-std::expected<void, caudio::utils::Error> WriterThread::push(
+std::expected<void, kanariv::utils::Error> WriterThread::push(
     std::string sql,
-    caudio::utils::MoveOnlyFunction<void(std::expected<void, caudio::utils::Error>)> cb) {
+    kanariv::utils::MoveOnlyFunction<void(std::expected<void, kanariv::utils::Error>)> cb) {
     return push(std::move(sql), std::unique_ptr<SqliteStatement>{}, std::move(cb));
 }
 
-std::expected<void, caudio::utils::Error> WriterThread::flush() {
+std::expected<void, kanariv::utils::Error> WriterThread::flush() {
     std::unique_lock<std::mutex> lk(impl_->mtx_);
     bool done = impl_->cv_.wait_for(lk, std::chrono::milliseconds{200}, [this] {
         return impl_->queue_->empty() && impl_->in_flight_.load(std::memory_order_acquire) == 0;
@@ -118,7 +118,7 @@ std::expected<void, caudio::utils::Error> WriterThread::flush() {
     if (impl_->queue_->empty() && impl_->in_flight_.load(std::memory_order_acquire) == 0)
         return {};
     return std::unexpected{
-        caudio::utils::makeError(caudio::utils::StatusCode::Busy, "flush timeout")};
+        kanariv::utils::makeError(kanariv::utils::StatusCode::Busy, "flush timeout")};
 }
 
 bool WriterThread::empty() const {
@@ -145,12 +145,12 @@ void WriterThread::Impl::worker(std::stop_token st) {
         }
         WriteOperation op = std::move(popped.value());
         in_flight_.fetch_add(1, std::memory_order_acq_rel);
-        caudio::utils::Error err{};
+        kanariv::utils::Error err{};
         bool ok = true;
         if (op.stmt) {
             int rc = op.stmt->stepDone();
             if (rc != SQLITE_DONE && rc != SQLITE_ROW && rc != SQLITE_OK) {
-                err = caudio::utils::makeError(caudio::utils::StatusCode::Corrupt,
+                err = kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
                                                sqlite3_errmsg(db_));
                 ok = false;
             }
@@ -159,7 +159,7 @@ void WriterThread::Impl::worker(std::stop_token st) {
             internal::SqliteErrGuard guard{e};
             int rc = sqlite3_exec(db_, op.sql.c_str(), nullptr, nullptr, &e);
             if (rc != SQLITE_OK) {
-                err = caudio::utils::makeError(caudio::utils::StatusCode::Corrupt,
+                err = kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
                                                e ? e : sqlite3_errmsg(db_));
                 ok = false;
             }
@@ -171,11 +171,11 @@ void WriterThread::Impl::worker(std::stop_token st) {
         }
         if (op.cb) {
             if (ok)
-                op.cb(std::expected<void, caudio::utils::Error>{});
+                op.cb(std::expected<void, kanariv::utils::Error>{});
             else
                 op.cb(std::unexpected{err});
         }
     }
 }
 
-} // namespace caudio::db
+} // namespace kanariv::db

@@ -1,8 +1,8 @@
 #include <sqlite3.h>
 
-#include <caudio/types/db.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <db/queue.hpp>
@@ -13,17 +13,17 @@
 #include <utility>
 #include <vector>
 
-namespace caudio::db {
+namespace kanariv::db {
 
-std::expected<void, caudio::utils::Error> queueEnqueueLocked(sqlite3* db, int64_t qid, int64_t tid,
+std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64_t qid, int64_t tid,
                                                              int64_t pos) {
     if (tid == 0)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     if (qid == 0)
         qid = 1;
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     if (pos < 0) {
         SqliteStatement ms;
         if (auto e =
@@ -59,17 +59,17 @@ std::expected<void, caudio::utils::Error> queueEnqueueLocked(sqlite3* db, int64_
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, sqlite3_errmsg(db))};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, sqlite3_errmsg(db))};
     return {};
 }
 
-std::expected<caudio::types::QueueItem, caudio::utils::Error> queueDequeueLocked(sqlite3* db,
+std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLocked(sqlite3* db,
                                                                                  int64_t qid) {
     if (qid == 0)
         qid = 1;
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
     auto e = st.prepare(db, "SELECT id, queue_id, track_id, position, added FROM queue "
                             "WHERE queue_id=? ORDER BY position LIMIT 1");
@@ -78,9 +78,9 @@ std::expected<caudio::types::QueueItem, caudio::utils::Error> queueDequeueLocked
     st.bindInt(1, qid);
     bool hasRow = st.step();
     if (!hasRow) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     }
-    caudio::types::QueueItem it;
+    kanariv::types::QueueItem it;
     it.id = st.columnInt(0);
     it.queue_id = st.columnInt(1);
     it.track_id = st.columnInt(2);
@@ -106,12 +106,12 @@ std::expected<caudio::types::QueueItem, caudio::utils::Error> queueDequeueLocked
     return it;
 }
 
-std::expected<void, caudio::utils::Error> queueRemoveLocked(sqlite3* db, int64_t qid, int64_t pos) {
+std::expected<void, kanariv::utils::Error> queueRemoveLocked(sqlite3* db, int64_t qid, int64_t pos) {
     if (qid == 0)
         qid = 1;
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
     auto e = st.prepare(db, "DELETE FROM queue WHERE queue_id=? AND position=?");
     if (!e)
@@ -121,9 +121,9 @@ std::expected<void, caudio::utils::Error> queueRemoveLocked(sqlite3* db, int64_t
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, sqlite3_errmsg(db))};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, sqlite3_errmsg(db))};
     if (sqlite3_changes(db) == 0)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     {
         SqliteStatement sh;
         if (auto se = sh.prepare(
@@ -137,12 +137,12 @@ std::expected<void, caudio::utils::Error> queueRemoveLocked(sqlite3* db, int64_t
     return {};
 }
 
-std::expected<void, caudio::utils::Error> queueClearLocked(sqlite3* db, int64_t qid) {
+std::expected<void, kanariv::utils::Error> queueClearLocked(sqlite3* db, int64_t qid) {
     if (qid == 0)
         qid = 1;
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
     auto e = st.prepare(db, "DELETE FROM queue WHERE queue_id=?");
     if (!e)
@@ -151,26 +151,26 @@ std::expected<void, caudio::utils::Error> queueClearLocked(sqlite3* db, int64_t 
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, sqlite3_errmsg(db))};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, sqlite3_errmsg(db))};
     return {};
 }
 
-std::expected<std::vector<caudio::types::QueueItem>, caudio::utils::Error>
+std::expected<std::vector<kanariv::types::QueueItem>, kanariv::utils::Error>
 queueListLocked(sqlite3* db, int64_t qid) {
     if (qid == 0)
         qid = 1;
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
     auto e = st.prepare(db, "SELECT id, queue_id, track_id, position, added FROM queue WHERE "
                             "queue_id=? ORDER BY position");
     if (!e)
         return std::unexpected{e.error()};
     st.bindInt(1, qid);
-    std::vector<caudio::types::QueueItem> out;
+    std::vector<kanariv::types::QueueItem> out;
     while (st.step()) {
-        caudio::types::QueueItem it;
+        kanariv::types::QueueItem it;
         it.id = st.columnInt(0);
         it.queue_id = st.columnInt(1);
         it.track_id = st.columnInt(2);
@@ -229,12 +229,12 @@ std::optional<size_t> queueIndexOfLocked(sqlite3* db, int64_t qid, int64_t track
     }
 }
 
-std::expected<caudio::types::Queue, caudio::utils::Error> getQueueLocked(sqlite3* db, int64_t qid) {
+std::expected<kanariv::types::Queue, kanariv::utils::Error> getQueueLocked(sqlite3* db, int64_t qid) {
     if (qid == 0)
         qid = 1;
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
     auto e =
         st.prepare(db, "SELECT id, name, repeat_mode, temp, library_id FROM queues WHERE id=?");
@@ -242,9 +242,9 @@ std::expected<caudio::types::Queue, caudio::utils::Error> getQueueLocked(sqlite3
         return std::unexpected{e.error()};
     st.bindInt(1, qid);
     if (!st.step()) {
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     }
-    caudio::types::Queue q;
+    kanariv::types::Queue q;
     q.id = st.columnInt(0);
     q.name = st.columnText(1);
     q.repeat_mode = static_cast<int32_t>(st.columnInt(2));
@@ -253,18 +253,18 @@ std::expected<caudio::types::Queue, caudio::utils::Error> getQueueLocked(sqlite3
     return q;
 }
 
-std::expected<std::vector<caudio::types::Queue>, caudio::utils::Error> listQueuesLocked(sqlite3* db) {
+std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error> listQueuesLocked(sqlite3* db) {
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
     auto e =
         st.prepare(db, "SELECT id, name, repeat_mode, temp, library_id FROM queues ORDER BY id");
     if (!e)
         return std::unexpected{e.error()};
-    std::vector<caudio::types::Queue> out;
+    std::vector<kanariv::types::Queue> out;
     while (st.step()) {
-        caudio::types::Queue q;
+        kanariv::types::Queue q;
         q.id = st.columnInt(0);
         q.name = st.columnText(1);
         q.repeat_mode = static_cast<int32_t>(st.columnInt(2));
@@ -275,13 +275,13 @@ std::expected<std::vector<caudio::types::Queue>, caudio::utils::Error> listQueue
     return out;
 }
 
-std::expected<int64_t, caudio::utils::Error> createQueueLocked(sqlite3* db, std::string_view name,
+std::expected<int64_t, kanariv::utils::Error> createQueueLocked(sqlite3* db, std::string_view name,
                                                                int64_t library_id) {
     if (name.empty())
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
     auto e = st.prepare(db, "INSERT INTO queues (name, repeat_mode, library_id) VALUES (?,?,?)");
     if (!e)
@@ -292,16 +292,16 @@ std::expected<int64_t, caudio::utils::Error> createQueueLocked(sqlite3* db, std:
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, sqlite3_errmsg(db))};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, sqlite3_errmsg(db))};
     return sqlite3_last_insert_rowid(db);
 }
 
-std::expected<void, caudio::utils::Error> deleteQueueLocked(sqlite3* db, int64_t qid) {
+std::expected<void, kanariv::utils::Error> deleteQueueLocked(sqlite3* db, int64_t qid) {
     if (qid == 0)
         qid = 1;
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     {
         SqliteStatement st;
         if (auto e = st.prepare(db, "DELETE FROM queue WHERE queue_id=?"); e) {
@@ -319,19 +319,19 @@ std::expected<void, caudio::utils::Error> deleteQueueLocked(sqlite3* db, int64_t
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, sqlite3_errmsg(db))};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, sqlite3_errmsg(db))};
     if (sqlite3_changes(db) == 0)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
 }
 
-std::expected<void, caudio::utils::Error> setQueueRepeatLocked(sqlite3* db, int64_t qid,
+std::expected<void, kanariv::utils::Error> setQueueRepeatLocked(sqlite3* db, int64_t qid,
                                                                int repeat_mode) {
     if (qid == 0)
         qid = 1;
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
     auto e = st.prepare(db, "UPDATE queues SET repeat_mode=? WHERE id=?");
     if (!e)
@@ -341,18 +341,18 @@ std::expected<void, caudio::utils::Error> setQueueRepeatLocked(sqlite3* db, int6
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, sqlite3_errmsg(db))};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, sqlite3_errmsg(db))};
     if (sqlite3_changes(db) == 0)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
 }
 
-std::expected<void, caudio::utils::Error> setQueueTempLocked(sqlite3* db, int64_t qid, bool temp) {
+std::expected<void, kanariv::utils::Error> setQueueTempLocked(sqlite3* db, int64_t qid, bool temp) {
     if (qid == 0)
         qid = 1;
     if (!db)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
     auto e = st.prepare(db, "UPDATE queues SET temp=? WHERE id=?");
     if (!e)
@@ -362,10 +362,10 @@ std::expected<void, caudio::utils::Error> setQueueTempLocked(sqlite3* db, int64_
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Internal, sqlite3_errmsg(db))};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, sqlite3_errmsg(db))};
     if (sqlite3_changes(db) == 0)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
 }
 
-} // namespace caudio::db
+} // namespace kanariv::db

@@ -21,10 +21,10 @@
 #endif
 
 #ifndef TEST_CLI_BIN
-#error "TEST_CLI_BIN must be defined to the caudio executable under test"
+#error "TEST_CLI_BIN must be defined to the kanariv executable under test"
 #endif
 
-using namespace caudio::test_helpers;
+using namespace kanariv::test_helpers;
 
 namespace {
 
@@ -73,7 +73,7 @@ RunResult runCli(const std::vector<std::string>& args) {
         cmd += " " + shellQuote(a);
     cmd += " >" + shellQuote(outF.string()) + " 2>" + shellQuote(errF.string());
     // Redirect the child's temp dir into this run's work dir so default-path
-    // artifacts (e.g. a no-config daemon's caudio.log) are removed with it.
+    // artifacts (e.g. a no-config daemon's kanariv.log) are removed with it.
     std::string oldTemp = [] {
         const char* v = std::getenv("TEMP");
         return v ? std::string(v) : std::string{};
@@ -181,7 +181,7 @@ TEST_CASE("cli version prints", "[cli]") {
 TEST_CASE("cli version subcommand prints details", "[cli]") {
     auto r = runCli({"version"});
     REQUIRE(r.exitCode == 0);
-    for (const char* tok : {"caudio ", "short:", "commit:", "compiler:", "std:", "runtime:",
+    for (const char* tok : {"kanariv ", "short:", "commit:", "compiler:", "std:", "runtime:",
                             "build:", "os:", "arch:"}) {
         INFO("missing token: " << tok);
         REQUIRE(contains(r.out, tok));
@@ -269,7 +269,7 @@ TEST_CASE("cli no-daemon errors point at start", "[cli]") {
         auto r = runCli(withCfg("gold_nd1", {sub}));
         REQUIRE(r.exitCode == 105);
         REQUIRE(contains(r.err, "daemon not running"));
-        REQUIRE(contains(r.err, "caudio start"));
+        REQUIRE(contains(r.err, "kanariv start"));
     }
     auto q = runCli(withCfg("gold_nd2", {"queue", "list"}));
     REQUIRE(q.exitCode == 105);
@@ -303,7 +303,7 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
         return runCli(a);
     };
     // Best-effort shutdown on any path: a REQUIRE failure must not leak a
-    // daemon (on Windows a live daemon locks caudio.exe for the next build).
+    // daemon (on Windows a live daemon locks kanariv.exe for the next build).
     struct DaemonGuard {
         decltype(run)* runFn;
         ~DaemonGuard() {
@@ -336,7 +336,7 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     // The daemon writes its startup line to the db-adjacent log file.
     bool logged = false;
     for (int i = 0; i < 50 && !logged; ++i) {
-        std::ifstream lf(dir / "caudio.log", std::ios::binary);
+        std::ifstream lf(dir / "kanariv.log", std::ios::binary);
         std::string content((std::istreambuf_iterator<char>(lf)), std::istreambuf_iterator<char>());
         logged = content.find("daemon started") != std::string::npos;
         if (!logged)
@@ -755,7 +755,7 @@ TEST_CASE("cli tag edit writes file", "[cli]") {
 }
 
 TEST_CASE("cli playback one-liners", "[cli]") {
-    CAUDIO_SKIP_IF_NOAUDIO();
+    KANARIV_SKIP_IF_NOAUDIO();
     namespace fs = std::filesystem;
     fs::path dir = tempDirPath("gold_play");
     fs::path cfg = dir / "config.json";

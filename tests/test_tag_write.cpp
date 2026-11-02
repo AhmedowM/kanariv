@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/utils/error.hpp>
 #include <common.hpp>
 #include <cstdint>
 #include <filesystem>
@@ -12,13 +12,13 @@
 
 #include "../src/service/tag_writer.hpp"
 
-using namespace caudio::service::detail;
-using caudio::types::Track;
+using namespace kanariv::service::detail;
+using kanariv::types::Track;
 
 namespace {
 
 std::filesystem::path copyFixture(const std::string& name) {
-    auto dir = caudio::test_helpers::tempDirPath("tagwrite");
+    auto dir = kanariv::test_helpers::tempDirPath("tagwrite");
     std::filesystem::create_directories(dir);
     auto dst = dir / name;
     std::filesystem::copy_file(std::filesystem::path(std::string(TEST_DATA_DIR)) / name, dst,
@@ -26,8 +26,8 @@ std::filesystem::path copyFixture(const std::string& name) {
     return dst;
 }
 
-caudio::types::Track taggedRow(const std::filesystem::path& p) {
-    caudio::types::Track t;
+kanariv::types::Track taggedRow(const std::filesystem::path& p) {
+    kanariv::types::Track t;
     t.path = p.generic_string();
     t.title = "TagTitle";
     t.artist = "TagArtist";
@@ -42,10 +42,10 @@ caudio::types::Track taggedRow(const std::filesystem::path& p) {
 
 void requireRoundTrip(const std::string& fixture) {
     auto p = copyFixture(fixture);
-    caudio::types::Track t = taggedRow(p);
+    kanariv::types::Track t = taggedRow(p);
     auto w = writeFileTags(p, t);
     REQUIRE(w.has_value());
-    auto meta = caudio::media::extractMetadata(p.generic_string());
+    auto meta = kanariv::media::extractMetadata(p.generic_string());
     REQUIRE(meta.has_value());
     REQUIRE(meta->title == "TagTitle");
     REQUIRE(meta->artist == "TagArtist");
@@ -107,19 +107,19 @@ TEST_CASE("tag write round-trips wavpack", "[tag_write]") {
 }
 
 TEST_CASE("tag write rejects unsupported format", "[tag_write]") {
-    caudio::types::Track t;
+    kanariv::types::Track t;
     t.path = "song.tak";
     auto w = writeFileTags(t.path, t);
     REQUIRE(!w.has_value());
-    REQUIRE(w.error().code == caudio::utils::StatusCode::InvalidArg);
+    REQUIRE(w.error().code == kanariv::utils::StatusCode::InvalidArg);
 }
 
 TEST_CASE("reregister keeps id and refreshes row", "[tag_write]") {
     auto p = copyFixture("sample.mp3");
-    auto dbRes = caudio::db::Database::open(":memory:");
+    auto dbRes = kanariv::db::Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto& db = *dbRes.value();
-    caudio::types::Track t = taggedRow(p);
+    kanariv::types::Track t = taggedRow(p);
     auto ins = db.insertTrack(t);
     REQUIRE(ins.has_value());
     t.id = *ins;

@@ -16,7 +16,7 @@ jobs:
     name: build (${{ matrix.os }} / ${{ matrix.compiler }})
     runs-on: ${{ matrix.os }}
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     strategy:
       fail-fast: false
       matrix:
@@ -150,7 +150,7 @@ jobs:
 
       - name: Test
         env:
-          CAUDIO_TEST_NOAUDIO: 1
+          KANARIV_TEST_NOAUDIO: 1
         run: python scripts/configure.py ci --toolchain ${{ matrix.toolchain }} --build-dir build/ci-${{ matrix.toolchain }} --test
 
       - name: Package (TGZ/ZIP)
@@ -164,7 +164,7 @@ jobs:
       - name: Upload artifact - package
         uses: actions/upload-artifact@v4
         with:
-          name: caudio-package-${{ matrix.os }}-${{ matrix.compiler }}
+          name: kanariv-package-${{ matrix.os }}-${{ matrix.compiler }}
           path: build/ci-${{ matrix.toolchain }}/*.tar.gz
           if-no-files-found: error
 
@@ -203,7 +203,7 @@ jobs:
       - name: Upload artifact - docs
         uses: actions/upload-artifact@v4
         with:
-          name: caudio-docs
+          name: kanariv-docs
           path: |
             build/docs/docs/html
             build/docs/docs/xml
@@ -215,8 +215,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 90
     env:
-      CAUDIO_TEST_NOAUDIO: 1
-      CAUDIO_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
+      KANARIV_TEST_NOAUDIO: 1
+      KANARIV_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
       DEPS_REPO: "AhmedowM/deps-private"
       FFMPEG_VERSION: "8.1.2"
       REBUILD: "1"
@@ -241,9 +241,9 @@ jobs:
       - name: Extract trimmed archive
         run: |
           if command -v cygpath >/dev/null 2>&1; then
-            troot="$(cygpath "$CAUDIO_TRIMMED_ROOT")"
+            troot="$(cygpath "$KANARIV_TRIMMED_ROOT")"
           else
-            troot="$CAUDIO_TRIMMED_ROOT"
+            troot="$KANARIV_TRIMMED_ROOT"
           fi
           mkdir -p "$troot"
           tar -xzf ffmpeg-trimmed-${{ env.FFMPEG_VERSION }}-windows-x86_64.tar.gz -C "$troot"
@@ -256,7 +256,7 @@ jobs:
         # one (module FATALS without a complete FFmpeg_ROOT). Same fallback
         # contract as the other trim jobs.
         run: |
-          if python scripts/configure.py ci --toolchain msvc --trimmed-ffmpeg --ffmpeg-root "$CAUDIO_TRIMMED_ROOT" --build-dir build/ci-trimmed-msvc; then
+          if python scripts/configure.py ci --toolchain msvc --trimmed-ffmpeg --ffmpeg-root "$KANARIV_TRIMMED_ROOT" --build-dir build/ci-trimmed-msvc; then
             echo "build_dir=build/ci-trimmed-msvc" >> "$GITHUB_OUTPUT"
             echo "trimmed=true" >> "$GITHUB_OUTPUT"
           else
@@ -272,7 +272,7 @@ jobs:
           # Same hermeticity rationale as the MinGW job; MSVC needs no
           # extra runtime DLLs (UCRT/vcruntime are system components).
           dest="${{ steps.pick.outputs.build_dir }}"
-          troot="$(cygpath "$CAUDIO_TRIMMED_ROOT")"
+          troot="$(cygpath "$KANARIV_TRIMMED_ROOT")"
           if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then
             src="$troot/bin"
           else
@@ -288,16 +288,16 @@ jobs:
       - name: Build
         run: |
           EXTRA=""
-          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $CAUDIO_TRIMMED_ROOT"; fi
+          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $KANARIV_TRIMMED_ROOT"; fi
           python scripts/configure.py ci --toolchain msvc --build-dir "${{ steps.pick.outputs.build_dir }}" $EXTRA --build
         shell: bash
 
       - name: Test
         env:
-          CAUDIO_TEST_NOAUDIO: 1
+          KANARIV_TEST_NOAUDIO: 1
         run: |
           EXTRA=""
-          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $CAUDIO_TRIMMED_ROOT"; fi
+          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $KANARIV_TRIMMED_ROOT"; fi
           python scripts/configure.py ci --toolchain msvc --build-dir "${{ steps.pick.outputs.build_dir }}" $EXTRA --test
         shell: bash
 
@@ -306,8 +306,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      CAUDIO_TEST_NOAUDIO: 1
-      CAUDIO_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
+      KANARIV_TEST_NOAUDIO: 1
+      KANARIV_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
       DEPS_REPO: "AhmedowM/deps-private"
       FFMPEG_VERSION: "8.1.2"
       REBUILD: "1"
@@ -345,14 +345,14 @@ jobs:
 
       - name: Extract trimmed archive
         run: |
-          mkdir -p "$CAUDIO_TRIMMED_ROOT"
-          tar -xzf ffmpeg-trimmed-${{ env.FFMPEG_VERSION }}-linux-x86_64.tar.gz -C "$CAUDIO_TRIMMED_ROOT"
-          ls "$CAUDIO_TRIMMED_ROOT/lib"
+          mkdir -p "$KANARIV_TRIMMED_ROOT"
+          tar -xzf ffmpeg-trimmed-${{ env.FFMPEG_VERSION }}-linux-x86_64.tar.gz -C "$KANARIV_TRIMMED_ROOT"
+          ls "$KANARIV_TRIMMED_ROOT/lib"
 
       - name: Configure (trimmed, fallback to default provider)
         id: pick
         run: |
-          if python scripts/configure.py ci --toolchain gcc --trimmed-ffmpeg --ffmpeg-root "$CAUDIO_TRIMMED_ROOT" --build-dir build/ci-trimmed-gcc; then
+          if python scripts/configure.py ci --toolchain gcc --trimmed-ffmpeg --ffmpeg-root "$KANARIV_TRIMMED_ROOT" --build-dir build/ci-trimmed-gcc; then
             echo "build_dir=build/ci-trimmed-gcc" >> "$GITHUB_OUTPUT"
             echo "trimmed=true" >> "$GITHUB_OUTPUT"
           else
@@ -365,15 +365,15 @@ jobs:
       - name: Build
         run: |
           EXTRA=""
-          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $CAUDIO_TRIMMED_ROOT"; fi
+          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $KANARIV_TRIMMED_ROOT"; fi
           python scripts/configure.py ci --toolchain gcc --build-dir "${{ steps.pick.outputs.build_dir }}" $EXTRA --build
 
       - name: Test
         env:
-          CAUDIO_TEST_NOAUDIO: 1
+          KANARIV_TEST_NOAUDIO: 1
         run: |
           EXTRA=""
-          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $CAUDIO_TRIMMED_ROOT"; fi
+          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $KANARIV_TRIMMED_ROOT"; fi
           python scripts/configure.py ci --toolchain gcc --build-dir "${{ steps.pick.outputs.build_dir }}" $EXTRA --test
 
   ffmpeg-trimmed-macos:
@@ -381,8 +381,8 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 90
     env:
-      CAUDIO_TEST_NOAUDIO: 1
-      CAUDIO_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
+      KANARIV_TEST_NOAUDIO: 1
+      KANARIV_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
       DEPS_REPO: "AhmedowM/deps-private"
       FFMPEG_VERSION: "8.1.2"
       REBUILD: "1"
@@ -416,14 +416,14 @@ jobs:
 
       - name: Extract trimmed archive
         run: |
-          mkdir -p "$CAUDIO_TRIMMED_ROOT"
-          tar -xzf ffmpeg-trimmed-${{ env.FFMPEG_VERSION }}-macos-arm64.tar.gz -C "$CAUDIO_TRIMMED_ROOT"
-          ls "$CAUDIO_TRIMMED_ROOT/lib"
+          mkdir -p "$KANARIV_TRIMMED_ROOT"
+          tar -xzf ffmpeg-trimmed-${{ env.FFMPEG_VERSION }}-macos-arm64.tar.gz -C "$KANARIV_TRIMMED_ROOT"
+          ls "$KANARIV_TRIMMED_ROOT/lib"
 
       - name: Configure (trimmed, fallback to default provider)
         id: pick
         run: |
-          if python scripts/configure.py ci --toolchain clang --trimmed-ffmpeg --ffmpeg-root "$CAUDIO_TRIMMED_ROOT" --build-dir build/ci-trimmed-clang; then
+          if python scripts/configure.py ci --toolchain clang --trimmed-ffmpeg --ffmpeg-root "$KANARIV_TRIMMED_ROOT" --build-dir build/ci-trimmed-clang; then
             echo "build_dir=build/ci-trimmed-clang" >> "$GITHUB_OUTPUT"
             echo "trimmed=true" >> "$GITHUB_OUTPUT"
           else
@@ -436,22 +436,22 @@ jobs:
       - name: Build
         run: |
           EXTRA=""
-          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $CAUDIO_TRIMMED_ROOT"; fi
+          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $KANARIV_TRIMMED_ROOT"; fi
           python scripts/configure.py ci --toolchain clang --build-dir "${{ steps.pick.outputs.build_dir }}" $EXTRA --build
 
       - name: Test
         env:
-          CAUDIO_TEST_NOAUDIO: 1
+          KANARIV_TEST_NOAUDIO: 1
         run: |
           EXTRA=""
-          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $CAUDIO_TRIMMED_ROOT"; fi
+          if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $KANARIV_TRIMMED_ROOT"; fi
           python scripts/configure.py ci --toolchain clang --build-dir "${{ steps.pick.outputs.build_dir }}" $EXTRA --test
 
   sanitizers:
     name: sanitizers (ubuntu-24.04 / gcc-16)
     runs-on: ubuntu-latest
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -488,7 +488,7 @@ jobs:
 
       - name: Test
         env:
-          CAUDIO_TEST_NOAUDIO: 1
+          KANARIV_TEST_NOAUDIO: 1
           # Known FFmpeg probe-buffer drip suppressed (see file); all other
           # leaks, UBSan and ASan reports stay fatal. NOTE: env blocks need
           # ${{ }} context syntax -- $VAR is NOT expanded here.
@@ -502,7 +502,7 @@ jobs:
     name: install-smoke (ubuntu-24.04 / gcc-16)
     runs-on: ubuntu-latest
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -535,57 +535,57 @@ jobs:
 
       - name: Test
         env:
-          CAUDIO_TEST_NOAUDIO: 1
+          KANARIV_TEST_NOAUDIO: 1
         run: python scripts/configure.py ci --toolchain gcc --build-dir build/ci-gcc --test
 
-      - name: Install to /tmp/caudio-install
-        run: cmake --install build/ci-gcc --prefix /tmp/caudio-install
+      - name: Install to /tmp/kanariv-install
+        run: cmake --install build/ci-gcc --prefix /tmp/kanariv-install
 
       - name: Verify install layout
         run: |
           echo "=== install tree ==="
-          find /tmp/caudio-install -type f | head -n 100
-          echo "=== caudio --version ==="
-          /tmp/caudio-install/bin/caudio --version || build/ci-gcc/caudio --version || echo "caudio --version check failed"
+          find /tmp/kanariv-install -type f | head -n 100
+          echo "=== kanariv --version ==="
+          /tmp/kanariv-install/bin/kanariv --version || build/ci-gcc/kanariv --version || echo "kanariv --version check failed"
           echo "=== version.hpp ==="
-          test -f /tmp/caudio-install/include/caudio/version.hpp && echo "version.hpp found" || (echo "version.hpp missing" && exit 1)
+          test -f /tmp/kanariv-install/include/kanariv/version.hpp && echo "version.hpp found" || (echo "version.hpp missing" && exit 1)
           echo "=== no module sources in header-mode install ==="
-          test ! -d /tmp/caudio-install/include/caudio/src && echo "no src/*.cppm (expected, modules OFF)" || (echo "unexpected src/*.cppm shipped" && exit 1)
-          test -f /tmp/caudio-install/lib/cmake/caudio/caudioConfig.cmake && echo "caudioConfig.cmake found" || echo "caudioConfig.cmake missing"
-          test -f /tmp/caudio-install/lib/cmake/caudio/FindFFmpeg.cmake && echo "FindFFmpeg.cmake found" || (echo "FindFFmpeg.cmake missing" && exit 1)
-          test -f /tmp/caudio-install/include/caudio/version_config.hpp && echo "version_config.hpp found" || (echo "version_config.hpp missing" && exit 1)
+          test ! -d /tmp/kanariv-install/include/kanariv/src && echo "no src/*.cppm (expected, modules OFF)" || (echo "unexpected src/*.cppm shipped" && exit 1)
+          test -f /tmp/kanariv-install/lib/cmake/kanariv/kanarivConfig.cmake && echo "kanarivConfig.cmake found" || echo "kanarivConfig.cmake missing"
+          test -f /tmp/kanariv-install/lib/cmake/kanariv/FindFFmpeg.cmake && echo "FindFFmpeg.cmake found" || (echo "FindFFmpeg.cmake missing" && exit 1)
+          test -f /tmp/kanariv-install/include/kanariv/version_config.hpp && echo "version_config.hpp found" || (echo "version_config.hpp missing" && exit 1)
 
       - name: Smoke compile (find_package + headers)
         run: |
-          mkdir -p /tmp/caudio-smoke
-          cat > /tmp/caudio-smoke/CMakeLists.txt << 'EOF'
+          mkdir -p /tmp/kanariv-smoke
+          cat > /tmp/kanariv-smoke/CMakeLists.txt << 'EOF'
           cmake_minimum_required(VERSION 3.28)
-          project(caudio_smoke CXX)
+          project(kanariv_smoke CXX)
           set(CMAKE_CXX_STANDARD 23)
           set(CMAKE_CXX_STANDARD_REQUIRED ON)
-          list(APPEND CMAKE_PREFIX_PATH "/tmp/caudio-install")
-          find_package(caudio CONFIG REQUIRED)
+          list(APPEND CMAKE_PREFIX_PATH "/tmp/kanariv-install")
+          find_package(kanariv CONFIG REQUIRED)
           add_executable(smoke main.cpp)
-          target_link_libraries(smoke PRIVATE caudio::utils)
+          target_link_libraries(smoke PRIVATE kanariv::utils)
           EOF
-          cat > /tmp/caudio-smoke/main.cpp << 'EOF'
-          #include <caudio/utils.hpp>
-          #include <caudio/version.hpp>
+          cat > /tmp/kanariv-smoke/main.cpp << 'EOF'
+          #include <kanariv/utils.hpp>
+          #include <kanariv/version.hpp>
           #include <print>
           int main() {
-            std::println("caudio smoke ok: {}", caudio::version::shortVersion());
+            std::println("kanariv smoke ok: {}", kanariv::version::shortVersion());
             return 0;
           }
           EOF
-          cmake -B /tmp/caudio-smoke/build -G Ninja -DCMAKE_PREFIX_PATH=/tmp/caudio-install -DCMAKE_CXX_STANDARD=23 /tmp/caudio-smoke
-          cmake --build /tmp/caudio-smoke/build -v
-          /tmp/caudio-smoke/build/smoke || ./tmp/caudio-smoke/build/smoke
+          cmake -B /tmp/kanariv-smoke/build -G Ninja -DCMAKE_PREFIX_PATH=/tmp/kanariv-install -DCMAKE_CXX_STANDARD=23 /tmp/kanariv-smoke
+          cmake --build /tmp/kanariv-smoke/build -v
+          /tmp/kanariv-smoke/build/smoke || ./tmp/kanariv-smoke/build/smoke
 
   modules-smoke:
     name: modules-smoke (ubuntu-24.04 / gcc-16)
     runs-on: ubuntu-latest
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -616,42 +616,42 @@ jobs:
       - name: Build
         run: python scripts/configure.py modules --toolchain gcc --build-dir build/modules-gcc --build
 
-      - name: Install to /tmp/caudio-install-mod
-        run: cmake --install build/modules-gcc --prefix /tmp/caudio-install-mod
+      - name: Install to /tmp/kanariv-install-mod
+        run: cmake --install build/modules-gcc --prefix /tmp/kanariv-install-mod
 
       - name: Verify module sources shipped
         run: |
-          test -f /tmp/caudio-install-mod/modules/caudio.cppm && echo "caudio.cppm found" || (echo "caudio.cppm missing" && exit 1)
-          ls /tmp/caudio-install-mod/modules/*/*.cppm /tmp/caudio-install-mod/modules/*/*/*.cppm | head -n 20
+          test -f /tmp/kanariv-install-mod/modules/kanariv.cppm && echo "kanariv.cppm found" || (echo "kanariv.cppm missing" && exit 1)
+          ls /tmp/kanariv-install-mod/modules/*/*.cppm /tmp/kanariv-install-mod/modules/*/*/*.cppm | head -n 20
 
-      - name: Smoke compile (find_package + import caudio.utils)
+      - name: Smoke compile (find_package + import kanariv.utils)
         run: |
-          mkdir -p /tmp/caudio-mod-smoke
-          # Correct consumption: link caudio::utils (which carries its own
+          mkdir -p /tmp/kanariv-mod-smoke
+          # Correct consumption: link kanariv::utils (which carries its own
           # installed CXX_MODULES file set) and import the module. Do NOT list
           # the installed .cppm files in our own FILE_SET -- that compiles the
           # same module names twice and CMake aborts with "Disagreement of the
-          # location of the 'caudio.utils' module".
-          cat > /tmp/caudio-mod-smoke/CMakeLists.txt << 'EOF'
+          # location of the 'kanariv.utils' module".
+          cat > /tmp/kanariv-mod-smoke/CMakeLists.txt << 'EOF'
           cmake_minimum_required(VERSION 3.28)
-          project(caudio_mod_smoke CXX)
+          project(kanariv_mod_smoke CXX)
           set(CMAKE_CXX_STANDARD 23)
           set(CMAKE_CXX_STANDARD_REQUIRED ON)
           set(CMAKE_CXX_SCAN_FOR_MODULES ON)
-          list(APPEND CMAKE_PREFIX_PATH "/tmp/caudio-install-mod")
-          find_package(caudio CONFIG REQUIRED)
+          list(APPEND CMAKE_PREFIX_PATH "/tmp/kanariv-install-mod")
+          find_package(kanariv CONFIG REQUIRED)
           add_executable(smoke main.cpp)
           target_compile_features(smoke PRIVATE cxx_std_23)
-          target_link_libraries(smoke PRIVATE caudio::utils)
+          target_link_libraries(smoke PRIVATE kanariv::utils)
           EOF
-          cat > /tmp/caudio-mod-smoke/main.cpp << 'EOF'
+          cat > /tmp/kanariv-mod-smoke/main.cpp << 'EOF'
           #include <print>
-          import caudio.version;
+          import kanariv.version;
           int main() {
-            std::println("caudio module smoke ok: {}", caudio::version::shortVersion());
+            std::println("kanariv module smoke ok: {}", kanariv::version::shortVersion());
             return 0;
           }
           EOF
-          cmake -B /tmp/caudio-mod-smoke/build -G Ninja -DCMAKE_PREFIX_PATH=/tmp/caudio-install-mod -DCMAKE_CXX_STANDARD=23 /tmp/caudio-mod-smoke
-          cmake --build /tmp/caudio-mod-smoke/build -v
-          /tmp/caudio-mod-smoke/build/smoke
+          cmake -B /tmp/kanariv-mod-smoke/build -G Ninja -DCMAKE_PREFIX_PATH=/tmp/kanariv-install-mod -DCMAKE_CXX_STANDARD=23 /tmp/kanariv-mod-smoke
+          cmake --build /tmp/kanariv-mod-smoke/build -v
+          /tmp/kanariv-mod-smoke/build/smoke

@@ -1,11 +1,11 @@
 ﻿#include <array>
 #include <atomic>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/protocol.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
-#include <caudio/windows_fwd.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/protocol.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/windows_fwd.hpp>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -31,7 +31,7 @@
 #include <cstring>
 #endif
 
-#include <caudio/config.hpp>
+#include <kanariv/config.hpp>
 
 #include "ipc_server.hpp"
 
@@ -77,7 +77,7 @@ class PipeDacl {
 } // namespace
 #endif
 
-namespace caudio::service {
+namespace kanariv::service {
 
 // All acceptor state and threads live here so the public header stays free
 // of std::thread/mutex/condition_variable/vector includes.
@@ -92,11 +92,11 @@ struct IpcServer::Impl {
         bool done{false};
     };
 
-    caudio::utils::Expected<void> listen(const std::filesystem::path& dbPath,
+    kanariv::utils::Expected<void> listen(const std::filesystem::path& dbPath,
                                          std::string_view socketPathOverride);
     void run(std::stop_token st,
-             std::function<std::expected<caudio::ipc::Result, caudio::utils::Error>(
-                 const caudio::ipc::Command&)>
+             std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
+                 const kanariv::ipc::Command&)>
                  dispatch);
     void retireClient();
     void shutdown();
@@ -122,14 +122,14 @@ IpcServer::~IpcServer() {
     shutdown();
 }
 
-caudio::utils::Expected<void> IpcServer::listen(const std::filesystem::path& dbPath,
+kanariv::utils::Expected<void> IpcServer::listen(const std::filesystem::path& dbPath,
                                                 std::string_view socketPathOverride) {
     return impl_->listen(dbPath, socketPathOverride);
 }
 
 void IpcServer::run(std::stop_token st,
-                    std::function<std::expected<caudio::ipc::Result, caudio::utils::Error>(
-                        const caudio::ipc::Command&)>
+                    std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
+                        const kanariv::ipc::Command&)>
                         dispatch) {
     impl_->run(st, std::move(dispatch));
 }
@@ -142,13 +142,13 @@ void IpcServer::shutdown() {
     impl_->shutdown();
 }
 
-caudio::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::path& dbPath,
+kanariv::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::path& dbPath,
                                                       std::string_view socketPathOverride) {
-    caudio::utils::Expected<std::string> sp;
+    kanariv::utils::Expected<std::string> sp;
     if (!socketPathOverride.empty()) {
         sp = std::string(socketPathOverride.data(), socketPathOverride.size());
     } else {
-        sp = caudio::config::socketPathFor(dbPath);
+        sp = kanariv::config::socketPathFor(dbPath);
     }
     if (!sp)
         return std::unexpected{sp.error()};
@@ -171,8 +171,8 @@ caudio::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pat
                                   pipeUnlimited, 16384, 16384, 0, dacl.attributes());
     if (h == invalidHandleValue) {
         DWORD err = ::GetLastError();
-        return std::unexpected{caudio::utils::makeError(
-            caudio::utils::StatusCode::Io, "CreateNamedPipeW failed: " + std::to_string(err))};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Io, "CreateNamedPipeW failed: " + std::to_string(err))};
     }
     pipeHandle_.store(reinterpret_cast<std::intptr_t>(h));
     return {};
@@ -197,7 +197,7 @@ caudio::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pat
     int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "socket failed")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "socket failed")};
     }
     std::string sockStr = socketPath_;
     ::unlink(sockStr.c_str());
@@ -205,14 +205,14 @@ caudio::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pat
     addr.sun_family = AF_UNIX;
     if (sockStr.size() >= sizeof(addr.sun_path)) {
         ::close(fd);
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "socket path too long")};
     }
     std::memcpy(addr.sun_path, sockStr.c_str(), sockStr.size() + 1);
     if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
         ::close(fd);
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "bind failed")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "bind failed")};
     }
     // Owner-only socket file, best-effort: honored on Darwin/BSD, ignored
     // (harmlessly) on Linux, where the directory gate above applies.
@@ -220,7 +220,7 @@ caudio::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pat
     if (::listen(fd, 16) != 0) {
         ::close(fd);
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "listen failed")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "listen failed")};
     }
     pipeHandle_.store(fd);
     return {};
@@ -228,8 +228,8 @@ caudio::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pat
 }
 
 void IpcServer::Impl::run(std::stop_token st,
-                          std::function<std::expected<caudio::ipc::Result, caudio::utils::Error>(
-                              const caudio::ipc::Command&)>
+                          std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
+                              const kanariv::ipc::Command&)>
                               dispatch) {
     if (running_.exchange(true)) {
         return;
@@ -359,8 +359,8 @@ void IpcServer::Impl::run(std::stop_token st,
                             reqStr.reserve(payload.size());
                             for (auto b : payload)
                                 reqStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
-                            auto reqExp = caudio::ipc::deserializeRequest(reqStr);
-                            caudio::ipc::IpcReply reply;
+                            auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
+                            kanariv::ipc::IpcReply reply;
                             if (!reqExp) {
                                 reply.id = 0;
                                 reply.result = std::unexpected{reqExp.error()};
@@ -372,8 +372,8 @@ void IpcServer::Impl::run(std::stop_token st,
                                 else
                                     reply.result = *resExp;
                             }
-                            std::string repJson = caudio::ipc::serializeReply(reply);
-                            auto framed = caudio::ipc::frame(repJson);
+                            std::string repJson = kanariv::ipc::serializeReply(reply);
+                            auto framed = kanariv::ipc::frame(repJson);
                             DWORD w2 = 0;
                             BOOL okW = ::WriteFile(clientHandle, framed.data(),
                                                    static_cast<DWORD>(framed.size()), &w2, nullptr);
@@ -484,8 +484,8 @@ void IpcServer::Impl::run(std::stop_token st,
                         reqStr.reserve(payload.size());
                         for (auto b : payload)
                             reqStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
-                        auto reqExp = caudio::ipc::deserializeRequest(reqStr);
-                        caudio::ipc::IpcReply reply;
+                        auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
+                        kanariv::ipc::IpcReply reply;
                         if (!reqExp) {
                             reply.id = 0;
                             reply.result = std::unexpected{reqExp.error()};
@@ -497,8 +497,8 @@ void IpcServer::Impl::run(std::stop_token st,
                             else
                                 reply.result = *resExp;
                         }
-                        std::string repJson = caudio::ipc::serializeReply(reply);
-                        auto framed = caudio::ipc::frame(repJson);
+                        std::string repJson = kanariv::ipc::serializeReply(reply);
+                        auto framed = kanariv::ipc::frame(repJson);
                         if (!sendAll(framed)) {
                             ::close(cfd);
                             return;
@@ -615,4 +615,4 @@ void IpcServer::Impl::shutdown() {
     cv_.notify_all();
 }
 
-} // namespace caudio::service
+} // namespace kanariv::service

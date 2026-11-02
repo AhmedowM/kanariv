@@ -1,8 +1,8 @@
-#include <caudio/utils/log.hpp>
+#include <kanariv/utils/log.hpp>
 #include <mutex>
 #include <utility>
 
-namespace caudio::utils {
+namespace kanariv::utils {
 
 bool Logger::getCallbackIfNeeded(LogLevel lvl, Callback& out) {
     std::lock_guard lk(mutex_);
@@ -14,4 +14,4 @@ bool Logger::getCallbackIfNeeded(LogLevel lvl, Callback& out) {
     return true;
 }
 
-} // namespace caudio::utils
+} // namespace kanariv::utils

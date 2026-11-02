@@ -1,8 +1,8 @@
 ﻿#include <algorithm>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/reader.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cerrno>
 #include <cmath>
 #include <cstddef>
@@ -33,7 +33,7 @@ extern "C" {
 #pragma GCC diagnostic pop
 #endif
 
-namespace caudio::media {
+namespace kanariv::media {
 
 struct Decoder::Impl {
     Impl() = default;
@@ -45,7 +45,7 @@ struct Decoder::Impl {
 
     std::size_t decode(std::span<float> out);
 
-    caudio::utils::Expected<void> seek(double seconds);
+    kanariv::utils::Expected<void> seek(double seconds);
 
     bool init();
 
@@ -103,17 +103,17 @@ struct Decoder::Impl {
     std::size_t spillPos_{0};
 };
 
-caudio::utils::Expected<caudio::types::TrackMetadata> extractMetadata(std::string_view path) {
+kanariv::utils::Expected<kanariv::types::TrackMetadata> extractMetadata(std::string_view path) {
     AVFormatContext* fmt = avformat_alloc_context();
     if (!fmt) {
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::NoMem,
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::NoMem,
                                                         "avformat_alloc_context failed"));
     }
 
     if (avformat_open_input(&fmt, path.data(), nullptr, nullptr) < 0) {
         avformat_free_context(fmt);
         return std::unexpected(
-            caudio::utils::makeError(caudio::utils::StatusCode::Io, "avformat_open_input failed"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "avformat_open_input failed"));
     }
 
     // Bound probing (P1-1): defaults (5 MB / unbounded-ish analysis) let a
@@ -124,11 +124,11 @@ caudio::utils::Expected<caudio::types::TrackMetadata> extractMetadata(std::strin
 
     if (avformat_find_stream_info(fmt, nullptr) < 0) {
         avformat_close_input(&fmt);
-        return std::unexpected(caudio::utils::makeError(caudio::utils::StatusCode::Io,
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
                                                         "avformat_find_stream_info failed"));
     }
 
-    caudio::types::TrackMetadata meta;
+    kanariv::types::TrackMetadata meta;
 
     int audioStreamIdx = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     AVDictionary* streamMeta =
@@ -290,18 +290,18 @@ std::size_t Decoder::Impl::decode(std::span<float> out) {
     return totalDecoded;
 }
 
-caudio::utils::Expected<void> Decoder::Impl::seek(double seconds) {
+kanariv::utils::Expected<void> Decoder::Impl::seek(double seconds) {
     if (seconds < 0.0 || !std::isfinite(seconds) || !fmt_ || !dec_ || audioStreamIdx_ < 0) {
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
                                                     std::string_view("bad seconds")});
     }
     if (reader_ && !reader_->seekable()) {
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::Unsupported,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
                                                     std::string_view("source is not seekable")});
     }
     AVStream* stream = fmt_->streams[audioStreamIdx_];
     if (!stream)
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::Internal,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
                                                     std::string_view("no stream")});
     // Use stream time_base for seeking - dec time_base is codec, not correct for container
     int64_t seekTarget = av_rescale_q(static_cast<int64_t>(seconds * AV_TIME_BASE),
@@ -319,7 +319,7 @@ caudio::utils::Expected<void> Decoder::Impl::seek(double seconds) {
         // Fallback to simple av_seek_frame
         ret = av_seek_frame(fmt_, audioStreamIdx_, seekTarget, AVSEEK_FLAG_BACKWARD);
         if (ret < 0)
-            return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::Io,
+            return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Io,
                                                         std::string_view("seek failed")});
     }
     avcodec_flush_buffers(dec_);
@@ -630,10 +630,10 @@ Decoder::Decoder(Decoder&&) noexcept = default;
 
 Decoder& Decoder::operator=(Decoder&&) noexcept = default;
 
-caudio::utils::Expected<void> Decoder::init(Reader& reader) {
+kanariv::utils::Expected<void> Decoder::init(Reader& reader) {
     impl_->reader_ = &reader;
     if (!impl_->init())
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::Unsupported,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
                                                     std::string_view("FFmpeg init failed")});
     return {};
 }
@@ -654,8 +654,8 @@ std::size_t Decoder::decode(std::span<float> out) {
     return impl_->decode(out);
 }
 
-caudio::utils::Expected<void> Decoder::seek(double seconds) {
+kanariv::utils::Expected<void> Decoder::seek(double seconds) {
     return impl_->seek(seconds);
 }
 
-} // namespace caudio::media
+} // namespace kanariv::media

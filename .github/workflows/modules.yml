@@ -1,11 +1,11 @@
 # Modules version matrix (MANUAL observatory, not a gate).
 #
 # Same setup as compilers.yml, but every leg configures the modules intent
-# (CAUDIO_ENABLE_MODULES=ON, CLI off) to map the modules floor separately
+# (KANARIV_ENABLE_MODULES=ON, CLI off) to map the modules floor separately
 # from the default-build floor.
 #
 # Tests are OFF in the modules intent; `run_tests` adds
-# --define CAUDIO_ENABLE_TESTS=ON and runs ctest.
+# --define KANARIV_ENABLE_TESTS=ON and runs ctest.
 #
 # - Version selection works through PATH (toolchains hard-set bare names).
 # - Legs are informational (continue-on-error) with a summary in `report`.
@@ -32,7 +32,7 @@ name: Modules (manual)
         type: boolean
         default: true
       run_tests:
-        description: 'Also build tests (CAUDIO_ENABLE_TESTS=ON) and run ctest'
+        description: 'Also build tests (KANARIV_ENABLE_TESTS=ON) and run ctest'
         type: boolean
         default: false
       strict:
@@ -54,7 +54,7 @@ jobs:
       matrix:
         version: ${{ fromJSON(inputs.gcc_versions) }}
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -80,21 +80,21 @@ jobs:
       - name: Configure (modules, GCC)
         run: |
           TESTS=""
-          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define CAUDIO_ENABLE_TESTS=ON"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define KANARIV_ENABLE_TESTS=ON"; fi
           python scripts/configure.py modules --toolchain gcc --build-dir build/modules-gcc $TESTS
 
       - name: Build
         run: |
           set -o pipefail
           TESTS=""
-          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define CAUDIO_ENABLE_TESTS=ON"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define KANARIV_ENABLE_TESTS=ON"; fi
           python scripts/configure.py modules --toolchain gcc --build-dir build/modules-gcc $TESTS --build 2>&1 | tee build-mgcc-${{ matrix.version }}.log
 
       - name: Test
         if: inputs.run_tests
         run: |
           set -o pipefail
-          python scripts/configure.py modules --toolchain gcc --build-dir build/modules-gcc --define CAUDIO_ENABLE_TESTS=ON --test 2>&1 | tee test-mgcc-${{ matrix.version }}.log
+          python scripts/configure.py modules --toolchain gcc --build-dir build/modules-gcc --define KANARIV_ENABLE_TESTS=ON --test 2>&1 | tee test-mgcc-${{ matrix.version }}.log
 
       - name: Upload logs
         if: always()
@@ -115,7 +115,7 @@ jobs:
       matrix:
         version: ${{ fromJSON(inputs.clang_versions) }}
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -148,21 +148,21 @@ jobs:
       - name: Configure (modules, Clang)
         run: |
           TESTS=""
-          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define CAUDIO_ENABLE_TESTS=ON"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define KANARIV_ENABLE_TESTS=ON"; fi
           python scripts/configure.py modules --toolchain clang --build-dir build/modules-clang $TESTS
 
       - name: Build
         run: |
           set -o pipefail
           TESTS=""
-          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define CAUDIO_ENABLE_TESTS=ON"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define KANARIV_ENABLE_TESTS=ON"; fi
           python scripts/configure.py modules --toolchain clang --build-dir build/modules-clang $TESTS --build 2>&1 | tee build-mclang-${{ matrix.version }}.log
 
       - name: Test
         if: inputs.run_tests
         run: |
           set -o pipefail
-          python scripts/configure.py modules --toolchain clang --build-dir build/modules-clang --define CAUDIO_ENABLE_TESTS=ON --test 2>&1 | tee test-mclang-${{ matrix.version }}.log
+          python scripts/configure.py modules --toolchain clang --build-dir build/modules-clang --define KANARIV_ENABLE_TESTS=ON --test 2>&1 | tee test-mclang-${{ matrix.version }}.log
 
       - name: Upload logs
         if: always()
@@ -184,7 +184,7 @@ jobs:
       matrix:
         os: [windows-2022, windows-latest]
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -218,7 +218,7 @@ jobs:
         # Ninja + vcvars handles both images; no VS-generator fallback.
         run: |
           TESTS=""
-          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define CAUDIO_ENABLE_TESTS=ON"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define KANARIV_ENABLE_TESTS=ON"; fi
           python scripts/configure.py modules --toolchain msvc --build-dir build/modules-msvc $TESTS
         shell: bash
 
@@ -237,7 +237,7 @@ jobs:
         run: |
           set -o pipefail
           TESTS=""
-          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define CAUDIO_ENABLE_TESTS=ON"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define KANARIV_ENABLE_TESTS=ON"; fi
           python scripts/configure.py modules --toolchain msvc --build-dir build/modules-msvc $TESTS --build 2>&1 | tee build-msvc-${{ matrix.os }}.log
         shell: bash
 
@@ -245,7 +245,7 @@ jobs:
         if: inputs.run_tests
         run: |
           set -o pipefail
-          python scripts/configure.py modules --toolchain msvc --build-dir build/modules-msvc --define CAUDIO_ENABLE_TESTS=ON --test 2>&1 | tee test-msvc-${{ matrix.os }}.log
+          python scripts/configure.py modules --toolchain msvc --build-dir build/modules-msvc --define KANARIV_ENABLE_TESTS=ON --test 2>&1 | tee test-msvc-${{ matrix.os }}.log
         shell: bash
 
       - name: Upload logs
@@ -264,7 +264,7 @@ jobs:
     runs-on: windows-latest
     continue-on-error: ${{ inputs.strict == false }}
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -298,7 +298,7 @@ jobs:
       - name: Configure (modules, Windows Clang)
         run: |
           TESTS=""
-          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define CAUDIO_ENABLE_TESTS=ON"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define KANARIV_ENABLE_TESTS=ON"; fi
           python scripts/configure.py modules --toolchain clang --build-dir build/modules-clang $TESTS
         shell: bash
 
@@ -317,7 +317,7 @@ jobs:
         run: |
           set -o pipefail
           TESTS=""
-          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define CAUDIO_ENABLE_TESTS=ON"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define KANARIV_ENABLE_TESTS=ON"; fi
           python scripts/configure.py modules --toolchain clang --build-dir build/modules-clang $TESTS --build 2>&1 | tee build-winclang-modules.log
         shell: bash
 
@@ -325,7 +325,7 @@ jobs:
         if: inputs.run_tests
         run: |
           set -o pipefail
-          python scripts/configure.py modules --toolchain clang --build-dir build/modules-clang --define CAUDIO_ENABLE_TESTS=ON --test 2>&1 | tee test-winclang-modules.log
+          python scripts/configure.py modules --toolchain clang --build-dir build/modules-clang --define KANARIV_ENABLE_TESTS=ON --test 2>&1 | tee test-winclang-modules.log
         shell: bash
 
       - name: Upload logs
@@ -343,7 +343,7 @@ jobs:
     runs-on: windows-latest
     continue-on-error: ${{ inputs.strict == false }}
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -393,7 +393,7 @@ jobs:
       - name: Configure (modules, MinGW)
         run: |
           TESTS=""
-          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define CAUDIO_ENABLE_TESTS=ON"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define KANARIV_ENABLE_TESTS=ON"; fi
           python scripts/configure.py modules --toolchain gcc --build-dir build/modules-mingw $TESTS
         shell: bash
 
@@ -412,16 +412,16 @@ jobs:
       - name: Build
         run: |
           TESTS=""
-          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define CAUDIO_ENABLE_TESTS=ON"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then TESTS="--define KANARIV_ENABLE_TESTS=ON"; fi
           python scripts/configure.py modules --toolchain gcc --build-dir build/modules-mingw $TESTS --build 2>&1 | tee build-mingw.log
         shell: bash
 
       - name: Test
         if: inputs.run_tests
         env:
-          CAUDIO_TEST_NOAUDIO: 1
+          KANARIV_TEST_NOAUDIO: 1
         run: |
-          python scripts/configure.py modules --toolchain gcc --build-dir build/modules-mingw --define CAUDIO_ENABLE_TESTS=ON --test 2>&1 | tee test-mingw.log
+          python scripts/configure.py modules --toolchain gcc --build-dir build/modules-mingw --define KANARIV_ENABLE_TESTS=ON --test 2>&1 | tee test-mingw.log
         shell: bash
 
       - name: Upload logs

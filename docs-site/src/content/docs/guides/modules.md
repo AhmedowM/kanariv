@@ -1,11 +1,11 @@
 ---
 title: C++23 Modules
-description: Using caudio as C++23 modules instead of traditional headers
+description: Using kanariv as C++23 modules instead of traditional headers
 ---
 
 # C++23 Modules
 
-caudio provides opt-in C++23 modules that mirror the public library headers.
+kanariv provides opt-in C++23 modules that mirror the public library headers.
 Modules are available for compilers with import-graph scanning support
 (GCC 14+, LLVM Clang 19+, MSVC 2022).
 
@@ -19,7 +19,7 @@ Or with bare CMake:
 
 ```sh
 cmake -S . -B build/modules -G Ninja \
-  -DCAUDIO_ENABLE_MODULES=ON \
+  -DKANARIV_ENABLE_MODULES=ON \
   -DCMAKE_CXX_STANDARD=23
 cmake --build build/modules --parallel 4
 ```
@@ -28,38 +28,38 @@ cmake --build build/modules --parallel 4
 
 | Module | Header equivalent |
 |---|---|
-| `caudio` | `<caudio.hpp>` (umbrella) |
-| `caudio.utils` | `<caudio/utils.hpp>` |
-| `caudio.types` | `<caudio/types.hpp>` |
-| `caudio.contracts` | `<caudio/contracts/database.hpp>` |
-| `caudio.media` | `<caudio/media.hpp>` |
-| `caudio.player` | `<caudio/player.hpp>` |
-| `caudio.db` | `<caudio/db.hpp>` |
-| `caudio.engine` | `<caudio/engine.hpp>` |
-| `caudio.ipc` | `<caudio/ipc.hpp>` |
-| `caudio.client` | `<caudio/client.hpp>` |
-| `caudio.service` | `<caudio/service.hpp>` |
-| `caudio.config` | `<caudio/config.hpp>` |
+| `kanariv` | `<kanariv.hpp>` (umbrella) |
+| `kanariv.utils` | `<kanariv/utils.hpp>` |
+| `kanariv.types` | `<kanariv/types.hpp>` |
+| `kanariv.contracts` | `<kanariv/contracts/database.hpp>` |
+| `kanariv.media` | `<kanariv/media.hpp>` |
+| `kanariv.player` | `<kanariv/player.hpp>` |
+| `kanariv.db` | `<kanariv/db.hpp>` |
+| `kanariv.engine` | `<kanariv/engine.hpp>` |
+| `kanariv.ipc` | `<kanariv/ipc.hpp>` |
+| `kanariv.client` | `<kanariv/client.hpp>` |
+| `kanariv.service` | `<kanariv/service.hpp>` |
+| `kanariv.config` | `<kanariv/config.hpp>` |
 
-Partitions such as `caudio.db:scan` are also available.
+Partitions such as `kanariv.db:scan` are also available.
 
 ## Using modules
 
 ```cpp
-import caudio.media;
+import kanariv.media;
 
 int main() {
-    auto tracks = caudio::media::scanTracksToVector(".");
+    auto tracks = kanariv::media::scanTracksToVector(".");
     return tracks ? 0 : 1;
 }
 ```
 
 ```cpp
-import caudio.engine;
-import caudio.db;
+import kanariv.engine;
+import kanariv.db;
 
 int main() {
-    auto engine = caudio::engine::Engine::create();
+    auto engine = kanariv::engine::Engine::create();
     return engine ? 0 : 1;
 }
 ```

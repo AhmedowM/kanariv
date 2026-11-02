@@ -1,8 +1,8 @@
 # Bundle FFmpeg runtime DLLs/dylibs next to the executable so CPack archives
-# run standalone. (macOS bundles behind CAUDIO_BUNDLE_FFMPEG_MACOS;
+# run standalone. (macOS bundles behind KANARIV_BUNDLE_FFMPEG_MACOS;
 # Linux is bundled unconditionally below.)
 
-if(WIN32 AND CAUDIO_BUILD_CLI)
+if(WIN32 AND KANARIV_BUILD_CLI)
   # Our FindFFmpeg targets are UNKNOWN IMPORTED (no runtime location), so
   # resolve the DLLs by layout: <root>/bin next to the found import library
   # (gyan/choco/vcpkg layouts).
@@ -32,7 +32,7 @@ if(WIN32 AND CAUDIO_BUILD_CLI)
   endif()
 endif()
 
-if(UNIX AND NOT APPLE AND CAUDIO_BUILD_CLI)
+if(UNIX AND NOT APPLE AND KANARIV_BUILD_CLI)
   # Ship the versioned .so files (SONAME links included -- the loader asks for
   # libavcodec.so.62 by exact name) in lib/. RPATHs are cmake/Install.cmake's
   # job (target properties, not CMAKE_INSTALL_RPATH: the variable is consumed
@@ -76,7 +76,7 @@ if(UNIX AND NOT APPLE AND CAUDIO_BUILD_CLI)
   endif()
 endif()
 
-if(APPLE AND CAUDIO_BUILD_CLI AND CAUDIO_BUNDLE_FFMPEG_MACOS)
+if(APPLE AND KANARIV_BUILD_CLI AND KANARIV_BUNDLE_FFMPEG_MACOS)
   # Bundle versioned dylibs in lib/ and rewire ids + references to @rpath and
   # re-sign ad-hoc (install_name_tool invalidates signatures; without re-sign
   # the kernel refuses the binaries on Apple Silicon).
@@ -94,7 +94,7 @@ if(APPLE AND CAUDIO_BUILD_CLI AND CAUDIO_BUNDLE_FFMPEG_MACOS)
   list(REMOVE_DUPLICATES _ff_dylibs)
   list(FILTER _ff_dylibs INCLUDE REGEX "\\.[0-9]+\\.[0-9]+\\.[0-9]+\\.dylib$")
   if(NOT _ff_dylibs)
-    message(WARNING "CAUDIO_BUNDLE_FFMPEG_MACOS requested but no versioned FFmpeg dylibs near ${FFmpeg_AVCODEC_LIBRARY}")
+    message(WARNING "KANARIV_BUNDLE_FFMPEG_MACOS requested but no versioned FFmpeg dylibs near ${FFmpeg_AVCODEC_LIBRARY}")
   else()
     # install(CODE) runs before install(FILES), so the versioned dylibs are
     # copied into the staging dir from within install(CODE) below. install(FILES)
@@ -112,9 +112,9 @@ if(APPLE AND CAUDIO_BUILD_CLI AND CAUDIO_BUNDLE_FFMPEG_MACOS)
     endforeach()
     # Exe file name resolved at configure time: genexes are NOT evaluated
     # inside install(CODE).
-    get_target_property(_cli_out caudio_cli OUTPUT_NAME)
+    get_target_property(_cli_out kanariv_cli OUTPUT_NAME)
     if(_cli_out STREQUAL "_cli_out-NOTFOUND")
-      set(_cli_out caudio_cli)
+      set(_cli_out kanariv_cli)
     endif()
     install(CODE "
       set(_exe \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/${_cli_out}\")

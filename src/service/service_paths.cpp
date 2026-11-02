@@ -44,47 +44,47 @@
 #include <cstring>
 #endif
 
-#include <caudio/config.hpp>
+#include <kanariv/config.hpp>
 
 #include "config_detail.hpp"
 
-namespace caudio::service::detail {
+namespace kanariv::service::detail {
 std::filesystem::path pidPathForSocket(const std::filesystem::path& dbPath,
                                        const std::string& /*socketPath*/) {
-    auto r = caudio::config::pidPathFor(dbPath);
+    auto r = kanariv::config::pidPathFor(dbPath);
     if (r)
         return *r;
     auto pp = dbPath.parent_path();
     if (pp.empty())
         pp = std::filesystem::current_path();
-    return pp / "caudio.pid";
+    return pp / "kanariv.pid";
 }
 
 std::filesystem::path lockPathForSocket(const std::filesystem::path& dbPath,
                                         const std::string& /*socketPath*/) {
-    auto r = caudio::config::lockPathFor(dbPath);
+    auto r = kanariv::config::lockPathFor(dbPath);
     if (r)
         return *r;
-    std::string hex = caudio::config::detail_paths::hex8ForDb(dbPath);
+    std::string hex = kanariv::config::detail_paths::hex8ForDb(dbPath);
     auto pidPath = pidPathForSocket(dbPath, "");
-    return pidPath.parent_path() / ("caudio-" + hex + ".lock");
+    return pidPath.parent_path() / ("kanariv-" + hex + ".lock");
 }
 
 std::string socketPathForDb(const std::filesystem::path& dbPath) {
-    auto r = caudio::config::socketPathFor(dbPath);
+    auto r = kanariv::config::socketPathFor(dbPath);
     if (r)
         return *r;
     // Fallback uses canonical hex8 encoding (consistent with primary socketPathFor)
-    std::string hex = caudio::config::detail_paths::hex8ForDb(dbPath);
+    std::string hex = kanariv::config::detail_paths::hex8ForDb(dbPath);
 #ifdef _WIN32
-    return std::string("\\\\.\\pipe\\caudio-") + hex;
+    return std::string("\\\\.\\pipe\\kanariv-") + hex;
 #else
     auto pp = dbPath.parent_path();
     if (pp.empty())
         pp = std::filesystem::current_path();
     std::error_code ec;
     std::filesystem::create_directories(pp, ec);
-    return (pp / ("caudio-" + hex + ".sock")).generic_string();
+    return (pp / ("kanariv-" + hex + ".sock")).generic_string();
 #endif
 }
 
@@ -241,7 +241,7 @@ std::filesystem::path resolveConfigPath(const std::filesystem::path& configPath,
     auto tmp = std::filesystem::temp_directory_path(ec);
     if (ec)
         tmp = std::filesystem::path("/tmp");
-    return tmp / "caudio" / "config.json";
+    return tmp / "kanariv" / "config.json";
 }
 
-} // namespace caudio::service::detail
+} // namespace kanariv::service::detail

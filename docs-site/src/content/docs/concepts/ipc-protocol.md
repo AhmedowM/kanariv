@@ -5,7 +5,7 @@ description: Daemon client protocol — framing, commands, results, errors
 
 # IPC Protocol
 
-caudio's daemon communicates with clients over a JSON-over-IPC protocol with
+kanariv's daemon communicates with clients over a JSON-over-IPC protocol with
 4-byte big-endian length framing.
 
 ## Message framing

@@ -1,6 +1,6 @@
-#include <caudio/media/source.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/media/source.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <expected>
 #include <memory>
@@ -14,7 +14,7 @@
 #include <unistd.h>
 #endif
 
-namespace caudio::media {
+namespace kanariv::media {
 
 namespace {
 
@@ -43,7 +43,7 @@ bool PathSource::seekable() const noexcept {
     return true;
 }
 
-caudio::utils::Expected<std::unique_ptr<Reader>> PathSource::open() {
+kanariv::utils::Expected<std::unique_ptr<Reader>> PathSource::open() {
     return FileReader::open(path_);
 }
 
@@ -95,9 +95,9 @@ bool DescriptorSource::seekable() const noexcept {
     return descriptor_.seekable;
 }
 
-caudio::utils::Expected<std::unique_ptr<Reader>> DescriptorSource::open() {
+kanariv::utils::Expected<std::unique_ptr<Reader>> DescriptorSource::open() {
     if (consumed_) {
-        return std::unexpected(caudio::utils::Error{caudio::utils::StatusCode::State,
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
                                                     std::string_view("source already opened")});
     }
     auto reader = DescriptorReader::open(descriptor_);
@@ -113,4 +113,4 @@ bool DescriptorSource::consumed() const noexcept {
     return consumed_;
 }
 
-} // namespace caudio::media
+} // namespace kanariv::media

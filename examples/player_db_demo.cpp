@@ -1,11 +1,11 @@
-#include <caudio/db/database.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/reader.hpp>
-#include <caudio/player/output.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
-#include <caudio/utils/ring.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/player/output.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <expected>
@@ -17,11 +17,11 @@
 #include <thread>
 #include <utility>
 #include <vector>
-using namespace caudio::player;
-using namespace caudio::db;
-using namespace caudio::utils;
-using caudio::media::Decoder;
-using caudio::media::FileReader;
+using namespace kanariv::player;
+using namespace kanariv::db;
+using namespace kanariv::utils;
+using kanariv::media::Decoder;
+using kanariv::media::FileReader;
 
 namespace {
 
@@ -33,25 +33,25 @@ std::string findSample() {
             return s;
         }
     };
-    if (auto* env = std::getenv("CAUDIO_SAMPLE")) {
+    if (auto* env = std::getenv("KANARIV_SAMPLE")) {
         if (std::filesystem::exists(env))
             return toAbs(env);
     }
-    if (auto* env = std::getenv("CAUDIO_FIXTURE")) {
+    if (auto* env = std::getenv("KANARIV_FIXTURE")) {
         if (std::filesystem::exists(env))
             return toAbs(env);
     }
     for (auto* c : {"tests/fixtures/sample.wav", "./tests/fixtures/sample.wav",
                     "../tests/fixtures/sample.wav",
-                    "C:/Users/Secondary/Projects/caudio-cpp/tests/fixtures/sample.wav",
-                    "C:/Users/Secondary/Projects/caudio/tests/fixtures/sample.wav"}) {
+                    "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav",
+                    "C:/Users/Secondary/Projects/kanariv/tests/fixtures/sample.wav"}) {
         if (std::filesystem::exists(c))
             return toAbs(c);
     }
-    if (auto* env = std::getenv("CAUDIO_SAMPLE"))
+    if (auto* env = std::getenv("KANARIV_SAMPLE"))
         return toAbs(env);
-    if (std::filesystem::exists("C:/Users/Secondary/Projects/caudio-cpp/tests/fixtures/sample.wav"))
-        return "C:/Users/Secondary/Projects/caudio-cpp/tests/fixtures/sample.wav";
+    if (std::filesystem::exists("C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav"))
+        return "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav";
     return "tests/fixtures/sample.wav";
 }
 
@@ -79,7 +79,7 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath, const std
         return;
     std::cout << "[demo] queue empty, populating 2 demo tracks sample='" << samplePath << "'\n";
     for (int i = 0; i < 2; ++i) {
-        caudio::types::Track t;
+        kanariv::types::Track t;
         for (int b = 0; b < 32; ++b)
             t.fingerprint[b] = static_cast<uint8_t>(fpBase + i * 32 + b);
         t.path = samplePath;
@@ -90,7 +90,7 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath, const std
         t.channels = 1;
         t.bitrate = 128;
         t.title = prefix + " Track " + std::to_string(i + 1);
-        t.artist = "caudio demo";
+        t.artist = "kanariv demo";
         t.album = prefix;
         t.genre = "Demo";
         t.year = 2026;
@@ -124,7 +124,7 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath, const std
     }
 }
 
-bool playTrackViaPlayer(const caudio::types::Track& track) {
+bool playTrackViaPlayer(const kanariv::types::Track& track) {
     std::cout << "[demo] queue track " << track.id << ": '"
               << (track.title.empty() ? "(untitled)" : track.title) << "' by '"
               << (track.artist.empty() ? "(unknown)" : track.artist) << "' path='" << track.path
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
             ++errors;
             continue;
         }
-        caudio::types::Track track = tr.value();
+        kanariv::types::Track track = tr.value();
         std::cout << "[demo] queue pos " << qi.position << " -> track " << track.id << "\n";
         if (playTrackViaPlayer(track))
             ++played;

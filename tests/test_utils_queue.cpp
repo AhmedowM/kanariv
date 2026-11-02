@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <chrono>
 #include <stop_token>
 #include <thread>
@@ -9,7 +9,7 @@
 
 #include "../src/utils/mpsc_queue.hpp"
 
-namespace caudio::utils::test {
+namespace kanariv::utils::test {
 
 bool queue_busy_on_full() {
     MpscQueue<int> q{2};
@@ -158,9 +158,9 @@ bool queue_10k_loop() {
     return true;
 }
 
-} // namespace caudio::utils::test
+} // namespace kanariv::utils::test
 
-using namespace caudio::utils::test;
+using namespace kanariv::utils::test;
 
 TEST_CASE("MpscQueue busy on full", "[utils][queue]") {
     REQUIRE(queue_busy_on_full());

@@ -1,26 +1,26 @@
 ﻿#pragma once
 
-#include <caudio/types/db.hpp>
+#include <kanariv/types/db.hpp>
 #include <string_view>
 
 /**
  * @file stmt_helpers.hpp
  * @brief Shared statement helpers for the db layer.
- * @ingroup caudio_db
+ * @ingroup kanariv_db
  * @details Provides the canonical column list `selectTracksCols`,
  * the row-mapper `fillTrackFromStmt()` and the RAII `SqliteErrGuard`.
- * All helpers are header-only and live in `caudio::db::internal`.
+ * All helpers are header-only and live in `kanariv::db::internal`.
  */
 
 // Forward declarations for SQLite handles (sqlite3.h stays in .cpp files).
 struct sqlite3;
 struct sqlite3_stmt;
 
-namespace caudio::db::internal {
+namespace kanariv::db::internal {
 
 /**
  * @brief Canonical SELECT column list for `tracks`.
- * @ingroup caudio_db
+ * @ingroup kanariv_db
  * @details Order matches `fillTrackFromStmt()` indices 0..29. Keep in sync.
  */
 inline constexpr std::string_view selectTracksCols =
@@ -32,7 +32,7 @@ inline constexpr std::string_view selectTracksCols =
 
 /**
  * @brief Reads a TEXT column as string_view (empty on NULL).
- * @ingroup caudio_db
+ * @ingroup kanariv_db
  * @param stmt Statement handle.
  * @param col Zero-based column index.
  * @return View of the column text; empty if NULL.
@@ -43,7 +43,7 @@ std::string_view columnText(sqlite3_stmt* stmt, int col) noexcept;
 
 /**
  * @brief RAII guard that frees a `sqlite3_exec` error string.
- * @ingroup caudio_db
+ * @ingroup kanariv_db
  * @details Wraps a `char*` reference returned via `sqlite3_exec(..., &err)`.
  * On destruction, calls `sqlite3_free` if non-null and nulls the reference.
  * Non-copyable.
@@ -52,19 +52,19 @@ struct SqliteErrGuard {
     char*& ref; ///< Reference to the error pointer.
     /**
      * @brief Constructs guard for the given error pointer.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @param r Reference to `char*` that will receive the SQLite error.
      */
     explicit SqliteErrGuard(char*& r) : ref(r) {}
     SqliteErrGuard(const SqliteErrGuard&) = delete;
     SqliteErrGuard& operator=(const SqliteErrGuard&) = delete;
-    /** @brief Frees the error string if set. @ingroup caudio_db */
+    /** @brief Frees the error string if set. @ingroup kanariv_db */
     ~SqliteErrGuard();
 };
 
 /**
  * @brief RAII guard that finalizes a raw `sqlite3_stmt*` on scope exit.
- * @ingroup caudio_db
+ * @ingroup kanariv_db
  * @details Non-copyable. For code working with raw handles (prepare/step
  * loops) where SqliteStatement ownership is not wanted.
  */
@@ -84,7 +84,7 @@ struct StmtGuard {
 
 /**
  * @brief Maps the current row of a `selectTracksCols` statement into a Track.
- * @ingroup caudio_db
+ * @ingroup kanariv_db
  * @param stmt Prepared statement positioned on a row (via `step()`).
  * @param t Output track to populate.
  * @details Column order must match `selectTracksCols`:
@@ -98,6 +98,6 @@ struct StmtGuard {
  * Caller must hold the DB lock protecting the statement's connection.
  * @see selectTracksCols
  */
-void fillTrackFromStmt(sqlite3_stmt* stmt, caudio::types::Track& t);
+void fillTrackFromStmt(sqlite3_stmt* stmt, kanariv::types::Track& t);
 
-} // namespace caudio::db::internal
+} // namespace kanariv::db::internal

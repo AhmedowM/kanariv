@@ -1,7 +1,7 @@
 #pragma once
 
-#include <caudio/contracts/database.hpp>
-#include <caudio/utils.hpp>
+#include <kanariv/contracts/database.hpp>
+#include <kanariv/utils.hpp>
 #include <chrono>
 #include <cstdint>
 #include <expected>
@@ -12,10 +12,10 @@
  * @file history.hpp
  * @brief Engine-internal history helper (NOT installed).
  * @details `History` is constructed by Engine only; the entry type is the
- * shared `caudio::types::HistoryEntry` (11 fields incl. track snapshots).
+ * shared `kanariv::types::HistoryEntry` (11 fields incl. track snapshots).
  */
 
-namespace caudio::engine::detail {
+namespace kanariv::engine::detail {
 
 /**
  * @brief Returns steady-clock time in milliseconds.
@@ -44,24 +44,24 @@ uint64_t wallMs() noexcept;
  */
 bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr, int secsThr) noexcept;
 
-} // namespace caudio::engine::detail
+} // namespace kanariv::engine::detail
 
-namespace caudio::engine {
+namespace kanariv::engine {
 
 /**
  * @brief Thin history query helper over an IDatabase implementation.
  */
 class History final {
   public:
-    using ExpectedVoid = std::expected<void, caudio::utils::Error>; ///< Void or Error.
-    using ExpectedEntries = std::expected<std::vector<caudio::types::HistoryEntry>,
-                                          caudio::utils::Error>; ///< Entries or Error.
+    using ExpectedVoid = std::expected<void, kanariv::utils::Error>; ///< Void or Error.
+    using ExpectedEntries = std::expected<std::vector<kanariv::types::HistoryEntry>,
+                                          kanariv::utils::Error>; ///< Entries or Error.
 
     /**
      * @brief Constructs a History helper.
      * @param db Shared database contract (must be open).
      */
-    explicit History(std::shared_ptr<caudio::contracts::IDatabase> db);
+    explicit History(std::shared_ptr<kanariv::contracts::IDatabase> db);
 
     /**
      * @brief Lists recent history entries joined with track metadata.
@@ -81,7 +81,7 @@ class History final {
     ExpectedVoid clearHistory();
 
   private:
-    std::shared_ptr<caudio::contracts::IDatabase> db_; ///< Shared persistence contract.
+    std::shared_ptr<kanariv::contracts::IDatabase> db_; ///< Shared persistence contract.
 };
 
-} // namespace caudio::engine
+} // namespace kanariv::engine

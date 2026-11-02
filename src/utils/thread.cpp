@@ -1,6 +1,6 @@
-﻿#include <caudio/utils/error.hpp>
-#include <caudio/utils/thread.hpp>
-#include <caudio/windows_fwd.hpp>
+﻿#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/thread.hpp>
+#include <kanariv/windows_fwd.hpp>
 #include <cstddef>
 #include <cstring>
 #include <string>
@@ -15,7 +15,7 @@ inline constexpr unsigned utf8CodePage = 65001;
 #include <cerrno>
 #endif
 
-namespace caudio::utils::detail {
+namespace kanariv::utils::detail {
 
 #ifdef _WIN32
 Expected<void> setNativeHandleName(void* nativeHandle, std::string_view name) noexcept {
@@ -68,9 +68,9 @@ int setPthreadName(pthread_t th, std::string_view name) noexcept {
 }
 #endif
 
-} // namespace caudio::utils::detail
+} // namespace kanariv::utils::detail
 
-namespace caudio::utils {
+namespace kanariv::utils {
 
 [[nodiscard]] Expected<void> setThreadName(std::string_view name) noexcept {
     if (name.empty()) {
@@ -168,4 +168,4 @@ namespace caudio::utils {
 #endif
 }
 
-} // namespace caudio::utils
+} // namespace kanariv::utils

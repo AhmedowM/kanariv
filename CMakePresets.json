@@ -13,7 +13,7 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchain.cmake",
-        "CAUDIO_TOOLCHAIN": "auto"
+        "KANARIV_TOOLCHAIN": "auto"
       }
     },
     {
@@ -22,8 +22,8 @@
       "displayName": "Local development: Debug, tests + examples",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CAUDIO_ENABLE_TESTS": "ON",
-        "CAUDIO_ENABLE_EXAMPLES": "ON"
+        "KANARIV_ENABLE_TESTS": "ON",
+        "KANARIV_ENABLE_EXAMPLES": "ON"
       }
     },
     {
@@ -33,10 +33,10 @@
       "displayName": "Documentation: Doxygen HTML and XML",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CAUDIO_BUILD_DOCS": "ON",
-        "CAUDIO_BUILD_CLI": "OFF",
-        "CAUDIO_ENABLE_TESTS": "OFF",
-        "CAUDIO_ENABLE_EXAMPLES": "OFF"
+        "KANARIV_BUILD_DOCS": "ON",
+        "KANARIV_BUILD_CLI": "OFF",
+        "KANARIV_ENABLE_TESTS": "OFF",
+        "KANARIV_ENABLE_EXAMPLES": "OFF"
       }
     },
     {
@@ -45,8 +45,8 @@
       "displayName": "Headless CI: Debug, tests, no audio device",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CAUDIO_ENABLE_TESTS": "ON",
-        "CAUDIO_TEST_NOAUDIO": "ON"
+        "KANARIV_ENABLE_TESTS": "ON",
+        "KANARIV_TEST_NOAUDIO": "ON"
       }
     },
     {
@@ -55,7 +55,7 @@
       "displayName": "Optimized release build (tag required)",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CAUDIO_REQUIRE_GIT_VERSION": "ON"
+        "KANARIV_REQUIRE_GIT_VERSION": "ON"
       }
     },
     {
@@ -64,7 +64,7 @@
       "displayName": "Release + link-time optimization (tag required)",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CAUDIO_REQUIRE_GIT_VERSION": "ON",
+        "KANARIV_REQUIRE_GIT_VERSION": "ON",
         "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON"
       }
     },
@@ -83,7 +83,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "MinSizeRel",
         "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON",
-        "CAUDIO_LINK_SECTION_GC": "ON"
+        "KANARIV_LINK_SECTION_GC": "ON"
       }
     },
     {
@@ -92,10 +92,10 @@
       "displayName": "C++23 modules: modules on, no CLI/tests/examples",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CAUDIO_ENABLE_MODULES": "ON",
-        "CAUDIO_BUILD_CLI": "OFF",
-        "CAUDIO_ENABLE_TESTS": "OFF",
-        "CAUDIO_ENABLE_EXAMPLES": "OFF"
+        "KANARIV_ENABLE_MODULES": "ON",
+        "KANARIV_BUILD_CLI": "OFF",
+        "KANARIV_ENABLE_TESTS": "OFF",
+        "KANARIV_ENABLE_EXAMPLES": "OFF"
       }
     },
     {
@@ -105,13 +105,13 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/android.cmake",
         "CMAKE_BUILD_TYPE": "Release",
-        "CAUDIO_BUILD_CLI": "OFF",
-        "CAUDIO_BUILD_STATIC": "OFF",
-        "CAUDIO_BUILD_SHARED": "ON",
-        "CAUDIO_ENABLE_TESTS": "OFF",
-        "CAUDIO_ENABLE_EXAMPLES": "OFF",
-        "CAUDIO_ENABLE_MODULES": "OFF",
-        "CAUDIO_BUILD_DOCS": "OFF",
+        "KANARIV_BUILD_CLI": "OFF",
+        "KANARIV_BUILD_STATIC": "OFF",
+        "KANARIV_BUILD_SHARED": "ON",
+        "KANARIV_ENABLE_TESTS": "OFF",
+        "KANARIV_ENABLE_EXAMPLES": "OFF",
+        "KANARIV_ENABLE_MODULES": "OFF",
+        "KANARIV_BUILD_DOCS": "OFF",
         "ANDROID_ABI": "arm64-v8a",
         "ANDROID_PLATFORM": "android-24"
       }

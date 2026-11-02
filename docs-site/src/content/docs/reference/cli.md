@@ -1,17 +1,17 @@
 ---
 title: CLI Reference
-description: Complete command-line interface reference for caudio
+description: Complete command-line interface reference for kanariv
 ---
 
 # CLI Reference
 
-The `caudio` executable provides commands for library management, playback,
+The `kanariv` executable provides commands for library management, playback,
 queue control, configuration, and daemon lifecycle.
 
 ## Synopsis
 
 ```sh
-caudio [options] <command> [command options]
+kanariv [options] <command> [command options]
 ```
 
 ## Global options
@@ -90,21 +90,21 @@ caudio [options] <command> [command options]
 
 ```sh
 # Scan music library
-caudio library scan --path ~/Music
+kanariv library scan --path ~/Music
 
 # Search and play
-caudio library search "miles davis" --limit 10
-caudio queue add ~/Music/Kind\ of\ Blue/*.flac
-caudio play
+kanariv library search "miles davis" --limit 10
+kanariv queue add ~/Music/Kind\ of\ Blue/*.flac
+kanariv play
 
 # Direct file playback
-caudio ~/Music/album/track.flac
-caudio ~/Music/album --recursive --save
+kanariv ~/Music/album/track.flac
+kanariv ~/Music/album --recursive --save
 
 # Daemon management
-caudio start
-caudio status --json
-caudio shutdown
+kanariv start
+kanariv status --json
+kanariv shutdown
 ```
 
-Run `caudio --help` or `caudio <command> --help` for command-specific help.
+Run `kanariv --help` or `kanariv <command> --help` for command-specific help.

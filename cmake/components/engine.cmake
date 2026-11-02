@@ -1,17 +1,17 @@
-# engine.cmake -- caudio::engine (playback state machine + persistence).
+# engine.cmake -- kanariv::engine (playback state machine + persistence).
 # NOTE: history/shuffle live in src/engine/ (NOT installed), no partitions.
-set(CAUDIO_ENGINE_MODULE_SOURCES
-  modules/caudio/engine.cppm
-  modules/caudio/engine/core.cppm
+set(KANARIV_ENGINE_MODULE_SOURCES
+  modules/kanariv/engine.cppm
+  modules/kanariv/engine/core.cppm
 )
-set(CAUDIO_ENGINE_SOURCES
+set(KANARIV_ENGINE_SOURCES
   src/engine/engine.cpp
   src/engine/history.cpp
   src/engine/shuffle.cpp
 )
-caudio_add_component(engine SOURCES ${CAUDIO_ENGINE_SOURCES} MODULE_SOURCES ${CAUDIO_ENGINE_MODULE_SOURCES} DEPS caudio::contracts caudio::utils Threads::Threads PRIVATE_DEPS  caudio::player caudio::media)
+kanariv_add_component(engine SOURCES ${KANARIV_ENGINE_SOURCES} MODULE_SOURCES ${KANARIV_ENGINE_MODULE_SOURCES} DEPS kanariv::contracts kanariv::utils Threads::Threads PRIVATE_DEPS  kanariv::player kanariv::media)
 ca_set_module_warnings(engine)
 
-if(CAUDIO_BUILD_SHARED)
-  caudio_add_shared_variant(engine EXTRA_DEPS caudio::player_shared caudio::utils_shared Threads::Threads)
+if(KANARIV_BUILD_SHARED)
+  kanariv_add_shared_variant(engine EXTRA_DEPS kanariv::player_shared kanariv::utils_shared Threads::Threads)
 endif()

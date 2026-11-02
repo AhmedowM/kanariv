@@ -1,11 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/contracts/database.hpp>
-#include <caudio/db/database.hpp>
-#include <caudio/db/maintenance.hpp>
-#include <caudio/db/scan.hpp>
-#include <caudio/media/scan.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/log.hpp>
+#include <kanariv/contracts/database.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/maintenance.hpp>
+#include <kanariv/db/scan.hpp>
+#include <kanariv/media/scan.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <cstddef>
@@ -19,9 +19,9 @@
 #include <thread>
 #include <utility>
 #include <vector>
-using namespace caudio::db;
-using namespace caudio::utils;
-using namespace caudio::test_helpers;
+using namespace kanariv::db;
+using namespace kanariv::utils;
+using namespace kanariv::test_helpers;
 
 TEST_CASE("scan generator yields audio files recursively", "[db_scan]") {
     auto root = tempDirPath("scan_test");
@@ -33,7 +33,7 @@ TEST_CASE("scan generator yields audio files recursively", "[db_scan]") {
     }
     std::ofstream f2(root / "ignore.txt", std::ios::binary);
     f2 << "not audio";
-    auto tracks = caudio::media::scanTracksToVector(root, caudio::media::ScanMode::Sampled);
+    auto tracks = kanariv::media::scanTracksToVector(root, kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->size() == 3);
     {
@@ -54,13 +54,13 @@ TEST_CASE("scan fingerprint head+tail+size sampled deterministic", "[db_scan]") 
         f.write((char*)data.data(), data.size());
     }
     // Test via public API: scanTracksToVector returns tracks with fingerprints
-    auto tracks1 = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Sampled);
+    auto tracks1 = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks1.has_value());
     REQUIRE(tracks1->size() == 1);
     auto fp1 = tracks1->front().fingerprint;
 
     // Re-scan same file -> same fingerprint
-    auto tracks2 = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Sampled);
+    auto tracks2 = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks2.has_value());
     REQUIRE(tracks2->size() == 1);
     auto fp2 = tracks2->front().fingerprint;
@@ -76,7 +76,7 @@ TEST_CASE("scan fingerprint head+tail+size sampled deterministic", "[db_scan]") 
         std::ofstream f(p2, std::ios::binary);
         f.write((char*)data2.data(), data2.size());
     }
-    auto tracks3 = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Sampled);
+    auto tracks3 = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks3.has_value());
     REQUIRE(tracks3->size() == 2);
     bool foundDifferent = false;
@@ -95,7 +95,7 @@ TEST_CASE("scan fingerprint head+tail+size sampled deterministic", "[db_scan]") 
         std::ofstream f(p3, std::ios::binary);
         f.write((char*)data3.data(), data3.size());
     }
-    auto tracks4 = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Sampled);
+    auto tracks4 = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks4.has_value());
     REQUIRE(tracks4->size() == 3);
     foundDifferent = false;
@@ -155,8 +155,8 @@ TEST_CASE("scanLibrary inserts and dedup by fingerprint", "[db_scan]") {
 }
 
 TEST_CASE("scan non-existent dir returns empty", "[db_scan]") {
-    auto tracks = caudio::media::scanTracksToVector("/nonexistent_path_xyz_12345",
-                                                    caudio::media::ScanMode::Sampled);
+    auto tracks = kanariv::media::scanTracksToVector("/nonexistent_path_xyz_12345",
+                                                    kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->empty());
 }
@@ -173,20 +173,20 @@ TEST_CASE("library maintenance reports missing and duplicate rows", "[db_scan]")
     auto library = db->libraryAdd(root.string(), "maintenance");
     REQUIRE(library.has_value());
 
-    caudio::types::Track first;
+    kanariv::types::Track first;
     first.path = present.string();
     first.library_id = *library;
     first.fingerprint.fill(0x11);
     auto firstId = db->insertTrack(first);
     REQUIRE(firstId.has_value());
 
-    caudio::types::Track duplicate = first;
+    kanariv::types::Track duplicate = first;
     duplicate.path = present.string();
     duplicate.fingerprint.fill(0x33);
     auto duplicateId = db->insertTrack(duplicate);
     REQUIRE(duplicateId.has_value());
 
-    caudio::types::Track missing = first;
+    kanariv::types::Track missing = first;
     missing.path = (root / "missing.mp3").string();
     missing.fingerprint.fill(0x22);
     auto missingId = db->insertTrack(missing);
@@ -218,7 +218,7 @@ TEST_CASE("library maintenance reports missing and duplicate rows", "[db_scan]")
 
 TEST_CASE("scan empty dir returns empty", "[db_scan]") {
     auto dir = tempDirPath("empty_scan");
-    auto tracks = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Sampled);
+    auto tracks = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->empty());
     // also .txt noise only should be empty
@@ -226,7 +226,7 @@ TEST_CASE("scan empty dir returns empty", "[db_scan]") {
         std::ofstream f(dir / "notes.txt", std::ios::binary);
         f << "hello";
     }
-    auto tracks2 = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Sampled);
+    auto tracks2 = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks2.has_value());
     REQUIRE(tracks2->empty());
     std::error_code ec;
@@ -261,7 +261,7 @@ TEST_CASE("scanDirectory filters by audio extensions case-insensitively", "[db_s
     std::ofstream(dir / "i.txt", std::ios::binary) << "not audio";
     std::ofstream(dir / "l", std::ios::binary) << "no ext";
 
-    auto tracks = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Sampled);
+    auto tracks = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks.has_value());
     // Only 17 audio files should be found
     REQUIRE(tracks->size() == 17);
@@ -280,18 +280,18 @@ TEST_CASE("ScanMode Full vs Sampled for file >128 KiB", "[db_scan]") {
         std::ofstream f(p, std::ios::binary);
         f.write((char*)data.data(), data.size());
     }
-    auto sampled = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Sampled);
+    auto sampled = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(sampled.has_value());
     REQUIRE(sampled->size() == 1);
-    auto full = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Full);
+    auto full = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Full);
     REQUIRE(full.has_value());
     REQUIRE(full->size() == 1);
     // Sampled uses head+tail+size, Full uses BLAKE3 of entire file -> should differ for large file
     REQUIRE(sampled->front().fingerprint != full->front().fingerprint);
     // But re-scanning same mode is deterministic
-    auto sampled2 = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Sampled);
+    auto sampled2 = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(sampled2->front().fingerprint == sampled->front().fingerprint);
-    auto full2 = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Full);
+    auto full2 = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Full);
     REQUIRE(full2->front().fingerprint == full->front().fingerprint);
     // Modify middle byte only (not in head/tail 64K) -> Sampled should stay same, Full should
     // change For 200K file, head 64K = [0,64K), tail 64K = [136K,200K), middle [64K,136K)
@@ -303,14 +303,14 @@ TEST_CASE("ScanMode Full vs Sampled for file >128 KiB", "[db_scan]") {
         std::ofstream f(p, std::ios::binary | std::ios::trunc);
         f.write((char*)dataMod.data(), dataMod.size());
     }
-    auto sampledMod = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Sampled);
+    auto sampledMod = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(sampledMod.has_value());
     REQUIRE(sampledMod->size() == 1);
     // sampled should be same as before because middle not covered (unless size changed? size same)
     // For this file, change is in middle so sampled stays same, but full changes
     // Note: if sampled differs, still valid test; we check full definitely differs from original
     // full
-    auto fullMod = caudio::media::scanTracksToVector(dir, caudio::media::ScanMode::Full);
+    auto fullMod = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Full);
     REQUIRE(fullMod.has_value());
     REQUIRE(fullMod->front().fingerprint != full->front().fingerprint);
     std::error_code ec;

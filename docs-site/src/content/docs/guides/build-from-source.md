@@ -28,7 +28,7 @@ python scripts/configure.py dev --help
 | Intent | Purpose |
 |---|---|
 | `dev` | Debug development tree with tests and examples |
-| `ci` | Headless CI-style tree (`CAUDIO_TEST_NOAUDIO` enabled) |
+| `ci` | Headless CI-style tree (`KANARIV_TEST_NOAUDIO` enabled) |
 | `release` | Release-oriented build |
 | `release-lto` | Release with link-time optimization |
 | `minsize` | Minimize binary size |
@@ -75,35 +75,35 @@ invocation.
 
 ## Bare CMake
 
-Useful for packaging, unusual generators, or integrating caudio into an
+Useful for packaging, unusual generators, or integrating kanariv into an
 existing build:
 
 ```sh
 cmake -S . -B build/custom -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
-  -DCAUDIO_ENABLE_TESTS=ON \
-  -DCAUDIO_BUILD_SHARED=ON
+  -DKANARIV_ENABLE_TESTS=ON \
+  -DKANARIV_BUILD_SHARED=ON
 cmake --build build/custom --parallel 4
 ctest --test-dir build/custom --output-on-failure --parallel 4
 ```
 
-For modules, add `-DCAUDIO_ENABLE_MODULES=ON` and use Ninja.
+For modules, add `-DKANARIV_ENABLE_MODULES=ON` and use Ninja.
 
 ## Configuration reference
 
 | Option | Default | Description |
 |---|---|---|
-| `CAUDIO_BUILD_SHARED` | `ON` | Build per-component shared libraries |
-| `CAUDIO_BUILD_STATIC` | Depends on shared | Build static component libraries |
-| `CAUDIO_BUILD_CLI` | `ON` | Build the `caudio` executable |
-| `CAUDIO_ENABLE_TESTS` | `OFF` | Build Catch2 tests |
-| `CAUDIO_ENABLE_EXAMPLES` | `OFF` | Build the examples |
-| `CAUDIO_ENABLE_MODULES` | `OFF` | Build/install C++23 module interfaces |
-| `CAUDIO_ENABLE_SANITIZERS` | `OFF` | Enable AddressSanitizer and UBSan |
-| `CAUDIO_BUILD_DOCS` | `OFF` | Build API docs with Doxygen |
-| `CAUDIO_TEST_NOAUDIO` | `OFF` | Skip audio-device tests |
-| `CAUDIO_ENABLE_CLANG_TIDY` | `OFF` | Run clang-tidy during build |
-| `CAUDIO_USE_TRIMMED_FFMPEG` | `OFF` | Use decode-only trimmed FFmpeg |
+| `KANARIV_BUILD_SHARED` | `ON` | Build per-component shared libraries |
+| `KANARIV_BUILD_STATIC` | Depends on shared | Build static component libraries |
+| `KANARIV_BUILD_CLI` | `ON` | Build the `kanariv` executable |
+| `KANARIV_ENABLE_TESTS` | `OFF` | Build Catch2 tests |
+| `KANARIV_ENABLE_EXAMPLES` | `OFF` | Build the examples |
+| `KANARIV_ENABLE_MODULES` | `OFF` | Build/install C++23 module interfaces |
+| `KANARIV_ENABLE_SANITIZERS` | `OFF` | Enable AddressSanitizer and UBSan |
+| `KANARIV_BUILD_DOCS` | `OFF` | Build API docs with Doxygen |
+| `KANARIV_TEST_NOAUDIO` | `OFF` | Skip audio-device tests |
+| `KANARIV_ENABLE_CLANG_TIDY` | `OFF` | Run clang-tidy during build |
+| `KANARIV_USE_TRIMMED_FFMPEG` | `OFF` | Use decode-only trimmed FFmpeg |
 | `FFmpeg_ROOT` | unset | Override FFmpeg installation |
 
 ## Building documentation
@@ -127,26 +127,26 @@ still build.
 ## Using as a library
 
 ```cmake
-find_package(caudio CONFIG REQUIRED)
+find_package(kanariv CONFIG REQUIRED)
 
 add_executable(my_player main.cpp)
-target_link_libraries(my_player PRIVATE caudio::engine caudio::db)
+target_link_libraries(my_player PRIVATE kanariv::engine kanariv::db)
 ```
 
 ```cpp
-#include <caudio.hpp>
+#include <kanariv.hpp>
 #include <memory>
 #include <print>
 
 int main() {
-    auto database = caudio::db::Database::open(":memory:");
+    auto database = kanariv::db::Database::open(":memory:");
     if (!database) {
         std::println(stderr, "database open failed: {}",
                      database.error().message);
         return 1;
     }
 
-    auto engine = caudio::engine::Engine::create();
+    auto engine = kanariv::engine::Engine::create();
     if (!engine) {
         std::println(stderr, "engine create failed: {}",
                      engine.error().message);

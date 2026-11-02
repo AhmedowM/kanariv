@@ -1,6 +1,6 @@
 # Portability gate (MANUAL release gate): runs the linux runtime tree on a
 # bare ubuntu:24.04 container image with no FFmpeg installed.
-# Requires a git tag (release intents set CAUDIO_REQUIRE_GIT_VERSION=ON).
+# Requires a git tag (release intents set KANARIV_REQUIRE_GIT_VERSION=ON).
 
 name: Portability gate (manual)
 
@@ -39,7 +39,7 @@ jobs:
     name: bare ubuntu-24.04 / ${{ inputs.family }} / ${{ inputs.toolchain }}
     runs-on: ubuntu-24.04
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
       DEPS_REPO: "AhmedowM/deps-private"
     steps:
       - name: Checkout
@@ -65,30 +65,30 @@ jobs:
       - name: "Download trimmed FFmpeg (required: no system fallback here)"
         env:
           GH_TOKEN: ${{ secrets.DEPS_PAT }}
-          CAUDIO_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
+          KANARIV_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
         run: |
           gh release download "${{ inputs.deps_tag }}" \
             --repo "${{ env.DEPS_REPO }}" \
             --pattern "ffmpeg-trimmed-8.1.2-linux-x86_64.tar.gz" \
             --dir . \
             --clobber
-          mkdir -p "$CAUDIO_TRIMMED_ROOT"
-          tar -xzf ffmpeg-trimmed-8.1.2-linux-x86_64.tar.gz -C "$CAUDIO_TRIMMED_ROOT"
-          echo "CAUDIO_TRIMMED_ROOT=$CAUDIO_TRIMMED_ROOT" >> "$GITHUB_ENV"
+          mkdir -p "$KANARIV_TRIMMED_ROOT"
+          tar -xzf ffmpeg-trimmed-8.1.2-linux-x86_64.tar.gz -C "$KANARIV_TRIMMED_ROOT"
+          echo "KANARIV_TRIMMED_ROOT=$KANARIV_TRIMMED_ROOT" >> "$GITHUB_ENV"
 
       - name: Configure + build + install
         run: |
           set -o pipefail
           BUILD_DIR="build/${{ inputs.family }}-${{ inputs.toolchain }}"
-          python scripts/configure.py "${{ inputs.family }}" --toolchain "${{ inputs.toolchain }}" --trimmed-ffmpeg --ffmpeg-root "$CAUDIO_TRIMMED_ROOT" --build-dir "$BUILD_DIR" 2>&1 | tee configure.log
-          python scripts/configure.py "${{ inputs.family }}" --toolchain "${{ inputs.toolchain }}" --trimmed-ffmpeg --ffmpeg-root "$CAUDIO_TRIMMED_ROOT" --build-dir "$BUILD_DIR" --build 2>&1 | tee build.log
+          python scripts/configure.py "${{ inputs.family }}" --toolchain "${{ inputs.toolchain }}" --trimmed-ffmpeg --ffmpeg-root "$KANARIV_TRIMMED_ROOT" --build-dir "$BUILD_DIR" 2>&1 | tee configure.log
+          python scripts/configure.py "${{ inputs.family }}" --toolchain "${{ inputs.toolchain }}" --trimmed-ffmpeg --ffmpeg-root "$KANARIV_TRIMMED_ROOT" --build-dir "$BUILD_DIR" --build 2>&1 | tee build.log
           cmake --install "$BUILD_DIR" --prefix "$PWD/stage" 2>&1 | tee install.log
 
       - name: Bare-metal run (no FFmpeg in the container)
         run: |
           test -n "$(ls stage/lib/libavcodec.so.* 2>/dev/null)" || (echo "bundled FFmpeg missing from stage/lib" && exit 1)
-          docker run --rm -v "$PWD/stage:/stage:ro" ubuntu:24.04 /stage/bin/caudio --version
-          docker run --rm -v "$PWD/stage:/stage:ro" ubuntu:24.04 /stage/bin/caudio --help > /dev/null
+          docker run --rm -v "$PWD/stage:/stage:ro" ubuntu:24.04 /stage/bin/kanariv --version
+          docker run --rm -v "$PWD/stage:/stage:ro" ubuntu:24.04 /stage/bin/kanariv --help > /dev/null
 
       - name: Upload logs
         if: always()

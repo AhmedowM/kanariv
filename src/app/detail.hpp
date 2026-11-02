@@ -1,7 +1,7 @@
 #pragma once
 
-#include <caudio/fwd.hpp>
-#include <caudio/ipc/result.hpp>
+#include <kanariv/fwd.hpp>
+#include <kanariv/ipc/result.hpp>
 #include <cstdint>
 #include <set>
 #include <string>
@@ -10,9 +10,9 @@
  * @file detail.hpp
  * @brief App-internal shared reporting builders (NOT public API).
  * @details Text builders for batch reports; frontends own final rendering
- * and must use the public `caudio/app/` headers.
+ * and must use the public `kanariv/app/` headers.
  */
-namespace caudio::app::detail {
+namespace kanariv::app::detail {
 
 /**
  * @brief Appends one line to a blob (newline-joined, no trailing newline).
@@ -27,14 +27,14 @@ void appendBlock(std::string& blob, const std::string& text);
 /**
  * @brief Renders a result with the human formatter into a blob.
  */
-void renderInto(std::string& blob, const caudio::ipc::Result& res);
+void renderInto(std::string& blob, const kanariv::ipc::Result& res);
 
 /**
  * @brief Builds Added lines for a QueueTracks result, warning on ids
  * already seen (pre-existing queue members).
  * @return The newly added count.
  */
-int printAddedText(const caudio::ipc::Result& res, std::set<int64_t>& seen, std::string& out,
+int printAddedText(const kanariv::ipc::Result& res, std::set<int64_t>& seen, std::string& out,
                    std::string& err);
 
 /**
@@ -47,6 +47,6 @@ void countLineText(int added, std::string& out);
  * @details Single implementation shared by batch loops and the shell
  * error path, so both render byte-identical text.
  */
-CAUDIO_API void renderErrorInto(std::string& err, const caudio::utils::Error& e);
+KANARIV_API void renderErrorInto(std::string& err, const kanariv::utils::Error& e);
 
-} // namespace caudio::app::detail
+} // namespace kanariv::app::detail

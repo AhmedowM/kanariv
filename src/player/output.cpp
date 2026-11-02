@@ -2,12 +2,12 @@
 #include <miniaudio.h>
 
 #include <atomic>
-#include <caudio/player/output.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/log.hpp>
-#include <caudio/utils/math.hpp>
-#include <caudio/utils/result.hpp>
-#include <caudio/utils/ring.hpp>
+#include <kanariv/player/output.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/math.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <expected>
 #include <memory>
 #include <span>
@@ -17,7 +17,7 @@
 
 #include "ring_fill.hpp"
 
-namespace caudio::player {
+namespace kanariv::player {
 
 /// miniaudio playback device and mutable control flags, hidden from the header.
 struct AudioOutput::Impl {
@@ -32,8 +32,8 @@ struct AudioOutput::Impl {
                              ma_uint32 frameCount);
 };
 
-caudio::types::DeviceList enumerateDevices() {
-    caudio::types::DeviceList list;
+kanariv::types::DeviceList enumerateDevices() {
+    kanariv::types::DeviceList list;
     ma_context context;
     ma_context_config ctxConfig = ma_context_config_init();
     ma_result res = ma_context_init(nullptr, 0, &ctxConfig, &context);
@@ -52,7 +52,7 @@ caudio::types::DeviceList enumerateDevices() {
         list.devices.reserve(playbackCount);
         for (ma_uint32 i = 0; i < playbackCount; ++i) {
             const auto& info = pPlaybackInfos[i];
-            caudio::types::DeviceInfo di;
+            kanariv::types::DeviceInfo di;
             di.name = info.name;
             di.isDefault = info.isDefault;
             // Use simple index-based ID for user-friendly CLI
@@ -74,8 +74,8 @@ AudioOutput::~AudioOutput() {
 AudioOutput::Expected AudioOutput::create(const Config& cfg) {
     auto out = std::make_unique<AudioOutput>();
     if (!out->init(cfg)) {
-        return std::unexpected(caudio::utils::Error{
-            caudio::utils::StatusCode::Device, std::string_view("miniaudio device init failed")});
+        return std::unexpected(kanariv::utils::Error{
+            kanariv::utils::StatusCode::Device, std::string_view("miniaudio device init failed")});
     }
     if (cfg.logger)
         cfg.logger->debug("audio output opened rate={} channels={}", cfg.sampleRate, cfg.channels);
@@ -83,7 +83,7 @@ AudioOutput::Expected AudioOutput::create(const Config& cfg) {
 }
 
 void AudioOutput::setVolume(float vol) {
-    impl_->volume.store(caudio::utils::clampVolume(vol), std::memory_order_relaxed);
+    impl_->volume.store(kanariv::utils::clampVolume(vol), std::memory_order_relaxed);
 }
 
 float AudioOutput::volume() const noexcept {
@@ -117,7 +117,7 @@ bool AudioOutput::init(const Config& cfg) {
     if (cfg.channels == 0 || cfg.channels > 32 || cfg.sampleRate == 0)
         return false;
     impl_->cfg = cfg;
-    float v = caudio::utils::clampVolume(cfg.volume);
+    float v = kanariv::utils::clampVolume(cfg.volume);
     impl_->volume.store(v, std::memory_order_relaxed);
 
     ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
@@ -154,4 +154,4 @@ void AudioOutput::Impl::dataCallback(ma_device* pDevice, void* pOutput, const vo
     detail::fillFromRing(std::span<float>(output, totalSamples), self->cfg.ring, channels, vol);
 }
 
-} // namespace caudio::player
+} // namespace kanariv::player

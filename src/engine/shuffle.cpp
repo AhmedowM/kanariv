@@ -4,7 +4,7 @@
 #include <random>
 #include <vector>
 
-namespace caudio::engine::detail {
+namespace kanariv::engine::detail {
 
 void shufflePerm(std::vector<int64_t>& perm, std::mt19937& rng) {
     std::ranges::shuffle(perm, rng);
@@ -16,4 +16,4 @@ void shufflePerm(std::vector<int64_t>& perm) {
     shufflePerm(perm, gen);
 }
 
-} // namespace caudio::engine::detail
+} // namespace kanariv::engine::detail

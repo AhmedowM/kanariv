@@ -1,18 +1,18 @@
 ---
 title: Command-Line Client
-description: Complete CLI reference for caudio commands and options
+description: Complete CLI reference for kanariv commands and options
 ---
 
 # Command-Line Client
 
-The `caudio` executable is a synchronous client for the caudio daemon. Most
+The `kanariv` executable is a synchronous client for the kanariv daemon. Most
 commands communicate with the daemon; configuration commands work without one,
 and playback commands can start it automatically.
 
 ## Global options
 
 ```sh
-caudio [global options] <command> [command options]
+kanariv [global options] <command> [command options]
 ```
 
 | Option | Description |
@@ -29,9 +29,9 @@ caudio [global options] <command> [command options]
 Scan a directory and add tracks to the library database.
 
 ```sh
-caudio library scan --path ~/Music
-caudio library scan --path ~/Music --mode full
-caudio library scan --path ~/Music --library-id 2
+kanariv library scan --path ~/Music
+kanariv library scan --path ~/Music --mode full
+kanariv library scan --path ~/Music --library-id 2
 ```
 
 | Option | Description | Default |
@@ -45,8 +45,8 @@ caudio library scan --path ~/Music --library-id 2
 Search the library using FTS5 full-text search.
 
 ```sh
-caudio library search "miles davis" --limit 10
-caudio library search "kind of blue" --limit 20 --offset 0
+kanariv library search "miles davis" --limit 10
+kanariv library search "kind of blue" --limit 20 --offset 0
 ```
 
 | Option | Description | Default |
@@ -60,7 +60,7 @@ caudio library search "kind of blue" --limit 20 --offset 0
 List all tracks in the library.
 
 ```sh
-caudio library list --limit 50
+kanariv library list --limit 50
 ```
 
 ### `queue add`
@@ -68,8 +68,8 @@ caudio library list --limit 50
 Add tracks to the queue.
 
 ```sh
-caudio queue add ~/Music/track.flac
-caudio queue add ~/Music/*.flac --position 0
+kanariv queue add ~/Music/track.flac
+kanariv queue add ~/Music/*.flac --position 0
 ```
 
 | Option | Description | Default |
@@ -81,7 +81,7 @@ caudio queue add ~/Music/*.flac --position 0
 List items in the current queue.
 
 ```sh
-caudio queue list
+kanariv queue list
 ```
 
 ### `play`
@@ -89,7 +89,7 @@ caudio queue list
 Start or resume playback.
 
 ```sh
-caudio play
+kanariv play
 ```
 
 ### `pause`
@@ -97,7 +97,7 @@ caudio play
 Pause playback.
 
 ```sh
-caudio pause
+kanariv pause
 ```
 
 ### `resume`
@@ -105,7 +105,7 @@ caudio pause
 Resume playback from paused state.
 
 ```sh
-caudio resume
+kanariv resume
 ```
 
 ### `stop`
@@ -113,7 +113,7 @@ caudio resume
 Stop playback.
 
 ```sh
-caudio stop
+kanariv stop
 ```
 
 ### `seek`
@@ -121,7 +121,7 @@ caudio stop
 Seek to a position in seconds.
 
 ```sh
-caudio seek 120.5
+kanariv seek 120.5
 ```
 
 ### `status`
@@ -129,9 +129,9 @@ caudio seek 120.5
 Show current playback status.
 
 ```sh
-caudio status
-caudio status --json
-caudio status --watch --interval 1000
+kanariv status
+kanariv status --json
+kanariv status --watch --interval 1000
 ```
 
 | Option | Description | Default |
@@ -145,7 +145,7 @@ caudio status --watch --interval 1000
 Start the daemon.
 
 ```sh
-caudio start
+kanariv start
 ```
 
 ### `shutdown`
@@ -153,7 +153,7 @@ caudio start
 Shut down the daemon.
 
 ```sh
-caudio shutdown
+kanariv shutdown
 ```
 
 ### `config`
@@ -161,19 +161,19 @@ caudio shutdown
 Manage configuration.
 
 ```sh
-caudio config list --json
-caudio config get dbPath
-caudio config set logLevel 3
+kanariv config list --json
+kanariv config get dbPath
+kanariv config set logLevel 3
 ```
 
 ### Playing a path directly
 
 ```sh
 # Play a single track
-caudio ~/Music/album/track.flac
+kanariv ~/Music/album/track.flac
 
 # Play a directory recursively and save to library
-caudio ~/Music/album --recursive --save
+kanariv ~/Music/album --recursive --save
 ```
 
 ## Next steps

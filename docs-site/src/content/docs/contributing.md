@@ -1,18 +1,18 @@
 ---
 title: Contributing
-description: How to contribute to caudio — setup, style, commit conventions, PR process
+description: How to contribute to kanariv — setup, style, commit conventions, PR process
 ---
 
 # Contributing
 
-Thank you for contributing to caudio! This guide covers development setup,
+Thank you for contributing to kanariv! This guide covers development setup,
 coding conventions, and the pull request process.
 
 ## Development setup
 
 ```sh
-git clone https://github.com/AhmedowM/caudio.git
-cd caudio
+git clone https://github.com/AhmedowM/kanariv.git
+cd kanariv
 
 # Recommended: development build with tests
 python scripts/configure.py dev --toolchain clang --jobs 4 --build --test
@@ -27,7 +27,7 @@ prerequisites and platform notes.
 - **Linter:** `clang-tidy` using `.clang-tidy` (optional)
 - **Naming:** `PascalCase` for types, `camelCase` for functions/variables,
   `snake_case` for files and locals
-- **Headers:** Public API in `include/caudio/` (`*.hpp`), sources in `src/`
+- **Headers:** Public API in `include/kanariv/` (`*.hpp`), sources in `src/`
   (`*.cpp`). C++23 modules (`*.cppm`) mirror headers
 - **Errors:** Return `std::expected<T, utils::Error>`; use existing
   `StatusCode` values; do not throw across module boundaries
@@ -74,15 +74,15 @@ API-breaking changes.
    `Service::handle()` overload, and `tests/test_ipc.cpp` coverage.
 3. **Configure and test locally:**
    ```sh
-   cmake -B build -G Ninja -DCAUDIO_ENABLE_TESTS=ON
+   cmake -B build -G Ninja -DKANARIV_ENABLE_TESTS=ON
    cmake --build build -j4
    ctest --test-dir build -j4
-   cmake -B build -G Ninja -DCAUDIO_BUILD_DOCS=ON \
+   cmake -B build -G Ninja -DKANARIV_BUILD_DOCS=ON \
      && cmake --build build --target doc-check
    ```
 4. **Format** changed files with `clang-format`.
 5. **Push** and open a PR against `main`. Include summary of changes, any
-   `BREAKING CHANGE` notes, and screenshots or `caudio --help` output for CLI
+   `BREAKING CHANGE` notes, and screenshots or `kanariv --help` output for CLI
    changes.
 6. **CI** must pass (build + tests on Linux/Windows/macOS).
 7. **Review** — address feedback; squash or rebase as requested.

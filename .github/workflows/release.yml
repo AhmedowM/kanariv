@@ -112,7 +112,7 @@ jobs:
         id: trimdl
         env:
           GH_TOKEN: ${{ secrets.DEPS_PAT }}
-          CAUDIO_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
+          KANARIV_TRIMMED_ROOT: ${{ github.workspace }}/ffmpeg-trimmed
         run: |
           if gh release download "ffmpeg-trimmed-8.1.2-2" \
             --repo "AhmedowM/deps-private" \
@@ -142,19 +142,19 @@ jobs:
 
       # Release packaging only -- testing lives in ci.yml. The trimmed-first
       # cascade in CMakeLists.txt picks the trimmed provider when
-      # CAUDIO_TRIMMED_ROOT is set (and falls back to the system/SetupFFmpeg
+      # KANARIV_TRIMMED_ROOT is set (and falls back to the system/SetupFFmpeg
       # provider otherwise), so one intent serves both paths. A trim outage
       # must never block a release. The minsize families are also used by
       # the bake-off, so the tag guard is injected here.
       - name: Configure
         id: cfg
         env:
-          CAUDIO_TRIMMED_ROOT: ${{ steps.trimdl.outputs.trim_root }}
+          KANARIV_TRIMMED_ROOT: ${{ steps.trimdl.outputs.trim_root }}
         run: |
           set -o pipefail
           TRIMMED=""
           if [ -n "${{ steps.trimdl.outputs.trim_root }}" ]; then
-            echo "provider=trimmed (CAUDIO_TRIMMED_ROOT cascade)"
+            echo "provider=trimmed (KANARIV_TRIMMED_ROOT cascade)"
             TRIMMED="--trimmed-ffmpeg --ffmpeg-root ${{ steps.trimdl.outputs.trim_root }}"
           else
             echo "::warning::trimmed FFmpeg unavailable -- release uses the default provider"
@@ -199,7 +199,7 @@ jobs:
       - name: Upload artifact - packages
         uses: actions/upload-artifact@v4
         with:
-          name: caudio-packages-${{ matrix.label }}
+          name: kanariv-packages-${{ matrix.label }}
           path: |
             build/${{ matrix.label }}/*.${{ matrix.pkg_ext }}
           # One format per OS (pkg_ext above). A missing package must fail
@@ -220,7 +220,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: caudio-packages-*
+          pattern: kanariv-packages-*
           merge-multiple: true
 
       - name: List artifacts

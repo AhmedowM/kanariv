@@ -1,10 +1,10 @@
 #include <algorithm>
-#include <caudio/client/client.hpp>
-#include <caudio/config.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/client/client.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <chrono>
 #include <expected>
 #include <filesystem>
@@ -20,7 +20,7 @@
 
 #include "ipc_client.hpp"
 
-namespace caudio::client {
+namespace kanariv::client {
 
 Client::Client(Config cfg) : config_(std::move(cfg)) {}
 
@@ -29,7 +29,7 @@ Client::Client(std::filesystem::path dbPath) : config_{std::move(dbPath), {}} {}
 Client::Client(std::filesystem::path dbPath, std::string_view socketPath)
     : config_{std::move(dbPath), std::string(socketPath.data(), socketPath.size())} {}
 
-Client::Client(const caudio::config::Config& cfg) : config_{cfg.dbPath, cfg.socketPath} {}
+Client::Client(const kanariv::config::Config& cfg) : config_{cfg.dbPath, cfg.socketPath} {}
 
 const Config& Client::config() const noexcept {
     return config_;
@@ -43,13 +43,13 @@ bool Client::probe() const {
     return IpcClient::connect(config_.dbPath, config_.socketPath).has_value();
 }
 
-caudio::utils::Expected<caudio::ipc::Result> Client::send(const caudio::ipc::Command& cmd,
+kanariv::utils::Expected<kanariv::ipc::Result> Client::send(const kanariv::ipc::Command& cmd,
                                                           std::chrono::milliseconds timeout) {
     // Use promise/future + jthread + stop_token for timeout handling.
     // This avoids C alarm and uses chrono::milliseconds + poll/select style wait.
-    auto prom = std::make_shared<std::promise<caudio::utils::Expected<caudio::ipc::Result>>>();
+    auto prom = std::make_shared<std::promise<kanariv::utils::Expected<kanariv::ipc::Result>>>();
     auto fut = prom->get_future();
-    caudio::ipc::Command cmdCopy = cmd;
+    kanariv::ipc::Command cmdCopy = cmd;
     Config cfgCopy = config_;
 
     // RAII worker via make_unique per spec
@@ -58,7 +58,7 @@ caudio::utils::Expected<caudio::ipc::Result> Client::send(const caudio::ipc::Com
             if (st.stop_requested()) {
                 try {
                     prom->set_value(std::unexpected{
-                        caudio::utils::makeError(caudio::utils::StatusCode::Busy, "cancelled")});
+                        kanariv::utils::makeError(kanariv::utils::StatusCode::Busy, "cancelled")});
                 } catch (...) {
                 }
                 return;
@@ -66,8 +66,8 @@ caudio::utils::Expected<caudio::ipc::Result> Client::send(const caudio::ipc::Com
             auto conn = IpcClient::connect(cfgCopy.dbPath, cfgCopy.socketPath);
             if (!conn) {
                 try {
-                    prom->set_value(std::unexpected{caudio::utils::makeError(
-                        caudio::utils::StatusCode::State, "daemon not running")});
+                    prom->set_value(std::unexpected{kanariv::utils::makeError(
+                        kanariv::utils::StatusCode::State, "daemon not running")});
                 } catch (...) {
                 }
                 return;
@@ -75,7 +75,7 @@ caudio::utils::Expected<caudio::ipc::Result> Client::send(const caudio::ipc::Com
             if (st.stop_requested()) {
                 try {
                     prom->set_value(std::unexpected{
-                        caudio::utils::makeError(caudio::utils::StatusCode::Busy, "cancelled")});
+                        kanariv::utils::makeError(kanariv::utils::StatusCode::Busy, "cancelled")});
                 } catch (...) {
                 }
                 return;
@@ -120,14 +120,14 @@ caudio::utils::Expected<caudio::ipc::Result> Client::send(const caudio::ipc::Com
             }
             bg.push_back(std::move(worker));
         }
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Io, "timeout")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "timeout")};
     }
 }
 
-caudio::utils::Expected<caudio::ipc::Result>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Client::waitForStatus(std::chrono::milliseconds timeout) {
-    return send(caudio::ipc::Command{caudio::ipc::StatusWait{
+    return send(kanariv::ipc::Command{kanariv::ipc::StatusWait{
         static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count())}});
 }
 
-} // namespace caudio::client
+} // namespace kanariv::client

@@ -3,7 +3,7 @@
 /**
  * @file log_sink.hpp
  * @brief Bounded rotating file sink for Logger (daemon log output).
- * @ingroup caudio_utils
+ * @ingroup kanariv_utils
  * @details `FileLogSink` owns one log file plus a bounded set of rotated
  * generations (`path`, `path.1`, …). Rotation is size-triggered: when the
  * next line would exceed `maxBytes`, generations shift down (oldest
@@ -22,14 +22,14 @@
  * Internal header: lives in `src/`, not installed.
  */
 
-#include <caudio/utils/log.hpp>
+#include <kanariv/utils/log.hpp>
 #include <cstddef>
 #include <filesystem>
 #include <memory>
 
-namespace caudio::utils {
+namespace kanariv::utils {
 
-/** @brief Options for FileLogSink::open. @ingroup caudio_utils */
+/** @brief Options for FileLogSink::open. @ingroup kanariv_utils */
 struct FileSinkOptions {
     std::size_t maxBytes{1024 * 1024}; ///< Rotate past 1 MiB of current file.
     int generations{3};                ///< Total files kept (current + rotated).
@@ -38,13 +38,13 @@ struct FileSinkOptions {
 
 /**
  * @brief Rotating file sink behind a Logger::Callback.
- * @ingroup caudio_utils
+ * @ingroup kanariv_utils
  * @details Create with open() (shared ownership — the Logger callback holds
  * a copy, so the sink outlives any ordering concerns). Not copyable.
- * @note CAUDIO_API: service.dll installs this sink across the utils.dll
+ * @note KANARIV_API: service.dll installs this sink across the utils.dll
  * boundary.
  */
-class CAUDIO_API FileLogSink : public std::enable_shared_from_this<FileLogSink> {
+class KANARIV_API FileLogSink : public std::enable_shared_from_this<FileLogSink> {
   public:
     /**
      * @brief Opens (or creates) the log file for append.
@@ -79,4 +79,4 @@ class CAUDIO_API FileLogSink : public std::enable_shared_from_this<FileLogSink> 
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace caudio::utils
+} // namespace kanariv::utils

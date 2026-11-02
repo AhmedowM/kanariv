@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/config.hpp>
+#include <kanariv/config.hpp>
 #include <common.hpp>
 #include <cstdlib>
 #include <filesystem>
@@ -50,33 +50,33 @@ std::filesystem::path freshTempDir(const char* name) {
     std::filesystem::remove_all(dir, ec);
     std::filesystem::create_directories(dir, ec);
     REQUIRE(!ec);
-    caudio::test_helpers::registerTempPath(dir);
+    kanariv::test_helpers::registerTempPath(dir);
     return dir;
 }
 
 } // namespace
 
 TEST_CASE("default config path follows platform data convention", "[config]") {
-    auto tmp = freshTempDir("caudio_test_config_paths");
+    auto tmp = freshTempDir("kanariv_test_config_paths");
 #ifdef _WIN32
     ScopedEnv localApp("LOCALAPPDATA", tmp.string());
     ScopedEnv xdgCfg("XDG_CONFIG_HOME", (tmp / "xdg").string());
-    auto cfg = caudio::config::detail::defaultConfigPath();
-    REQUIRE(cfg == tmp / "caudio" / "config.json");
-    REQUIRE(cfg.parent_path() == caudio::config::detail::defaultDbPath().parent_path());
+    auto cfg = kanariv::config::detail::defaultConfigPath();
+    REQUIRE(cfg == tmp / "kanariv" / "config.json");
+    REQUIRE(cfg.parent_path() == kanariv::config::detail::defaultDbPath().parent_path());
 #else
     ScopedEnv xdgCfg("XDG_CONFIG_HOME", (tmp / "xdg").string());
-    auto cfg = caudio::config::detail::defaultConfigPath();
-    REQUIRE(cfg == tmp / "xdg" / "caudio" / "config.json");
+    auto cfg = kanariv::config::detail::defaultConfigPath();
+    REQUIRE(cfg == tmp / "xdg" / "kanariv" / "config.json");
 #endif
 }
 
 #ifdef _WIN32
 TEST_CASE("legacy Windows config is still read", "[config]") {
-    auto tmp = freshTempDir("caudio_test_config_legacy");
+    auto tmp = freshTempDir("kanariv_test_config_legacy");
     auto newDir = tmp / "new";
     auto home = tmp / "home";
-    auto legacyDir = home / ".config" / "caudio";
+    auto legacyDir = home / ".config" / "kanariv";
     std::error_code ec;
     std::filesystem::create_directories(legacyDir, ec);
     REQUIRE(!ec);
@@ -88,14 +88,14 @@ TEST_CASE("legacy Windows config is still read", "[config]") {
     ScopedEnv localApp("LOCALAPPDATA", newDir.string());
     ScopedEnv userProfile("USERPROFILE", home.string());
 
-    auto cfg = caudio::config::loadConfig({});
+    auto cfg = kanariv::config::loadConfig({});
     REQUIRE(cfg.has_value());
     REQUIRE(cfg->configPath == legacyDir / "config.json");
 }
 #endif
 
 TEST_CASE("config load/save playback-policy keys", "[config]") {
-    auto tmp = freshTempDir("caudio_test_config_policy");
+    auto tmp = freshTempDir("kanariv_test_config_policy");
     auto cfgPath = tmp / "config.json";
 
     // Write a config file with playback-policy keys.
@@ -109,17 +109,17 @@ TEST_CASE("config load/save playback-policy keys", "[config]") {
 })";
     }
 
-    auto loaded = caudio::config::loadConfig(cfgPath);
+    auto loaded = kanariv::config::loadConfig(cfgPath);
     REQUIRE(loaded.has_value());
     REQUIRE(loaded->clearStopsPlayback == false);
     REQUIRE(loaded->repeatDefault == "all");
     REQUIRE(loaded->autostart == true);
 
     // Save and reload to verify round-trip.
-    auto saved = caudio::config::saveConfig(*loaded);
+    auto saved = kanariv::config::saveConfig(*loaded);
     REQUIRE(saved.has_value());
 
-    auto reloaded = caudio::config::loadConfig(cfgPath);
+    auto reloaded = kanariv::config::loadConfig(cfgPath);
     REQUIRE(reloaded.has_value());
     REQUIRE(reloaded->clearStopsPlayback == false);
     REQUIRE(reloaded->repeatDefault == "all");
@@ -127,7 +127,7 @@ TEST_CASE("config load/save playback-policy keys", "[config]") {
 }
 
 TEST_CASE("config defaults for playback-policy keys", "[config]") {
-    auto tmp = freshTempDir("caudio_test_config_defaults");
+    auto tmp = freshTempDir("kanariv_test_config_defaults");
     auto cfgPath = tmp / "config.json";
 
     // Empty config file -> defaults.
@@ -137,7 +137,7 @@ TEST_CASE("config defaults for playback-policy keys", "[config]") {
         out << "{}";
     }
 
-    auto loaded = caudio::config::loadConfig(cfgPath);
+    auto loaded = kanariv::config::loadConfig(cfgPath);
     REQUIRE(loaded.has_value());
     REQUIRE(loaded->clearStopsPlayback == true);   // default
     REQUIRE(loaded->repeatDefault == "off");        // default

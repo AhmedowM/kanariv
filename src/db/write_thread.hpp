@@ -3,7 +3,7 @@
 /**
  * @file write_thread.hpp
  * @brief Background write batching for SQLite.
- * @ingroup caudio_db
+ * @ingroup kanariv_db
  * @details Single-consumer background thread that serializes
  * `WriteOperation`s queued via an `MpscQueue<WriteOperation>`. Batch size
  * is set at construction (`writeBatchSize`, default 256) and forwarded to the
@@ -12,26 +12,26 @@
  * Internal header: lives in `src/`, not installed.
  */
 
-#include <caudio/fwd.hpp>
-#include <caudio/utils/error.hpp>
+#include <kanariv/fwd.hpp>
+#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <expected>
 #include <memory>
 #include <string>
 #include <utils/function.hpp>
 
-namespace caudio::db {
+namespace kanariv::db {
 
 /**
  * @brief Single write operation submitted to `WriterThread`.
- * @ingroup caudio_db
+ * @ingroup kanariv_db
  * @details Either `stmt` or `sql` is executed; `cb` is invoked outside
  * the worker lock after execution with success or `Corrupt` on failure.
  */
 struct WriteOperation {
     std::string sql;                       ///< Raw SQL (used when `stmt` is null).
     std::unique_ptr<SqliteStatement> stmt; ///< Prepared statement to step.
-    caudio::utils::MoveOnlyFunction<void(std::expected<void, caudio::utils::Error>)>
+    kanariv::utils::MoveOnlyFunction<void(std::expected<void, kanariv::utils::Error>)>
         cb; ///< Completion callback.
 
     // All special members are out-of-line (write_thread.cpp): the header only
@@ -40,14 +40,14 @@ struct WriteOperation {
     WriteOperation();
     /**
      * @brief Constructs a write operation.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @param s SQL text.
      * @param st Prepared statement (may be null if using `s`).
      * @param c Completion callback (may be empty).
      */
     WriteOperation(
         std::string s, std::unique_ptr<SqliteStatement> st,
-        caudio::utils::MoveOnlyFunction<void(std::expected<void, caudio::utils::Error>)> c);
+        kanariv::utils::MoveOnlyFunction<void(std::expected<void, kanariv::utils::Error>)> c);
     WriteOperation(const WriteOperation&) = delete;
     WriteOperation& operator=(const WriteOperation&) = delete;
     WriteOperation(WriteOperation&&) noexcept;
@@ -57,7 +57,7 @@ struct WriteOperation {
 
 /**
  * @brief Background writer that serializes SQLite writes off the hot path.
- * @ingroup caudio_db
+ * @ingroup kanariv_db
  * @details Thread-safety and batching:
  * - `queue_` is a bounded `MpscQueue<WriteOperation>` with capacity
  *   `writeBatchSize` (default 256, clamped to >=1). `push()` fails with
@@ -76,12 +76,12 @@ class WriterThread final {
   public:
     /**
      * @brief Constructs the writer with given batch/queue capacity.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @param writeBatchSize Queue capacity; 0 is normalized to 256.
      */
     explicit WriterThread(std::size_t writeBatchSize = 256);
 
-    /** @brief Closes the thread and drains the queue. @ingroup caudio_db */
+    /** @brief Closes the thread and drains the queue. @ingroup kanariv_db */
     ~WriterThread();
 
     WriterThread(const WriterThread&) = delete;
@@ -89,14 +89,14 @@ class WriterThread final {
 
     /**
      * @brief Move-constructs, transferring queue/db/thread/in_flight.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @param o Source; left with null db and empty thread.
      */
     WriterThread(WriterThread&& o) noexcept;
 
     /**
      * @brief Move-assigns; closes current thread first.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @param o Source.
      * @return *this
      */
@@ -104,7 +104,7 @@ class WriterThread final {
 
     /**
      * @brief Starts the background thread for the given handle.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @param db Borrowed sqlite3 handle (must outlive the thread).
      * @details No-op if already running (`thread_.joinable()`).
      * @par Thread safety
@@ -114,7 +114,7 @@ class WriterThread final {
 
     /**
      * @brief Stops the thread and drains remaining ops.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @details Requests stop, notifies `cv_`, joins. Remaining queued ops
      * are popped and destroyed (their statements finalized).
      */
@@ -122,7 +122,7 @@ class WriterThread final {
 
     /**
      * @brief Enqueues a write operation.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @param sql SQL text (used if `stmt` is null).
      * @param stmt Prepared statement to execute (may be null).
      * @param cb Completion callback invoked after execution.
@@ -130,12 +130,12 @@ class WriterThread final {
      * @par Thread safety
      * Thread-safe (MPSC); multiple producers may call concurrently.
      */
-    std::expected<void, caudio::utils::Error>
+    std::expected<void, kanariv::utils::Error>
     push(std::string sql, std::unique_ptr<SqliteStatement> stmt,
-         caudio::utils::MoveOnlyFunction<void(std::expected<void, caudio::utils::Error>)> cb);
+         kanariv::utils::MoveOnlyFunction<void(std::expected<void, kanariv::utils::Error>)> cb);
     /**
      * @brief Enqueues a raw-SQL write operation (no prepared statement).
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @param sql SQL text to execute.
      * @param cb Completion callback invoked after execution.
      * @return Success or `Error` with `StatusCode::Busy` if queue is full.
@@ -145,31 +145,31 @@ class WriterThread final {
      * @par Thread safety
      * Thread-safe (MPSC); multiple producers may call concurrently.
      */
-    std::expected<void, caudio::utils::Error>
+    std::expected<void, kanariv::utils::Error>
     push(std::string sql,
-         caudio::utils::MoveOnlyFunction<void(std::expected<void, caudio::utils::Error>)> cb);
+         kanariv::utils::MoveOnlyFunction<void(std::expected<void, kanariv::utils::Error>)> cb);
 
     /**
      * @brief Waits until the queue is empty and no op is in flight.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @return Success, or `Error` with `StatusCode::Busy` on 200 ms timeout.
      * @details Waits on `cv_` with predicate `queue_->empty() && in_flight_ == 0`.
      * Re-checks predicate after timeout to avoid spurious failure.
      * @par Thread safety
      * Thread-safe; blocks caller.
      */
-    std::expected<void, caudio::utils::Error> flush();
+    std::expected<void, kanariv::utils::Error> flush();
 
     /**
      * @brief Checks if the queue is empty.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @return true if no pending ops.
      */
     bool empty() const;
 
     /**
      * @brief Returns number of pending ops.
-     * @ingroup caudio_db
+     * @ingroup kanariv_db
      * @return Queue size.
      */
     std::size_t size() const;
@@ -179,4 +179,4 @@ class WriterThread final {
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace caudio::db
+} // namespace kanariv::db

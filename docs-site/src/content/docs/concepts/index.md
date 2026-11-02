@@ -1,11 +1,11 @@
 ---
 title: Concepts
-description: Core concepts behind the caudio architecture and protocol.
+description: Core concepts behind the kanariv architecture and protocol.
 ---
 
 # Concepts
 
-Understand how caudio is structured before integrating it into an application.
+Understand how kanariv is structured before integrating it into an application.
 The system is deliberately split into a local service, focused C++ libraries,
 and small clients that communicate through stable boundaries.
 

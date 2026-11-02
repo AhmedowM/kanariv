@@ -1,15 +1,15 @@
 #include <algorithm>
-#include <caudio/db/database.hpp>
-#include <caudio/db/search.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/media/audio_ext.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/reader.hpp>
-#include <caudio/service/service.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/search.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/media/audio_ext.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/service/service.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
@@ -27,18 +27,18 @@
 
 #include "service_impl.hpp"
 
-namespace caudio::service {
+namespace kanariv::service {
 
 namespace detail {
 
 double durationFromDecoder(const std::filesystem::path& path) noexcept;
 
-inline std::expected<caudio::types::Track, caudio::utils::Error>
-ensureLibraryTrack(caudio::contracts::IDatabase& db, const std::filesystem::path& p) {
-    auto fpRes = caudio::media::internal::computeFingerprint(p);
+inline std::expected<kanariv::types::Track, kanariv::utils::Error>
+ensureLibraryTrack(kanariv::contracts::IDatabase& db, const std::filesystem::path& p) {
+    auto fpRes = kanariv::media::internal::computeFingerprint(p);
     if (!fpRes)
         return std::unexpected{fpRes.error()};
-    caudio::types::Track t;
+    kanariv::types::Track t;
     t.path = p.generic_string();
     t.fingerprint = *fpRes;
     t.duration = durationFromDecoder(p);
@@ -49,7 +49,7 @@ ensureLibraryTrack(caudio::contracts::IDatabase& db, const std::filesystem::path
     auto ftime = std::filesystem::last_write_time(p, ec2);
     if (!ec2)
         t.mtime = static_cast<int64_t>(ftime.time_since_epoch().count());
-    if (auto meta = caudio::media::extractMetadata(t.path); meta) {
+    if (auto meta = kanariv::media::extractMetadata(t.path); meta) {
         t.title = std::move(meta->title);
         t.artist = std::move(meta->artist);
         t.album = std::move(meta->album);
@@ -69,7 +69,7 @@ ensureLibraryTrack(caudio::contracts::IDatabase& db, const std::filesystem::path
         t.id = *ins;
         return t;
     }
-    if (ins.error().code == caudio::utils::StatusCode::AlreadyExists) {
+    if (ins.error().code == kanariv::utils::StatusCode::AlreadyExists) {
         if (auto existing = db.findByFingerprint(t.fingerprint))
             return std::move(*existing);
         if (auto byPath = db.findByPath(t.path))
@@ -80,11 +80,11 @@ ensureLibraryTrack(caudio::contracts::IDatabase& db, const std::filesystem::path
 
 double durationFromDecoder(const std::filesystem::path& path) noexcept {
     try {
-        auto readerRes = caudio::media::FileReader::open(path);
+        auto readerRes = kanariv::media::FileReader::open(path);
         if (!readerRes)
             return 0.0;
         auto& readerPtr = readerRes.value();
-        auto decRes = caudio::media::Decoder::open(*readerPtr);
+        auto decRes = kanariv::media::Decoder::open(*readerPtr);
         if (!decRes)
             return 0.0;
         auto& decPtr = decRes.value();
@@ -100,23 +100,23 @@ double durationFromDecoder(const std::filesystem::path& path) noexcept {
 
 } // namespace detail
 
-using caudio::engine::detail::ServiceAccess;
-using namespace caudio::ipc;
-using caudio::ipc::QueueAdd;
-using caudio::ipc::QueueClear;
-using caudio::ipc::QueueList;
-using caudio::ipc::QueueMove;
-using caudio::ipc::QueueQueues;
-using caudio::ipc::QueueRemove;
-using caudio::ipc::QueueRepeat;
-using caudio::ipc::QueueShuffle;
-using caudio::ipc::QueueSwitch;
+using kanariv::engine::detail::ServiceAccess;
+using namespace kanariv::ipc;
+using kanariv::ipc::QueueAdd;
+using kanariv::ipc::QueueClear;
+using kanariv::ipc::QueueList;
+using kanariv::ipc::QueueMove;
+using kanariv::ipc::QueueQueues;
+using kanariv::ipc::QueueRemove;
+using kanariv::ipc::QueueRepeat;
+using kanariv::ipc::QueueShuffle;
+using kanariv::ipc::QueueSwitch;
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueList& ql) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueList& ql) {
     if (ql.order != "playback" && ql.order != "added" && !ql.order.empty())
-        return std::unexpected{caudio::utils::makeError(
-            caudio::utils::StatusCode::InvalidArg, "queue list: invalid order (added|playback)")};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, "queue list: invalid order (added|playback)")};
     int64_t qid = engine_->activeQueueId();
     // validation: queue exists
     {
@@ -127,7 +127,7 @@ Service::Impl::handle(const caudio::ipc::QueueList& ql) {
     auto items = db_->listQueueItems(qid);
     if (!items)
         return std::unexpected{items.error()};
-    std::vector<caudio::types::Track> tracks;
+    std::vector<kanariv::types::Track> tracks;
     tracks.reserve(items->size());
     for (auto& it : *items) {
         auto tr = db_->getTrack(it.track_id);
@@ -140,7 +140,7 @@ Service::Impl::handle(const caudio::ipc::QueueList& ql) {
         // anything missing follows in insertion order.
         auto perm = ServiceAccess::shufflePermFor(*engine_, qid);
         if (!perm.empty()) {
-            std::vector<caudio::types::Track> ordered;
+            std::vector<kanariv::types::Track> ordered;
             ordered.reserve(tracks.size());
             std::vector<char> seen(tracks.size(), 0);
             for (int64_t p : perm) {
@@ -159,31 +159,31 @@ Service::Impl::handle(const caudio::ipc::QueueList& ql) {
     return Result{QueueTracks{std::move(tracks)}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueQueues&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueQueues&) {
     auto qs = db_->listQueues();
     if (!qs)
         return std::unexpected{qs.error()};
     int64_t active = engine_->activeQueueId();
-    caudio::ipc::Queues out{};
+    kanariv::ipc::Queues out{};
     for (auto& q : *qs) {
         auto items = db_->listQueueItems(q.id);
         std::size_t n = items ? items->size() : 0;
-        out.entries.push_back(caudio::ipc::QueueEntry{q.id, q.name, n, q.id == active, q.temp});
+        out.entries.push_back(kanariv::ipc::QueueEntry{q.id, q.name, n, q.id == active, q.temp});
     }
     return Result{std::move(out)};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueCreate& qc) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueCreate& qc) {
     if (qc.name.empty())
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "queue create: missing name")};
     auto id = db_->createQueue(qc.name);
     if (!id)
         return std::unexpected{id.error()};
     // Apply the configured default repeat mode to the new queue.
-    caudio::db::Database& db = dynamic_cast<caudio::db::Database&>(*db_);
+    kanariv::db::Database& db = dynamic_cast<kanariv::db::Database&>(*db_);
     if (config_.repeatDefault == "one") {
         if (auto e = db.setQueueRepeat(*id, 1); !e)
             return std::unexpected{e.error()};
@@ -191,13 +191,13 @@ Service::Impl::handle(const caudio::ipc::QueueCreate& qc) {
         if (auto e = db.setQueueRepeat(*id, 2); !e)
             return std::unexpected{e.error()};
     }
-    return Result{caudio::ipc::QueueCreated{*id, qc.name}};
+    return Result{kanariv::ipc::QueueCreated{*id, qc.name}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueDelete& qd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueDelete& qd) {
     if (qd.qid == engine_->activeQueueId())
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "cannot delete the active queue")};
     auto q = db_->getQueue(qd.qid);
     if (!q)
@@ -208,20 +208,20 @@ Service::Impl::handle(const caudio::ipc::QueueDelete& qd) {
     return Result{Empty{}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::PlayFiles& cmd) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::PlayFiles& cmd) {
     if (cmd.paths.empty())
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg,
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "play files: missing paths")};
     // Validate everything first: no half-built queues on failure.
     for (auto& ps : cmd.paths) {
         std::filesystem::path p(ps);
         std::error_code ec;
         if (!std::filesystem::is_regular_file(p, ec) || ec)
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                             "track not found: " + ps)};
-        if (!caudio::media::hasAudioExt(p))
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::Unsupported,
+        if (!kanariv::media::hasAudioExt(p))
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Unsupported,
                                                             "unsupported file type: " + ps)};
     }
     std::vector<int64_t> ids;
@@ -260,12 +260,12 @@ Service::Impl::handle(const caudio::ipc::PlayFiles& cmd) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueSwitch& qs) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueSwitch& qs) {
     auto q = db_->getQueue(qs.qid);
     if (!q) {
         if (q.error().message.empty())
-            return std::unexpected{caudio::utils::makeError(
+            return std::unexpected{kanariv::utils::makeError(
                 q.error().code, "queue not found: " + std::to_string(qs.qid))};
         return std::unexpected{q.error()};
     }
@@ -276,8 +276,8 @@ Service::Impl::handle(const caudio::ipc::QueueSwitch& qs) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueAdd& qa) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
     int64_t qid = engine_->activeQueueId();
     auto q = db_->getQueue(qid);
     if (!q)
@@ -286,15 +286,15 @@ Service::Impl::handle(const caudio::ipc::QueueAdd& qa) {
         std::filesystem::path p(qa.query);
         std::error_code ec;
         bool exists = std::filesystem::exists(p, ec);
-        if (!ec && caudio::media::hasAudioExt(p)) {
+        if (!ec && kanariv::media::hasAudioExt(p)) {
             if (!exists) {
-                return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+                return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                                 "track not found: " + qa.query)};
             }
             auto trRes = detail::ensureLibraryTrack(*db_, p);
             if (!trRes)
                 return std::unexpected{trRes.error()};
-            caudio::types::Track t = std::move(*trRes);
+            kanariv::types::Track t = std::move(*trRes);
             int64_t newId = t.id;
             // Skip the enqueue when already queued: duplicates warn
             // client-side, they must not create rows.
@@ -314,20 +314,20 @@ Service::Impl::handle(const caudio::ipc::QueueAdd& qa) {
                 ServiceAccess::noteEnqueued(*engine_, qid, 1);
             }
             updateShmStatus();
-            std::vector<caudio::types::Track> single;
+            std::vector<kanariv::types::Track> single;
             single.reserve(1);
             single.push_back(std::move(t));
             return Result{QueueTracks{std::move(single)}};
         }
     }
-    std::vector<caudio::types::Track> toAdd;
+    std::vector<kanariv::types::Track> toAdd;
     if (qa.search) {
-        auto sr = caudio::db::search(*db_, qa.query, 50);
+        auto sr = kanariv::db::search(*db_, qa.query, 50);
         if (!sr)
             return std::unexpected{sr.error()};
         toAdd = std::move(*sr);
         if (toAdd.empty()) {
-            return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::NotFound,
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                             "no matches for: " + qa.query)};
         }
     } else {
@@ -366,13 +366,13 @@ Service::Impl::handle(const caudio::ipc::QueueAdd& qa) {
                 toAdd.push_back(std::move(*tr));
             } else {
                 // fallback to search via FTS (covers LIKE)
-                auto sr = caudio::db::search(*db_, qa.query, 50);
+                auto sr = kanariv::db::search(*db_, qa.query, 50);
                 if (!sr)
                     return std::unexpected{sr.error()};
                 toAdd = std::move(*sr);
                 if (toAdd.empty()) {
-                    return std::unexpected{caudio::utils::makeError(
-                        caudio::utils::StatusCode::NotFound, "track not found: " + qa.query)};
+                    return std::unexpected{kanariv::utils::makeError(
+                        kanariv::utils::StatusCode::NotFound, "track not found: " + qa.query)};
                 }
             }
         }
@@ -405,8 +405,8 @@ Service::Impl::handle(const caudio::ipc::QueueAdd& qa) {
     return Result{QueueTracks{std::move(toAdd)}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueRemove& qr) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
     int64_t qid = engine_->activeQueueId();
     auto q = db_->getQueue(qid);
     if (!q)
@@ -435,13 +435,13 @@ Service::Impl::handle(const caudio::ipc::QueueRemove& qr) {
     }
     if (!isNum) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "invalid idOrIndex")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "invalid idOrIndex")};
     }
     // try as position first
     auto rm = db_->queueRemove(qid, val);
     if (!rm) {
         // if not found as position, try as track_id lookup
-        if (rm.error().code == caudio::utils::StatusCode::NotFound) {
+        if (rm.error().code == kanariv::utils::StatusCode::NotFound) {
             auto items = db_->listQueueItems(qid);
             if (!items)
                 return std::unexpected{items.error()};
@@ -465,7 +465,7 @@ Service::Impl::handle(const caudio::ipc::QueueRemove& qr) {
     auto items = db_->listQueueItems(qid);
     if (!items)
         return std::unexpected{items.error()};
-    std::vector<caudio::types::Track> tracks;
+    std::vector<kanariv::types::Track> tracks;
     for (auto& it : *items) {
         auto tr = db_->getTrack(it.track_id);
         if (tr)
@@ -475,8 +475,8 @@ Service::Impl::handle(const caudio::ipc::QueueRemove& qr) {
     return Result{QueueTracks{std::move(tracks)}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueMove& qm) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueMove& qm) {
     // QueueMove: reorder within queue via playlistReorder? For queue we lack direct
     // move. Simulate via remove+enqueue: fetch items, reorder vector, clear and
     // re-enqueue
@@ -489,7 +489,7 @@ Service::Impl::handle(const caudio::ipc::QueueMove& qm) {
         return std::unexpected{items.error()};
     if (qm.from >= items->size() || qm.to >= items->size()) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg, "move out of range")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "move out of range")};
     }
     // collect track_ids in order
     std::vector<int64_t> ids;
@@ -509,7 +509,7 @@ Service::Impl::handle(const caudio::ipc::QueueMove& qm) {
     auto nitems = db_->listQueueItems(qid);
     if (!nitems)
         return std::unexpected{nitems.error()};
-    std::vector<caudio::types::Track> tracks;
+    std::vector<kanariv::types::Track> tracks;
     for (auto& it : *nitems) {
         auto tr = db_->getTrack(it.track_id);
         if (tr)
@@ -519,8 +519,8 @@ Service::Impl::handle(const caudio::ipc::QueueMove& qm) {
     return Result{QueueTracks{std::move(tracks)}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueClear&) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueClear&) {
     int64_t qid = engine_->activeQueueId();
     auto q = db_->getQueue(qid);
     if (!q)
@@ -536,8 +536,8 @@ Service::Impl::handle(const caudio::ipc::QueueClear&) {
     return Result{QueueTracks{{}}};
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueShuffle& qs) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueShuffle& qs) {
     bool on;
     if (qs.on.has_value()) {
         on = *qs.on;
@@ -552,8 +552,8 @@ Service::Impl::handle(const caudio::ipc::QueueShuffle& qs) {
     return statusResult();
 }
 
-std::expected<caudio::ipc::Result, caudio::utils::Error>
-Service::Impl::handle(const caudio::ipc::QueueRepeat& qr) {
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueRepeat& qr) {
     if (qr.mode.has_value()) {
         auto r = engine_->setRepeat(*qr.mode);
         if (!r)
@@ -564,4 +564,4 @@ Service::Impl::handle(const caudio::ipc::QueueRepeat& qr) {
     return statusResult();
 }
 
-} // namespace caudio::service
+} // namespace kanariv::service

@@ -48,7 +48,7 @@ jobs:
       matrix:
         version: ${{ fromJSON(inputs.gcc_versions) }}
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -105,7 +105,7 @@ jobs:
       matrix:
         version: ${{ fromJSON(inputs.clang_versions) }}
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -171,7 +171,7 @@ jobs:
       matrix:
         os: [windows-2022, windows-latest]
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -250,7 +250,7 @@ jobs:
     runs-on: windows-latest
     continue-on-error: ${{ inputs.strict == false }}
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -324,7 +324,7 @@ jobs:
     runs-on: windows-latest
     continue-on-error: ${{ inputs.strict == false }}
     env:
-      CAUDIO_TEST_NOAUDIO: 1
+      KANARIV_TEST_NOAUDIO: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -400,7 +400,7 @@ jobs:
 
       - name: Test
         env:
-          CAUDIO_TEST_NOAUDIO: 1
+          KANARIV_TEST_NOAUDIO: 1
         run: |
           set -o pipefail
           python scripts/configure.py ci --toolchain gcc --build-dir build/ci-mingw --test 2>&1 | tee test-mingw.log

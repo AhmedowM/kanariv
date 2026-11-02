@@ -1,17 +1,17 @@
 ---
 title: Architecture
-description: caudio system architecture, component graph, and daemon design
+description: kanariv system architecture, component graph, and daemon design
 ---
 
 # Architecture
 
-caudio is a headless music player built as a reusable C++23 library with a
+kanariv is a headless music player built as a reusable C++23 library with a
 client-daemon architecture.
 
 ## Component graph
 
-<div class="architecture-diagram" role="img" aria-label="caudio client daemon architecture">
-  <div class="architecture-node"><strong>caudio CLI</strong><small>CLI11, JSON IPC, output formatting</small></div>
+<div class="architecture-diagram" role="img" aria-label="kanariv client daemon architecture">
+  <div class="architecture-node"><strong>kanariv CLI</strong><small>CLI11, JSON IPC, output formatting</small></div>
   <div class="architecture-arrow" aria-hidden="true">↓ JSON IPC · 4-byte big-endian framing</div>
   <div class="architecture-node">
     <strong>Daemon / Service</strong>
@@ -33,17 +33,17 @@ client-daemon architecture.
 
 | Target | Responsibility |
 |---|---|
-| `caudio::utils` | Errors, logging, JSON, queues, threads, versioning |
-| `caudio::types` | Shared value types |
-| `caudio::contracts` | Backend-neutral persistence interface (`IDatabase`) |
-| `caudio::media` | Reading, decoding, metadata, library discovery |
-| `caudio::player` | Audio output and playback primitives |
-| `caudio::db` | SQLite storage and FTS5 search |
-| `caudio::engine` | Queue, shuffle, repeat, history, playback state |
-| `caudio::ipc` | Daemon protocol, framing, configuration |
-| `caudio::client` | Daemon client and output formatting |
-| `caudio::service` | Daemon service and in-process service host |
-| `caudio::config` | Configuration management |
+| `kanariv::utils` | Errors, logging, JSON, queues, threads, versioning |
+| `kanariv::types` | Shared value types |
+| `kanariv::contracts` | Backend-neutral persistence interface (`IDatabase`) |
+| `kanariv::media` | Reading, decoding, metadata, library discovery |
+| `kanariv::player` | Audio output and playback primitives |
+| `kanariv::db` | SQLite storage and FTS5 search |
+| `kanariv::engine` | Queue, shuffle, repeat, history, playback state |
+| `kanariv::ipc` | Daemon protocol, framing, configuration |
+| `kanariv::client` | Daemon client and output formatting |
+| `kanariv::service` | Daemon service and in-process service host |
+| `kanariv::config` | Configuration management |
 
 ## Daemon design
 
@@ -73,7 +73,7 @@ State transitions use `compare_exchange` for lock-free control where possible.
 
 ## Error handling
 
-All fallible operations return `std::expected<T, caudio::utils::Error>`.
+All fallible operations return `std::expected<T, kanariv::utils::Error>`.
 Errors are not thrown across module boundaries.
 
 ## C++23 modules

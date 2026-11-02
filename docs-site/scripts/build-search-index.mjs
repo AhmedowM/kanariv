@@ -1,5 +1,5 @@
 /**
- * Build search index for caudio docs site.
+ * Build search index for kanariv docs site.
  * Reads markdown files directly from src/content/docs/ and writes public/search-index.json
  * Run: node scripts/build-search-index.mjs
  */

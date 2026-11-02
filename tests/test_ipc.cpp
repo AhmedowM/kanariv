@@ -1,14 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
-#include <caudio/contracts/database.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/types/engine.hpp>
-#include <caudio/ipc/command.hpp>
-#include <caudio/ipc/protocol.hpp>
-#include <caudio/ipc/result.hpp>
-#include <caudio/ipc/shm_status.hpp>
-#include <caudio/service/service.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/json.hpp>
+#include <kanariv/contracts/database.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/protocol.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/ipc/shm_status.hpp>
+#include <kanariv/service/service.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <filesystem>
@@ -22,13 +22,13 @@
 #include <variant>
 
 #include "../src/client/ipc_client.hpp"
-using namespace caudio::ipc;
-using namespace caudio::utils;
-using namespace caudio::db;
-using namespace caudio::engine;
-using namespace caudio::service;
-using namespace caudio::client;
-using namespace caudio::test_helpers;
+using namespace kanariv::ipc;
+using namespace kanariv::utils;
+using namespace kanariv::db;
+using namespace kanariv::engine;
+using namespace kanariv::service;
+using namespace kanariv::client;
+using namespace kanariv::test_helpers;
 
 namespace {
 
@@ -76,7 +76,7 @@ TEST_CASE("daemon start/stop", "[ipc][cli]") {
             using U = std::decay_t<decltype(v)>;
             if constexpr (std::is_same_v<U, Status>) {
                 hasStatus = true;
-                REQUIRE(v.state == caudio::types::PlaybackState::Stopped);
+                REQUIRE(v.state == kanariv::types::PlaybackState::Stopped);
                 REQUIRE(v.q_size == 0);
             }
         },
@@ -121,7 +121,7 @@ TEST_CASE("bookmark protocol roundtrip", "[ipc]") {
     CHECK(!listVal->track_id.has_value());
 
     Result res{Bookmarks{{
-        caudio::types::Bookmark{
+        kanariv::types::Bookmark{
             .id = 1, .track_id = 42, .position_ms = 83000, .note = "note", .created = 1700},
     }}};
     auto resJson = toJson(res);
@@ -139,7 +139,7 @@ TEST_CASE("bookmark protocol roundtrip", "[ipc]") {
 
 TEST_CASE("history protocol roundtrip", "[ipc]") {
     Result res{History{{
-        caudio::types::HistoryEntry{.id = 1,
+        kanariv::types::HistoryEntry{.id = 1,
                                     .track_id = 42,
                                     .started_at = 1700000000000,
                                     .completed_at = 1700000000240,
@@ -173,8 +173,8 @@ TEST_CASE("history protocol roundtrip", "[ipc]") {
 
 TEST_CASE("devices protocol roundtrip", "[ipc]") {
     Result res{Devices{{
-        caudio::types::DeviceInfo{.id = "hw:0,0", .name = "Built-in Audio", .isDefault = true},
-        caudio::types::DeviceInfo{.id = "hw:1,0", .name = "USB Headset", .isDefault = false},
+        kanariv::types::DeviceInfo{.id = "hw:0,0", .name = "Built-in Audio", .isDefault = true},
+        kanariv::types::DeviceInfo{.id = "hw:1,0", .name = "USB Headset", .isDefault = false},
     }}};
     auto resJson = toJson(res);
     REQUIRE(resJson["type"].snapshot().get<std::string>() == "Devices");
@@ -191,23 +191,23 @@ TEST_CASE("devices protocol roundtrip", "[ipc]") {
 }
 
 TEST_CASE("library stats detailed protocol roundtrip", "[ipc]") {
-    caudio::types::Track track{};
+    kanariv::types::Track track{};
     track.id = 7;
     track.path = "/music/song.mp3";
     track.title = "Song";
     track.duration = 240.0;
     Result res{
-        caudio::types::LibraryStats{.tracks = 100,
+        kanariv::types::LibraryStats{.tracks = 100,
                                     .queues = 5,
                                     .playlists = 20,
                                     .total_duration_ms = 36000000,
                                     .total_play_time_ms = 7200000,
-                                    .top_tracks = std::vector<caudio::types::Track>{track}}};
+                                    .top_tracks = std::vector<kanariv::types::Track>{track}}};
     auto resJson = toJson(res);
     REQUIRE(resJson["type"].snapshot().get<std::string>() == "LibraryStats");
     auto resBack = resultFromJson(resJson);
     REQUIRE(resBack.has_value());
-    auto* stats = std::get_if<caudio::types::LibraryStats>(&*resBack);
+    auto* stats = std::get_if<kanariv::types::LibraryStats>(&*resBack);
     REQUIRE(stats != nullptr);
     CHECK(stats->tracks == 100);
     CHECK(stats->queues == 5);
@@ -221,7 +221,7 @@ TEST_CASE("library stats detailed protocol roundtrip", "[ipc]") {
 }
 
 TEST_CASE("library stats summary protocol roundtrip", "[ipc]") {
-    Result res{caudio::types::LibraryStats{.tracks = 100,
+    Result res{kanariv::types::LibraryStats{.tracks = 100,
                                            .queues = 5,
                                            .playlists = 20,
                                            .total_duration_ms = 36000000,
@@ -232,7 +232,7 @@ TEST_CASE("library stats summary protocol roundtrip", "[ipc]") {
     CHECK_FALSE(resJson.contains("top_tracks"));
     auto resBack = resultFromJson(resJson);
     REQUIRE(resBack.has_value());
-    auto* stats = std::get_if<caudio::types::LibraryStats>(&*resBack);
+    auto* stats = std::get_if<kanariv::types::LibraryStats>(&*resBack);
     REQUIRE(stats != nullptr);
     CHECK(stats->tracks == 100);
     CHECK(stats->total_duration_ms == 36000000);
@@ -268,13 +268,13 @@ TEST_CASE("library stats command roundtrip", "[ipc]") {
 TEST_CASE("shm status reader/writer roundtrip", "[ipc][shm]") {
     const auto suffix = std::chrono::steady_clock::now().time_since_epoch().count() % 100000000;
     const std::string name = "test-" + std::to_string(suffix);
-    auto writerRes = caudio::ipc::ShmStatusWriter::create(name);
+    auto writerRes = kanariv::ipc::ShmStatusWriter::create(name);
     if (!writerRes)
         WARN(writerRes.error().message);
     REQUIRE(writerRes.has_value());
     auto& writer = *writerRes;
 
-    caudio::ipc::ShmStatusUpdate update{};
+    kanariv::ipc::ShmStatusUpdate update{};
     update.position = 12.5;
     update.volume = 0.5f;
     update.muted = true;
@@ -286,7 +286,7 @@ TEST_CASE("shm status reader/writer roundtrip", "[ipc][shm]") {
     writer.setDuration(180.0);
     writer.setQueueSize(3);
 
-    auto readerRes = caudio::ipc::ShmStatusReader::openReadOnly(name);
+    auto readerRes = kanariv::ipc::ShmStatusReader::openReadOnly(name);
     if (!readerRes)
         WARN(readerRes.error().message);
     REQUIRE(readerRes.has_value());
@@ -392,7 +392,7 @@ TEST_CASE("command roundtrip - status", "[ipc][cli]") {
             using U = std::decay_t<decltype(v)>;
             if constexpr (std::is_same_v<U, Status>) {
                 hasStatus = true;
-                REQUIRE(v.state == caudio::types::PlaybackState::Stopped);
+                REQUIRE(v.state == kanariv::types::PlaybackState::Stopped);
                 REQUIRE(v.q_size == 0);
             }
         },
@@ -450,11 +450,11 @@ TEST_CASE("daemon track rate and smart playlist roundtrip", "[ipc][cli]") {
 
     // Open the database once and share it with the service so the test can
     // insert tracks directly while the daemon runs (WAL allows this).
-    auto dbRes = caudio::db::Database::open(dbPath.generic_string());
+    auto dbRes = kanariv::db::Database::open(dbPath.generic_string());
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
 
-    caudio::types::Track t{};
+    kanariv::types::Track t{};
     t.path = "/tmp/track_rate.mp3";
     t.title = "Rate Me";
     t.artist = "Test Artist";
@@ -464,8 +464,8 @@ TEST_CASE("daemon track rate and smart playlist roundtrip", "[ipc][cli]") {
     REQUIRE(ins.has_value());
     int64_t trackId = *ins;
 
-    std::shared_ptr<caudio::contracts::IDatabase> sharedDb(std::move(db));
-    auto svcRes = caudio::service::Service::create(cfg, sharedDb);
+    std::shared_ptr<kanariv::contracts::IDatabase> sharedDb(std::move(db));
+    auto svcRes = kanariv::service::Service::create(cfg, sharedDb);
     REQUIRE(svcRes.has_value());
     auto svc = std::move(svcRes.value());
 
@@ -534,12 +534,12 @@ TEST_CASE("daemon library list rating filter and maintenance", "[ipc][cli]") {
     std::filesystem::path dbPath = dir / "library.db";
     std::error_code ec;
 
-    auto dbRes = caudio::db::Database::open(dbPath.generic_string());
+    auto dbRes = kanariv::db::Database::open(dbPath.generic_string());
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
 
     // Insert tracks: some rated, some not.
-    caudio::types::Track t1{};
+    kanariv::types::Track t1{};
     t1.path = "/tmp/track_a.mp3";
     t1.title = "Track A";
     t1.rating = 5;
@@ -548,7 +548,7 @@ TEST_CASE("daemon library list rating filter and maintenance", "[ipc][cli]") {
     auto ins1 = db->insertTrack(t1);
     REQUIRE(ins1.has_value());
 
-    caudio::types::Track t2{};
+    kanariv::types::Track t2{};
     t2.path = "/tmp/track_b.mp3";
     t2.title = "Track B";
     t2.rating = 0;
@@ -561,7 +561,7 @@ TEST_CASE("daemon library list rating filter and maintenance", "[ipc][cli]") {
     cfg.dbPath = dbPath;
     cfg.configPath = dir / "config.json";
 
-    auto svcRes = caudio::service::Service::create(cfg, std::move(db));
+    auto svcRes = kanariv::service::Service::create(cfg, std::move(db));
     REQUIRE(svcRes.has_value());
     auto svc = std::move(svcRes.value());
 

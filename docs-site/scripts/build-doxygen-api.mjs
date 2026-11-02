@@ -299,7 +299,7 @@ function build() {
     const owningCompound = compoundByName.get(owner);
     if (owningCompound) {
       if (!owningCompound.members.some((item) => item.id === member.id)) owningCompound.members.push(member);
-    } else if (member.qualifiedName?.startsWith('caudio::')) {
+    } else if (member.qualifiedName?.startsWith('kanariv::')) {
       freeFunctions.push({
         sourceId: member.id,
         id: `symbol-${slug(member.qualifiedName)}-${slug(member.id)}`,

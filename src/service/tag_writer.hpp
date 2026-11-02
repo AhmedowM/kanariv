@@ -9,16 +9,16 @@
  */
 #pragma once
 
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <filesystem>
 
-namespace caudio::contracts {
+namespace kanariv::contracts {
 // Defined in contracts/database.hpp (full Database API); reference params need only this.
 class IDatabase;
-} // namespace caudio::contracts
+} // namespace kanariv::contracts
 
-namespace caudio::service::detail {
+namespace kanariv::service::detail {
 
 /**
  * @brief Reports whether TagLib can write tags for a path.
@@ -33,8 +33,8 @@ bool canWriteFileTags(const std::filesystem::path& p);
  * @return Success or Error (InvalidArg for unsupported formats, Io for
  * TagLib open/save failures).
  */
-caudio::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
-                                            const caudio::types::Track& t);
+kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
+                                            const kanariv::types::Track& t);
 
 /**
  * @brief Re-registers a track row after its file was tag-edited.
@@ -45,7 +45,7 @@ caudio::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
  * mtime, and audio technicals refresh from the new bytes. The id is stable:
  * lookup is path-keyed, never fingerprint-keyed (the fingerprint changed).
  */
-caudio::utils::Expected<caudio::types::Track> reregisterTrackRow(caudio::contracts::IDatabase& db,
-                                                                 caudio::types::Track t);
+kanariv::utils::Expected<kanariv::types::Track> reregisterTrackRow(kanariv::contracts::IDatabase& db,
+                                                                 kanariv::types::Track t);
 
-} // namespace caudio::service::detail
+} // namespace kanariv::service::detail

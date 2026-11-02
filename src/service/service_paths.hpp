@@ -2,8 +2,8 @@
 
 /**
  * @file service_paths.hpp
- * @brief Daemon path, lock and liveness helpers for caudio.service (internal).
- * @ingroup caudio_service
+ * @brief Daemon path, lock and liveness helpers for kanariv.service (internal).
+ * @ingroup kanariv_service
  */
 
 #include <cstdint>
@@ -11,11 +11,11 @@
 #include <optional>
 #include <string>
 
-namespace caudio::service::detail {
+namespace kanariv::service::detail {
 
 /**
  * @brief Get PID file path for a database path.
- * Delegates to cli::pidPathFor; falls back to dbPath parent / "caudio.pid".
+ * Delegates to cli::pidPathFor; falls back to dbPath parent / "kanariv.pid".
  * @param dbPath Database path.
  * @param socketPath Unused (kept for signature compatibility).
  * @return PID file path.
@@ -25,7 +25,7 @@ std::filesystem::path pidPathForSocket(const std::filesystem::path& dbPath,
 
 /**
  * @brief Get lock file path for a database path.
- * Delegates to cli::lockPathFor; falls back to PID dir / "caudio-<hash>.lock".
+ * Delegates to cli::lockPathFor; falls back to PID dir / "kanariv-<hash>.lock".
  * @param dbPath Database path.
  * @param socketPath Unused (kept for signature compatibility).
  * @return Lock file path.
@@ -36,8 +36,8 @@ std::filesystem::path lockPathForSocket(const std::filesystem::path& dbPath,
 /**
  * @brief Get socket path for a database path.
  * Delegates to config::socketPathFor; falls back to platform-specific default.
- * Windows: Named pipe \\.\pipe\caudio-<hash>
- * POSIX: $XDG_RUNTIME_DIR/caudio/caudio-<hash>.sock (created if needed)
+ * Windows: Named pipe \\.\pipe\kanariv-<hash>
+ * POSIX: $XDG_RUNTIME_DIR/kanariv/kanariv-<hash>.sock (created if needed)
  * @param dbPath Database path.
  * @return Socket path string.
  */
@@ -89,7 +89,7 @@ std::optional<int> readPidFile(const std::filesystem::path& pidPath);
 
 /**
  * @brief Resolve config file path.
- * Priority: explicit configPath > dbPath parent / "config.json" > temp/caudio/config.json.
+ * Priority: explicit configPath > dbPath parent / "config.json" > temp/kanariv/config.json.
  * @param configPath Explicit config path (may be empty).
  * @param dbPath Database path.
  * @return Resolved config file path.
@@ -97,4 +97,4 @@ std::optional<int> readPidFile(const std::filesystem::path& pidPath);
 std::filesystem::path resolveConfigPath(const std::filesystem::path& configPath,
                                         const std::filesystem::path& dbPath);
 
-} // namespace caudio::service::detail
+} // namespace kanariv::service::detail

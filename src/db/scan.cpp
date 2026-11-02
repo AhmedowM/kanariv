@@ -1,13 +1,13 @@
 ﻿#include <sqlite3.h>
 
-#include <caudio/db/database.hpp>
-#include <caudio/db/scan.hpp>
-#include <caudio/types/db.hpp>
-#include <caudio/media/decoder.hpp>
-#include <caudio/media/scan.hpp>
-#include <caudio/utils/error.hpp>
-#include <caudio/utils/log.hpp>
-#include <caudio/utils/result.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/scan.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/scan.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -23,15 +23,15 @@
 #include <system_error>
 #include <utility>
 
-namespace caudio::db {
+namespace kanariv::db {
 
-std::expected<void, caudio::utils::Error>
+std::expected<void, kanariv::utils::Error>
 scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             std::function<void(int64_t, int64_t, std::string_view)> progress,
-            caudio::media::ScanMode mode) {
+            kanariv::media::ScanMode mode) {
     Database& db = dynamic_cast<Database&>(db_);
     if (libraryId == 0)
-        return std::unexpected{caudio::utils::makeError(caudio::utils::StatusCode::InvalidArg)};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     auto libs = db.listLibraries();
     if (!libs)
         return std::unexpected{libs.error()};
@@ -41,16 +41,16 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             libPath = l.path;
     if (libPath.empty()) {
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "library not found")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "library not found")};
     }
     std::filesystem::path root(libPath);
     std::error_code ec;
     if (!std::filesystem::exists(root, ec))
         return std::unexpected{
-            caudio::utils::makeError(caudio::utils::StatusCode::NotFound, "path not found")};
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "path not found")};
     if (auto* lg = db.logger())
         lg->info("scan started root={} mode={}", libPath,
-                 mode == caudio::media::ScanMode::Sampled ? "sampled" : "full");
+                 mode == kanariv::media::ScanMode::Sampled ? "sampled" : "full");
     int64_t scanned = 0;
     int64_t added = 0;
     int64_t updated = 0;
@@ -59,27 +59,27 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
     size_t batchPending = 0;
     std::unique_lock<std::shared_mutex> batchLock;
     bool inTx = false;
-    auto beginBatch = [&]() -> std::expected<void, caudio::utils::Error> {
+    auto beginBatch = [&]() -> std::expected<void, kanariv::utils::Error> {
         if (inTx)
             return {};
         batchLock = std::unique_lock<std::shared_mutex>(DatabaseAccess::mutex(db));
         if (!DatabaseAccess::handleLocked(db))
             return std::unexpected{
-                caudio::utils::makeError(caudio::utils::StatusCode::Internal, "no db")};
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
         char* err = nullptr;
         internal::SqliteErrGuard guard{err};
         int rc = sqlite3_exec(DatabaseAccess::handleLocked(db), "BEGIN IMMEDIATE", nullptr, nullptr,
                               &err);
         if (rc != SQLITE_OK) {
             batchLock.unlock();
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::Busy, err ? std::string(err) : "BEGIN failed")};
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Busy, err ? std::string(err) : "BEGIN failed")};
         }
         inTx = true;
         batchPending = 0;
         return {};
     };
-    auto commitBatch = [&]() -> std::expected<void, caudio::utils::Error> {
+    auto commitBatch = [&]() -> std::expected<void, kanariv::utils::Error> {
         if (!inTx)
             return {};
         char* err = nullptr;
@@ -90,8 +90,8 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             batchLock.unlock();
             inTx = false;
             batchPending = 0;
-            return std::unexpected{caudio::utils::makeError(
-                caudio::utils::StatusCode::Internal, err ? std::string(err) : "commit failed")};
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Internal, err ? std::string(err) : "commit failed")};
         }
         batchLock.unlock();
         inTx = false;
@@ -107,7 +107,7 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
         batchPending = 0;
     };
 
-    for (auto trk : caudio::media::scanTracks(root, mode)) {
+    for (auto trk : kanariv::media::scanTracks(root, mode)) {
         if (!inTx) {
             auto b = beginBatch();
             if (!b)
@@ -130,14 +130,14 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
         }
         auto byFp = DatabaseAccess::findByFingerprintLocked(db, trk.fingerprint);
         if (byFp) {
-            caudio::types::Track upd = *byFp;
+            kanariv::types::Track upd = *byFp;
             upd.path = trk.path;
             upd.size = trk.size;
             upd.mtime = trk.mtime;
             upd.library_id = libraryId;
             upd.deleted_at = 0;
             bool hasMeta = false;
-            auto meta = caudio::media::extractMetadata(trk.path);
+            auto meta = kanariv::media::extractMetadata(trk.path);
             if (!meta) {
                 if (auto* lg = db.logger())
                     lg->debug("scan metadata failed file={} err={}", trk.path,
@@ -217,7 +217,7 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
                     (void)DatabaseAccess::deleteTrackLocked(db, existingPath->id);
             }
         } else if (existingPath) {
-            caudio::types::Track upd = *existingPath;
+            kanariv::types::Track upd = *existingPath;
             int64_t keepPlay = upd.play_count;
             int keepRating = upd.rating;
             int64_t keepAdded = upd.date_added;
@@ -227,7 +227,7 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             upd.library_id = libraryId;
             upd.deleted_at = 0;
             bool hasMeta = false;
-            auto meta = caudio::media::extractMetadata(trk.path);
+            auto meta = kanariv::media::extractMetadata(trk.path);
             if (!meta) {
                 if (auto* lg = db.logger())
                     lg->debug("scan metadata failed file={} err={}", trk.path,
@@ -367,4 +367,4 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
     return {};
 }
 
-} // namespace caudio::db
+} // namespace kanariv::db
