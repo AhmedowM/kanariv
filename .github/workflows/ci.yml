@@ -420,6 +420,65 @@ jobs:
           tar -xzf ffmpeg-trimmed-${{ env.FFMPEG_VERSION }}-macos-arm64.tar.gz -C "$KANARIV_TRIMMED_ROOT"
           ls "$KANARIV_TRIMMED_ROOT/lib"
 
+      - name: Fix FFmpeg dylib install names (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # The trimmed FFmpeg archive was built on the old `caudio` repo, where
+          # the Actions workspace was /Users/runner/work/caudio/caudio/. Its
+          # dylibs carry absolute install_name paths pointing there
+          # (e.g. /Users/runner/work/caudio/caudio/ffmpeg-trimmed/lib/libavcodec.62.dylib),
+          # which break after the rename to `kanariv` (workspace is now
+          # /Users/runner/work/kanariv/kanariv/). Rewire each dylib's id and
+          # cross-references to @rpath so build-tree test binaries resolve them
+          # via rpath instead of a stale absolute path. Re-sign afterwards because
+          # install_name_tool invalidates code signatures on macOS.
+          set -euo pipefail
+          libdir="$KANARIV_TRIMMED_ROOT/lib"
+          for dylib in "$libdir"/libavcodec.*.dylib "$libdir"/libavformat.*.dylib \
+                       "$libdir"/libavutil.*.dylib  "$libdir"/libswresample.*.dylib; do
+            [ -f "$dylib" ] || continue
+            name="$(basename "$dylib")"
+            # SONAME: libavcodec.63.1.102.dylib -> libavcodec.63.dylib
+            #         libavcodec.62.dylib   -> libavcodec.62.dylib  (single component)
+            case "$name" in
+              *.[0-9]*.[0-9]*.dylib)
+                soname="${name%.[0-9]*.[0-9]*.dylib}.dylib"
+                ;;
+              *)
+                soname="$name"
+                ;;
+            esac
+            # 1) Rewire this dylib's own id to @rpath/<soname>
+            install_name_tool -id "@rpath/$soname" "$dylib"
+            # 2) Rewire every absolute FFmpeg cross-reference inside it to @rpath/<soname>
+            otool -L "$dylib" | tail -n +2 | while IFS= read -r line; do
+              old="$(echo "$line" | awk '{print $1}')"
+              case "$old" in
+                /*)
+                  target="$(basename "$old")"
+                  # Only rewire FFmpeg cross-references, never system dylibs
+                  # (libSystem.B.dylib etc. resolve via the dyld fallback
+                  # search path, not @rpath).
+                  case "$target" in
+                    libavcodec*|libavformat*|libavutil*|libswresample*)
+                      case "$target" in
+                        *.[0-9]*.[0-9]*.dylib)
+                          tsoname="${target%.[0-9]*.[0-9]*.dylib}.dylib"
+                          ;;
+                        *)
+                          tsoname="$target"
+                          ;;
+                      esac
+                      install_name_tool -change "$old" "@rpath/$tsoname" "$dylib" || true
+                      ;;
+                  esac
+                  ;;
+              esac
+            done
+            # 3) Re-sign (install_name_tool invalidates the code signature)
+            codesign --force -s - "$dylib" || true
+          done
+
       - name: Configure (trimmed, fallback to default provider)
         id: pick
         run: |
@@ -445,6 +504,12 @@ jobs:
         run: |
           EXTRA=""
           if [ "${{ steps.pick.outputs.trimmed }}" = "true" ]; then EXTRA="--trimmed-ffmpeg --ffmpeg-root $KANARIV_TRIMMED_ROOT"; fi
+          # On macOS, the trimmed FFmpeg dylibs live outside the build tree; make
+          # sure dyld can find them at test/run time via DYLD_LIBRARY_PATH (the
+          # dylibs' install_name was rewired to @rpath in a prior step, so
+          # @rpath search + DYLD_LIBRARY_PATH together cover both build-tree and
+          # rpath-lookup paths).
+          if [ "${{ runner.os }}" = "macOS" ]; then export DYLD_LIBRARY_PATH="$KANARIV_TRIMMED_ROOT/lib"; fi
           python scripts/configure.py ci --toolchain clang --build-dir "${{ steps.pick.outputs.build_dir }}" $EXTRA --test
 
   sanitizers:

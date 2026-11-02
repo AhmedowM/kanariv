@@ -366,6 +366,57 @@ def main() -> None:
         run(configure, build, args.dry_run, log_tail=build / "ffbuild" / "config.log")
         run(["make", f"-j{args.jobs}"], build, args.dry_run)
         run(["make", "install"], build, args.dry_run)
+
+        if platform.system() == "Darwin" and not args.dry_run:
+            # Make the trimmed FFmpeg archive relocatable: rewrite each dylib's
+            # install_name from the absolute build-machine path to
+            # @rpath/<soname> so consumers are not tied to wherever FFmpeg was
+            # built (e.g. /Users/runner/work/caudio/caudio vs
+            # /Users/runner/work/kanariv/kanariv). Re-sign afterwards because
+            # install_name_tool invalidates code signatures on macOS.
+            libdir = prefix / "lib"
+            ffmpeg_prefixes = ("libavcodec", "libavformat", "libavutil",
+                               "libswresample")
+            for dylib in sorted(libdir.glob("*.dylib")):
+                if dylib.is_symlink():
+                    continue
+                name = dylib.name
+                # SONAME: libavcodec.63.1.102.dylib -> libavcodec.63.dylib
+                #         libavcodec.62.dylib   -> libavcodec.62.dylib  (single component)
+                m = re.match(r"^(.+)\.[0-9]+(\.[0-9]+)*\.dylib$", name)
+                if m:
+                    soname = f"{m.group(1)}.dylib"
+                else:
+                    soname = name
+                if not soname.startswith(ffmpeg_prefixes):
+                    continue
+                subprocess.run(
+                    ["install_name_tool", "-id", f"@rpath/{soname}", str(dylib)],
+                    check=True,
+                )
+                refs = subprocess.run(
+                    ["otool", "-L", str(dylib)],
+                    check=True, capture_output=True, text=True,
+                ).stdout
+                for line in refs.splitlines()[1:]:
+                    old = line.split()[0]
+                    if old.startswith("/"):
+                        target = Path(old).name
+                        m2 = re.match(r"^(.+)\.[0-9]+(\.[0-9]+)*\.dylib$", target)
+                        if m2:
+                            tsoname = f"{m2.group(1)}.dylib"
+                        else:
+                            tsoname = target
+                        if target.startswith(ffmpeg_prefixes):
+                            subprocess.run(
+                                ["install_name_tool", "-change", old,
+                                 f"@rpath/{tsoname}", str(dylib)],
+                                check=False,
+                            )
+                subprocess.run(
+                    ["codesign", "--force", "-s", "-", str(dylib)],
+                    check=False,
+                )
         if platform.system() == "Windows" and not args.dry_run:
             # DLLs belong in bin/ next to the import libs in lib/ (gyan/choco
             # layout); the CMake bundling resolves them via <libdir>/../bin.
