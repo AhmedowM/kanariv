@@ -13,7 +13,8 @@ type NavTab = {
   items?: Array<{ href: string; label: string }>;
 };
 
-const BASE = '';
+// '' when deployed at the domain root, '/kanariv' for the project site.
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 const navTabs: NavTab[] = [
   {
@@ -69,7 +70,7 @@ const navTabs: NavTab[] = [
 ];
 
 const isActive = (href: string) => {
-const path = href.replace(/^\/+/, '').replace(/\/$/, '');
+const path = href.replace(BASE, '').replace(/^\/+/, '').replace(/\/$/, '');
 if (!path) return currentSection === '';
 return currentSection === path || currentSection.startsWith(`${path.split('/')[0]}/`);
 };
@@ -83,7 +84,7 @@ const tabHasActiveChild = (tab: NavTab) => {
 <header class="docs-header">
   <div class="header-container">
     <!-- Logo -->
-    <a href="/" class="logo">
+    <a href={`${BASE}/`} class="logo">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         width="28"

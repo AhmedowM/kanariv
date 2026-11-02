@@ -27,11 +27,12 @@ export function getStaticPaths() {
 
 const { alias, compound, members = [] } = Astro.props;
 const pageTitle = compound ? `${compound.name} API` : `${alias?.name || 'API'} Reference`;
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
 
 <Layout currentSection="reference" currentPage={`reference/api/${compound?.id || alias?.id || ''}`} title={pageTitle} description={compound?.brief || alias?.description || ''} headings={[]}>
   <article class="api-page">
-    <a class="back-link" href="/reference/api/">← API reference</a>
+    <a class="back-link" href={`${BASE}/reference/api/`}>← API reference</a>
     {compound ? (
       <>
         <p class="eyebrow">{compound.kind} · XML reference</p>
@@ -63,7 +64,7 @@ const pageTitle = compound ? `${compound.name} API` : `${alias?.name || 'API'} R
         <h1>{alias.name}</h1>
         <p class="summary">{alias.description}</p>
         {model.generated ? (
-          members.length > 0 ? <div class="members">{members.map((item) => <a class="compound-link" href={`/reference/api/${item.id}/`}><strong>{item.name}</strong><span>{item.brief || item.kind}</span></a>)}</div> :
+          members.length > 0 ? <div class="members">{members.map((item) => <a class="compound-link" href={`${BASE}/reference/api/${item.id}/`}><strong>{item.name}</strong><span>{item.brief || item.kind}</span></a>)}</div> :
             <p class="empty">No {alias.name} compounds were found in the generated XML model.</p>
         ) : <p class="empty">The custom API model is waiting for Doxygen XML. Generate it with <code>KANARIV_BUILD_DOCS=ON</code>, then rebuild this site.</p>}
       </>
