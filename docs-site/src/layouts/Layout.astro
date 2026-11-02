@@ -63,23 +63,41 @@ const showTOC = headings && headings.length > 0;
       } catch {
         // Storage can be unavailable in privacy-restricted browsers.
       }
+
+      // TOC toggle state: persisted in localStorage, default open on desktop
+      function initToc() {
+        const html = document.documentElement;
+        const saved = localStorage.getItem('kanariv-toc');
+        const isDesktop = window.matchMedia('(min-width: 769px)').matches;
+        const open = saved === null ? isDesktop : saved === 'open';
+        html.dataset.tocOpen = open;
+      }
+
+      window.toggleToc = function () {
+        const html = document.documentElement;
+        const open = html.dataset.tocOpen === 'true';
+        html.dataset.tocOpen = String(!open);
+        localStorage.setItem('kanariv-toc', open ? 'closed' : 'open');
+      };
+
+      initToc();
     </script>
   </head>
   <body class="docs-body page-enter">
     <Header currentSection={section} />
 
     <div class="docs-shell">
-      {showTOC && (
-        <aside class="docs-toc-left" aria-label="On this page">
-          <TOC headings={headings} />
-        </aside>
-      )}
-
-      <main class="docs-content" id="main-content">
+      <main class={showTOC ? 'docs-content' : 'docs-content no-toc'} id="main-content">
         <div class="docs-content-inner">
           <slot />
         </div>
       </main>
+
+      {showTOC && (
+        <aside class="docs-toc-right" aria-label="On this page">
+          <TOC headings={headings} />
+        </aside>
+      )}
     </div>
 
     <footer class="docs-footer">
@@ -124,33 +142,73 @@ const showTOC = headings && headings.length > 0;
 
       /* ── Shell ── */
       .docs-shell {
-        display: flex;
-        max-width: 1320px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 260px;
+        width: 100%;
         margin: 0 auto;
-        padding: 2rem 1rem 4rem;
-        gap: 0;
+        padding: 0 0 0 1rem;
         min-height: calc(100vh - 4.5rem - 70px);
       }
 
-      /* ── Left TOC (slim, replaces sidebar) ── */
-      .docs-toc-left {
+      /* ── Right TOC (sticky, scrollable panel bounded by the content shell) ── */
+      .docs-toc-right {
         position: sticky;
-        top: 5.5rem;
-        width: 250px;
-        flex-shrink: 0;
-        padding-top: 0.5rem;
-        height: fit-content;
+        top: 4.5rem;
+        align-self: flex-start;
+        width: 100%;
+        max-height: calc(100vh - 4.5rem);
+        overflow-y: auto;
+        padding: 0.75rem 0 2rem 1rem;
+        border-left: 1px solid var(--kanariv-border);
+        background: color-mix(in srgb, var(--kanariv-surface) 95%, transparent);
+        backdrop-filter: blur(8px);
+        z-index: 50;
+        transition: opacity 0.2s ease;
       }
 
-      /* ── Main content (right is free) ── */
+      /* Hide TOC when closed via data attribute */
+      html[data-toc-open="false"] .docs-toc-right {
+        display: none;
+      }
+
+      /* ── Main content ── */
       .docs-content {
-        flex: 1;
         min-width: 0;
-        padding-left: 3rem;
+        width: auto;
+        padding: 2rem 0 4rem;
       }
 
       .docs-content-inner {
+        width: min(860px, 100%);
         max-width: 860px;
+        margin: 0 auto;
+      }
+
+      /* Pages without a TOC: center the content */
+      .docs-content.no-toc {
+        padding-right: 0;
+      }
+      .docs-content.no-toc .docs-content-inner {
+        margin: 0 auto;
+        width: min(860px, 100%);
+      }
+
+      /* ── Prevent text clipping: wrap long words/URLs/C++ signatures ── */
+      .docs-content-inner h1,
+      .docs-content-inner h2,
+      .docs-content-inner h3,
+      .docs-content-inner h4,
+      .docs-content-inner p,
+      .docs-content-inner code,
+      .docs-content-inner pre,
+      .docs-content-inner li {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      .docs-content-inner h1 {
+        overflow-wrap: break-word;
+        word-break: break-word;
       }
 
       /* ── Footer ── */
@@ -201,19 +259,35 @@ const showTOC = headings && headings.length > 0;
       /* ── Mobile ── */
       @media (max-width: 768px) {
         .docs-shell {
+          display: flex;
           flex-direction: column;
           padding: 1rem 1rem 3rem;
         }
-        .docs-toc-left {
-          position: static;
+        .docs-toc-right {
+          order: -1;
+          position: sticky;
+          top: 4.5rem;
           width: 100%;
-          padding-top: 1rem;
+          max-height: calc(100vh - 4.5rem);
+          overflow-y: auto;
+          padding: 1rem;
+          border-left: none;
+          border-bottom: 1px solid var(--kanariv-border);
+          background: var(--kanariv-surface);
+          z-index: 55;
         }
         .docs-content {
-          padding-left: 0;
+          width: 100%;
         }
         .docs-content-inner {
+          width: 100%;
           max-width: 100%;
+          margin: 0;
+        }
+
+        /* On mobile, default to TOC closed */
+        html[data-toc-open="false"] .docs-toc-right {
+          display: none;
         }
       }
     </style>

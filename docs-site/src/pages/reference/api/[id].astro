@@ -28,9 +28,22 @@ export function getStaticPaths() {
 const { alias, compound, members = [] } = Astro.props;
 const pageTitle = compound ? `${compound.name} API` : `${alias?.name || 'API'} Reference`;
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+// Build TOC headings from the API structure so API pages get the same
+// left-aligned TOC and centered content as handwritten pages.
+const headings: Array<{ depth: number; slug: string; text: string }> = [];
+if (compound) {
+  headings.push({ depth: 1, slug: compound.id, text: compound.name });
+  if (compound.includes.length > 0) headings.push({ depth: 2, slug: `${compound.id}-includes`, text: 'Includes' });
+  if (compound.bases.length > 0) headings.push({ depth: 2, slug: `${compound.id}-inheritance`, text: 'Inheritance' });
+  headings.push({ depth: 2, slug: `${compound.id}-members`, text: 'Members' });
+  for (const member of compound.members) {
+    headings.push({ depth: 3, slug: member.id, text: member.definition || member.name });
+  }
+}
 ---
 
-<Layout currentSection="reference" currentPage={`reference/api/${compound?.id || alias?.id || ''}`} title={pageTitle} description={compound?.brief || alias?.description || ''} headings={[]}>
+<Layout currentSection="reference" currentPage={`reference/api/${compound?.id || alias?.id || ''}`} title={pageTitle} description={compound?.brief || alias?.description || ''} headings={headings}>
   <article class="api-page">
     <a class="back-link" href={`${BASE}/reference/api/`}>← API reference</a>
     {compound ? (
@@ -83,9 +96,9 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
   .member h3 { margin-top: 0; overflow-wrap: anywhere; }
   .member p { color: var(--kanariv-text-muted); }
   .member h4 { margin-bottom: .35rem; }
-  .member dl { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: .35rem 1rem; }
-  .member dt { font-weight: 650; }
-  .member dd { margin: 0; color: var(--kanariv-text-muted); }
+  .member dl { display: grid; grid-template-columns: minmax(8rem, 280px) 1fr; gap: .35rem 1rem; }
+  .member dt { font-weight: 650; overflow-wrap: anywhere; }
+  .member dd { margin: 0; color: var(--kanariv-text-muted); overflow-wrap: anywhere; }
   .api-note { margin-top: 1rem; padding: .8rem 1rem; border-left: 3px solid var(--kanariv-brand); background: color-mix(in srgb, var(--kanariv-brand) 7%, var(--kanariv-surface)); }
   .api-note p { margin: .25rem 0 0; }
   .compound-link { display: grid; gap: .3rem; color: var(--kanariv-text); text-decoration: none; }
