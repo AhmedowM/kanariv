@@ -84,25 +84,51 @@ const tabHasActiveChild = (tab: NavTab) => {
 <header class="docs-header">
   <div class="header-container">
     <!-- Logo -->
-    <a href={`${BASE}/`} class="logo">
+    <a href={`${BASE}/`} class="logo" aria-label="kanariv">
       <svg
         xmlns="http://www.w3.org/2000/svg"
-        width="28"
-        height="28"
-        viewBox="0 0 24 24"
+        viewBox="0 0 645 146"
         fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+        class="logo-wordmark"
         aria-hidden="true"
+        focusable="false"
       >
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 12m-6 0a6 6 0 1 0 12 0a6 6 0 1 0 -12 0" />
-        <path d="M12 8l4 4" />
-        <path d="M12 16l4 -4" />
+        <!-- k -->
+        <rect x="0" y="0" width="26" height="140" fill="currentColor" stroke="none" />
+        <polygon points="20.5,75.6 83,40 88.5,48.5 26,84" fill="currentColor" stroke="none" />
+        <polygon points="11.6,69.1 80,140 52.2,140 11.6,97.9" fill="currentColor" stroke="none" />
+        <!-- a -->
+        <g transform="translate(88 0)">
+          <path d="M104 90 A52 52 0 1 1 0 90 A52 52 0 1 1 104 90 Z M84 90 A26 40 0 1 0 32 90 A26 40 0 1 0 84 90 Z" fill="currentColor" fill-rule="evenodd" stroke="none" />
+          <rect x="84" y="40" width="26" height="100" fill="currentColor" stroke="none" />
+        </g>
+        <!-- n -->
+        <g transform="translate(210 0)">
+          <rect x="0" y="40" width="26" height="100" fill="currentColor" stroke="none" />
+          <rect x="72" y="40" width="26" height="100" fill="currentColor" stroke="none" />
+          <rect x="26" y="40" width="46" height="10" fill="currentColor" stroke="none" />
+        </g>
+        <!-- a -->
+        <g transform="translate(320 0)">
+          <path d="M104 90 A52 52 0 1 1 0 90 A52 52 0 1 1 104 90 Z M84 90 A26 40 0 1 0 32 90 A26 40 0 1 0 84 90 Z" fill="currentColor" fill-rule="evenodd" stroke="none" />
+          <rect x="84" y="40" width="26" height="100" fill="currentColor" stroke="none" />
+        </g>
+        <!-- r -->
+        <g transform="translate(442 0)">
+          <rect x="0" y="40" width="26" height="100" fill="currentColor" stroke="none" />
+          <rect x="26" y="40" width="40" height="10" fill="currentColor" stroke="none" />
+          <rect x="58" y="40" width="10" height="22" fill="currentColor" stroke="none" />
+        </g>
+        <!-- i -->
+        <g transform="translate(515 0)">
+          <rect x="0" y="40" width="26" height="100" fill="currentColor" stroke="none" />
+          <circle cx="13" cy="14" r="13" fill="currentColor" stroke="none" />
+        </g>
+        <!-- v -->
+        <g transform="translate(553 0)">
+          <polygon points="0,40 26,40 50,128 76,40 88,40 50,142" fill="currentColor" stroke="none" />
+        </g>
       </svg>
-      <span class="logo-text">kanariv</span>
     </a>
 
     <!-- Horizontal nav tabs with hover dropdowns -->
@@ -293,24 +319,10 @@ const tabHasActiveChild = (tab: NavTab) => {
   }
 
   .logo svg {
-    width: 30px;
-    height: 30px;
+    width: auto;
+    height: 28px;
     flex-shrink: 0;
-  }
-
-  .logo-text {
-    letter-spacing: -0.03em;
-    background: linear-gradient(135deg, #c7d2fe 0%, #818cf8 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  [data-theme="dark"] .logo-text {
-    background: linear-gradient(135deg, #818cf8 0%, #a5b4fc 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    display: block;
   }
 
   /* ── Horizontal tabs ── */
