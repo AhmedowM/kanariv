@@ -212,7 +212,7 @@ Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
             return std::unexpected{r.error()};
     }
     updateShmStatus();
-    kanariv::ipc::VolumeInfo vi{engine_->volume(), engine_->volume() == 0.0f};
+    kanariv::ipc::VolumeInfo vi{.vol=engine_->volume(), .muted=engine_->volume() == 0.0f};
     return Result{vi};
 }
 

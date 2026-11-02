@@ -33,7 +33,7 @@ TEST_CASE("engine queue shuffle creates perm via mt19937", "[engine_queue]") {
         t.path = "p" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(i * 10 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(i * 10 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -60,7 +60,7 @@ TEST_CASE("engine queue shuffle creates perm via mt19937", "[engine_queue]") {
     const void* blob = sqlite3_column_blob(st, 0);
     REQUIRE(blob != nullptr);
     std::set<int64_t> s;
-    const int64_t* arr = (const int64_t*)blob;
+    const int64_t* arr = static_cast<const int64_t*>(blob);
     for (int i = 0; i < 4; ++i)
         s.insert(arr[i]);
     REQUIRE(s.size() == 4);
@@ -83,7 +83,7 @@ TEST_CASE("engine queue repeat Off stops at end", "[engine_queue]") {
         t.path = "p" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0x10 + i * 32 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0x10 + i * 32 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -142,7 +142,7 @@ TEST_CASE("engine queue repeat All loops", "[engine_queue]") {
         t.path = "q" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0x20 + i * 32 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0x20 + i * 32 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -197,7 +197,7 @@ TEST_CASE("engine queue repeat One seek without dequeue", "[engine_queue]") {
     t.path = "one.wav";
     t.duration = 5.0;
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0x30 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0x30 + b);
     auto r = db->insertTrack(t);
     REQUIRE(r.has_value());
     REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -207,7 +207,7 @@ TEST_CASE("engine queue repeat One seek without dequeue", "[engine_queue]") {
     t2.path = "two.wav";
     t2.duration = 5.0;
     for (int b = 0; b < 32; ++b)
-        t2.fingerprint[b] = (uint8_t)(0x40 + b);
+        t2.fingerprint[b] = static_cast<uint8_t>(0x40 + b);
     auto r2 = db->insertTrack(t2);
     REQUIRE(r2.has_value());
     REQUIRE(db->queueEnqueue(1, *r2, -1).has_value());
@@ -240,7 +240,7 @@ TEST_CASE("engine queue perm persistence blob cursor qid", "[engine_queue]") {
             t.path = "persist" + std::to_string(i) + ".wav";
             t.duration = 1.0;
             for (int b = 0; b < 32; ++b)
-                t.fingerprint[b] = (uint8_t)(0x50 + i * 32 + b);
+                t.fingerprint[b] = static_cast<uint8_t>(0x50 + i * 32 + b);
             auto r = db->insertTrack(t);
             REQUIRE(r.has_value());
             REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -339,7 +339,7 @@ TEST_CASE("engine play resumes when paused", "[engine_queue]") {
         t.path = "resume" + std::to_string(i) + ".wav";
         t.duration = 10.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0x60 + i * 32 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0x60 + i * 32 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -377,7 +377,7 @@ TEST_CASE("engine prev non-shuffle", "[engine_queue]") {
         t.path = "prev" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0x70 + i * 32 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0x70 + i * 32 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -413,7 +413,7 @@ TEST_CASE("engine queue persists via cursor non-shuffle", "[engine_queue]") {
             t.path = "persist_cursor" + std::to_string(i) + ".wav";
             t.duration = 1.0;
             for (int b = 0; b < 32; ++b)
-                t.fingerprint[b] = (uint8_t)(0x80 + i * 32 + b);
+                t.fingerprint[b] = static_cast<uint8_t>(0x80 + i * 32 + b);
             auto r = db->insertTrack(t);
             REQUIRE(r.has_value());
             if (i == 0)
@@ -480,7 +480,7 @@ TEST_CASE("engine play missing file fails without simulation", "[engine_queue]")
     t.path = "no-such-file.wav";
     t.duration = 1.0;
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0xC0 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0xC0 + b);
     auto r = db->insertTrack(t);
     REQUIRE(r.has_value());
     REQUIRE(db->queueEnqueue(1, *r, -1).has_value());

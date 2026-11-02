@@ -27,7 +27,7 @@ Expected<void> setNativeHandleName(void* nativeHandle, std::string_view name) no
 #pragma GCC diagnostic ignored "-Wcast-function-type"
 #endif
         auto pSetDesc =
-            reinterpret_cast<SetThreadDescriptionFn>(GetProcAddress(k32, "SetThreadDescription"));
+            reinterpret_cast<SetThreadDescriptionFn>(GetProcAddress(k32, "SetThreadDescription")); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 #ifndef _MSC_VER
 #pragma GCC diagnostic pop
 #endif
@@ -38,7 +38,7 @@ Expected<void> setNativeHandleName(void* nativeHandle, std::string_view name) no
                 std::wstring wbuf(static_cast<std::size_t>(wlen), L'\0');
                 MultiByteToWideChar(utf8CodePage, 0, name.data(), static_cast<int>(name.size()),
                                     wbuf.data(), wlen);
-                HRESULT hr = pSetDesc(reinterpret_cast<HANDLE>(nativeHandle), wbuf.c_str());
+                HRESULT hr = pSetDesc(reinterpret_cast<HANDLE>(nativeHandle), wbuf.c_str()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
                 (void)hr;
                 return {};
             }
@@ -114,7 +114,7 @@ namespace kanariv::utils {
         return std::unexpected(Error{StatusCode::InvalidArg, std::string_view("empty name")});
     }
 #ifdef _WIN32
-    HANDLE h = reinterpret_cast<HANDLE>(reinterpret_cast<uintptr_t>(jt.native_handle()));
+    HANDLE h = reinterpret_cast<HANDLE>(jt.native_handle()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     return detail::setNativeHandleName(h, name);
 #else
     pthread_t th = jt.native_handle();
@@ -150,7 +150,7 @@ namespace kanariv::utils {
         return std::unexpected(Error{StatusCode::InvalidArg, std::string_view("empty name")});
     }
 #ifdef _WIN32
-    HANDLE h = reinterpret_cast<HANDLE>(reinterpret_cast<uintptr_t>(t.native_handle()));
+    HANDLE h = reinterpret_cast<HANDLE>(t.native_handle()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     return detail::setNativeHandleName(h, name);
 #else
 #if defined(__linux__) && !defined(__APPLE__)

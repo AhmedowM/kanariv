@@ -98,7 +98,7 @@ std::string SqliteStatement::columnText(int idx) const {
     if (!stmt_)
         return {};
     const unsigned char* txt = sqlite3_column_text(stmt_, idx);
-    return txt ? std::string(reinterpret_cast<const char*>(txt)) : std::string{};
+    return txt ? std::string(reinterpret_cast<const char*>(txt)) : std::string{}; // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 }
 
 void SqliteStatement::reset() {

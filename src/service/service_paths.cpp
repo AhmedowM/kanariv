@@ -77,7 +77,7 @@ std::string socketPathForDb(const std::filesystem::path& dbPath) {
     // Fallback uses canonical hex8 encoding (consistent with primary socketPathFor)
     std::string hex = kanariv::config::detail_paths::hex8ForDb(dbPath);
 #ifdef _WIN32
-    return std::string("\\\\.\\pipe\\kanariv-") + hex;
+    return std::string(R"(\\.\pipe\kanariv-)") + hex;
 #else
     auto pp = dbPath.parent_path();
     if (pp.empty())

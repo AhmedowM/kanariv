@@ -51,7 +51,7 @@ Service::Impl::handle(const kanariv::ipc::ConfigGet& cmd) {
     auto vRes = kanariv::config::detail::configGetRaw(p, cmd.key);
     if (!vRes)
         return std::unexpected{vRes.error()};
-    return Result{ConfigValue{cmd.key, *vRes}};
+    return Result{ConfigValue{.key=cmd.key, .value=*vRes}};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -91,7 +91,7 @@ Service::Impl::handle(const kanariv::ipc::ConfigList&) {
     ConfigValues cvs{};
     cvs.values.reserve(lRes->size());
     for (auto& kv : *lRes)
-        cvs.values.push_back(ConfigValue{kv.key, kv.value});
+        cvs.values.push_back(ConfigValue{.key=kv.key, .value=kv.value});
     return Result{std::move(cvs)};
 }
 
@@ -267,7 +267,7 @@ Service::Impl::handle(const kanariv::ipc::DeviceTest& cmd) {
 
         kanariv::utils::SpscRing<float> ring(ringCapacity, channels);
         auto out = kanariv::player::AudioOutput::create(
-            kanariv::player::AudioOutput::Config{sampleRate, channels, &ring, 0.3f, nullptr});
+            kanariv::player::AudioOutput::Config{.sampleRate=sampleRate, .channels=channels, .ring=&ring, .volume=0.3f, .logger=nullptr});
         if (!out)
             return std::unexpected{out.error()};
 

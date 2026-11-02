@@ -193,7 +193,7 @@ size_t queueCountLocked(sqlite3* db, int64_t qid) {
     st.bindInt(1, qid);
     size_t cnt = 0;
     if (st.step())
-        cnt = (size_t)st.columnInt(0);
+        cnt = static_cast<size_t>(st.columnInt(0));
     return cnt;
 }
 

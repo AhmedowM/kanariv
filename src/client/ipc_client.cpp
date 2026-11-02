@@ -145,7 +145,7 @@ kanariv::utils::Expected<kanariv::ipc::Result> IpcClient::send(const kanariv::ip
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "not connected")};
     uint32_t id = impl_->nextId.fetch_add(1) + 1;
-    kanariv::ipc::IpcRequest req{id, cmd};
+    kanariv::ipc::IpcRequest req{.id=id, .cmd=cmd};
     std::string json = kanariv::ipc::serializeRequest(req);
     auto framed = kanariv::ipc::frame(json);
 

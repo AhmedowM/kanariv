@@ -25,7 +25,7 @@ static kanariv::types::Track makeTrack(int idx, const std::string& pathOverride 
     t.artist = "Artist" + std::to_string(idx);
     t.album = "Album" + std::to_string(idx);
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(idx * 37 + b * 7);
+        t.fingerprint[b] = static_cast<uint8_t>(idx * 37 + b * 7);
     t.duration = 1.0 + idx;
     t.library_id = 1;
     return t;
@@ -48,7 +48,7 @@ TEST_CASE("insertTrack duplicate AlreadyExists", "[db]") {
     // same path with different fingerprint should succeed (path not unique)
     kanariv::types::Track t3 = makeTrack(99, t.path);
     for (int b = 0; b < 32; ++b)
-        t3.fingerprint[b] = (uint8_t)(0xFF - b);
+        t3.fingerprint[b] = static_cast<uint8_t>(0xFF - b);
     auto r3 = db->insertTrack(t3);
     // this should succeed because fingerprint differs and path allows duplicates
     REQUIRE(r3.has_value());

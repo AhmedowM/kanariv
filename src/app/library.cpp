@@ -25,12 +25,12 @@
 namespace kanariv::app {
 
 AppResult App::libraryScan(std::optional<std::string> path, bool fullHash) {
-    kanariv::ipc::Command cmd{kanariv::ipc::LibraryScan{path, fullHash}};
+    kanariv::ipc::Command cmd{kanariv::ipc::LibraryScan{.path=path, .full_hash=fullHash}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
 AppResult App::librarySearch(const std::string& query, int limit) {
-    kanariv::ipc::Command cmd{kanariv::ipc::LibrarySearch{query, limit}};
+    kanariv::ipc::Command cmd{kanariv::ipc::LibrarySearch{.query=query, .limit=limit}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
@@ -167,7 +167,7 @@ AppResult App::libraryMaintenance(const std::string& action, bool dryRun,
 }
 
 AppResult App::libraryAdd(const std::string& path, bool recursive) {
-    kanariv::ipc::Command cmd{kanariv::ipc::LibraryAdd{path, recursive}};
+    kanariv::ipc::Command cmd{kanariv::ipc::LibraryAdd{.path=path, .recursive=recursive}};
     return impl_->confirm(impl_->sendRaw(cmd), std::format("Added {} to library", path));
 }
 
@@ -176,7 +176,7 @@ AppResult App::libraryRemove(const std::string& query) {
     std::string label;
     bool numeric = !query.empty();
     for (char c : query) {
-        if (!std::isdigit((unsigned char)c)) {
+        if (!std::isdigit(static_cast<unsigned char>(c))) {
             numeric = false;
             break;
         }
@@ -207,7 +207,7 @@ AppResult App::libraryRemove(const std::string& query) {
         return std::unexpected{res.error()};
     std::string line = !label.empty() ? std::format("Removed from library {}", label)
                                       : std::format("Removed {} from library", query);
-    return Outcome{std::move(*res), std::move(line), false, false};
+    return Outcome{.result=std::move(*res), .line=std::move(line), .toStderr=false, .failed=false};
 }
 
 AppResult App::trackRate(std::string idOrPath, std::int32_t rating) {
@@ -228,7 +228,7 @@ AppResult App::trackRate(std::string idOrPath, std::int32_t rating) {
                 kanariv::utils::StatusCode::NotFound,
                 "track not found for path '" + idOrPath + "'")};
     }
-    kanariv::ipc::Command cmd{kanariv::ipc::TrackRate{id, rating}};
+    kanariv::ipc::Command cmd{kanariv::ipc::TrackRate{.track_id=id, .rating=rating}};
     return impl_->confirm(impl_->sendRaw(cmd),
                           std::format("Rated track {} as {}", id, rating));
 }

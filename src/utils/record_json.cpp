@@ -86,7 +86,7 @@ std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
         auto getInt = [&](const char* k, int& out, int def = 0) {
             int64_t v = def;
             getI64(k, v, def);
-            out = (int)v;
+            out = static_cast<int>(v);
         };
         auto getDbl = [&](const char* k, double& out, double def = 0) {
             if (j.contains(k) && !j[k].isNull() && j[k].isNumber())
@@ -107,17 +107,17 @@ std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
         {
             int64_t v;
             getI64("sample_rate", v, 0);
-            t.sample_rate = (uint32_t)v;
+            t.sample_rate = static_cast<uint32_t>(v);
         }
         {
             int64_t v;
             getI64("channels", v, 0);
-            t.channels = (uint32_t)v;
+            t.channels = static_cast<uint32_t>(v);
         }
         {
             int64_t v;
             getI64("bitrate", v, 0);
-            t.bitrate = (int32_t)v;
+            t.bitrate = static_cast<int32_t>(v);
         }
         getInt("year", t.year, 0);
         getInt("track_num", t.track_num, 0);

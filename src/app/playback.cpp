@@ -91,7 +91,7 @@ AppResult App::play() {
 }
 
 AppResult App::playFiles(const std::vector<std::string>& files, bool save) {
-    kanariv::ipc::Command cmd{kanariv::ipc::PlayFiles{files, save}};
+    kanariv::ipc::Command cmd{kanariv::ipc::PlayFiles{.paths=files, .save=save}};
     auto res = impl_->sendPlay(cmd);
     if (!res)
         return std::unexpected{res.error()};

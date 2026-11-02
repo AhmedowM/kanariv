@@ -42,7 +42,7 @@ namespace {
 // change: owner + built-in admins + system get full access, everyone else
 // nothing. SDDL is constant; conversion cannot fail short of OOM, and then
 // we fall back to default attributes (availability wins, documented).
-constexpr wchar_t pipeSddl[] = L"D:(A;;GA;;;OW)(A;;GA;;;BA)(A;;GA;;;SY)";
+constexpr wchar_t pipeSddl[] = L"D:(A;;GA;;;OW)(A;;GA;;;BA)(A;;GA;;;SY)"; // NOLINT(cppcoreguidelines-avoid-c-arrays)
 // Layout-compatible with SECURITY_ATTRIBUTES (length, descriptor, inherit).
 struct PipeSecurityAttributes {
     DWORD nLength{0};
@@ -67,6 +67,18 @@ class PipeDacl {
     }
     PipeDacl(const PipeDacl&) = delete;
     PipeDacl& operator=(const PipeDacl&) = delete;
+    PipeDacl(PipeDacl&& other) noexcept : sa_(other.sa_) {
+        other.sa_.descriptor = nullptr;
+    }
+    PipeDacl& operator=(PipeDacl&& other) noexcept {
+        if (this != &other) {
+            if (sa_.descriptor)
+                ::LocalFree(sa_.descriptor);
+            sa_ = other.sa_;
+            other.sa_.descriptor = nullptr;
+        }
+        return *this;
+    }
     LPVOID attributes() {
         return sa_.descriptor ? &sa_ : nullptr;
     }
@@ -157,7 +169,7 @@ kanariv::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pa
 
 #ifdef _WIN32
     // Atomic take-over: whoever exchanges non-null owns the close.
-    HANDLE prev = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1));
+    HANDLE prev = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
     if (prev && prev != invalidHandleValue) {
         ::CloseHandle(prev);
     }
@@ -174,7 +186,7 @@ kanariv::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pa
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::Io, "CreateNamedPipeW failed: " + std::to_string(err))};
     }
-    pipeHandle_.store(reinterpret_cast<std::intptr_t>(h));
+    pipeHandle_.store(reinterpret_cast<std::intptr_t>(h)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
     return {};
 #else
     int prevFd = pipeHandle_.exchange(-1);
@@ -209,7 +221,7 @@ kanariv::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pa
                                                         "socket path too long")};
     }
     std::memcpy(addr.sun_path, sockStr.c_str(), sockStr.size() + 1);
-    if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+    if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) { // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
         ::close(fd);
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "bind failed")};
@@ -240,7 +252,7 @@ void IpcServer::Impl::run(std::stop_token st,
         while (!st.stop_requested() && !stopSource_.get_token().stop_requested() &&
                running_.load()) {
 #ifdef _WIN32
-            HANDLE listenH = reinterpret_cast<HANDLE>(pipeHandle_.load());
+            HANDLE listenH = reinterpret_cast<HANDLE>(pipeHandle_.load()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
             if (pipeHandle_.load() == -1) {
                 // No listening instance: a follow-up create failed, or a bad
                 // instance was dropped below. Re-create one so the daemon
@@ -256,7 +268,7 @@ void IpcServer::Impl::run(std::stop_token st,
                         ::CreateNamedPipeW(w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait,
                                            pipeUnlimited, 16384, 16384, 0, dacl.attributes());
                     if (h != invalidHandleValue) {
-                        pipeHandle_.store(reinterpret_cast<std::intptr_t>(h));
+                        pipeHandle_.store(reinterpret_cast<std::intptr_t>(h)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr) // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
                         continue;
                     }
                 }
@@ -280,7 +292,7 @@ void IpcServer::Impl::run(std::stop_token st,
                         if (!::DisconnectNamedPipe(listenH)) {
                             // Reset failed: drop the instance; the top of the
                             // loop rebuilds a fresh listening one.
-                            HANDLE stale = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1));
+                            HANDLE stale = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
                             if (stale && stale != invalidHandleValue)
                                 ::CloseHandle(stale);
                         }
@@ -294,7 +306,7 @@ void IpcServer::Impl::run(std::stop_token st,
             // concurrently -- whoever exchanges non-null owns the handle, so
             // a close here can never double-close. (Only this loop creates
             // instances, so a non-null take is always the connected one.)
-            HANDLE clientHandle = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1));
+            HANDLE clientHandle = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
             if (!clientHandle || clientHandle == invalidHandleValue) {
                 // Lost the race with shutdown; loop back to the stop check.
                 continue;
@@ -310,7 +322,7 @@ void IpcServer::Impl::run(std::stop_token st,
                     ::CreateNamedPipeW(w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait,
                                        pipeUnlimited, 16384, 16384, 0, nextDacl.attributes());
                 if (next != invalidHandleValue) {
-                    pipeHandle_.store(reinterpret_cast<std::intptr_t>(next));
+                    pipeHandle_.store(reinterpret_cast<std::intptr_t>(next)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
                 }
                 // else: stay without a listener; the loop re-checks stop
                 // flags and shutdown's post-join drain closes strays.
@@ -325,6 +337,11 @@ void IpcServer::Impl::run(std::stop_token st,
                         // exceptions): the slot is swept by the accept loop.
                         struct RetireGuard {
                             Impl* self;
+                            explicit RetireGuard(Impl* s) : self(s) {}
+                            RetireGuard(const RetireGuard&) = delete;
+                            RetireGuard& operator=(const RetireGuard&) = delete;
+                            RetireGuard(RetireGuard&&) = delete;
+                            RetireGuard& operator=(RetireGuard&&) = delete;
                             ~RetireGuard() {
                                 self->retireClient();
                             }
@@ -436,7 +453,7 @@ void IpcServer::Impl::run(std::stop_token st,
                         auto recvExact = [cfd](std::span<std::byte> out) -> bool {
                             std::size_t got = 0;
                             while (got < out.size()) {
-                                ::ssize_t n = ::recv(cfd, reinterpret_cast<char*>(out.data()) + got,
+                                ::ssize_t n = ::recv(cfd, reinterpret_cast<char*>(out.data()) + got, // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
                                                      out.size() - got, 0);
                                 if (n <= 0) {
                                     if (n < 0 && errno == EINTR)
@@ -451,7 +468,7 @@ void IpcServer::Impl::run(std::stop_token st,
                             std::size_t sent = 0;
                             while (sent < data.size()) {
                                 ::ssize_t n =
-                                    ::send(cfd, reinterpret_cast<const char*>(data.data()) + sent,
+                                    ::send(cfd, reinterpret_cast<const char*>(data.data()) + sent, // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
                                            data.size() - sent, 0);
                                 if (n < 0) {
                                     if (errno == EINTR)
@@ -566,7 +583,7 @@ void IpcServer::Impl::shutdown() {
     }
     // Take-over (see listen()): if the accept loop is mid-handshake it owns
     // its handle; anything left here is ours to close.
-    HANDLE cur = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1));
+    HANDLE cur = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
     if (cur && cur != invalidHandleValue) {
         ::CloseHandle(cur);
     }
@@ -587,7 +604,7 @@ void IpcServer::Impl::shutdown() {
 #ifdef _WIN32
     // Post-join drain: the accept loop may have stored a fresh listen
     // instance after our pre-join take. Exchange is idempotent.
-    HANDLE leftover = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1));
+    HANDLE leftover = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
     if (leftover && leftover != invalidHandleValue) {
         ::CloseHandle(leftover);
     }

@@ -54,7 +54,7 @@ std::expected<TrackList, kanariv::utils::Error> App::queueTracks(const std::stri
         if (auto* st = std::get_if<kanariv::ipc::Status>(&*ps))
             curId = st->track_id;
     }
-    return TrackList{std::move(*res), curId};
+    return TrackList{.result=std::move(*res), .highlightId=curId};
 }
 
 AppResult App::queueSwitch(std::int64_t qid) {

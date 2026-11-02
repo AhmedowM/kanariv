@@ -144,9 +144,9 @@ Service::Impl::handle(const kanariv::ipc::QueueList& ql) {
             ordered.reserve(tracks.size());
             std::vector<char> seen(tracks.size(), 0);
             for (int64_t p : perm) {
-                if (p >= 0 && (std::size_t)p < tracks.size() && !seen[(std::size_t)p]) {
-                    ordered.push_back(tracks[(std::size_t)p]);
-                    seen[(std::size_t)p] = 1;
+                if (p >= 0 && static_cast<std::size_t>(p) < tracks.size() && !seen[static_cast<std::size_t>(p)]) {
+                    ordered.push_back(tracks[static_cast<std::size_t>(p)]);
+                    seen[static_cast<std::size_t>(p)] = 1;
                 }
             }
             for (std::size_t i = 0; i < tracks.size(); ++i) {
@@ -169,7 +169,7 @@ Service::Impl::handle(const kanariv::ipc::QueueQueues&) {
     for (auto& q : *qs) {
         auto items = db_->listQueueItems(q.id);
         std::size_t n = items ? items->size() : 0;
-        out.entries.push_back(kanariv::ipc::QueueEntry{q.id, q.name, n, q.id == active, q.temp});
+        out.entries.push_back(kanariv::ipc::QueueEntry{.id=q.id, .name=q.name, .tracks=n, .active=q.id == active, .temp=q.temp});
     }
     return Result{std::move(out)};
 }
@@ -191,7 +191,7 @@ Service::Impl::handle(const kanariv::ipc::QueueCreate& qc) {
         if (auto e = db.setQueueRepeat(*id, 2); !e)
             return std::unexpected{e.error()};
     }
-    return Result{kanariv::ipc::QueueCreated{*id, qc.name}};
+    return Result{kanariv::ipc::QueueCreated{.id=*id, .name=qc.name}};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -343,7 +343,7 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
                 // check if all digits (allow leading -)
                 bool isNum = true;
                 for (std::size_t i = (s[0] == '-' ? 1 : 0); i < s.size(); ++i)
-                    if (!std::isdigit((unsigned char)s[i])) {
+                    if (!std::isdigit(static_cast<unsigned char>(s[i]))) {
                         isNum = false;
                         break;
                     }
@@ -422,7 +422,7 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
             bool allDigit = true;
             std::size_t off = (s[0] == '-' ? 1 : 0);
             for (std::size_t i = off; i < s.size(); ++i)
-                if (!std::isdigit((unsigned char)s[i])) {
+                if (!std::isdigit(static_cast<unsigned char>(s[i]))) {
                     allDigit = false;
                     break;
                 }

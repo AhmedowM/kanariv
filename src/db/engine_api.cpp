@@ -31,8 +31,8 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::pl
     if (!stats)
         return std::unexpected(stats.error());
     return kanariv::types::PlaybackStats{
-        stats->num_tracks,    stats->num_playlists, stats->num_queue_items,  stats->num_history,
-        stats->num_bookmarks, stats->num_libraries, stats->total_duration_ms};
+        .num_tracks=stats->num_tracks,    .num_playlists=stats->num_playlists, .num_queue_items=stats->num_queue_items,  .num_history=stats->num_history,
+        .num_bookmarks=stats->num_bookmarks, .num_libraries=stats->num_libraries, .total_duration_ms=stats->total_duration_ms};
 }
 
 bool Database::isOpen() const noexcept {
@@ -355,7 +355,7 @@ Database::engineHistoryList(int limit) {
         entry.queue_id = sqlite3_column_int64(raw, 6);
         auto text = [raw](int column) {
             const auto* value = sqlite3_column_text(raw, column);
-            return value ? reinterpret_cast<const char*>(value) : "";
+            return value ? reinterpret_cast<const char*>(value) : ""; // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
         };
         entry.title = text(7);
         entry.artist = text(8);

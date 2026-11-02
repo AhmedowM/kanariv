@@ -8,6 +8,7 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+#include <array>
 
 #include "../src/utils/log_sink.hpp"
 
@@ -121,10 +122,10 @@ bool log_toString_level() {
 
 bool log_parse_level() {
     // CLI --log-level names map 1:1 to enumerators (trace=0 ... error=4).
-    const std::pair<std::string_view, LogLevel> cases[] = {
+    const std::array<std::pair<std::string_view, LogLevel>, 5> cases = {{
         {"trace", LogLevel::Trace}, {"debug", LogLevel::Debug}, {"info", LogLevel::Info},
         {"warn", LogLevel::Warn},   {"error", LogLevel::Error},
-    };
+    }};
     for (const auto& [name, lvl] : cases) {
         auto got = parseLogLevel(name);
         if (!got || *got != lvl)

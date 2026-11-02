@@ -526,7 +526,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 q = j["query"].get<std::string>();
             if (j.contains("search") && j["search"].isBoolean())
                 search = j["search"].get<bool>();
-            return Command{QueueAdd{std::move(q), search}};
+            return Command{QueueAdd{.query=std::move(q), .search=search}};
         }
         if (t == "QueueRemove") {
             std::string id;
@@ -540,7 +540,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 from = j["from"].get<std::size_t>();
             if (j.contains("to") && j["to"].isNumber())
                 to = j["to"].get<std::size_t>();
-            return Command{QueueMove{from, to}};
+            return Command{QueueMove{.from=from, .to=to}};
         }
         if (t == "QueueClear")
             return Command{QueueClear{}};
@@ -584,7 +584,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 pid = j["pid"].get<int64_t>();
             if (j.contains("track_id") && j["track_id"].isNumber())
                 tid = j["track_id"].get<int64_t>();
-            return Command{PlaylistAdd{pid, tid}};
+            return Command{PlaylistAdd{.pid=pid, .track_id=tid}};
         }
         if (t == "PlaylistLoad") {
             int64_t pid = 0;
@@ -596,7 +596,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 play = j["play"].get<bool>();
             if (j.contains("replace") && j["replace"].isBoolean())
                 replace = j["replace"].get<bool>();
-            return Command{PlaylistLoad{pid, play, replace}};
+            return Command{PlaylistLoad{.pid=pid, .play=play, .replace=replace}};
         }
         if (t == "PlaylistSave") {
             std::string name;
@@ -605,7 +605,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 name = j["name"].get<std::string>();
             if (j.contains("queue_id") && !j["queue_id"].isNull() && j["queue_id"].isNumber())
                 qid = j["queue_id"].get<int64_t>();
-            return Command{PlaylistSave{std::move(name), qid}};
+            return Command{PlaylistSave{.name=std::move(name), .queue_id=qid}};
         }
         if (t == "PlaylistDelete") {
             int64_t pid = 0;
@@ -620,7 +620,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 pid = j["pid"].get<int64_t>();
             if (j.contains("newName") && j["newName"].isString())
                 newName = j["newName"].get<std::string>();
-            return Command{PlaylistRename{pid, std::move(newName)}};
+            return Command{PlaylistRename{.pid=pid, .newName=std::move(newName)}};
         }
         if (t == "PlaylistExport") {
             int64_t pid = 0;
@@ -632,7 +632,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 path = j["path"].get<std::string>();
             if (j.contains("format") && j["format"].isString())
                 format = j["format"].get<std::string>();
-            return Command{PlaylistExport{pid, std::move(path), std::move(format)}};
+            return Command{PlaylistExport{.pid=pid, .path=std::move(path), .format=std::move(format)}};
         }
         if (t == "PlaylistImport") {
             std::string path;
@@ -641,7 +641,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 path = j["path"].get<std::string>();
             if (j.contains("name") && !j["name"].isNull() && j["name"].isString())
                 name = j["name"].get<std::string>();
-            return Command{PlaylistImport{std::move(path), name}};
+            return Command{PlaylistImport{.path=std::move(path), .name=name}};
         }
         if (t == "LibraryScan") {
             LibraryScan v{};
@@ -660,7 +660,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 q = j["query"].get<std::string>();
             if (j.contains("limit") && j["limit"].isNumber())
                 lim = j["limit"].get<int>();
-            return Command{LibrarySearch{std::move(q), lim}};
+            return Command{LibrarySearch{.query=std::move(q), .limit=lim}};
         }
         if (t == "LibraryStats" || t == "LibraryStatsDetailed") {
             LibraryStats v{};
@@ -683,7 +683,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 p = j["path"].get<std::string>();
             if (j.contains("recursive") && j["recursive"].isBoolean())
                 rec = j["recursive"].get<bool>();
-            return Command{LibraryAdd{std::move(p), rec}};
+            return Command{LibraryAdd{.path=std::move(p), .recursive=rec}};
         }
         if (t == "LibraryRemove") {
             std::string q;
@@ -732,7 +732,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 field = j["field"].get<std::string>();
             if (j.contains("value") && j["value"].isString())
                 value = j["value"].get<std::string>();
-            return Command{TagEdit{id, std::move(field), std::move(value)}};
+            return Command{TagEdit{.id=id, .field=std::move(field), .value=std::move(value)}};
         }
         if (t == "TagGet") {
             TagGet tg{};
@@ -756,7 +756,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 k = j["key"].get<std::string>();
             if (j.contains("value") && j["value"].isString())
                 v = j["value"].get<std::string>();
-            return Command{ConfigSet{std::move(k), std::move(v)}};
+            return Command{ConfigSet{.key=std::move(k), .value=std::move(v)}};
         }
         if (t == "ConfigList")
             return Command{ConfigList{}};
@@ -835,7 +835,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
             std::optional<std::string> id;
             if (j.contains("id") && !j["id"].isNull() && j["id"].isString())
                 id = j["id"].get<std::string>();
-            DeviceTest dt{std::move(id)};
+            DeviceTest dt{.id=std::move(id)};
             if (j.contains("tone") && j["tone"].isBoolean())
                 dt.tone = j["tone"].get<bool>();
             return Command{std::move(dt)};
@@ -1656,7 +1656,7 @@ std::expected<IpcRequest, kanariv::utils::Error> deserializeRequest(std::string_
         auto cmd = commandFromJson(j["cmd"]);
         if (!cmd)
             return std::unexpected{cmd.error()};
-        return IpcRequest{id, std::move(*cmd)};
+        return IpcRequest{.id=id, .cmd=std::move(*cmd)};
     } catch (const std::exception& e) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
@@ -1698,7 +1698,7 @@ std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view
             auto r = resultFromJson(j["result"]);
             if (!r)
                 return std::unexpected{r.error()};
-            return IpcReply{id, std::move(*r)};
+            return IpcReply{.id=id, .result=std::move(*r)};
         } else {
             Json ej;
             if (j.contains("error"))
@@ -1711,7 +1711,7 @@ std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view
             auto e = detail::errorFromJson(ej);
             if (!e)
                 return std::unexpected{e.error()};
-            return IpcReply{id, std::unexpected{*e}};
+            return IpcReply{.id=id, .result=std::unexpected{*e}};
         }
     } catch (const std::exception& e) {
         return std::unexpected{
@@ -1729,7 +1729,7 @@ std::vector<std::byte> frame(std::string_view json) {
     out.push_back(static_cast<std::byte>(len & 0xFF));
     // Bulk insert (M-2): the old per-byte push_back loop defeated the
     // reserve() above with per-byte size checks on some STLs.
-    const auto* bytes = reinterpret_cast<const std::byte*>(json.data());
+    const auto* bytes = reinterpret_cast<const std::byte*>(json.data()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     out.insert(out.end(), bytes, bytes + json.size());
     return out;
 }

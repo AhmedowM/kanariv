@@ -13,6 +13,7 @@
 #include <format>
 #include <iostream>
 #include <span>
+#include <array>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -88,7 +89,7 @@ std::string highlightAll(const std::string& text, std::string_view needle, bool 
         return text;
     std::string out;
     std::size_t pos = 0;
-    auto lower = [](char c) { return (char)std::tolower((unsigned char)c); };
+    auto lower = [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
     while (pos < text.size()) {
         std::size_t hit = std::string::npos;
         for (std::size_t i = pos; i + needle.size() <= text.size(); ++i) {
@@ -423,9 +424,9 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
 #else
                     localtime_r(&tp, &tm);
 #endif
-                    char timeBuf[32];
-                    std::strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M", &tm);
-                    kanariv::println(os, "  Last Played:  {}", timeBuf);
+                    std::array<char, 32> timeBuf;
+                    std::strftime(timeBuf.data(), timeBuf.size(), "%Y-%m-%d %H:%M", &tm);
+                    kanariv::println(os, "  Last Played:  {}", timeBuf.data());
                 } else {
                     kanariv::println(os, "  Last Played:  (never)");
                 }
@@ -446,8 +447,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
 #else
                     localtime_r(&t, &tm);
 #endif
-                    char timeBuf[32];
-                    std::strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M", &tm);
+                    std::array<char, 32> timeBuf;
+                    std::strftime(timeBuf.data(), timeBuf.size(), "%Y-%m-%d %H:%M", &tm);
                     std::string posStr = formatTime(e.position_ms / 1000.0);
                     std::string durStr = formatTime(e.duration);
                     kanariv::println(os, "{:3}  {:<20}  {:<40} {:<40} {:>10} {:>8}", i, timeBuf,
@@ -460,7 +461,7 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "{:>4}  {:>6}  {:>10}  {}", "ID", "Track", "Pos", "Note");
                 for (const auto& e : v.entries) {
                     kanariv::println(os, "{:4}  {:>6}  {:>10}  {}", e.id, e.track_id,
-                                    formatTime((double)e.position_ms / 1000.0),
+                                    formatTime(static_cast<double>(e.position_ms) / 1000.0),
                                     truncateField(e.note, 40));
                 }
             },

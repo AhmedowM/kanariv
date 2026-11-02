@@ -83,7 +83,7 @@ void setApeExtras(TagLib::APE::Tag* ape, const kanariv::types::Track& t) {
 bool canWriteFileTags(const std::filesystem::path& p) {
     auto ext = p.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(),
-                   [](unsigned char c) { return (char)std::tolower(c); });
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     // NOTE: no .tta — TrueAudio files carry a muxer-written APE tag that
     // FFmpeg prefers over ID3v2, and TagLib's TrueAudio class exposes no APE
     // API, so a write would be invisible to our own reader. DB-only, like

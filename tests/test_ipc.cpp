@@ -244,7 +244,7 @@ TEST_CASE("library stats command roundtrip", "[ipc]") {
     CHECK(summary["type"].snapshot().get<std::string>() == "LibraryStats");
     CHECK_FALSE(summary.contains("top_tracks"));
 
-    auto detailed = toJson(Command{LibraryStats{5}});
+    auto detailed = toJson(Command{LibraryStats{.top_tracks=5}});
     REQUIRE(detailed.contains("top_tracks"));
     CHECK(detailed["top_tracks"].snapshot().get<int>() == 5);
     auto detailedBack = commandFromJson(detailed);
@@ -459,7 +459,7 @@ TEST_CASE("daemon track rate and smart playlist roundtrip", "[ipc][cli]") {
     t.title = "Rate Me";
     t.artist = "Test Artist";
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(b * 3);
+        t.fingerprint[b] = static_cast<uint8_t>(b * 3);
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     int64_t trackId = *ins;
@@ -544,7 +544,7 @@ TEST_CASE("daemon library list rating filter and maintenance", "[ipc][cli]") {
     t1.title = "Track A";
     t1.rating = 5;
     for (int b = 0; b < 32; ++b)
-        t1.fingerprint[b] = (uint8_t)(b + 1);
+        t1.fingerprint[b] = static_cast<uint8_t>(b + 1);
     auto ins1 = db->insertTrack(t1);
     REQUIRE(ins1.has_value());
 
@@ -553,7 +553,7 @@ TEST_CASE("daemon library list rating filter and maintenance", "[ipc][cli]") {
     t2.title = "Track B";
     t2.rating = 0;
     for (int b = 0; b < 32; ++b)
-        t2.fingerprint[b] = (uint8_t)(b + 2);
+        t2.fingerprint[b] = static_cast<uint8_t>(b + 2);
     auto ins2 = db->insertTrack(t2);
     REQUIRE(ins2.has_value());
 

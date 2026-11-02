@@ -29,7 +29,7 @@ TEST_CASE("gapless CAS arms once via Engine", "[engine_gapless]") {
         t.path = "cas" + std::to_string(i) + ".wav";
         t.duration = 0.8;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0xC8 + i * 16 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0xC8 + i * 16 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -76,7 +76,7 @@ TEST_CASE("gapless 300ms lookahead triggers next once", "[engine_gapless]") {
         t.path = "gap" + std::to_string(i) + ".wav";
         t.duration = 0.8;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0xC0 + i * 16 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0xC0 + i * 16 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -124,7 +124,7 @@ TEST_CASE("gapless not triggered when remaining > gap", "[engine_gapless]") {
         t.path = "gap_n" + std::to_string(i) + ".wav";
         t.duration = 5.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0xD0 + i * 16 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0xD0 + i * 16 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());

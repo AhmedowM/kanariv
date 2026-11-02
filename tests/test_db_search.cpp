@@ -35,7 +35,7 @@ TEST_CASE("search FTS finds title and LIKE fallback COLLATE NOCASE", "[db_search
         t.artist = artist;
         t.album = "Album";
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(title.size() + b);
+            t.fingerprint[b] = static_cast<uint8_t>(title.size() + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
     }
@@ -73,7 +73,7 @@ TEST_CASE("searchLike 5 cols COLLATE NOCASE", "[db_search]") {
     t.album = "BazAlbum";
     t.genre = "Rock";
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0xE0 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0xE0 + b);
     REQUIRE(db->insertTrack(t).has_value());
     auto r = searchLike(*db, "barartist", 10);
     REQUIRE(r.has_value());
@@ -106,7 +106,7 @@ TEST_CASE("search FTS escape LIKE wildcards", "[db_search]") {
     t.path = "/tmp/y.mp3";
     t.title = "100% Pure";
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0xF0 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0xF0 + b);
     REQUIRE(db->insertTrack(t).has_value());
     auto r = search(*db, "100%", 10);
     REQUIRE(r.has_value());
@@ -129,14 +129,14 @@ TEST_CASE("search phrase Abbey Road", "[db_search]") {
     t.artist = "Beatles";
     t.album = "Abbey Road";
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0xA0 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0xA0 + b);
     REQUIRE(db->insertTrack(t).has_value());
     kanariv::types::Track t2;
     t2.path = "/tmp/other.mp3";
     t2.title = "Abbeville";
     t2.artist = "Other";
     for (int b = 0; b < 32; ++b)
-        t2.fingerprint[b] = (uint8_t)(0xB0 + b);
+        t2.fingerprint[b] = static_cast<uint8_t>(0xB0 + b);
     REQUIRE(db->insertTrack(t2).has_value());
     // quoted phrase should be sanitized but still match Abbey Road via FTS or LIKE
     auto r = search(*db, "\"Abbey Road\"", 10);
@@ -165,7 +165,7 @@ TEST_CASE("search injection OR AND NOT", "[db_search]") {
     t.title = "Hello World";
     t.artist = "Artist";
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0xC0 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0xC0 + b);
     REQUIRE(db->insertTrack(t).has_value());
     // these queries contain FTS operators that should be sanitized, not cause syntax errors or
     // injection
@@ -196,7 +196,7 @@ TEST_CASE("search very long query", "[db_search]") {
     t.path = "/tmp/long.mp3";
     t.title = "Short";
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0xD0 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0xD0 + b);
     REQUIRE(db->insertTrack(t).has_value());
     std::string longQ(5000, 'a');
     longQ += " Short ";
@@ -219,7 +219,7 @@ TEST_CASE("search limit=0 defaults to 50", "[db_search]") {
         t.title = "Limited";
         t.artist = "Artist" + std::to_string(i);
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0xE0 + i * 16 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0xE0 + i * 16 + b);
         REQUIRE(db->insertTrack(t).has_value());
     }
     auto r = search(*db, "Limited", 0);
@@ -241,7 +241,7 @@ TEST_CASE("search COLLATE NOCASE variation", "[db_search]") {
     t.album = "AlbumX";
     t.genre = "RoCk";
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0xF1 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0xF1 + b);
     REQUIRE(db->insertTrack(t).has_value());
     auto r1 = searchLike(*db, "casetest", 10);
     REQUIRE(r1.has_value());

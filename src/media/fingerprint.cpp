@@ -29,20 +29,20 @@ computeFingerprint(const std::filesystem::path& path) {
     blake3_hasher_init(&hasher);
     thread_local std::array<std::byte, sample> buf{};
     f.read(reinterpret_cast<char*>(buf.data()), static_cast<std::streamsize>(sample));
-    size_t n = (size_t)f.gcount();
+    size_t n = static_cast<size_t>(f.gcount());
     if (n)
         blake3_hasher_update(&hasher, buf.data(), n);
     if (sz > sample) {
         f.clear();
-        f.seekg((std::streamoff)(sz - sample), std::ios::beg);
+        f.seekg(static_cast<std::streamoff>(sz - sample), std::ios::beg);
         if (f) {
             f.read(reinterpret_cast<char*>(buf.data()), static_cast<std::streamsize>(sample));
-            n = (size_t)f.gcount();
+            n = static_cast<size_t>(f.gcount());
             if (n)
                 blake3_hasher_update(&hasher, buf.data(), n);
         }
     }
-    uint64_t sz64 = (uint64_t)sz;
+    uint64_t sz64 = static_cast<uint64_t>(sz);
     blake3_hasher_update(&hasher, &sz64, sizeof(sz64));
     uint32_t ver = 1;
     blake3_hasher_update(&hasher, &ver, sizeof(ver));

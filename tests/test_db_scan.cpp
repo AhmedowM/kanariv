@@ -48,10 +48,10 @@ TEST_CASE("scan fingerprint head+tail+size sampled deterministic", "[db_scan]") 
     // create 100K file with known pattern
     std::vector<uint8_t> data(100 * 1024, 0xAB);
     for (size_t i = 0; i < data.size(); ++i)
-        data[i] = (uint8_t)(i & 0xFF);
+        data[i] = static_cast<uint8_t>(i & 0xFF);
     {
         std::ofstream f(p, std::ios::binary);
-        f.write((char*)data.data(), data.size());
+        f.write(reinterpret_cast<char*>(data.data()), data.size());
     }
     // Test via public API: scanTracksToVector returns tracks with fingerprints
     auto tracks1 = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
@@ -74,7 +74,7 @@ TEST_CASE("scan fingerprint head+tail+size sampled deterministic", "[db_scan]") 
     auto p2 = dir / "file2.wav";
     {
         std::ofstream f(p2, std::ios::binary);
-        f.write((char*)data2.data(), data2.size());
+        f.write(reinterpret_cast<char*>(data2.data()), data2.size());
     }
     auto tracks3 = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks3.has_value());
@@ -93,7 +93,7 @@ TEST_CASE("scan fingerprint head+tail+size sampled deterministic", "[db_scan]") 
     std::vector<uint8_t> data3(data.begin(), data.begin() + 50 * 1024);
     {
         std::ofstream f(p3, std::ios::binary);
-        f.write((char*)data3.data(), data3.size());
+        f.write(reinterpret_cast<char*>(data3.data()), data3.size());
     }
     auto tracks4 = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks4.has_value());
@@ -121,15 +121,15 @@ TEST_CASE("scanLibrary inserts and dedup by fingerprint", "[db_scan]") {
         std::ofstream f1(dir / "x.mp3", std::ios::binary);
         std::vector<uint8_t> d1(10 * 1024, 0x42);
         for (size_t i = 0; i < d1.size(); ++i)
-            d1[i] = (uint8_t)(i & 0xFF);
-        f1.write((char*)d1.data(), d1.size());
+            d1[i] = static_cast<uint8_t>(i & 0xFF);
+        f1.write(reinterpret_cast<char*>(d1.data()), d1.size());
     }
     {
         std::ofstream f2(dir / "y.wav", std::ios::binary);
         std::vector<uint8_t> d2(10 * 1024, 0x43);
         for (size_t i = 0; i < d2.size(); ++i)
-            d2[i] = (uint8_t)((i + 1) & 0xFF);
-        f2.write((char*)d2.data(), d2.size());
+            d2[i] = static_cast<uint8_t>((i + 1) & 0xFF);
+        f2.write(reinterpret_cast<char*>(d2.data()), d2.size());
     }
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
@@ -275,10 +275,10 @@ TEST_CASE("ScanMode Full vs Sampled for file >128 KiB", "[db_scan]") {
     // 200 KiB file ( >128 KiB = 2*64K )
     std::vector<uint8_t> data(200 * 1024);
     for (size_t i = 0; i < data.size(); ++i)
-        data[i] = (uint8_t)(i * 13 & 0xFF);
+        data[i] = static_cast<uint8_t>(i * 13 & 0xFF);
     {
         std::ofstream f(p, std::ios::binary);
-        f.write((char*)data.data(), data.size());
+        f.write(reinterpret_cast<char*>(data.data()), data.size());
     }
     auto sampled = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(sampled.has_value());
@@ -301,7 +301,7 @@ TEST_CASE("ScanMode Full vs Sampled for file >128 KiB", "[db_scan]") {
     // overwrite original with modified middle
     {
         std::ofstream f(p, std::ios::binary | std::ios::trunc);
-        f.write((char*)dataMod.data(), dataMod.size());
+        f.write(reinterpret_cast<char*>(dataMod.data()), dataMod.size());
     }
     auto sampledMod = kanariv::media::scanTracksToVector(dir, kanariv::media::ScanMode::Sampled);
     REQUIRE(sampledMod.has_value());
@@ -322,10 +322,10 @@ TEST_CASE("scanLibrary preserves play_count", "[db_scan]") {
     auto p = dir / "song.mp3";
     std::vector<uint8_t> d1(10 * 1024, 0x11);
     for (size_t i = 0; i < d1.size(); ++i)
-        d1[i] = (uint8_t)(i & 0xFF);
+        d1[i] = static_cast<uint8_t>(i & 0xFF);
     {
         std::ofstream f(p, std::ios::binary);
-        f.write((char*)d1.data(), d1.size());
+        f.write(reinterpret_cast<char*>(d1.data()), d1.size());
     }
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
@@ -352,12 +352,12 @@ TEST_CASE("scanLibrary preserves play_count", "[db_scan]") {
     // fails (size != trk.size)
     std::vector<uint8_t> d2(12 * 1024, 0x22);
     for (size_t i = 0; i < d2.size(); ++i)
-        d2[i] = (uint8_t)((i * 3) & 0xFF);
+        d2[i] = static_cast<uint8_t>((i * 3) & 0xFF);
     // ensure different fingerprint from d1
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     {
         std::ofstream f(p, std::ios::binary | std::ios::trunc);
-        f.write((char*)d2.data(), d2.size());
+        f.write(reinterpret_cast<char*>(d2.data()), d2.size());
     }
     REQUIRE(scanLibrary(*db, libId).has_value());
     auto t2 = db->getTrack(tid);

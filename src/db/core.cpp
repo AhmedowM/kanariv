@@ -1097,7 +1097,7 @@ std::expected<kanariv::types::Playlist, kanariv::utils::Error> Database::getPlay
     kanariv::types::Playlist p;
     p.id = st.columnInt(0);
     p.name = st.columnText(1);
-    p.type = (int)st.columnInt(2);
+    p.type = static_cast<int>(st.columnInt(2));
     p.smart_query = st.columnText(3);
     p.created = st.columnInt(4);
     p.modified = st.columnInt(5);
@@ -1306,7 +1306,7 @@ Database::listPlaylists() {
         kanariv::types::Playlist p;
         p.id = st.columnInt(0);
         p.name = st.columnText(1);
-        p.type = (int)st.columnInt(2);
+        p.type = static_cast<int>(st.columnInt(2));
         p.smart_query = st.columnText(3);
         p.created = st.columnInt(4);
         p.modified = st.columnInt(5);
@@ -1865,7 +1865,7 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::ge
         sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
-            s.total_duration_ms = (int64_t)(st.columnDouble(0) * 1000);
+            s.total_duration_ms = static_cast<int64_t>(st.columnDouble(0) * 1000);
         st.reset();
     }
     return s;
@@ -1904,7 +1904,7 @@ Database::libraryStats(std::optional<int> topTracks,
         sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
-            d.total_duration_ms = (int64_t)(st.columnDouble(0) * 1000);
+            d.total_duration_ms = static_cast<int64_t>(st.columnDouble(0) * 1000);
         st.reset();
     }
 
@@ -1914,7 +1914,7 @@ Database::libraryStats(std::optional<int> topTracks,
         sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
-            d.total_play_time_ms = (int64_t)(st.columnDouble(0) * 1000);
+            d.total_play_time_ms = static_cast<int64_t>(st.columnDouble(0) * 1000);
         st.reset();
     }
 

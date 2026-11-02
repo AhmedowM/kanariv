@@ -35,8 +35,8 @@ namespace {
 
 struct RunResult {
     int exitCode{-1};
-    std::string out{};
-    std::string err{};
+    std::string out;
+    std::string err;
 };
 
 std::string shellQuote(const std::string& s) {
@@ -105,7 +105,7 @@ RunResult runCli(const std::vector<std::string>& args) {
 #else
     int code = (rc == -1) ? -1 : WEXITSTATUS(rc);
 #endif
-    RunResult r{code, readFile(outF), readFile(errF)};
+    RunResult r{.exitCode=code, .out=readFile(outF), .err=readFile(errF)};
     fs::remove_all(work, ec);
     return r;
 }
@@ -139,7 +139,7 @@ std::vector<std::string> withCfg(const std::string& tag, std::vector<std::string
     fs::path cfg = dir / "config.json";
     {
         std::ofstream f(cfg, std::ios::binary);
-        f << "{\"dbPath\": \"" << dir.generic_string() << "/library.db\"}";
+        f << R"({"dbPath": ")" << dir.generic_string() << "/library.db\"}";
     }
     rest.insert(rest.begin(), {"--config", cfg.generic_string()});
     return rest;
@@ -295,7 +295,7 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     fs::path cfg = dir / "config.json";
     {
         std::ofstream f(cfg, std::ios::binary);
-        f << "{\"dbPath\": \"" << dir.generic_string() << "/library.db\"}";
+        f << R"({"dbPath": ")" << dir.generic_string() << "/library.db\"}";
     }
     std::string cfgS = cfg.generic_string();
     auto run = [&](std::vector<std::string> a) {
@@ -560,7 +560,7 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     REQUIRE(contains(swmiss.err, "999"));
     {
         std::ofstream f(dir / "good.json", std::ios::binary);
-        f << "{\"custom_key\": \"v\"}";
+        f << R"({"custom_key": "v"})";
     }
     auto impOk = run({"config", "import", (dir / "good.json").generic_string()});
     REQUIRE(impOk.exitCode == 0);
@@ -572,14 +572,14 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     REQUIRE(impBad.exitCode != 0);
     {
         std::ofstream f(dir / "badtype.json", std::ios::binary);
-        f << "{\"logLevel\": \"loud\"}";
+        f << R"({"logLevel": "loud"})";
     }
     auto impType = run({"config", "import", (dir / "badtype.json").generic_string()});
     REQUIRE(impType.exitCode != 0);
     // Restore the hermetic config replaced by the import above.
     {
         std::ofstream f(cfg, std::ios::binary);
-        f << "{\"dbPath\": \"" << dir.generic_string() << "/library.db\"}";
+        f << R"({"dbPath": ")" << dir.generic_string() << "/library.db\"}";
     }
     REQUIRE(run({"config", "set", "cli_golden_key", "hello"}).exitCode == 0);
     auto pauseIdle = run({"pause"});
@@ -694,7 +694,7 @@ TEST_CASE("cli tag edit writes file", "[cli]") {
     fs::path cfg = dir / "config.json";
     {
         std::ofstream f(cfg, std::ios::binary);
-        f << "{\"dbPath\": \"" << dir.generic_string() << "/library.db\"}";
+        f << R"({"dbPath": ")" << dir.generic_string() << "/library.db\"}";
     }
     std::string cfgS = cfg.generic_string();
     auto run = [&](std::vector<std::string> a) {
@@ -761,7 +761,7 @@ TEST_CASE("cli playback one-liners", "[cli]") {
     fs::path cfg = dir / "config.json";
     {
         std::ofstream f(cfg, std::ios::binary);
-        f << "{\"dbPath\": \"" << dir.generic_string() << "/library.db\"}";
+        f << R"({"dbPath": ")" << dir.generic_string() << "/library.db\"}";
     }
     std::string cfgS = cfg.generic_string();
     auto run = [&](std::vector<std::string> a) {

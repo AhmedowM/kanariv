@@ -50,7 +50,7 @@ kanariv::app::AppResult runLocalPreview(const std::string& file) {
     while (player.state() == kanariv::player::State::Playing) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    return kanariv::app::Outcome{std::nullopt, std::move(done), false, false};
+    return kanariv::app::Outcome{.result=std::nullopt, .line=std::move(done), .toStderr=false, .failed=false};
 }
 
 } // namespace kanariv::app::cli::detail

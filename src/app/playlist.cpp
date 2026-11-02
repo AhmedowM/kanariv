@@ -43,7 +43,7 @@ AppResult App::playlistTracks(std::int64_t pid) {
 
 AppResult App::playlistCreate(const std::string& name,
                               const std::string& smart_query) {
-    kanariv::ipc::PlaylistCreate pc{name};
+    kanariv::ipc::PlaylistCreate pc{.name=name};
     pc.smart_query = smart_query;
     kanariv::ipc::Command cmd{std::move(pc)};
     auto res = impl_->sendRaw(cmd);

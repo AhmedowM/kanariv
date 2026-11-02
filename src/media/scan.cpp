@@ -31,10 +31,10 @@ kanariv::utils::Generator<kanariv::types::Track> scanTracks(const std::filesyste
             std::error_code e2;
             auto sz = it->file_size(e2);
             if (!e2)
-                t.size = (int64_t)sz;
+                t.size = static_cast<int64_t>(sz);
             auto ftime = it->last_write_time(e2);
             if (!e2)
-                t.mtime = (int64_t)ftime.time_since_epoch().count();
+                t.mtime = static_cast<int64_t>(ftime.time_since_epoch().count());
             if (mode == ScanMode::Sampled) {
                 auto fp = internal::computeFingerprint(it->path());
                 if (fp)

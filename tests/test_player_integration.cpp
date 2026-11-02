@@ -109,7 +109,7 @@ TEST_CASE("player position time-based via Engine steady_clock", "[player_integra
         t.path = fixturePath("sample.wav");
         t.duration = 2.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0x55 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0x55 + b);
         auto ins = db->insertTrack(t);
         REQUIRE(ins.has_value());
         REQUIRE(db->queueEnqueue(1, *ins, -1).has_value());
@@ -184,7 +184,7 @@ TEST_CASE("player seek-while-playing race via Engine", "[player_integration][see
     t.path = fixturePath("sample.wav");
     t.duration = 5.0;
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0x60 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0x60 + b);
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     REQUIRE(db->queueEnqueue(1, *ins, -1).has_value());
@@ -282,7 +282,7 @@ TEST_CASE("gapless via Player Engine 300ms lookahead", "[player_integration][gap
         t.path = fixturePath("sample.wav");
         t.duration = 0.9;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0x70 + i * 16 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0x70 + i * 16 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());

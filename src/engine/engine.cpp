@@ -57,7 +57,7 @@ constexpr std::chrono::milliseconds queueLockWait{500};
 struct QueueState {
     bool shuffle{false}; ///< Whether shuffle is enabled.
     kanariv::types::RepeatMode repeat{kanariv::types::RepeatMode::Off}; ///< Repeat mode.
-    std::vector<int64_t> perm{}; ///< Shuffle permutation (positions, not track_ids).
+    std::vector<int64_t> perm; ///< Shuffle permutation (positions, not track_ids).
     size_t cursor{0};            ///< Next position index in perm or linear queue.
     int64_t queue_id{1};         ///< Active queue id.
 };
@@ -182,36 +182,36 @@ struct Engine::Impl {
     std::atomic<float> volume_{1.0f};
     std::atomic<float> preMute_{0.5f};
     std::atomic<kanariv::types::PlaybackState> playbackState_{kanariv::types::PlaybackState::Stopped};
-    std::chrono::steady_clock::time_point playStart_{};
+    std::chrono::steady_clock::time_point playStart_;
     double pausePos_{0};
     std::atomic<uint64_t> accumulatedPlaybackMs_{0};
     std::atomic<uint64_t> lastPlaybackSampleMs_{0};
     std::atomic<bool> markedPlayed_{false};
     int64_t startedMs_{0};
-    std::string lastErr_{};
+    std::string lastErr_;
 
-    std::shared_ptr<kanariv::contracts::IDatabase> db_{};
+    std::shared_ptr<kanariv::contracts::IDatabase> db_;
 
     // player
-    std::unique_ptr<kanariv::media::Reader> reader_{};
-    std::unique_ptr<kanariv::media::Decoder> decoder_{};
-    std::unique_ptr<kanariv::utils::SpscRing<float>> ring_{};
-    std::unique_ptr<kanariv::player::AudioOutput> output_{};
+    std::unique_ptr<kanariv::media::Reader> reader_;
+    std::unique_ptr<kanariv::media::Decoder> decoder_;
+    std::unique_ptr<kanariv::utils::SpscRing<float>> ring_;
+    std::unique_ptr<kanariv::player::AudioOutput> output_;
 
     std::jthread decodeThread_{};
     std::atomic<bool> decodeRun_{false};
-    std::mutex decodeMtx_{};
+    std::mutex decodeMtx_;
     std::condition_variable_any decodeCv_{};
 
     // monitor
     std::jthread monitorThread_{};
     std::atomic<bool> monRun_{false};
-    std::mutex monMtx_{};
+    std::mutex monMtx_;
     std::condition_variable_any monCv_{};
 
     // events
     kanariv::utils::MpscQueue<kanariv::types::EngineEvent> eventQueue_{64};
-    std::mutex cbMutex_{};
+    std::mutex cbMutex_;
     kanariv::types::EngineCallbacks callbacks_{};
 
     // atomics spec required
@@ -420,7 +420,7 @@ void Engine::Impl::shutdown() {
     }
     // persist state
     if (hasDb()) {
-        state_.cursorPos = (int64_t)queue_.cursor;
+        state_.cursorPos = static_cast<int64_t>(queue_.cursor);
         (void)saveState();
     }
     if (output_) {
@@ -483,7 +483,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
             queue_.cursor = *idx;
             auto r = queueNextLocked(t);
             if (r) {
-                auto pr = doPlayTrack(t, (double)state_.positionMs / 1000.0);
+                auto pr = doPlayTrack(t, static_cast<double>(state_.positionMs) / 1000.0);
                 if (pr) {
                     unlockQueue();
                     return {};
@@ -503,7 +503,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
     // stop zeroes positionMs, so this never resurrects a stopped position.
     double from = 0.0;
     if (t.id == state_.currentTrackId && state_.positionMs > 0)
-        from = (double)state_.positionMs / 1000.0;
+        from = static_cast<double>(state_.positionMs) / 1000.0;
     auto pr = doPlayTrack(t, from);
     unlockQueue();
     if (!pr)
@@ -536,7 +536,7 @@ Engine::ExpectedVoid Engine::Impl::playTrack(int64_t trackId) {
         }
         bool found = false;
         for (size_t i = 0; i < queue_.perm.size(); ++i) {
-            if (queue_.perm[i] == (int64_t)*idx) {
+            if (queue_.perm[i] == static_cast<int64_t>(*idx)) {
                 cursor = i;
                 found = true;
                 break;
@@ -756,7 +756,7 @@ Engine::ExpectedVoid Engine::Impl::setVolume(float g) {
         const uint64_t last = lastVolSaveMs_.load(std::memory_order_acquire);
         if (now - last >= 1000) {
             lastVolSaveMs_.store(now, std::memory_order_release);
-            state_.cursorPos = (int64_t)queue_.cursor;
+            state_.cursorPos = static_cast<int64_t>(queue_.cursor);
             (void)saveState();
         }
     }
@@ -823,7 +823,7 @@ void Engine::Impl::noteEnqueued(int64_t qid, std::size_t count) noexcept {
         std::size_t n = db_->queueCount(qid);
         std::size_t start = (n >= count) ? n - count : 0;
         for (std::size_t i = start; i < n; ++i)
-            queue_.perm.push_back((int64_t)i);
+            queue_.perm.push_back(static_cast<int64_t>(i));
         (void)persistShuffleBlobLocked();
     }
     unlockQueue();
@@ -836,8 +836,8 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Engine::Impl
     if (!ds)
         return std::unexpected(ds.error());
     return kanariv::types::PlaybackStats{
-        ds->num_tracks,    ds->num_playlists, ds->num_queue_items,   ds->num_history,
-        ds->num_bookmarks, ds->num_libraries, ds->total_duration_ms,
+        .num_tracks=ds->num_tracks,    .num_playlists=ds->num_playlists, .num_queue_items=ds->num_queue_items,   .num_history=ds->num_history,
+        .num_bookmarks=ds->num_bookmarks, .num_libraries=ds->num_libraries, .total_duration_ms=ds->total_duration_ms,
     };
 }
 
@@ -888,7 +888,7 @@ Engine::ExpectedVoid Engine::Impl::setRepeat(kanariv::types::RepeatMode m) {
         return queueBusy("setRepeat", "busy");
     queue_.repeat = m;
     state_.repeatMode = m;
-    state_.cursorPos = (int64_t)queue_.cursor;
+    state_.cursorPos = static_cast<int64_t>(queue_.cursor);
     std::optional<kanariv::utils::Error> err;
     if (auto e = saveState(); !e)
         err = e.error();
@@ -946,7 +946,7 @@ Engine::ExpectedVoid Engine::Impl::switchQueue(int64_t qid) {
 }
 
 Engine::ExpectedVoid Engine::Impl::next() {
-    return advanceLocked(false, (int)queueLockWait.count());
+    return advanceLocked(false, static_cast<int>(queueLockWait.count()));
 }
 
 Engine::ExpectedVoid Engine::Impl::autoNext() {
@@ -976,7 +976,7 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs)
         resetPlaybackAccounting();
         markedPlayed_.store(false, std::memory_order_release);
         gaplessArmed_.store(false, std::memory_order_release);
-        startedMs_ = (int64_t)detail::wallMs();
+        startedMs_ = static_cast<int64_t>(detail::wallMs());
         kanariv::types::EngineEvent ev;
         ev.type = kanariv::types::EngineEventType::TrackStarted;
         ev.track_id = currentTrack_.id;
@@ -1159,7 +1159,7 @@ std::unexpected<kanariv::utils::Error> Engine::Impl::queueBusy(std::string_view 
 
 double Engine::Impl::currentPositionLocked() const noexcept {
     if (!hasCurrent_.load(std::memory_order_acquire))
-        return (double)state_.positionMs / 1000.0;
+        return static_cast<double>(state_.positionMs) / 1000.0;
     auto st = playbackState_.load(std::memory_order_acquire);
     if (st == kanariv::types::PlaybackState::Paused)
         return pausePos_;
@@ -1282,7 +1282,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::setShuffleLocked(bool o
         }
         queue_.perm.resize(cnt);
         for (size_t i = 0; i < cnt; ++i)
-            queue_.perm[i] = (int64_t)i;
+            queue_.perm[i] = static_cast<int64_t>(i);
         {
             std::mt19937 rng{std::random_device{}()};
             detail::shufflePerm(queue_.perm, rng);
@@ -1360,7 +1360,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::queueNextLocked(kanariv
             size_t idx = cnt - 1;
             if (queue_.cursor > 0 && queue_.cursor <= cnt)
                 idx = queue_.cursor - 1;
-            auto tr = fetchTrackByPosLocked(queue_.queue_id, (int64_t)idx);
+            auto tr = fetchTrackByPosLocked(queue_.queue_id, static_cast<int64_t>(idx));
             if (!tr)
                 return std::unexpected(tr.error());
             out = tr.value();
@@ -1378,7 +1378,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::queueNextLocked(kanariv
             (void)persistCursorLocked();
         }
     }
-    auto tr = fetchTrackByPosLocked(queue_.queue_id, (int64_t)queue_.cursor);
+    auto tr = fetchTrackByPosLocked(queue_.queue_id, static_cast<int64_t>(queue_.cursor));
     if (!tr)
         return std::unexpected(tr.error());
     queue_.cursor++;
@@ -1403,7 +1403,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::queuePrevLocked(kanariv
             if (queue_.cursor >= cnt)
                 queue_.cursor = cnt - 1;
         }
-        auto tr = fetchTrackByPosLocked(queue_.queue_id, (int64_t)queue_.cursor);
+        auto tr = fetchTrackByPosLocked(queue_.queue_id, static_cast<int64_t>(queue_.cursor));
         if (!tr)
             return std::unexpected(tr.error());
         queue_.cursor++;
@@ -1468,7 +1468,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
                 decoder_ = std::move(dRes.value());
                 opened = true;
                 duration_ = decoder_->totalFrames()
-                                ? (double)decoder_->totalFrames() / (double)decoder_->sampleRate()
+                                ? static_cast<double>(decoder_->totalFrames()) / static_cast<double>(decoder_->sampleRate())
                                 : t.duration;
                 if (duration_ <= 0)
                     duration_ = t.duration > 0 ? t.duration : 1.0;
@@ -1558,9 +1558,9 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
     hasCurrent_.store(true, std::memory_order_release);
     markedPlayed_.store(false, std::memory_order_release);
     gaplessArmed_.store(false, std::memory_order_release);
-    startedMs_ = (int64_t)detail::wallMs();
+    startedMs_ = static_cast<int64_t>(detail::wallMs());
     state_.currentTrackId = t.id;
-    state_.cursorPos = (int64_t)queue_.cursor;
+    state_.cursorPos = static_cast<int64_t>(queue_.cursor);
     playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
     // Position tracking starts at the resumed offset (0 for next/prev);
     // saveState() below then persists that offset instead of a transient 0.
@@ -1716,7 +1716,7 @@ void Engine::Impl::engineTick() {
         if (duration_ > 0) {
             double pos = currentPositionLocked();
             double remaining = duration_ - pos;
-            double gapS = (double)cfg_.gaplessMs / 1000.0;
+            double gapS = static_cast<double>(cfg_.gaplessMs) / 1000.0;
             if (remaining <= gapS && remaining >= 0.0) {
                 if (hasCurrent_.load(std::memory_order_acquire)) {
                     // gaplessArmed 0->1 CAS, 300ms preroll
@@ -1734,7 +1734,7 @@ void Engine::Impl::engineTick() {
         // lock is contended: another thread will save on its own path.
         uint64_t lastSave = lastPosSaveMs_.load(std::memory_order_acquire);
         if (now - lastSave >= 5000 && tryLockQueue()) {
-            state_.cursorPos = (int64_t)queue_.cursor;
+            state_.cursorPos = static_cast<int64_t>(queue_.cursor);
             if (saveState())
                 lastPosSaveMs_.store(now, std::memory_order_release);
             unlockQueue();

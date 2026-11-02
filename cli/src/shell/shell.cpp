@@ -18,6 +18,7 @@
 #endif
 
 #include <CLI/CLI.hpp>
+#include <array>
 #include <app/detail.hpp>
 #include <kanariv/app/app.hpp>
 #include <kanariv/app/paths.hpp>
@@ -797,7 +798,7 @@ int Shell::run(int argc, char** argv) {
                                                           res.error().message,
                                                           config_.dbPath.generic_string()));
         }
-        return kanariv::app::Outcome{std::nullopt, std::move(starting), false, false};
+        return kanariv::app::Outcome{.result=std::nullopt, .line=std::move(starting), .toStderr=false, .failed=false};
     });
     // Internal daemon mode: if --daemon present, run Service foreground immediately (child process)
     if (daemonFlag) {
@@ -917,8 +918,8 @@ int Shell::run(int argc, char** argv) {
 #else
                     localtime_r(&t, &tm);
 #endif
-                    char buf[32];
-                    std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
+                    std::array<char, 32> buf;
+                    std::strftime(buf.data(), buf.size(), "%H:%M:%S", &tm);
                     // kanariv::print(std::cout, output);
                     if (auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
                         kanariv::print(std::cout, "\r\33[2K[{}] {}", buf, detail::statusLine(*st));
@@ -1121,7 +1122,7 @@ int Shell::run(int argc, char** argv) {
                     return detail::renderError(
                         kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
                                                  "tag get: cover art is too large to write"));
-                ofs.write(reinterpret_cast<const char*>(decoded->data()),
+                ofs.write(reinterpret_cast<const char*>(decoded->data()), // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
                           static_cast<std::streamsize>(decoded->size()));
                 ofs.flush();
                 if (!ofs)

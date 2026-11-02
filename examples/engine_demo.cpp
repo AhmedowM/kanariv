@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <array>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -202,9 +203,9 @@ int main(int argc, char** argv) {
                       << " dur=" << ev->duration << " msg='" << ev->msg << "'\n";
         }
         if (i == 10) {
-            kanariv::types::EngineEvent buf[64];
+            std::array<kanariv::types::EngineEvent, 64> buf;
             size_t n = 0;
-            (void)engine->drainEvents(buf, 64, &n);
+            (void)engine->drainEvents(buf.data(), 64, &n);
             if (n > 0) {
                 std::cout << "[engine_demo] drain got " << n << " events at tick " << i << "\n";
                 for (size_t k = 0; k < n; ++k) {
@@ -214,9 +215,9 @@ int main(int argc, char** argv) {
             }
         }
     }
-    kanariv::types::EngineEvent buf[64];
+    std::array<kanariv::types::EngineEvent, 64> buf;
     size_t n = 0;
-    (void)engine->drainEvents(buf, 64, &n);
+    (void)engine->drainEvents(buf.data(), 64, &n);
     std::cout << "[engine_demo] final drain " << n << " events\n";
     for (size_t k = 0; k < n; ++k) {
         std::cout << "  final[" << k << "] type=" << static_cast<int>(buf[k].type) << " track "

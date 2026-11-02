@@ -95,11 +95,11 @@ struct Decoder::Impl {
     uint32_t channels_{0};
     uint64_t totalFrames_{0};
     uint64_t pos_{0};
-    PacketPtr scratchPkt_{};
-    FramePtr scratchFrame_{};
+    PacketPtr scratchPkt_;
+    FramePtr scratchFrame_;
     static constexpr std::size_t convertFrames = 4096;
-    std::vector<float> convertBuf_{};
-    std::vector<float> spill_{};
+    std::vector<float> convertBuf_;
+    std::vector<float> spill_;
     std::size_t spillPos_{0};
 };
 
@@ -305,14 +305,14 @@ kanariv::utils::Expected<void> Decoder::Impl::seek(double seconds) {
                                                     std::string_view("no stream")});
     // Use stream time_base for seeking - dec time_base is codec, not correct for container
     int64_t seekTarget = av_rescale_q(static_cast<int64_t>(seconds * AV_TIME_BASE),
-                                      AVRational{1, AV_TIME_BASE}, stream->time_base);
+                                      AVRational{.num=1, .den=AV_TIME_BASE}, stream->time_base);
     // Adjust by stream start_time if present
     if (stream->start_time != AV_NOPTS_VALUE)
         seekTarget += stream->start_time;
     else if (fmt_->start_time != AV_NOPTS_VALUE) {
         // fmt start_time is in AV_TIME_BASE units, convert to stream units
         seekTarget +=
-            av_rescale_q(fmt_->start_time, AVRational{1, AV_TIME_BASE}, stream->time_base);
+            av_rescale_q(fmt_->start_time, AVRational{.num=1, .den=AV_TIME_BASE}, stream->time_base);
     }
     int ret = avformat_seek_file(fmt_, audioStreamIdx_, INT64_MIN, seekTarget, INT64_MAX, 0);
     if (ret < 0) {

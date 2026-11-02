@@ -72,7 +72,7 @@ TEST_CASE("history insert increments play_count and last_played", "[engine_histo
     t.path = "hist.wav";
     t.duration = 10.0;
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0x60 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0x60 + b);
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     int64_t tid = *ins;
@@ -93,9 +93,9 @@ TEST_CASE("history insert increments play_count and last_played", "[engine_histo
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
     REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
-    const int64_t wallLo = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+    const int64_t wallLo = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                std::chrono::system_clock::now().time_since_epoch())
-                               .count();
+                               .count());
     REQUIRE(eng->play(1).has_value());
     // wait deterministically for history to be marked (threshold 1s or 10% of 10s=1s, so ~1s)
     // poll every 50ms with overall timeout 2000ms, breaking early when condition met
@@ -130,9 +130,9 @@ TEST_CASE("history insert increments play_count and last_played", "[engine_histo
     // Stored timestamps must be wall-clock (regression: the monotonic clock
     // rendered every history date as 1970-01-01). Bounds come from the test's
     // own clock, so this holds at any machine uptime.
-    const int64_t wallHi = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+    const int64_t wallHi = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                std::chrono::system_clock::now().time_since_epoch())
-                               .count();
+                               .count());
     auto wallPlausible = [&](int64_t v) { return v >= wallLo - 5000 && v <= wallHi + 5000; };
     sqlite3* h4 = nullptr;
     REQUIRE(sqlite3_open_v2(dbPath.c_str(), &h4, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK);

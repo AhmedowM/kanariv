@@ -143,7 +143,7 @@ kanariv::utils::Expected<std::vector<RawConfigValue>> configListRaw(const std::f
                 vs = "null";
             else
                 vs = vv.dump();
-            out.push_back(RawConfigValue{kk, vs});
+            out.push_back(RawConfigValue{.key=kk, .value=vs});
         }
         return out;
     } catch (const std::exception& e) {

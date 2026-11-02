@@ -34,7 +34,7 @@ TEST_CASE("engine state save and load roundtrip", "[engine_state]") {
             t.path = "state" + std::to_string(i) + ".wav";
             t.duration = 1.0;
             for (int b = 0; b < 32; ++b)
-                t.fingerprint[b] = (uint8_t)(0xA0 + i * 16 + b);
+                t.fingerprint[b] = static_cast<uint8_t>(0xA0 + i * 16 + b);
             auto r = db->insertTrack(t);
             REQUIRE(r.has_value());
             REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -160,7 +160,7 @@ TEST_CASE("engine state shuffle toggle clears perm", "[engine_state]") {
         t.path = "tog" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0xB0 + i * 16 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0xB0 + i * 16 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
@@ -215,7 +215,7 @@ TEST_CASE("engine persists resume position across restart", "[engine_state]") {
         t.path = "pos.wav";
         t.duration = 10.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0xC0 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0xC0 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         trackId = *r;
@@ -276,7 +276,7 @@ TEST_CASE("explicit stop clears the resume position", "[engine_state]") {
         t.path = "stop_pos.wav";
         t.duration = 10.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0xD0 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0xD0 + b);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
         REQUIRE(db->queueEnqueue(1, *r, -1).has_value());

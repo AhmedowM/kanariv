@@ -54,7 +54,7 @@ AppResult App::tagEdit(std::string idOrPath, const std::string& field,
                 kanariv::utils::StatusCode::NotFound,
                 "track not found for path '" + idOrPath + "'")};
     }
-    kanariv::ipc::Command cmd{kanariv::ipc::TagEdit{id, field, value}};
+    kanariv::ipc::Command cmd{kanariv::ipc::TagEdit{.id=id, .field=field, .value=value}};
     return impl_->confirm(impl_->sendRaw(cmd),
                           std::format("Updated {} for track {}", field, id));
 }
@@ -107,7 +107,7 @@ std::expected<TagValue, kanariv::utils::Error> App::tagValue(std::string idOrPat
                 "tag get cover: no cover art for track " + std::to_string(id))};
         kanariv::utils::Json j = kanariv::utils::Json::object();
         j["cover"] = st->cover_data;
-        return TagValue{st->cover_data, j.dump()};
+        return TagValue{.value=st->cover_data, .json=j.dump()};
     }
 
     kanariv::ipc::Command cmd{kanariv::ipc::TagGet{.id = id}};
@@ -151,7 +151,7 @@ std::expected<TagValue, kanariv::utils::Error> App::tagValue(std::string idOrPat
     } else {
         j[field] = value;
     }
-    return TagValue{value, j.dump()};
+    return TagValue{.value=value, .json=j.dump()};
 }
 
 } // namespace kanariv::app

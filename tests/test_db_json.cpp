@@ -38,7 +38,7 @@ TEST_CASE("trackToJson and trackFromJson roundtrip ordered", "[db_json]") {
     t.rating = 4;
     t.library_id = 1;
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)b;
+        t.fingerprint[b] = static_cast<uint8_t>(b);
     const auto j = kanariv::utils::trackToJson(t);
     REQUIRE(j.contains("title"));
     REQUIRE(j["title"].get<std::string>() == "Title");
@@ -66,7 +66,7 @@ TEST_CASE("exportJson and importJson roundtrip", "[db_json]") {
     t.title = "JsonTrack";
     t.artist = "JsonArtist";
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0x11 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0x11 + b);
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     auto outPath = tempDbPath("json_export");
@@ -104,7 +104,7 @@ TEST_CASE("importJson handles duplicate fingerprint upsert", "[db_json]") {
     t.path = "/tmp/dup.mp3";
     t.title = "Dup";
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0x22 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0x22 + b);
     REQUIRE(db->insertTrack(t).has_value());
     auto outPath = tempDbPath("json_dup");
     outPath.replace_extension(".json");

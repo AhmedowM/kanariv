@@ -165,14 +165,14 @@ class WriterThread final {
      * @ingroup kanariv_db
      * @return true if no pending ops.
      */
-    bool empty() const;
+    [[nodiscard]] bool empty() const;
 
     /**
      * @brief Returns number of pending ops.
      * @ingroup kanariv_db
      * @return Queue size.
      */
-    std::size_t size() const;
+    [[nodiscard]] std::size_t size() const;
 
   private:
     struct Impl;

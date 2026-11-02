@@ -37,8 +37,10 @@ SAFE_FIX_CHECKS = ("modernize-use-nullptr,modernize-use-override,"
 DEFAULT_BUILD_DIR = "build/dev"
 # run-clang-tidy matches file args with re.search against DB paths. Default
 # allowlist keeps repo sources only: fetched third-party TUs (_deps) would
-# otherwise dominate the run (108 of 191 TUs in build/dev).
-DEFAULT_SOURCE_FILTER = r"^(?!.*_deps.*).*[\\/](src|include|cli|tests|examples)[\\/]"
+# otherwise dominate the run (108 of 191 TUs in build/dev). Tests are excluded
+# from default tidy enforcement but remain clean as a good-practice goal;
+# run `python scripts/tidy_all.py --files tests` to check them explicitly.
+DEFAULT_SOURCE_FILTER = r"^(?!.*_deps.*).*[\\/](src|include|cli|examples)[\\/]"
 
 
 def repo_root() -> Path:

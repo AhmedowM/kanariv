@@ -76,7 +76,7 @@ bool pidFileAlive(const std::filesystem::path& pidPath) {
     if (!f || pid <= 0)
         return true;
 #ifdef _WIN32
-    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid);
+    HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(pid));
     if (h) {
         ::CloseHandle(h);
         return true;
@@ -245,9 +245,9 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const kanariv::config:
 AppResult App::Impl::startDaemon(bool foreground) {
     kanariv::client::Client client{config_.dbPath, config_.socketPath};
     if (client.probe()) {
-        return Outcome{std::nullopt,
-                       std::format("daemon already running at {}", config_.socketPath), false,
-                       false};
+        return Outcome{.result=std::nullopt,
+                       .line=std::format("daemon already running at {}", config_.socketPath), .toStderr=false,
+                       .failed=false};
     }
     // Death-watch: a previous daemon may be mid-teardown (pipe already dead
     // but pid file present / lock still held while threads join). Spawning
@@ -306,9 +306,9 @@ AppResult App::Impl::startDaemon(bool foreground) {
             if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}},
                                      std::chrono::milliseconds{500})) {
                 if (std::get_if<kanariv::ipc::Status>(&*ps)) {
-                    return Outcome{std::nullopt,
-                                   std::format("daemon started at {}", config_.socketPath), false,
-                                   false};
+                    return Outcome{.result=std::nullopt,
+                                   .line=std::format("daemon started at {}", config_.socketPath), .toStderr=false,
+                                   .failed=false};
                 }
                 lastDetail = "unexpected reply";
             } else {
@@ -359,7 +359,7 @@ AppResult App::shutdownDaemon() {
         return Outcome::fail(
             std::format("shutdown: daemon still running at {}", impl_->config_.socketPath));
     }
-    return Outcome{std::nullopt, "daemon stopped", false, false};
+    return Outcome{.result=std::nullopt, .line="daemon stopped", .toStderr=false, .failed=false};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -393,15 +393,15 @@ App::Impl::sendPlay(const kanariv::ipc::Command& cmd) {
 }
 
 AppResult Outcome::warn(std::string message) {
-    return Outcome{std::nullopt, std::move(message), true, false};
+    return Outcome{.result=std::nullopt, .line=std::move(message), .toStderr=true, .failed=false};
 }
 
 AppResult Outcome::fail(std::string message) {
-    return Outcome{std::nullopt, std::move(message), true, true};
+    return Outcome{.result=std::nullopt, .line=std::move(message), .toStderr=true, .failed=true};
 }
 
 BatchResult BatchReport::fail(std::string message) {
-    return BatchReport{std::nullopt, "", std::move(message), 1};
+    return BatchReport{.json=std::nullopt, .out="", .err=std::move(message), .exitCode=1};
 }
 
 AppResult App::Impl::confirm(std::expected<kanariv::ipc::Result, kanariv::utils::Error>&& res,
@@ -409,7 +409,7 @@ AppResult App::Impl::confirm(std::expected<kanariv::ipc::Result, kanariv::utils:
     auto owned = std::move(res);
     if (!owned)
         return std::unexpected{owned.error()};
-    return Outcome{std::move(*owned), std::move(line), false};
+    return Outcome{.result=std::move(*owned), .line=std::move(line), .toStderr=false};
 }
 
 } // namespace kanariv::app

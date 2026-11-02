@@ -62,8 +62,8 @@ AppResult App::bookmarkAdd(std::optional<double> position, std::string note,
     }
     if (pos < 0.0)
         pos = 0.0;
-    int64_t posMs = (int64_t)std::llround(pos * 1000.0);
-    kanariv::ipc::Command cmd{kanariv::ipc::BookmarkAdd{posMs, std::move(note), track}};
+    int64_t posMs = static_cast<int64_t>(std::llround(pos * 1000.0));
+    kanariv::ipc::Command cmd{kanariv::ipc::BookmarkAdd{.position_ms=posMs, .note=std::move(note), .track_id=track}};
     auto res = impl_->sendRaw(cmd);
     if (!res)
         return std::unexpected{res.error()};
@@ -109,7 +109,7 @@ AppResult App::deviceSet(const std::string& id) {
 }
 
 AppResult App::deviceTest(std::optional<std::string> id, bool tone) {
-    kanariv::ipc::Command cmd{kanariv::ipc::DeviceTest{id, tone}};
+    kanariv::ipc::Command cmd{kanariv::ipc::DeviceTest{.id=id, .tone=tone}};
     std::string line =
         id.has_value() ? std::format("Device available: {}", *id) : "Default device available";
     if (tone)

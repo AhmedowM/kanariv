@@ -59,6 +59,8 @@ class KANARIV_API FileLogSink : public std::enable_shared_from_this<FileLogSink>
 
     FileLogSink(const FileLogSink&) = delete;
     FileLogSink& operator=(const FileLogSink&) = delete;
+    FileLogSink(FileLogSink&&) = delete;
+    FileLogSink& operator=(FileLogSink&&) = delete;
 
     /** @brief Destructor (out-of-line: pimpl). */
     ~FileLogSink();

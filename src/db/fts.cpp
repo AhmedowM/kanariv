@@ -4,6 +4,7 @@
 #include <db/fts.hpp>
 #include <string>
 #include <string_view>
+#include <array>
 
 namespace kanariv::db::internal {
 
@@ -41,7 +42,7 @@ std::string sanitizeFtsTerm(std::string_view term) {
     std::transform(upper.begin(), upper.end(), upper.begin(),
                    [](unsigned char c) { return std::toupper(c); });
 
-    std::string opsWithSpaces[] = {" AND ", " OR ", " NOT ", " NEAR "};
+    std::array<std::string, 4> opsWithSpaces = {{" AND ", " OR ", " NOT ", " NEAR "}};
     for (const auto& op : opsWithSpaces) {
         size_t pos = 0;
         while ((pos = upper.find(op, pos)) != std::string::npos) {
@@ -51,7 +52,7 @@ std::string sanitizeFtsTerm(std::string_view term) {
         }
     }
 
-    std::string opsStart[] = {"AND ", "OR ", "NOT ", "NEAR "};
+    std::array<std::string, 4> opsStart = {{"AND ", "OR ", "NOT ", "NEAR "}};
     for (const auto& op : opsStart) {
         if (upper.rfind(op, 0) == 0) {
             upper.replace(0, op.size(), std::string(op.size(), ' '));
@@ -59,7 +60,7 @@ std::string sanitizeFtsTerm(std::string_view term) {
         }
     }
 
-    std::string opsEnd[] = {" AND", " OR", " NOT", " NEAR"};
+    std::array<std::string, 4> opsEnd = {{" AND", " OR", " NOT", " NEAR"}};
     for (const auto& op : opsEnd) {
         if (upper.size() >= op.size() &&
             upper.compare(upper.size() - op.size(), op.size(), op) == 0) {

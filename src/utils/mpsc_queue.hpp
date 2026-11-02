@@ -59,6 +59,8 @@ class MpscQueue {
     MpscQueue(MpscQueue&&) = delete;
     MpscQueue& operator=(MpscQueue&&) = delete;
 
+    ~MpscQueue() = default;
+
     /**
      * @brief Returns capacity.
      * @ingroup kanariv_utils

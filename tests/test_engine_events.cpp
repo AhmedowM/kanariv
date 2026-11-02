@@ -50,7 +50,7 @@ TEST_CASE("Engine pollEvent and drainEvents", "[engine_events]") {
     t.path = "ev.wav";
     t.duration = 1.0;
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0x70 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0x70 + b);
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     REQUIRE(db->queueEnqueue(1, *ins, -1).has_value());
@@ -74,7 +74,7 @@ TEST_CASE("Engine pollEvent and drainEvents", "[engine_events]") {
     t2.path = "ev2.wav";
     t2.duration = 1.0;
     for (int b = 0; b < 32; ++b)
-        t2.fingerprint[b] = (uint8_t)(0x71 + b);
+        t2.fingerprint[b] = static_cast<uint8_t>(0x71 + b);
     // need to enqueue via raw? eng owns db now, use queue via eng's db not accessible; just test
     // drain push two more play events by re-playing? We'll test drainAll after multiple polls
     // Create fresh engine with multiple tracks to generate multiple events
@@ -98,7 +98,7 @@ TEST_CASE("Engine drainEvents batch", "[engine_events]") {
         t.path = "drain" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = (uint8_t)(0x80 + i * 10 + b);
+            t.fingerprint[b] = static_cast<uint8_t>(0x80 + i * 10 + b);
         auto ins = db->insertTrack(t);
         REQUIRE(ins.has_value());
         REQUIRE(db->queueEnqueue(1, *ins, -1).has_value());
@@ -142,7 +142,7 @@ TEST_CASE("Engine callbacks dispatched outside lock", "[engine_events]") {
     t.path = "cb.wav";
     t.duration = 1.0;
     for (int b = 0; b < 32; ++b)
-        t.fingerprint[b] = (uint8_t)(0x90 + b);
+        t.fingerprint[b] = static_cast<uint8_t>(0x90 + b);
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     REQUIRE(db->queueEnqueue(1, *ins, -1).has_value());

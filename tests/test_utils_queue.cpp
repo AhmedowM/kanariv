@@ -113,7 +113,7 @@ bool queue_mpsc_thread() {
     }
     std::vector<int> collected;
     collected.reserve(TOTAL);
-    while ((int)collected.size() < TOTAL) {
+    while (static_cast<int>(collected.size()) < TOTAL) {
         auto r = q.pop();
         if (r.has_value()) {
             collected.push_back(*r);
@@ -131,7 +131,7 @@ bool queue_mpsc_thread() {
             break;
         collected.push_back(*r);
     }
-    if ((int)collected.size() != TOTAL)
+    if (static_cast<int>(collected.size()) != TOTAL)
         return false;
     std::sort(collected.begin(), collected.end());
     int idx = 0;

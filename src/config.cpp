@@ -275,7 +275,7 @@ kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path&
     try {
         std::string hex = detail_paths::hex8ForDb(dbPath);
 #ifdef _WIN32
-        return std::string("\\\\.\\pipe\\kanariv-") + hex;
+        return std::string(R"(\\.\pipe\kanariv-)") + hex;
 #else
         auto base = detail_paths::baseDirForSocket();
         return (base / ("kanariv-" + hex + ".sock")).generic_string();

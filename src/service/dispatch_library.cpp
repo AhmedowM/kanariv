@@ -215,7 +215,7 @@ Service::Impl::handle(const kanariv::ipc::LibrarySearch& cmd) {
     // fallback to like handled inside search; if empty still return
     std::span<const kanariv::types::Track> span{*tracks};
     std::vector<kanariv::types::Track> out(span.begin(), span.end());
-    return Result{kanariv::ipc::SearchResults{cmd.query, std::move(out)}};
+    return Result{kanariv::ipc::SearchResults{.query=cmd.query, .tracks=std::move(out)}};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -331,7 +331,7 @@ Service::Impl::handle(const kanariv::ipc::BookmarkGoto& cmd) {
     auto pr = engine_->playTrack(b->track_id);
     if (!pr)
         return std::unexpected{pr.error()};
-    if (auto sr = engine_->seek((double)b->position_ms / 1000.0); !sr)
+    if (auto sr = engine_->seek(static_cast<double>(b->position_ms) / 1000.0); !sr)
         return std::unexpected{sr.error()};
     return statusResult();
 }
@@ -453,7 +453,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryRemove& cmd) {
     // try numeric id
     bool isNum = !q.empty();
     for (size_t i = (q[0] == '-' ? 1 : 0); i < q.size() && isNum; ++i)
-        if (!std::isdigit((unsigned char)q[i]))
+        if (!std::isdigit(static_cast<unsigned char>(q[i])))
             isNum = false;
     if (isNum) {
         try {
@@ -647,7 +647,7 @@ Service::Impl::handle(const kanariv::ipc::TagGet& cmd) {
                 tr.error().code, "track not found: " + std::to_string(trackId))};
         return std::unexpected{tr.error()};
     }
-    kanariv::ipc::SingleTrack st{std::move(*tr)};
+    kanariv::ipc::SingleTrack st{.track=std::move(*tr)};
     if (cmd.cover) {
         // Cover art: prefer the stored cover_art_path file, then fall back to
         // embedded cover art (APIC / FLAC picture / MP4 cover art / etc.)
@@ -702,7 +702,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistTracks& cmd) {
         return std::unexpected{tracks.error()};
     std::span<const kanariv::types::Track> span{*tracks};
     std::vector<kanariv::types::Track> out(span.begin(), span.end());
-    return Result{PlaylistData{std::move(out), {}}};
+    return Result{PlaylistData{.tracks=std::move(out), .format={}}};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -748,7 +748,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistLoad& cmd) {
     auto st = detail::buildStatus(*engine_, *db_);
     if (!st)
         return std::unexpected{st.error()};
-    return Result{kanariv::ipc::PlaylistLoaded{qid, std::move(*st)}};
+    return Result{kanariv::ipc::PlaylistLoaded{.queue_id=qid, .status=std::move(*st)}};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -787,7 +787,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistCreate& cmd) {
     auto id = db_->createPlaylist(cmd.name, type, cmd.smart_query);
     if (!id)
         return std::unexpected{id.error()};
-    return Result{kanariv::ipc::PlaylistCreated{*id, cmd.name}};
+    return Result{kanariv::ipc::PlaylistCreated{.id=*id, .name=cmd.name}};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -840,7 +840,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistExport& cmd) {
     out.reserve(tracks->size());
     for (auto& t : std::span<const kanariv::types::Track>(*tracks))
         out.push_back(std::move(t));
-    return Result{PlaylistData{std::move(out), cmd.format}};
+    return Result{PlaylistData{.tracks=std::move(out), .format=cmd.format}};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
