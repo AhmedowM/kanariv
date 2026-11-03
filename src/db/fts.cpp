@@ -8,6 +8,20 @@
 
 namespace kanariv::db::internal {
 
+// Strips FTS special characters from term into out. Doubled quotes are kept
+// as escaped quotes ("" -> "").
+void stripFtsSpecialChars(std::string_view term, std::string& out);
+
+// Replaces FTS operator keywords (AND, OR, NOT, NEAR) with spaces in-place.
+// Handles both " OP " and trailing/leading "OP"/" OP" forms.
+void replaceFtsOperators(std::string& upper, std::string& cleaned);
+
+// Collapses runs of spaces into a single space.
+std::string collapseWhitespace(const std::string& s);
+
+// Trims leading and trailing spaces.
+std::string trimSpaces(const std::string& s);
+
 std::string escapeLike(std::string_view term) {
     std::string result;
     result.reserve(term.size() + 4);
@@ -42,7 +56,37 @@ std::string sanitizeFtsTerm(std::string_view term) {
     std::transform(upper.begin(), upper.end(), upper.begin(),
                    [](unsigned char c) { return std::toupper(c); });
 
-    std::array<std::string, 4> opsWithSpaces = {{" AND ", " OR ", " NOT ", " NEAR "}};
+    replaceFtsOperators(upper, cleaned);
+    cleaned = collapseWhitespace(cleaned);
+    cleaned = trimSpaces(cleaned);
+
+    if (cleaned.empty())
+        return {};
+
+    return cleaned;
+}
+
+// Strips FTS special characters from term into out. Doubled quotes are kept
+// as escaped quotes ("" -> "").
+void stripFtsSpecialChars(std::string_view term, std::string& out) {
+    for (char c : term) {
+        if (c == '\'' || c == '*' || c == ':' || c == '-' || c == '(' || c == ')' || c == '^' ||
+            c == '~')
+            continue;
+        if (c == '"') {
+            out.push_back('"');
+            out.push_back('"');
+        } else {
+            out.push_back(c);
+        }
+    }
+}
+
+// Replaces FTS operator keywords (AND, OR, NOT, NEAR) with spaces in-place.
+// Handles both " OP " and trailing/leading "OP"/" OP" forms.
+void replaceFtsOperators(std::string& upper, std::string& cleaned) {
+    constexpr std::array<std::string_view, 4> opsWithSpaces = {{" AND ", " OR ", " NOT ",
+                                                                " NEAR "}};
     for (const auto& op : opsWithSpaces) {
         size_t pos = 0;
         while ((pos = upper.find(op, pos)) != std::string::npos) {
@@ -52,7 +96,7 @@ std::string sanitizeFtsTerm(std::string_view term) {
         }
     }
 
-    std::array<std::string, 4> opsStart = {{"AND ", "OR ", "NOT ", "NEAR "}};
+    constexpr std::array<std::string_view, 4> opsStart = {{"AND ", "OR ", "NOT ", "NEAR "}};
     for (const auto& op : opsStart) {
         if (upper.rfind(op, 0) == 0) {
             upper.replace(0, op.size(), std::string(op.size(), ' '));
@@ -60,7 +104,7 @@ std::string sanitizeFtsTerm(std::string_view term) {
         }
     }
 
-    std::array<std::string, 4> opsEnd = {{" AND", " OR", " NOT", " NEAR"}};
+    constexpr std::array<std::string_view, 4> opsEnd = {{" AND", " OR", " NOT", " NEAR"}};
     for (const auto& op : opsEnd) {
         if (upper.size() >= op.size() &&
             upper.compare(upper.size() - op.size(), op.size(), op) == 0) {
@@ -69,11 +113,14 @@ std::string sanitizeFtsTerm(std::string_view term) {
             cleaned.replace(pos, op.size(), std::string(op.size(), ' '));
         }
     }
+}
 
+// Collapses runs of spaces into a single space.
+std::string collapseWhitespace(const std::string& s) {
     std::string result;
-    result.reserve(cleaned.size());
+    result.reserve(s.size());
     bool lastWasSpace = false;
-    for (char c : cleaned) {
+    for (char c : s) {
         if (c == ' ') {
             if (!lastWasSpace) {
                 result.push_back(' ');
@@ -84,22 +131,20 @@ std::string sanitizeFtsTerm(std::string_view term) {
             lastWasSpace = false;
         }
     }
+    return result;
+}
 
+// Trims leading and trailing spaces.
+std::string trimSpaces(const std::string& s) {
     size_t start = 0;
-    while (start < result.size() && result[start] == ' ')
+    while (start < s.size() && s[start] == ' ')
         start++;
-    size_t end = result.size();
-    while (end > start && result[end - 1] == ' ')
+    size_t end = s.size();
+    while (end > start && s[end - 1] == ' ')
         end--;
     if (start >= end)
         return {};
-
-    std::string final = result.substr(start, end - start);
-
-    if (final.empty())
-        return {};
-
-    return final;
+    return s.substr(start, end - start);
 }
 
 } // namespace kanariv::db::internal

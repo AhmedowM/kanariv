@@ -7,6 +7,7 @@
 #include <db/stmt_helpers.hpp>
 #include <db/transaction.hpp>
 #include <expected>
+#include <functional>
 #include <limits>
 #include <mutex>
 #include <shared_mutex>
@@ -67,27 +68,30 @@ std::expected<kanariv::types::Track, kanariv::utils::Error> Database::queueTrack
     return getTrack(trackId);
 }
 
+// Forward declarations for loadEngineState helpers.
+static sqlite3_stmt* tryPrepareEngineState(sqlite3* handle, bool& hasActiveQueue);
+static void readEngineStateMainColumns(sqlite3_stmt* raw, kanariv::types::EngineState& state,
+                                       bool hasActiveQueue);
+static void readOptionalFloatColumn(sqlite3* handle, const char* sql,
+                                    std::function<void(float)> setter);
+static void readOptionalInt64Column(sqlite3* handle, const char* sql,
+                                    std::function<void(int64_t)> setter);
+static void validateActiveQueue(sqlite3* handle, kanariv::types::EngineState& state);
+
 std::expected<kanariv::types::EngineState, kanariv::utils::Error> Database::loadEngineState() {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
     std::shared_lock lock(DatabaseAccess::mutex(*this));
-    const char* sqlNew = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, "
-                         "volume, shuffle_perm, active_queue_id FROM engine_state WHERE id=1";
-    const char* sqlOld = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, "
-                         "volume, shuffle_perm FROM engine_state WHERE id=1";
-    sqlite3_stmt* raw = nullptr;
+
     bool hasActiveQueue = true;
-    if (sqlite3_prepare_v2(handle, sqlNew, -1, &raw, nullptr) != SQLITE_OK) {
-        sqlite3_finalize(raw);
-        raw = nullptr;
-        hasActiveQueue = false;
-        if (sqlite3_prepare_v2(handle, sqlOld, -1, &raw, nullptr) != SQLITE_OK)
-            return std::unexpected(
-                kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
-    }
+    sqlite3_stmt* raw = tryPrepareEngineState(handle, hasActiveQueue);
+    if (!raw)
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
     internal::StmtGuard statement(raw);
+
     kanariv::types::EngineState state;
     int rc = sqlite3_step(raw);
     if (rc == SQLITE_DONE)
@@ -95,6 +99,49 @@ std::expected<kanariv::types::EngineState, kanariv::utils::Error> Database::load
     if (rc != SQLITE_ROW)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "load failed"));
+
+    readEngineStateMainColumns(raw, state, hasActiveQueue);
+
+    readOptionalFloatColumn(handle,
+                            "SELECT pre_mute_volume FROM engine_state WHERE id=1",
+                            [&state](float v) { state.pre_mute_volume = v; });
+
+    readOptionalInt64Column(handle,
+                            "SELECT position_ms FROM engine_state WHERE id=1",
+                            [&state](int64_t v) {
+                                if (v < 0)
+                                    v = 0;
+                                state.position_ms = v;
+                            });
+
+    validateActiveQueue(handle, state);
+
+    return state;
+}
+
+// Tries the new engine_state schema (with active_queue_id); falls back to the
+// old schema if the column does not exist. Returns a prepared statement or
+// nullptr on total failure. Sets hasActiveQueue to false when using old schema.
+static sqlite3_stmt* tryPrepareEngineState(sqlite3* handle, bool& hasActiveQueue) {
+    const char* sqlNew = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, "
+                         "volume, shuffle_perm, active_queue_id FROM engine_state WHERE id=1";
+    const char* sqlOld = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, "
+                         "volume, shuffle_perm FROM engine_state WHERE id=1";
+    sqlite3_stmt* raw = nullptr;
+    if (sqlite3_prepare_v2(handle, sqlNew, -1, &raw, nullptr) == SQLITE_OK)
+        return raw;
+    sqlite3_finalize(raw);
+    raw = nullptr;
+    hasActiveQueue = false;
+    if (sqlite3_prepare_v2(handle, sqlOld, -1, &raw, nullptr) == SQLITE_OK)
+        return raw;
+    return nullptr;
+}
+
+// Reads the fixed columns from a stepped engine_state row, including the
+// shuffle_perm blob when present and enabled.
+static void readEngineStateMainColumns(sqlite3_stmt* raw, kanariv::types::EngineState& state,
+                                       bool hasActiveQueue) {
     state.shuffle_enabled = sqlite3_column_int(raw, 0);
     state.repeat_mode = static_cast<kanariv::types::RepeatMode>(sqlite3_column_int(raw, 1));
     state.cursor_pos = sqlite3_column_int64(raw, 2);
@@ -114,38 +161,43 @@ std::expected<kanariv::types::EngineState, kanariv::utils::Error> Database::load
         state.shuffle_perm.resize(count);
         std::memcpy(state.shuffle_perm.data(), blob, count * sizeof(int64_t));
     }
+}
 
-    sqlite3_stmt* optional = nullptr;
-    if (sqlite3_prepare_v2(handle, "SELECT pre_mute_volume FROM engine_state WHERE id=1", -1,
-                           &optional, nullptr) == SQLITE_OK) {
-        internal::StmtGuard optionalStatement(optional);
-        if (sqlite3_step(optional) == SQLITE_ROW) {
-            const float preMute = static_cast<float>(sqlite3_column_double(optional, 0));
-            if (preMute > 0.0f && preMute <= 1.0f)
-                state.pre_mute_volume = preMute;
-        }
+// Reads one optional float column; applies it only when in [0, 1].
+static void readOptionalFloatColumn(sqlite3* handle, const char* sql,
+                                    std::function<void(float)> setter) {
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(handle, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return;
+    internal::StmtGuard guard(stmt);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const float v = static_cast<float>(sqlite3_column_double(stmt, 0));
+        if (v > 0.0f && v <= 1.0f)
+            setter(v);
     }
+}
 
-    optional = nullptr;
-    if (sqlite3_prepare_v2(handle, "SELECT position_ms FROM engine_state WHERE id=1", -1, &optional,
-                           nullptr) == SQLITE_OK) {
-        internal::StmtGuard optionalStatement(optional);
-        if (sqlite3_step(optional) == SQLITE_ROW) {
-            state.position_ms = sqlite3_column_int64(optional, 0);
-            if (state.position_ms < 0)
-                state.position_ms = 0;
-        }
-    }
+// Reads one optional int64 column; applies it only when present.
+static void readOptionalInt64Column(sqlite3* handle, const char* sql,
+                                    std::function<void(int64_t)> setter) {
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(handle, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return;
+    internal::StmtGuard guard(stmt);
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        setter(sqlite3_column_int64(stmt, 0));
+}
 
+// Ensures active_queue_id refers to an existing queue; resets to 1 if not.
+static void validateActiveQueue(sqlite3* handle, kanariv::types::EngineState& state) {
     sqlite3_stmt* queue = nullptr;
-    if (sqlite3_prepare_v2(handle, "SELECT id FROM queues WHERE id=?", -1, &queue, nullptr) ==
-        SQLITE_OK) {
-        internal::StmtGuard queueStatement(queue);
-        sqlite3_bind_int64(queue, 1, state.active_queue_id);
-        if (sqlite3_step(queue) != SQLITE_ROW)
-            state.active_queue_id = 1;
-    }
-    return state;
+    if (sqlite3_prepare_v2(handle, "SELECT id FROM queues WHERE id=?", -1, &queue, nullptr) !=
+        SQLITE_OK)
+        return;
+    internal::StmtGuard queueStatement(queue);
+    sqlite3_bind_int64(queue, 1, state.active_queue_id);
+    if (sqlite3_step(queue) != SQLITE_ROW)
+        state.active_queue_id = 1;
 }
 
 std::expected<void, kanariv::utils::Error>

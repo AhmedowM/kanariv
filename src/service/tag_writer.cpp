@@ -78,6 +78,106 @@ void setApeExtras(TagLib::APE::Tag* ape, const kanariv::types::Track& t) {
         ape->removeItem("Disc");
 }
 
+// Forward declarations for helpers used by setFormatSpecificExtras.
+void setMp4Extras(TagLib::MP4::Tag& tag, const kanariv::types::Track& t);
+void setAsfExtras(TagLib::ASF::Tag& tag, const kanariv::types::Track& t);
+
+// Opens a TagLib::FileRef for the given path.
+TagLib::FileRef openTagFile(const std::filesystem::path& p) {
+    return TagLib::FileRef(p.generic_string().c_str());
+}
+
+// Sets the common tag fields shared by all supported formats.
+void setBasicTags(TagLib::Tag& tag, const kanariv::types::Track& t) {
+    tag.setTitle(toTagString(t.title));
+    tag.setArtist(toTagString(t.artist));
+    tag.setAlbum(toTagString(t.album));
+    tag.setGenre(toTagString(t.genre));
+    tag.setYear(t.year < 0 ? 0 : static_cast<unsigned int>(t.year));
+    tag.setTrack(t.track_num < 0 ? 0 : static_cast<unsigned int>(t.track_num));
+}
+
+// Applies format-specific extra fields (album artist, disc number) based on
+// the concrete TagLib file/tag types discovered via dynamic_cast.
+void setFormatSpecificExtras(TagLib::File& file, TagLib::Tag& tag,
+                             const kanariv::types::Track& t) {
+    bool id3v2Done = false;
+    if (auto* mpeg = dynamic_cast<TagLib::MPEG::File*>(&file)) {
+        if (auto* t2 = mpeg->ID3v2Tag(true)) {
+            setId3v2Extras(t2, t);
+            id3v2Done = true;
+        }
+    } else if (auto* wav = dynamic_cast<TagLib::RIFF::WAV::File*>(&file)) {
+        // No create accessor: relies on the generic setters above having
+        // materialized the chunk. Null-safe skip otherwise.
+        if (auto* t2 = wav->ID3v2Tag()) {
+            setId3v2Extras(t2, t);
+            id3v2Done = true;
+        }
+    } else if (auto* flac = dynamic_cast<TagLib::FLAC::File*>(&file)) {
+        if (auto* xc = flac->xiphComment(true))
+            setXiphExtras(xc, t);
+    } else if (auto* vf = dynamic_cast<TagLib::Ogg::Vorbis::File*>(&file)) {
+        setXiphExtras(vf->tag(), t);
+    } else if (auto* of = dynamic_cast<TagLib::Ogg::Opus::File*>(&file)) {
+        setXiphExtras(of->tag(), t);
+    } else if (auto* apef = dynamic_cast<TagLib::APE::File*>(&file)) {
+        if (auto* ape = apef->APETag(true))
+            setApeExtras(ape, t);
+    } else if (auto* mpc = dynamic_cast<TagLib::MPC::File*>(&file)) {
+        if (auto* ape = mpc->APETag(true))
+            setApeExtras(ape, t);
+    } else if (auto* wv = dynamic_cast<TagLib::WavPack::File*>(&file)) {
+        if (auto* ape = wv->APETag(true))
+            setApeExtras(ape, t);
+    }
+    if (!id3v2Done) {
+        if (auto* t2 = dynamic_cast<TagLib::ID3v2::Tag*>(&tag)) {
+            setId3v2Extras(t2, t);
+            id3v2Done = true;
+        }
+    }
+    if (auto* m4 = dynamic_cast<TagLib::MP4::Tag*>(&tag)) {
+        setMp4Extras(*m4, t);
+    } else if (auto* asf = dynamic_cast<TagLib::ASF::Tag*>(&tag)) {
+        setAsfExtras(*asf, t);
+    }
+}
+
+// Sets MP4-specific album artist and disc number items.
+void setMp4Extras(TagLib::MP4::Tag& tag, const kanariv::types::Track& t) {
+    if (t.album_artist.empty())
+        tag.removeItem("aART");
+    else {
+        TagLib::StringList sl;
+        sl.append(toTagString(t.album_artist));
+        tag.setItem("aART", TagLib::MP4::Item(sl));
+    }
+    if (t.disc_num > 0)
+        tag.setItem("disk", TagLib::MP4::Item(t.disc_num, 0));
+    else
+        tag.removeItem("disk");
+}
+
+// Sets ASF-specific album artist and disc number attributes.
+void setAsfExtras(TagLib::ASF::Tag& tag, const kanariv::types::Track& t) {
+    if (t.album_artist.empty())
+        tag.removeItem("WM/AlbumArtist");
+    else
+        tag.setAttribute("WM/AlbumArtist",
+                         TagLib::ASF::Attribute(toTagString(t.album_artist)));
+    if (t.disc_num > 0)
+        tag.setAttribute("WM/PartOfSet",
+                         TagLib::ASF::Attribute(toTagString(std::to_string(t.disc_num))));
+    else
+        tag.removeItem("WM/PartOfSet");
+}
+
+// Saves the TagLib file ref to disk.
+bool saveTagFile(TagLib::FileRef& f) {
+    return f.save();
+}
+
 } // namespace
 
 bool canWriteFileTags(const std::filesystem::path& p) {
@@ -94,91 +194,20 @@ bool canWriteFileTags(const std::filesystem::path& p) {
 }
 
 kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
-                                            const kanariv::types::Track& t) {
+                                             const kanariv::types::Track& t) {
     if (!canWriteFileTags(p)) {
         return std::unexpected(kanariv::utils::makeError(
             kanariv::utils::StatusCode::InvalidArg,
             "tag write not supported for this format: " + p.extension().string()));
     }
-    TagLib::FileRef f(p.generic_string().c_str());
+    TagLib::FileRef f = openTagFile(p);
     if (f.isNull() || !f.file() || !f.tag()) {
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
                                                         "taglib cannot open file for tag write"));
     }
-    auto* tag = f.tag();
-    tag->setTitle(toTagString(t.title));
-    tag->setArtist(toTagString(t.artist));
-    tag->setAlbum(toTagString(t.album));
-    tag->setGenre(toTagString(t.genre));
-    tag->setYear(t.year < 0 ? 0 : static_cast<unsigned int>(t.year));
-    tag->setTrack(t.track_num < 0 ? 0 : static_cast<unsigned int>(t.track_num));
-
-    // Format-specific extras (album artist + disc). Dispatch on the FILE
-    // type with typed accessors: FileRef::tag() returns unions for most
-    // formats (MP3/WAV/FLAC/Ogg/ASF/APE), which dynamic_cast cannot see
-    // through. MP4/ASF/AIFF paths below use the tag cast, verified working.
-    auto* file = f.file();
-    bool id3v2Done = false;
-    if (auto* mpeg = dynamic_cast<TagLib::MPEG::File*>(file)) {
-        if (auto* t2 = mpeg->ID3v2Tag(true)) {
-            setId3v2Extras(t2, t);
-            id3v2Done = true;
-        }
-    } else if (auto* wav = dynamic_cast<TagLib::RIFF::WAV::File*>(file)) {
-        // No create accessor: relies on the generic setters above having
-        // materialized the chunk. Null-safe skip otherwise.
-        if (auto* t2 = wav->ID3v2Tag()) {
-            setId3v2Extras(t2, t);
-            id3v2Done = true;
-        }
-    } else if (auto* flac = dynamic_cast<TagLib::FLAC::File*>(file)) {
-        if (auto* xc = flac->xiphComment(true))
-            setXiphExtras(xc, t);
-    } else if (auto* vf = dynamic_cast<TagLib::Ogg::Vorbis::File*>(file)) {
-        setXiphExtras(vf->tag(), t);
-    } else if (auto* of = dynamic_cast<TagLib::Ogg::Opus::File*>(file)) {
-        setXiphExtras(of->tag(), t);
-    } else if (auto* apef = dynamic_cast<TagLib::APE::File*>(file)) {
-        if (auto* ape = apef->APETag(true))
-            setApeExtras(ape, t);
-    } else if (auto* mpc = dynamic_cast<TagLib::MPC::File*>(file)) {
-        if (auto* ape = mpc->APETag(true))
-            setApeExtras(ape, t);
-    } else if (auto* wv = dynamic_cast<TagLib::WavPack::File*>(file)) {
-        if (auto* ape = wv->APETag(true))
-            setApeExtras(ape, t);
-    }
-    if (!id3v2Done) {
-        if (auto* t2 = dynamic_cast<TagLib::ID3v2::Tag*>(tag)) {
-            setId3v2Extras(t2, t);
-            id3v2Done = true;
-        }
-    }
-    if (auto* m4 = dynamic_cast<TagLib::MP4::Tag*>(tag)) {
-        if (t.album_artist.empty())
-            m4->removeItem("aART");
-        else {
-            TagLib::StringList sl;
-            sl.append(toTagString(t.album_artist));
-            m4->setItem("aART", TagLib::MP4::Item(sl));
-        }
-        if (t.disc_num > 0)
-            m4->setItem("disk", TagLib::MP4::Item(t.disc_num, 0));
-        else
-            m4->removeItem("disk");
-    } else if (auto* asf = dynamic_cast<TagLib::ASF::Tag*>(tag)) {
-        if (t.album_artist.empty())
-            asf->removeItem("WM/AlbumArtist");
-        else
-            asf->setAttribute("WM/AlbumArtist",
-                              TagLib::ASF::Attribute(toTagString(t.album_artist)));
-        if (t.disc_num > 0)
-            asf->setAttribute("WM/PartOfSet",
-                              TagLib::ASF::Attribute(toTagString(std::to_string(t.disc_num))));
-        else
-            asf->removeItem("WM/PartOfSet");
-    }
-    if (!f.save()) {
+    setBasicTags(*f.tag(), t);
+    setFormatSpecificExtras(*f.file(), *f.tag(), t);
+    if (!saveTagFile(f)) {
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
                                                         "taglib failed to save file tags"));
     }
@@ -186,7 +215,7 @@ kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
 }
 
 kanariv::utils::Expected<kanariv::types::Track> reregisterTrackRow(kanariv::contracts::IDatabase& db,
-                                                                 kanariv::types::Track t) {
+                                                                   kanariv::types::Track t) {
     auto fpRes = kanariv::media::internal::computeFingerprint(t.path);
     if (!fpRes)
         return std::unexpected{fpRes.error()};

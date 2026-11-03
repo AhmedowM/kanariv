@@ -28,6 +28,11 @@ using kanariv::ipc::Restart;
 using kanariv::ipc::Resume;
 using kanariv::ipc::Seek;
 using kanariv::ipc::StatusReq;
+
+// Forward declarations for VolumeSet helpers.
+static float clampUnit(float v);
+static std::expected<void, kanariv::utils::Error> rememberOrSetPreMute(
+    kanariv::engine::Engine& engine, float cur, float target);
 using kanariv::ipc::StatusWait;
 using kanariv::ipc::Stop;
 using kanariv::ipc::VolumeSet;
@@ -153,50 +158,24 @@ Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
                                                             "volume: invalid level")};
         }
         // clamp 0-100 -> 0.0-1.0
-        if (lvl < 0.0f)
-            lvl = 0.0f;
-        if (lvl > 100.0f)
-            lvl = 100.0f;
-        target = lvl / 100.0f;
-        if (target <= 0.0f) {
-            if (cur > 0.0f) {
-                if (auto pr = ServiceAccess::setPreMuteVolume(*engine_, cur); !pr)
-                    return std::unexpected{pr.error()};
-            }
-            target = 0.0f;
-        } else {
-            if (auto pr = ServiceAccess::setPreMuteVolume(*engine_, target); !pr)
-                return std::unexpected{pr.error()};
-        }
+        target = clampUnit(lvl / 100.0f);
+        if (auto pr = rememberOrSetPreMute(*engine_, cur, target); !pr)
+            return std::unexpected{pr.error()};
         hasTarget = true;
     }
     if (v.deltaPct.has_value()) {
         int d = *v.deltaPct;
         float curPct = cur * 100.0f;
         float np = curPct + static_cast<float>(d);
-        if (np < 0.0f)
-            np = 0.0f;
-        if (np > 100.0f)
-            np = 100.0f;
-        target = np / 100.0f;
-        if (target <= 0.0f) {
-            if (cur > 0.0f) {
-                if (auto pr = ServiceAccess::setPreMuteVolume(*engine_, cur); !pr)
-                    return std::unexpected{pr.error()};
-            }
-            target = 0.0f;
-        } else {
-            if (auto pr = ServiceAccess::setPreMuteVolume(*engine_, target); !pr)
-                return std::unexpected{pr.error()};
-        }
+        target = clampUnit(np / 100.0f);
+        if (auto pr = rememberOrSetPreMute(*engine_, cur, target); !pr)
+            return std::unexpected{pr.error()};
         hasTarget = true;
     }
     if (v.mute.has_value()) {
         if (*v.mute) {
-            if (cur > 0.0f) {
-                if (auto pr = ServiceAccess::setPreMuteVolume(*engine_, cur); !pr)
-                    return std::unexpected{pr.error()};
-            }
+            if (auto pr = rememberOrSetPreMute(*engine_, cur, 0.0f); !pr)
+                return std::unexpected{pr.error()};
             target = 0.0f;
             hasTarget = true;
         } else {
@@ -214,6 +193,31 @@ Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
     updateShmStatus();
     kanariv::ipc::VolumeInfo vi{.vol=engine_->volume(), .muted=engine_->volume() == 0.0f};
     return Result{vi};
+}
+
+// Clamps a value to the [0, 1] range.
+static float clampUnit(float v) {
+    if (v < 0.0f)
+        return 0.0f;
+    if (v > 1.0f)
+        return 1.0f;
+    return v;
+}
+
+// Remembers the current volume as pre-mute when targeting zero; otherwise sets
+// pre-mute volume to the target. Returns error on failure.
+static std::expected<void, kanariv::utils::Error> rememberOrSetPreMute(
+    kanariv::engine::Engine& engine, float cur, float target) {
+    if (target <= 0.0f) {
+        if (cur > 0.0f) {
+            if (auto pr = ServiceAccess::setPreMuteVolume(engine, cur); !pr)
+                return std::unexpected{pr.error()};
+        }
+    } else {
+        if (auto pr = ServiceAccess::setPreMuteVolume(engine, target); !pr)
+            return std::unexpected{pr.error()};
+    }
+    return {};
 }
 
 } // namespace kanariv::service

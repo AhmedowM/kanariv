@@ -121,21 +121,15 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath) {
 
 } // namespace
 
-int main(int argc, char** argv) {
+static std::string parseDbPath(int argc, char** argv) {
     std::string dbPath = "build/engine_demo.db";
     if (argc > 1 && argv[1] && argv[1][0] != '\0')
         dbPath = argv[1];
+    return dbPath;
+}
 
-    std::string used;
-    auto dbRes = openDbWithFallback(dbPath, used);
-    if (!dbRes) {
-        std::cerr << "[engine_demo] open failed: " << dbRes.error().message << "\n";
-        return 1;
-    }
-    // The caller owns the backend and attaches it to the Engine.
-    auto dbShared = std::shared_ptr<Database>(std::move(dbRes.value()));
-    std::cout << "[engine_demo] opening DB: " << used << "\n";
-
+// Ensures queue 1 has at least one track. Returns true if playable.
+static bool ensureQueuePopulated(std::shared_ptr<Database> dbShared) {
     auto q1 = dbShared->listQueueItems(1);
     int count = q1 ? static_cast<int>(q1->size()) : 0;
     std::cout << "[engine_demo] queue 1 has " << count << " item(s)\n";
@@ -147,9 +141,12 @@ int main(int argc, char** argv) {
     }
     if (count == 0) {
         std::cout << "[engine_demo] queue empty, nothing to play\n";
-        return 0;
+        return false;
     }
+    return true;
+}
 
+static kanariv::types::EngineConfig createEngineConfig() {
     kanariv::types::EngineConfig cfg;
     cfg.pollMs = 10;
     cfg.gaplessMs = 300;
@@ -170,6 +167,66 @@ int main(int argc, char** argv) {
         std::cout << "[engine_demo] callback onError " << static_cast<int>(r) << " " << msg << "\n";
     };
     cfg.callbacks = cbs;
+    return cfg;
+}
+
+static void pollEvents(kanariv::engine::Engine* engine) {
+    for (int i = 0; i < 20; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        while (true) {
+            auto ev = engine->pollEvent();
+            if (!ev)
+                break;
+            std::cout << "[engine_demo] event type=" << static_cast<int>(ev->type) << " track "
+                      << ev->track_id << " queue " << ev->queue_id << " pos=" << ev->position
+                      << " dur=" << ev->duration << " msg='" << ev->msg << "'\n";
+        }
+        if (i == 10) {
+            std::array<kanariv::types::EngineEvent, 64> buf;
+            size_t n = 0;
+            (void)engine->drainEvents(buf.data(), 64, &n);
+            if (n > 0) {
+                std::cout << "[engine_demo] drain got " << n << " events at tick " << i << "\n";
+                for (size_t k = 0; k < n; ++k) {
+                    std::cout << "  drain[" << k << "] type="
+                              << static_cast<int>(buf[k].type) << " track " << buf[k].track_id
+                              << "\n";
+                }
+            }
+        }
+    }
+}
+
+static void drainAndReport(kanariv::engine::Engine* engine) {
+    std::array<kanariv::types::EngineEvent, 64> buf;
+    size_t n = 0;
+    (void)engine->drainEvents(buf.data(), 64, &n);
+    std::cout << "[engine_demo] final drain " << n << " events\n";
+    for (size_t k = 0; k < n; ++k) {
+        std::cout << "  final[" << k << "] type=" << static_cast<int>(buf[k].type) << " track "
+                  << buf[k].track_id << " queue " << buf[k].queue_id << "\n";
+    }
+    std::cout << "[engine_demo] current track " << engine->currentTrackId() << " state "
+              << static_cast<int>(engine->state()) << " pos " << engine->position() << "\n";
+}
+
+int main(int argc, char** argv) {
+    std::string dbPath = parseDbPath(argc, argv);
+
+    std::string used;
+    auto dbRes = openDbWithFallback(dbPath, used);
+    if (!dbRes) {
+        std::cerr << "[engine_demo] open failed: " << dbRes.error().message << "\n";
+        return 1;
+    }
+    // The caller owns the backend and attaches it to the Engine.
+    auto dbShared = std::shared_ptr<Database>(std::move(dbRes.value()));
+    std::cout << "[engine_demo] opening DB: " << used << "\n";
+
+    if (!ensureQueuePopulated(dbShared))
+        return 0;
+
+    auto cfg = createEngineConfig();
 
     // Create the Engine independently from the selected database backend.
     auto engineRes = Engine::create(cfg);
@@ -192,39 +249,9 @@ int main(int argc, char** argv) {
         std::cout << "[engine_demo] playing queue 1, track " << engine->currentTrackId() << "\n";
     }
 
-    for (int i = 0; i < 20; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        while (true) {
-            auto ev = engine->pollEvent();
-            if (!ev)
-                break;
-            std::cout << "[engine_demo] event type=" << static_cast<int>(ev->type) << " track "
-                      << ev->track_id << " queue " << ev->queue_id << " pos=" << ev->position
-                      << " dur=" << ev->duration << " msg='" << ev->msg << "'\n";
-        }
-        if (i == 10) {
-            std::array<kanariv::types::EngineEvent, 64> buf;
-            size_t n = 0;
-            (void)engine->drainEvents(buf.data(), 64, &n);
-            if (n > 0) {
-                std::cout << "[engine_demo] drain got " << n << " events at tick " << i << "\n";
-                for (size_t k = 0; k < n; ++k) {
-                    std::cout << "  drain[" << k << "] type=" << static_cast<int>(buf[k].type)
-                              << " track " << buf[k].track_id << "\n";
-                }
-            }
-        }
-    }
-    std::array<kanariv::types::EngineEvent, 64> buf;
-    size_t n = 0;
-    (void)engine->drainEvents(buf.data(), 64, &n);
-    std::cout << "[engine_demo] final drain " << n << " events\n";
-    for (size_t k = 0; k < n; ++k) {
-        std::cout << "  final[" << k << "] type=" << static_cast<int>(buf[k].type) << " track "
-                  << buf[k].track_id << " queue " << buf[k].queue_id << "\n";
-    }
-    std::cout << "[engine_demo] current track " << engine->currentTrackId() << " state "
-              << static_cast<int>(engine->state()) << " pos " << engine->position() << "\n";
+    pollEvents(engine.get());
+    drainAndReport(engine.get());
+
     engine->shutdown();
     std::cout << "[engine_demo] done\n";
     return 0;

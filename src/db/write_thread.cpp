@@ -129,6 +129,13 @@ std::size_t WriterThread::size() const {
     return impl_ ? impl_->queue_->size() : 0;
 }
 
+// Forward declarations for worker helpers.
+static std::pair<kanariv::utils::Error, bool> executeWriteOperation(const WriteOperation& op,
+                                                                    sqlite3* db);
+static void notifyWaiters(std::mutex& mtx, std::condition_variable& cv);
+static void invokeCallback(WriteOperation& op, bool ok,
+                           const kanariv::utils::Error& err);
+
 void WriterThread::Impl::worker(std::stop_token st) {
     while (!st.stop_requested()) {
         std::unique_lock<std::mutex> lk(mtx_);
@@ -145,37 +152,53 @@ void WriterThread::Impl::worker(std::stop_token st) {
         }
         WriteOperation op = std::move(popped.value());
         in_flight_.fetch_add(1, std::memory_order_acq_rel);
-        kanariv::utils::Error err{};
-        bool ok = true;
-        if (op.stmt) {
-            int rc = op.stmt->stepDone();
-            if (rc != SQLITE_DONE && rc != SQLITE_ROW && rc != SQLITE_OK) {
-                err = kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
-                                               sqlite3_errmsg(db_));
-                ok = false;
-            }
-        } else if (!op.sql.empty() && db_) {
-            char* e = nullptr;
-            internal::SqliteErrGuard guard{e};
-            int rc = sqlite3_exec(db_, op.sql.c_str(), nullptr, nullptr, &e);
-            if (rc != SQLITE_OK) {
-                err = kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
-                                               e ? e : sqlite3_errmsg(db_));
-                ok = false;
-            }
-        }
+        auto [err, ok] = executeWriteOperation(op, db_);
         in_flight_.fetch_sub(1, std::memory_order_acq_rel);
-        {
-            std::lock_guard<std::mutex> notifyLk(mtx_);
-            cv_.notify_all();
+        notifyWaiters(mtx_, cv_);
+        invokeCallback(op, ok, err);    }
+}
+
+// Executes a single write operation (prepared statement or raw SQL).
+// Returns (error, ok) where ok is false on failure.
+static std::pair<kanariv::utils::Error, bool> executeWriteOperation(const WriteOperation& op,
+                                                                    sqlite3* db) {
+    kanariv::utils::Error err{};
+    bool ok = true;
+    if (op.stmt) {
+        int rc = op.stmt->stepDone();
+        if (rc != SQLITE_DONE && rc != SQLITE_ROW && rc != SQLITE_OK) {
+            err = kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
+                                           sqlite3_errmsg(db));
+            ok = false;
         }
-        if (op.cb) {
-            if (ok)
-                op.cb(std::expected<void, kanariv::utils::Error>{});
-            else
-                op.cb(std::unexpected{err});
+    } else if (!op.sql.empty() && db) {
+        char* e = nullptr;
+        internal::SqliteErrGuard guard{e};
+        int rc = sqlite3_exec(db, op.sql.c_str(), nullptr, nullptr, &e);
+        if (rc != SQLITE_OK) {
+            err = kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
+                                           e ? e : sqlite3_errmsg(db));
+            ok = false;
         }
     }
+    return {err, ok};
+}
+
+// Notifies all waiters that an in-flight operation completed.
+static void notifyWaiters(std::mutex& mtx, std::condition_variable& cv) {
+    std::lock_guard<std::mutex> lk(mtx);
+    cv.notify_all();
+}
+
+// Invokes the operation's completion callback with success or error.
+static void invokeCallback(WriteOperation& op, bool ok,
+                           const kanariv::utils::Error& err) {
+    if (!op.cb)
+        return;
+    if (ok)
+        op.cb(std::expected<void, kanariv::utils::Error>{});
+    else
+        op.cb(std::unexpected{err});
 }
 
 } // namespace kanariv::db

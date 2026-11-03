@@ -71,6 +71,12 @@ Json trackToJson(const kanariv::types::Track& t) {
     return j;
 }
 
+// Forward declarations for helpers defined below.
+static void parseSourceFromJson(const Json& j, kanariv::types::Track& t);
+static void getStrHelper(const Json& j, const char* k, std::string& out);
+static void readFingerprint(const Json& j, const std::string& path,
+                            std::array<std::uint8_t, 32>& fp);
+
 std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
     try {
         kanariv::types::Track t;
@@ -141,51 +147,69 @@ std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
         t.source.key = t.path;
         t.source.display_name = t.path;
         t.source.available = true;
-        if (j.contains("source") && j["source"].isObject()) {
-            const Json s = j["source"];
-            std::string kindName = "path";
-            if (s.contains("kind") && s["kind"].isString())
-                kindName = s["kind"].get<std::string>();
-            auto parsedKind = kanariv::types::sourceKindFromName(kindName);
-            if (!parsedKind) {
-                return std::unexpected{
-                    makeError(StatusCode::Corrupt, "invalid source kind: " + kindName)};
-            }
-            t.source.kind = *parsedKind;
-            if (s.contains("key") && s["key"].isString())
-                t.source.key = s["key"].get<std::string>();
-            else
-                t.source.key.clear();
-            if (s.contains("display_name") && s["display_name"].isString())
-                t.source.display_name = s["display_name"].get<std::string>();
-            else
-                t.source.display_name.clear();
-            if (s.contains("available") && s["available"].isBoolean())
-                t.source.available = s["available"].get<bool>();
-            else
-                t.source.available = true;
-            if (t.source.kind == kanariv::types::SourceKind::path && t.source.key.empty())
-                t.source.key = t.path;
-        }
+        parseSourceFromJson(j, t);
         getStr("title", t.title);
         getStr("artist", t.artist);
         getStr("album", t.album);
         getStr("album_artist", t.album_artist);
         getStr("genre", t.genre);
         getStr("cover_art_path", t.cover_art_path);
-        std::string fpHex;
-        getStr("fingerprint", fpHex);
-        if (!fpHex.empty()) {
-            if (!fromHex(fpHex, t.fingerprint)) {
-                t.fingerprint = fallbackFingerprint(t.path);
-            }
-        } else {
-            t.fingerprint = fallbackFingerprint(t.path);
-        }
+        readFingerprint(j, t.path, t.fingerprint);
         return t;
     } catch (const std::exception& e) {
         return std::unexpected{makeError(StatusCode::Corrupt, e.what())};
     }
+}
+
+// Parses the optional "source" object from JSON into the track's source fields.
+// Falls back to path-based defaults when source is absent or invalid.
+static void parseSourceFromJson(const Json& j, kanariv::types::Track& t) {
+    if (!j.contains("source") || !j["source"].isObject())
+        return;
+    const Json s = j["source"];
+    std::string kindName = "path";
+    if (s.contains("kind") && s["kind"].isString())
+        kindName = s["kind"].get<std::string>();
+    auto parsedKind = kanariv::types::sourceKindFromName(kindName);
+    if (!parsedKind) {
+        throw std::runtime_error("invalid source kind: " + kindName);
+    }
+    t.source.kind = *parsedKind;
+    if (s.contains("key") && s["key"].isString())
+        t.source.key = s["key"].get<std::string>();
+    else
+        t.source.key.clear();
+    if (s.contains("display_name") && s["display_name"].isString())
+        t.source.display_name = s["display_name"].get<std::string>();
+    else
+        t.source.display_name.clear();
+    if (s.contains("available") && s["available"].isBoolean())
+        t.source.available = s["available"].get<bool>();
+    else
+        t.source.available = true;
+    if (t.source.kind == kanariv::types::SourceKind::path && t.source.key.empty())
+        t.source.key = t.path;
+}
+
+// Reads the fingerprint from JSON, falling back to a path-derived fingerprint
+// when the JSON value is absent, empty, or undecodable.
+static void readFingerprint(const Json& j, const std::string& path,
+                            std::array<std::uint8_t, 32>& fp) {
+    std::string fpHex;
+    getStrHelper(j, "fingerprint", fpHex);
+    if (!fpHex.empty()) {
+        if (fromHex(fpHex, fp))
+            return;
+    }
+    fp = fallbackFingerprint(path);
+}
+
+// Helper used by readFingerprint — mirrors getStr lambda but as a free function.
+static void getStrHelper(const Json& j, const char* k, std::string& out) {
+    if (j.contains(k) && !j[k].isNull() && j[k].isString())
+        out = j[k].get<std::string>();
+    else
+        out.clear();
 }
 
 } // namespace kanariv::utils

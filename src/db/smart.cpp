@@ -95,6 +95,105 @@ std::optional<std::string_view> readOp(std::string_view& s) {
     return std::nullopt;
 }
 
+// Parses a "rating=N" predicate (only '=' operator, value 0..5).
+static std::expected<void, kanariv::utils::Error> parseRatingPredicate(
+    std::string_view op, std::string_view value, kanariv::types::TrackQuery& tq) {
+    if (op != "=")
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg,
+            "smart query: rating supports only '='")};
+    int64_t v;
+    if (!parseInt(value, v) || v < 0 || v > 5)
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg,
+            "smart query: rating must be an integer 0..5")};
+    tq.rating = static_cast<int32_t>(v);
+    return {};
+}
+
+// Parses a "year OP N" predicate.
+static std::expected<void, kanariv::utils::Error> parseYearPredicate(
+    std::string_view op, std::string_view value, kanariv::types::TrackQuery& tq) {
+    int64_t v;
+    if (!parseInt(value, v))
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg,
+            "smart query: invalid year value '" + std::string(value) + "'")};
+    if (op == "=")
+        tq.year = static_cast<int32_t>(v);
+    else if (op == ">=")
+        tq.year_min = static_cast<int32_t>(v);
+    else if (op == "<=")
+        tq.year_max = static_cast<int32_t>(v);
+    else if (op == ">")
+        tq.year_min = static_cast<int32_t>(v + 1);
+    else if (op == "<")
+        tq.year_max = static_cast<int32_t>(v - 1);
+    return {};
+}
+
+// Parses a "play_count OP N" predicate.
+static std::expected<void, kanariv::utils::Error> parsePlayCountPredicate(
+    std::string_view op, std::string_view value, kanariv::types::TrackQuery& tq) {
+    int64_t v;
+    if (!parseInt(value, v) || v < 0)
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg,
+            "smart query: invalid play_count value '" + std::string(value) + "'")};
+    if (op == "=")
+        tq.play_count_min = v;
+    else if (op == ">=")
+        tq.play_count_min = v;
+    else if (op == "<=")
+        tq.play_count_max = v;
+    else if (op == ">")
+        tq.play_count_min = v + 1;
+    else if (op == "<")
+        tq.play_count_max = v - 1;
+    return {};
+}
+
+// Parses a "duration OP N" predicate.
+static std::expected<void, kanariv::utils::Error> parseDurationPredicate(
+    std::string_view op, std::string_view value, kanariv::types::TrackQuery& tq) {
+    double v;
+    if (!parseDouble(value, v) || v < 0)
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg,
+            "smart query: invalid duration value '" + std::string(value) + "'")};
+    if (op == "=") {
+        tq.duration_min = v;
+        tq.duration_max = v;
+    } else if (op == ">=")
+        tq.duration_min = v;
+    else if (op == "<=")
+        tq.duration_max = v;
+    else if (op == ">")
+        tq.duration_min = v + 1.0;
+    else if (op == "<")
+        tq.duration_max = v - 1.0;
+    return {};
+}
+
+// Parses a text field predicate (artist/album/genre/search), only '=' operator.
+static std::expected<void, kanariv::utils::Error> parseTextFieldPredicate(
+    std::string_view field, std::string_view op, std::string_view value,
+    kanariv::types::TrackQuery& tq) {
+    if (op != "=")
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg,
+            "smart query: " + std::string(field) + " supports only '='")};
+    if (field == "artist")
+        tq.artist = value;
+    else if (field == "album")
+        tq.album = value;
+    else if (field == "genre")
+        tq.genre = value;
+    else if (field == "search")
+        tq.search = value;
+    return {};
+}
+
 } // namespace
 
 std::expected<kanariv::types::TrackQuery, kanariv::utils::Error> parseSmartQuery(std::string_view q) {
@@ -128,82 +227,21 @@ std::expected<kanariv::types::TrackQuery, kanariv::utils::Error> parseSmartQuery
         std::string value = std::string(trim(rest));
 
         if (field == "rating") {
-            if (*op != "=")
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: rating supports only '='")};
-            int64_t v;
-            if (!parseInt(value, v) || v < 0 || v > 5)
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: rating must be an integer 0..5")};
-            tq.rating = static_cast<int32_t>(v);
+            if (auto err = parseRatingPredicate(*op, value, tq); !err)
+                return std::unexpected{err.error()};
         } else if (field == "year") {
-            int64_t v;
-            if (!parseInt(value, v))
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: invalid year value '" + value + "'")};
-            if (*op == "=")
-                tq.year = static_cast<int32_t>(v);
-            else if (*op == ">=")
-                tq.year_min = static_cast<int32_t>(v);
-            else if (*op == "<=")
-                tq.year_max = static_cast<int32_t>(v);
-            else if (*op == ">")
-                tq.year_min = static_cast<int32_t>(v + 1);
-            else if (*op == "<")
-                tq.year_max = static_cast<int32_t>(v - 1);
+            if (auto err = parseYearPredicate(*op, value, tq); !err)
+                return std::unexpected{err.error()};
         } else if (field == "play_count") {
-            int64_t v;
-            if (!parseInt(value, v) || v < 0)
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: invalid play_count value '" + value + "'")};
-            if (*op == "=")
-                tq.play_count_min = v;
-            else if (*op == ">=")
-                tq.play_count_min = v;
-            else if (*op == "<=")
-                tq.play_count_max = v;
-            else if (*op == ">")
-                tq.play_count_min = v + 1;
-            else if (*op == "<")
-                tq.play_count_max = v - 1;
+            if (auto err = parsePlayCountPredicate(*op, value, tq); !err)
+                return std::unexpected{err.error()};
         } else if (field == "duration") {
-            double v;
-            if (!parseDouble(value, v) || v < 0)
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: invalid duration value '" + value + "'")};
-            if (*op == "=") {
-                tq.duration_min = v;
-                tq.duration_max = v;
-            } else if (*op == ">=")
-                tq.duration_min = v;
-            else if (*op == "<=")
-                tq.duration_max = v;
-            else if (*op == ">")
-                tq.duration_min = v + 1.0;
-            else if (*op == "<")
-                tq.duration_max = v - 1.0;
-        } else if (field == "artist" || field == "album" || field == "genre") {
-            if (*op != "=")
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: " + field + " supports only '='")};
-            if (field == "artist")
-                tq.artist = value;
-            else if (field == "album")
-                tq.album = value;
-            else
-                tq.genre = value;
-        } else if (field == "search") {
-            if (*op != "=")
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: search supports only '='")};
-            tq.search = value;
+            if (auto err = parseDurationPredicate(*op, value, tq); !err)
+                return std::unexpected{err.error()};
+        } else if (field == "artist" || field == "album" || field == "genre" ||
+                   field == "search") {
+            if (auto err = parseTextFieldPredicate(field, *op, value, tq); !err)
+                return std::unexpected{err.error()};
         } else {
             return std::unexpected{kanariv::utils::makeError(
                 kanariv::utils::StatusCode::InvalidArg,
