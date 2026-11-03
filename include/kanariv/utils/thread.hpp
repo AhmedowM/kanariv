@@ -11,9 +11,9 @@
  * do not create, join, or otherwise take ownership of thread objects.
  */
 
-#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <cstdint>
+#include <kanariv/utils/error.hpp>
 #include <string_view>
 #include <thread>
 
@@ -84,7 +84,7 @@ inline KANARIV_API void sleepForMs(std::uint32_t ms) noexcept {
  * @details Implemented per-platform in `src/utils/thread.cpp`.
  */
 [[nodiscard]] KANARIV_API Expected<void> setThreadName(std::jthread& jt,
-                                                      std::string_view name) noexcept;
+                                                       std::string_view name) noexcept;
 
 /**
  * @brief Sets a `std::thread`'s name by native handle.
@@ -98,6 +98,6 @@ inline KANARIV_API void sleepForMs(std::uint32_t ms) noexcept {
  * @details Implemented per-platform in `src/utils/thread.cpp`.
  */
 [[nodiscard]] KANARIV_API Expected<void> setThreadName(std::thread& t,
-                                                      std::string_view name) noexcept;
+                                                       std::string_view name) noexcept;
 
 } // namespace kanariv::utils

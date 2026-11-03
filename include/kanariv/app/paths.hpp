@@ -42,7 +42,7 @@ KANARIV_API bool hasGlobChars(std::string_view s);
  * directory concurrently.
  */
 KANARIV_API void expandAddToken(const std::string& token, bool recursive,
-                               std::vector<std::string>& files,
-                               std::vector<std::string>& unmatched);
+                                std::vector<std::string>& files,
+                                std::vector<std::string>& unmatched);
 
 } // namespace kanariv::app

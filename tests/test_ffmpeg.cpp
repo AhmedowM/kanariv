@@ -1,11 +1,11 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <cstddef>
+#include <filesystem>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
-#include <cstddef>
-#include <filesystem>
 #include <string>
 #include <vector>
 using namespace kanariv::media;

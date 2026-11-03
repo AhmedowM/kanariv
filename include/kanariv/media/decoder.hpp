@@ -28,10 +28,10 @@
  * sampleRate(), channels() and totalFrames() are thread-safe (const noexcept).
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/types/record.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/record.hpp>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -139,6 +139,7 @@ class KANARIV_API Decoder final {
  * @param path Filesystem path to probe.
  * @return Metadata on success, Error on failure.
  */
-KANARIV_API kanariv::utils::Expected<kanariv::types::TrackMetadata> extractMetadata(std::string_view path);
+KANARIV_API kanariv::utils::Expected<kanariv::types::TrackMetadata>
+extractMetadata(std::string_view path);
 
 } // namespace kanariv::media

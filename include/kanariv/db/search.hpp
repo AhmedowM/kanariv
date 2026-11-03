@@ -11,8 +11,8 @@
  * All stages are under a single `shared_lock` to avoid unlock gaps.
  */
 
-#include <kanariv/fwd.hpp>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <string>
 #include <string_view>
 #include <vector>

@@ -1,4 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
+#include <common.hpp>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/json.hpp>
@@ -6,11 +11,6 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/record_json.hpp>
-#include <common.hpp>
-#include <cstdint>
-#include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <string>
 #include <system_error>
 #include <utility>

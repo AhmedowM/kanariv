@@ -1,8 +1,8 @@
+#include <cstddef>
+#include <expected>
 #include <kanariv/media/source.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
-#include <cstddef>
-#include <expected>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -31,23 +31,23 @@ void closeDescriptor(int fd) noexcept {
 PathSource::PathSource(std::filesystem::path path)
     : path_(std::move(path)), displayName_(path_.string()) {}
 
-SourceKind PathSource::kind() const noexcept {
+auto PathSource::kind() const noexcept -> SourceKind {
     return SourceKind::path;
 }
 
-std::string_view PathSource::displayName() const noexcept {
+auto PathSource::displayName() const noexcept -> std::string_view {
     return displayName_;
 }
 
-bool PathSource::seekable() const noexcept {
+auto PathSource::seekable() const noexcept -> bool {
     return true;
 }
 
-kanariv::utils::Expected<std::unique_ptr<Reader>> PathSource::open() {
+auto PathSource::open() -> kanariv::utils::Expected<std::unique_ptr<Reader>> {
     return FileReader::open(path_);
 }
 
-const std::filesystem::path& PathSource::path() const noexcept {
+auto PathSource::path() const noexcept -> const std::filesystem::path& {
     return path_;
 }
 
@@ -64,10 +64,11 @@ DescriptorSource::DescriptorSource(DescriptorSource&& other) noexcept
     other.consumed_ = true;
 }
 
-DescriptorSource& DescriptorSource::operator=(DescriptorSource&& other) noexcept {
+auto DescriptorSource::operator=(DescriptorSource&& other) noexcept -> DescriptorSource& {
     if (this != &other) {
-        if (!consumed_ && descriptor_.closeOnDestroy && descriptor_.value >= 0)
+        if (!consumed_ && descriptor_.closeOnDestroy && descriptor_.value >= 0) {
             closeDescriptor(descriptor_.value);
+        }
         descriptor_ = other.descriptor_;
         displayName_ = std::move(other.displayName_);
         consumed_ = other.consumed_;
@@ -79,37 +80,39 @@ DescriptorSource& DescriptorSource::operator=(DescriptorSource&& other) noexcept
 }
 
 DescriptorSource::~DescriptorSource() {
-    if (!consumed_ && descriptor_.closeOnDestroy && descriptor_.value >= 0)
+    if (!consumed_ && descriptor_.closeOnDestroy && descriptor_.value >= 0) {
         closeDescriptor(descriptor_.value);
+    }
 }
 
-SourceKind DescriptorSource::kind() const noexcept {
+auto DescriptorSource::kind() const noexcept -> SourceKind {
     return SourceKind::descriptor;
 }
 
-std::string_view DescriptorSource::displayName() const noexcept {
+auto DescriptorSource::displayName() const noexcept -> std::string_view {
     return displayName_;
 }
 
-bool DescriptorSource::seekable() const noexcept {
+auto DescriptorSource::seekable() const noexcept -> bool {
     return descriptor_.seekable;
 }
 
-kanariv::utils::Expected<std::unique_ptr<Reader>> DescriptorSource::open() {
+auto DescriptorSource::open() -> kanariv::utils::Expected<std::unique_ptr<Reader>> {
     if (consumed_) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
-                                                    std::string_view("source already opened")});
+                                                     std::string_view("source already opened")});
     }
     auto reader = DescriptorReader::open(descriptor_);
-    if (!reader)
+    if (!reader) {
         return std::unexpected(reader.error());
+    }
     consumed_ = true;
     descriptor_.value = -1;
     descriptor_.closeOnDestroy = false;
     return reader;
 }
 
-bool DescriptorSource::consumed() const noexcept {
+auto DescriptorSource::consumed() const noexcept -> bool {
     return consumed_;
 }
 

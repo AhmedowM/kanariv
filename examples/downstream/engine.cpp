@@ -1,7 +1,7 @@
+#include <iostream>
 #include <kanariv/engine/engine.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
-#include <iostream>
 
 int main() {
     kanariv::types::EngineConfig config;

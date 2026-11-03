@@ -1,11 +1,5 @@
 ﻿#include <array>
 #include <atomic>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/ipc/protocol.hpp>
-#include <kanariv/ipc/result.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
-#include <kanariv/windows_fwd.hpp>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -13,6 +7,12 @@
 #include <expected>
 #include <filesystem>
 #include <functional>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/protocol.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/windows_fwd.hpp>
 #include <memory>
 #include <mutex>
 #include <stop_token>
@@ -42,7 +42,8 @@ namespace {
 // change: owner + built-in admins + system get full access, everyone else
 // nothing. SDDL is constant; conversion cannot fail short of OOM, and then
 // we fall back to default attributes (availability wins, documented).
-constexpr wchar_t pipeSddl[] = L"D:(A;;GA;;;OW)(A;;GA;;;BA)(A;;GA;;;SY)"; // NOLINT(cppcoreguidelines-avoid-c-arrays)
+constexpr wchar_t pipeSddl[] =
+    L"D:(A;;GA;;;OW)(A;;GA;;;BA)(A;;GA;;;SY)"; // NOLINT(cppcoreguidelines-avoid-c-arrays)
 // Layout-compatible with SECURITY_ATTRIBUTES (length, descriptor, inherit).
 struct PipeSecurityAttributes {
     DWORD nLength{0};
@@ -56,31 +57,33 @@ class PipeDacl {
         LPVOID sd = nullptr;
         DWORD len = 0;
         if (::ConvertStringSecurityDescriptorToSecurityDescriptorW(pipeSddl, sddlRevision1, &sd,
-                                                                   &len) &&
-            sd) {
+                                                                   &len) != 0 &&
+            sd != nullptr) {
             sa_.descriptor = sd;
         }
     }
     ~PipeDacl() {
-        if (sa_.descriptor)
+        if (sa_.descriptor != nullptr) {
             ::LocalFree(sa_.descriptor);
+        }
     }
     PipeDacl(const PipeDacl&) = delete;
-    PipeDacl& operator=(const PipeDacl&) = delete;
+    auto operator=(const PipeDacl&) -> PipeDacl& = delete;
     PipeDacl(PipeDacl&& other) noexcept : sa_(other.sa_) {
         other.sa_.descriptor = nullptr;
     }
-    PipeDacl& operator=(PipeDacl&& other) noexcept {
+    auto operator=(PipeDacl&& other) noexcept -> PipeDacl& {
         if (this != &other) {
-            if (sa_.descriptor)
+            if (sa_.descriptor != nullptr) {
                 ::LocalFree(sa_.descriptor);
+            }
             sa_ = other.sa_;
             other.sa_.descriptor = nullptr;
         }
         return *this;
     }
-    LPVOID attributes() {
-        return sa_.descriptor ? &sa_ : nullptr;
+    auto attributes() -> LPVOID {
+        return sa_.descriptor != nullptr ? &sa_ : nullptr;
     }
 
   private:
@@ -91,8 +94,22 @@ class PipeDacl {
 
 namespace kanariv::service {
 
-// All acceptor state and threads live here so the public header stays free
-// of std::thread/mutex/condition_variable/vector includes.
+constexpr DWORD pipeInBufferSize = 16384;
+constexpr DWORD pipeOutBufferSize = 16384;
+constexpr std::size_t maxFrameSizeBytes = 16 * 1024 * 1024;
+constexpr int pipeConnectRetryMs = 50;
+constexpr int pipeRetrySleepMs = 5;
+constexpr DWORD pipeMaxInstances = 535;
+constexpr DWORD pipeError232 = 232;   // ERROR_PIPE_BUSY
+constexpr DWORD pipeError109 = 109;   // ERROR_BROKEN_PIPE
+constexpr DWORD pipeError233 = 233;   // ERROR_NO_DATA
+constexpr int bitShift24 = 24;
+constexpr int bitShift16 = 16;
+constexpr int bitShift8 = 8;
+constexpr int frameByteIndex3 = 3;
+constexpr int connectDelayMs = 10;
+constexpr int maxConnectAttempts = 40;
+
 struct IpcServer::Impl {
     // One slot per connection. A connection thread marks its own slot done
     // on exit (retireClient); the accept loop sweeps done slots, so the
@@ -104,8 +121,8 @@ struct IpcServer::Impl {
         bool done{false};
     };
 
-    kanariv::utils::Expected<void> listen(const std::filesystem::path& dbPath,
-                                         std::string_view socketPathOverride);
+    auto listen(const std::filesystem::path& dbPath, std::string_view socketPathOverride)
+        -> kanariv::utils::Expected<void>;
     void run(std::stop_token st,
              std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
                  const kanariv::ipc::Command&)>
@@ -134,8 +151,8 @@ IpcServer::~IpcServer() {
     shutdown();
 }
 
-kanariv::utils::Expected<void> IpcServer::listen(const std::filesystem::path& dbPath,
-                                                std::string_view socketPathOverride) {
+auto IpcServer::listen(const std::filesystem::path& dbPath, std::string_view socketPathOverride)
+    -> kanariv::utils::Expected<void> {
     return impl_->listen(dbPath, socketPathOverride);
 }
 
@@ -154,39 +171,44 @@ void IpcServer::shutdown() {
     impl_->shutdown();
 }
 
-kanariv::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::path& dbPath,
-                                                      std::string_view socketPathOverride) {
+auto IpcServer::Impl::listen(const std::filesystem::path& dbPath,
+                             std::string_view socketPathOverride)
+    -> kanariv::utils::Expected<void> {
     kanariv::utils::Expected<std::string> sp;
     if (!socketPathOverride.empty()) {
         sp = std::string(socketPathOverride.data(), socketPathOverride.size());
     } else {
         sp = kanariv::config::socketPathFor(dbPath);
     }
-    if (!sp)
+    if (!sp) {
         return std::unexpected{sp.error()};
+    }
     socketPath_ = *sp;
     running_.store(false);
 
 #ifdef _WIN32
     // Atomic take-over: whoever exchanges non-null owns the close.
-    HANDLE prev = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
-    if (prev && prev != invalidHandleValue) {
+    auto *prev = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
+        -1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
+    if (prev != nullptr && prev != invalidHandleValue) {
         ::CloseHandle(prev);
     }
     std::string pathStr = socketPath_;
     std::wstring w;
     w.reserve(pathStr.size());
-    for (char c : pathStr)
+    for (char c : pathStr) {
         w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
+    }
     PipeDacl dacl;
     HANDLE h = ::CreateNamedPipeW(w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait,
-                                  pipeUnlimited, 16384, 16384, 0, dacl.attributes());
+                                  pipeUnlimited, pipeInBufferSize, pipeOutBufferSize, 0, dacl.attributes());
     if (h == invalidHandleValue) {
         DWORD err = ::GetLastError();
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::Io, "CreateNamedPipeW failed: " + std::to_string(err))};
     }
-    pipeHandle_.store(reinterpret_cast<std::intptr_t>(h)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
+    pipeHandle_.store(reinterpret_cast<std::intptr_t>(
+        h)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
     return {};
 #else
     int prevFd = pipeHandle_.exchange(-1);
@@ -218,10 +240,11 @@ kanariv::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pa
     if (sockStr.size() >= sizeof(addr.sun_path)) {
         ::close(fd);
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                        "socket path too long")};
+                                                         "socket path too long")};
     }
     std::memcpy(addr.sun_path, sockStr.c_str(), sockStr.size() + 1);
-    if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) { // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) !=
+        0) { // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
         ::close(fd);
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "bind failed")};
@@ -247,12 +270,14 @@ void IpcServer::Impl::run(std::stop_token st,
         return;
     }
     stopSource_ = std::stop_source{};
-    acceptThread_ = std::jthread([this, st, dispatch](std::stop_token jt) {
+    acceptThread_ = std::jthread([this, st, dispatch](std::stop_token jt) -> void {
         (void)jt;
         while (!st.stop_requested() && !stopSource_.get_token().stop_requested() &&
                running_.load()) {
 #ifdef _WIN32
-            HANDLE listenH = reinterpret_cast<HANDLE>(pipeHandle_.load()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
+            auto *listenH = reinterpret_cast<HANDLE>(
+                pipeHandle_
+                    .load()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
             if (pipeHandle_.load() == -1) {
                 // No listening instance: a follow-up create failed, or a bad
                 // instance was dropped below. Re-create one so the daemon
@@ -261,44 +286,51 @@ void IpcServer::Impl::run(std::stop_token st,
                     std::string pathStr = socketPath_;
                     std::wstring w;
                     w.reserve(pathStr.size());
-                    for (char c : pathStr)
+                    for (char c : pathStr) {
                         w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
+                    }
                     PipeDacl dacl;
                     HANDLE h =
                         ::CreateNamedPipeW(w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait,
-                                           pipeUnlimited, 16384, 16384, 0, dacl.attributes());
+                                           pipeUnlimited, pipeInBufferSize, pipeOutBufferSize, 0, dacl.attributes());
                     if (h != invalidHandleValue) {
-                        pipeHandle_.store(reinterpret_cast<std::intptr_t>(h)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr) // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
+                        pipeHandle_.store(reinterpret_cast<std::intptr_t>(
+                            h)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
+                                 // //
+                                 // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
                         continue;
                     }
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                std::this_thread::sleep_for(std::chrono::milliseconds(pipeConnectRetryMs));
                 continue;
             }
             BOOL connected = ::ConnectNamedPipe(listenH, nullptr);
             if (connected == 0) {
                 DWORD err = ::GetLastError();
-                if (err == 535 /*ERROR_PIPE_CONNECTED*/) {
+                if (err == pipeMaxInstances /*ERROR_PIPE_CONNECTED*/) {
                 } else {
-                    if (st.stop_requested() || stopSource_.get_token().stop_requested())
+                    if (st.stop_requested() || stopSource_.get_token().stop_requested()) {
                         break;
+                    }
                     // A client may connect and vanish before we reach
                     // ConnectNamedPipe; the instance then returns ERROR_NO_DATA
                     // (or a broken-pipe variant) forever. Retrying the same
                     // handle spins without ever accepting, leaving a live but
                     // deaf daemon (D-10). Reset the instance so it is reusable.
-                    if (err == 232 /*ERROR_NO_DATA*/ || err == 109 /*ERROR_BROKEN_PIPE*/ ||
-                        err == 233 /*ERROR_PIPE_NOT_CONNECTED*/) {
+                    if (err == pipeError232 /*ERROR_NO_DATA*/ || err == pipeError109 /*ERROR_BROKEN_PIPE*/ ||
+                        err == pipeError233 /*ERROR_PIPE_NOT_CONNECTED*/) {
                         if (!::DisconnectNamedPipe(listenH)) {
                             // Reset failed: drop the instance; the top of the
                             // loop rebuilds a fresh listening one.
-                            HANDLE stale = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
-                            if (stale && stale != invalidHandleValue)
+                            auto *stale = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
+                                -1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
+                            if (stale != nullptr && stale != invalidHandleValue) {
                                 ::CloseHandle(stale);
+                            }
                         }
                         continue;
                     }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(pipeConnectRetryMs));
                     continue;
                 }
             }
@@ -306,7 +338,8 @@ void IpcServer::Impl::run(std::stop_token st,
             // concurrently -- whoever exchanges non-null owns the handle, so
             // a close here can never double-close. (Only this loop creates
             // instances, so a non-null take is always the connected one.)
-            HANDLE clientHandle = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
+            auto *clientHandle = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
+                -1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
             if (!clientHandle || clientHandle == invalidHandleValue) {
                 // Lost the race with shutdown; loop back to the stop check.
                 continue;
@@ -315,23 +348,25 @@ void IpcServer::Impl::run(std::stop_token st,
                 std::string pathStr = socketPath_;
                 std::wstring w;
                 w.reserve(pathStr.size());
-                for (char c : pathStr)
+                for (char c : pathStr) {
                     w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
+                }
                 PipeDacl nextDacl;
                 HANDLE next =
                     ::CreateNamedPipeW(w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait,
-                                       pipeUnlimited, 16384, 16384, 0, nextDacl.attributes());
+                                       pipeUnlimited, pipeInBufferSize, pipeOutBufferSize, 0, nextDacl.attributes());
                 if (next != invalidHandleValue) {
-                    pipeHandle_.store(reinterpret_cast<std::intptr_t>(next)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
+                    pipeHandle_.store(reinterpret_cast<std::intptr_t>(
+                        next)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
                 }
                 // else: stay without a listener; the loop re-checks stop
                 // flags and shutdown's post-join drain closes strays.
             }
             {
-                std::lock_guard<std::mutex> lk(clientsMtx_);
+                std::scoped_lock lk(clientsMtx_);
                 clients_.emplace_back();
                 clients_.back().thread =
-                    std::jthread([this, clientHandle, dispatch](std::stop_token ct) {
+                    std::jthread([this, clientHandle, dispatch](std::stop_token ct) -> void {
                         (void)ct;
                         // Self-retire on every exit path (including
                         // exceptions): the slot is swept by the accept loop.
@@ -339,9 +374,9 @@ void IpcServer::Impl::run(std::stop_token st,
                             Impl* self;
                             explicit RetireGuard(Impl* s) : self(s) {}
                             RetireGuard(const RetireGuard&) = delete;
-                            RetireGuard& operator=(const RetireGuard&) = delete;
+                            auto operator=(const RetireGuard&) -> RetireGuard& = delete;
                             RetireGuard(RetireGuard&&) = delete;
-                            RetireGuard& operator=(RetireGuard&&) = delete;
+                            auto operator=(RetireGuard&&) -> RetireGuard& = delete;
                             ~RetireGuard() {
                                 self->retireClient();
                             }
@@ -355,11 +390,11 @@ void IpcServer::Impl::run(std::stop_token st,
                                 return;
                             }
                             std::uint32_t len =
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
-                                static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-                            if (len > 16 * 1024 * 1024) {
+                                (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << bitShift24) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                                (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << bitShift16) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                                (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << bitShift8) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                                static_cast<std::uint32_t>(std::to_underlying(hdr[frameByteIndex3])); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                            if (len > maxFrameSizeBytes) {
                                 ::CloseHandle(clientHandle);
                                 return;
                             }
@@ -374,8 +409,9 @@ void IpcServer::Impl::run(std::stop_token st,
                             }
                             std::string reqStr;
                             reqStr.reserve(payload.size());
-                            for (auto b : payload)
+                            for (auto b : payload) {
                                 reqStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
+                            }
                             auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
                             kanariv::ipc::IpcReply reply;
                             if (!reqExp) {
@@ -384,10 +420,11 @@ void IpcServer::Impl::run(std::stop_token st,
                             } else {
                                 reply.id = reqExp->id;
                                 auto resExp = dispatch(reqExp->cmd);
-                                if (!resExp)
+                                if (!resExp) {
                                     reply.result = std::unexpected{resExp.error()};
-                                else
+                                } else {
                                     reply.result = *resExp;
+                                }
                             }
                             std::string repJson = kanariv::ipc::serializeReply(reply);
                             auto framed = kanariv::ipc::frame(repJson);
@@ -406,12 +443,12 @@ void IpcServer::Impl::run(std::stop_token st,
                         }
                     });
                 // Reap exited connections: the list holds live threads only.
-                std::erase_if(clients_, [](const ClientSlot& s) { return s.done; });
+                std::erase_if(clients_, [](const ClientSlot& s) -> bool { return s.done; });
             }
 #else
             int listenSnapshot = static_cast<int>(pipeHandle_.load());
             if (listenSnapshot < 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                std::this_thread::sleep_for(std::chrono::milliseconds(pipeConnectRetryMs));
                 continue;
             }
             fd_set rfds;
@@ -422,7 +459,7 @@ void IpcServer::Impl::run(std::stop_token st,
             if (sel < 0) {
                 if (errno == EINTR)
                     continue;
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                std::this_thread::sleep_for(std::chrono::milliseconds(pipeConnectRetryMs));
                 continue;
             }
             if (sel == 0)
@@ -453,8 +490,11 @@ void IpcServer::Impl::run(std::stop_token st,
                         auto recvExact = [cfd](std::span<std::byte> out) -> bool {
                             std::size_t got = 0;
                             while (got < out.size()) {
-                                ::ssize_t n = ::recv(cfd, reinterpret_cast<char*>(out.data()) + got, // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-                                                     out.size() - got, 0);
+                                ::ssize_t n = ::recv(
+                                    cfd,
+                                    reinterpret_cast<char*>(out.data()) +
+                                        got, // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+                                    out.size() - got, 0);
                                 if (n <= 0) {
                                     if (n < 0 && errno == EINTR)
                                         continue;
@@ -467,9 +507,11 @@ void IpcServer::Impl::run(std::stop_token st,
                         auto sendAll = [cfd](std::span<const std::byte> data) -> bool {
                             std::size_t sent = 0;
                             while (sent < data.size()) {
-                                ::ssize_t n =
-                                    ::send(cfd, reinterpret_cast<const char*>(data.data()) + sent, // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-                                           data.size() - sent, 0);
+                                ::ssize_t n = ::send(
+                                    cfd,
+                                    reinterpret_cast<const char*>(data.data()) +
+                                        sent, // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+                                    data.size() - sent, 0);
                                 if (n < 0) {
                                     if (errno == EINTR)
                                         continue;
@@ -488,7 +530,7 @@ void IpcServer::Impl::run(std::stop_token st,
                             (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
                             (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
                             static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-                        if (len > 16 * 1024 * 1024) {
+                        if (len > maxFrameSizeBytes) {
                             ::close(cfd);
                             return;
                         }
@@ -531,7 +573,7 @@ void IpcServer::Impl::run(std::stop_token st,
 #endif
             {
                 std::unique_lock<std::mutex> lk(cvMtx_);
-                cv_.wait_for(lk, std::chrono::milliseconds(10));
+                cv_.wait_for(lk, std::chrono::milliseconds(connectDelayMs));
             }
         }
     });
@@ -542,7 +584,7 @@ void IpcServer::Impl::retireClient() {
     // shutdown may be iterating the list concurrently (it never holds
     // clientsMtx_ while joining, so this brief lock cannot deadlock it).
     const auto me = std::this_thread::get_id();
-    std::lock_guard<std::mutex> lk(clientsMtx_);
+    std::scoped_lock lk(clientsMtx_);
     for (auto& s : clients_) {
         if (s.thread.get_id() == me) {
             s.done = true;
@@ -569,22 +611,24 @@ void IpcServer::Impl::shutdown() {
         std::string pathStr = socketPath_;
         std::wstring w;
         w.reserve(pathStr.size());
-        for (char c : pathStr)
+        for (char c : pathStr) {
             w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
-        for (int attempt = 0; attempt < 40; ++attempt) {
+        }
+        for (int attempt = 0; attempt < maxConnectAttempts; ++attempt) {
             HANDLE h = ::CreateFileW(w.c_str(), genericRead | genericWrite, 0, nullptr,
                                      openExisting, 0, nullptr);
             if (h != invalidHandleValue) {
                 ::CloseHandle(h);
                 break;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            std::this_thread::sleep_for(std::chrono::milliseconds(pipeRetrySleepMs));
         }
     }
     // Take-over (see listen()): if the accept loop is mid-handshake it owns
     // its handle; anything left here is ours to close.
-    HANDLE cur = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
-    if (cur && cur != invalidHandleValue) {
+    auto *cur = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
+        -1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
+    if (cur != nullptr && cur != invalidHandleValue) {
         ::CloseHandle(cur);
     }
 #else
@@ -604,8 +648,9 @@ void IpcServer::Impl::shutdown() {
 #ifdef _WIN32
     // Post-join drain: the accept loop may have stored a fresh listen
     // instance after our pre-join take. Exchange is idempotent.
-    HANDLE leftover = reinterpret_cast<HANDLE>(pipeHandle_.exchange(-1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
-    if (leftover && leftover != invalidHandleValue) {
+    auto *leftover = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
+        -1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
+    if (leftover != nullptr && leftover != invalidHandleValue) {
         ::CloseHandle(leftover);
     }
 #endif
@@ -615,18 +660,20 @@ void IpcServer::Impl::shutdown() {
     // and holding it across joins would deadlock exactly that path.
     // retireClient never erases/joins, so unlocked iteration is safe.
     {
-        std::lock_guard<std::mutex> lk(clientsMtx_);
+        std::scoped_lock lk(clientsMtx_);
         for (auto& s : clients_) {
-            if (s.thread.joinable())
+            if (s.thread.joinable()) {
                 s.thread.request_stop();
+            }
         }
     }
     for (auto& s : clients_) {
-        if (s.thread.joinable())
+        if (s.thread.joinable()) {
             s.thread.join();
+        }
     }
     {
-        std::lock_guard<std::mutex> lk(clientsMtx_);
+        std::scoped_lock lk(clientsMtx_);
         clients_.clear();
     }
     cv_.notify_all();

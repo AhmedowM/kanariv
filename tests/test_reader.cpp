@@ -1,15 +1,15 @@
 #include <array>
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/media/reader.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <string>
 #include <vector>
 using namespace kanariv::media;

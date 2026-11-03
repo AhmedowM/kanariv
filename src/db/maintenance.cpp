@@ -1,23 +1,24 @@
+#include <filesystem>
 #include <kanariv/db/maintenance.hpp>
-
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/record.hpp>
-#include <filesystem>
 #include <map>
 #include <string>
 #include <system_error>
 
 namespace kanariv::db {
 
-std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
-libraryReport(Database& db, int64_t libraryId) {
-    if (libraryId <= 0)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "invalid library id"));
+auto libraryReport(Database& db, int64_t libraryId)
+    -> std::expected<LibraryMaintenanceReport, kanariv::utils::Error> {
+    if (libraryId <= 0) {
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "invalid library id"));
+    }
 
     auto libraries = db.listLibraries();
-    if (!libraries)
+    if (!libraries) {
         return std::unexpected(libraries.error());
+    }
     bool found = false;
     for (const auto& library : *libraries) {
         if (library.id == libraryId) {
@@ -25,15 +26,17 @@ libraryReport(Database& db, int64_t libraryId) {
             break;
         }
     }
-    if (!found)
+    if (!found) {
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "library not found"));
+    }
 
     kanariv::types::TrackQuery query{};
     query.library_id = libraryId;
     auto tracks = db.listTracks(&query);
-    if (!tracks)
+    if (!tracks) {
         return std::unexpected(tracks.error());
+    }
 
     LibraryMaintenanceReport report{};
     std::map<std::string, std::vector<kanariv::types::Track>> paths;
@@ -43,39 +46,44 @@ libraryReport(Database& db, int64_t libraryId) {
         if (track.path.empty() || !std::filesystem::is_regular_file(track.path, ec)) {
             report.missing_tracks.push_back(track);
         }
-        if (!track.path.empty())
+        if (!track.path.empty()) {
             paths[track.path].push_back(track);
+        }
     }
     for (auto& [path, group] : paths) {
         (void)path;
-        if (group.size() > 1)
+        if (group.size() > 1) {
             report.duplicate_groups.push_back(std::move(group));
+        }
     }
     return report;
 }
 
-std::expected<std::size_t, kanariv::utils::Error>
-libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report) {
+auto libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report)
+    -> std::expected<std::size_t, kanariv::utils::Error> {
     std::size_t pruned = 0;
     for (const auto& track : report.missing_tracks) {
         auto removed = db.deleteTrack(track.id);
-        if (!removed)
+        if (!removed) {
             return std::unexpected(removed.error());
+        }
         ++pruned;
     }
     return pruned;
 }
 
-std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
-libraryApplyMaintenance(Database& db, int64_t libraryId,
-                         const LibraryMaintenanceOptions& options) {
+auto libraryApplyMaintenance(Database& db, int64_t libraryId,
+                             const LibraryMaintenanceOptions& options)
+    -> std::expected<LibraryMaintenanceReport, kanariv::utils::Error> {
     auto report = libraryReport(db, libraryId);
-    if (!report)
+    if (!report) {
         return std::unexpected(report.error());
+    }
     if (options.prune_missing && !options.dry_run) {
         auto pruned = libraryPruneMissing(db, *report);
-        if (!pruned)
+        if (!pruned) {
             return std::unexpected(pruned.error());
+        }
     }
     return report;
 }

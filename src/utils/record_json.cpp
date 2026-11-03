@@ -1,12 +1,12 @@
 #include <array>
+#include <cstdint>
+#include <exception>
+#include <expected>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/math.hpp>
 #include <kanariv/utils/record_json.hpp>
 #include <kanariv/utils/result.hpp>
-#include <cstdint>
-#include <exception>
-#include <expected>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -15,59 +15,67 @@ namespace kanariv::utils {
 
 namespace {
 
-std::array<uint8_t, 32> fallbackFingerprint(std::string_view path) noexcept {
-    uint64_t h = 1469598103934665603ULL;
+constexpr std::size_t fingerprintSize = 32;
+constexpr uint64_t fnvOffsetBasis = 1469598103934665603ULL;
+constexpr uint64_t fnvPrime = 1099511628211ULL;
+constexpr uint64_t lcgMultiplier = 6364136223846793005ULL;
+constexpr uint64_t lcgIncrement = 1;
+constexpr int bitsPerByte = 8;
+
+auto fallbackFingerprint(std::string_view path) noexcept -> std::array<uint8_t, fingerprintSize> {
+    uint64_t h = fnvOffsetBasis;
     for (char c : path) {
         h ^= static_cast<uint8_t>(c);
-        h *= 1099511628211ULL;
+        h *= fnvPrime;
     }
-    std::array<uint8_t, 32> out{};
-    for (int i = 0; i < 32; i++) {
-        out[i] = static_cast<uint8_t>(h >> ((i % 8) * 8));
-        h = h * 6364136223846793005ULL + 1;
+    std::array<uint8_t, fingerprintSize> out{};
+    for (int i = 0; i < static_cast<int>(fingerprintSize); i++) {
+        out.at(i) = static_cast<uint8_t>(h >> ((i % bitsPerByte) * bitsPerByte));
+        h = h * lcgMultiplier + lcgIncrement;
     }
     return out;
 }
 
 } // namespace
 
-Json trackToJson(const kanariv::types::Track& t) {
+auto trackToJson(const kanariv::types::Track& t) -> Json {
     Json j;
-    j["id"] = t.id;
-    j["size"] = t.size;
-    j["mtime"] = t.mtime;
-    j["duration"] = t.duration;
-    j["sample_rate"] = t.sample_rate;
-    j["channels"] = t.channels;
-    j["bitrate"] = t.bitrate;
-    j["year"] = t.year;
-    j["track_num"] = t.track_num;
-    j["disc_num"] = t.disc_num;
-    j["rating"] = t.rating;
-    j["play_count"] = t.play_count;
-    j["last_played"] = t.last_played;
-    j["date_added"] = t.date_added;
-    j["last_scanned"] = t.last_scanned;
-    j["dirty"] = t.dirty;
-    j["library_id"] = t.library_id;
-    j["deleted_at"] = t.deleted_at;
-    j["fingerprint"] = toHex(t.fingerprint);
-    j["path"] = t.path;
+    j["id"] = t.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["size"] = t.size; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["mtime"] = t.mtime; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["duration"] = t.duration; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["sample_rate"] = t.sample_rate; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["channels"] = t.channels; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["bitrate"] = t.bitrate; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["year"] = t.year; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["track_num"] = t.track_num; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["disc_num"] = t.disc_num; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["rating"] = t.rating; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["play_count"] = t.play_count; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["last_played"] = t.last_played; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["date_added"] = t.date_added; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["last_scanned"] = t.last_scanned; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["dirty"] = t.dirty; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["library_id"] = t.library_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["deleted_at"] = t.deleted_at; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["fingerprint"] = toHex(t.fingerprint); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["path"] = t.path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     {
         const auto source = kanariv::types::normalizedSource(t);
         Json s;
-        s["kind"] = std::string(kanariv::types::sourceKindName(source.kind));
-        s["key"] = source.key;
-        s["display_name"] = source.display_name;
-        s["available"] = source.available;
-        j["source"] = std::move(s);
+        s["kind"] = kanariv::types::sourceKindName(
+            source.kind); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s["key"] = source.key; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s["display_name"] = source.display_name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s["available"] = source.available; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["source"] = std::move(s); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
-    j["title"] = t.title;
-    j["artist"] = t.artist;
-    j["album"] = t.album;
-    j["album_artist"] = t.album_artist;
-    j["genre"] = t.genre;
-    j["cover_art_path"] = t.cover_art_path;
+    j["title"] = t.title; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["artist"] = t.artist; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["album"] = t.album; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["album_artist"] = t.album_artist; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["genre"] = t.genre; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["cover_art_path"] = t.cover_art_path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
@@ -75,36 +83,40 @@ Json trackToJson(const kanariv::types::Track& t) {
 static void parseSourceFromJson(const Json& j, kanariv::types::Track& t);
 static void getStrHelper(const Json& j, const char* k, std::string& out);
 static void readFingerprint(const Json& j, const std::string& path,
-                            std::array<std::uint8_t, 32>& fp);
+                            std::array<std::uint8_t, fingerprintSize>& fp);
 
-std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
+auto trackFromJson(const Json& j) -> std::expected<kanariv::types::Track, Error> {
     try {
         kanariv::types::Track t;
-        auto getI64 = [&](const char* k, int64_t& out, int64_t def = 0) {
-            if (j.contains(k) && !j[k].isNull()) {
-                if (j[k].isNumber())
-                    out = j[k].get<int64_t>();
-                else
+        auto getI64 = [&](const char* k, int64_t& out, int64_t def = 0) -> void {
+            if (j.contains(k) && !j[k].isNull()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (j[k].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    out = j[k].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
                     out = def;
-            } else
+                }
+            } else {
                 out = def;
+            }
         };
-        auto getInt = [&](const char* k, int& out, int def = 0) {
+        auto getInt = [&](const char* k, int& out, int def = 0) -> void {
             int64_t v = def;
             getI64(k, v, def);
             out = static_cast<int>(v);
         };
-        auto getDbl = [&](const char* k, double& out, double def = 0) {
-            if (j.contains(k) && !j[k].isNull() && j[k].isNumber())
-                out = j[k].get<double>();
-            else
+        auto getDbl = [&](const char* k, double& out, double def = 0) -> void {
+            if (j.contains(k) && !j[k].isNull() && j[k].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                out = j[k].get<double>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            } else {
                 out = def;
+            }
         };
-        auto getStr = [&](const char* k, std::string& out) {
-            if (j.contains(k) && !j[k].isNull() && j[k].isString())
-                out = j[k].get<std::string>();
-            else
+        auto getStr = [&](const char* k, std::string& out) -> void {
+            if (j.contains(k) && !j[k].isNull() && j[k].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                out = j[k].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            } else {
                 out.clear();
+            }
         };
         getI64("id", t.id, 0);
         getI64("size", t.size, 0);
@@ -139,8 +151,9 @@ std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
             t.dirty = dirtyTmp != 0;
         }
         getI64("library_id", t.library_id, 1);
-        if (t.library_id == 0)
+        if (t.library_id == 0) {
             t.library_id = 1;
+        }
         getI64("deleted_at", t.deleted_at, 0);
         getStr("path", t.path);
         t.source.kind = kanariv::types::SourceKind::path;
@@ -164,52 +177,60 @@ std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
 // Parses the optional "source" object from JSON into the track's source fields.
 // Falls back to path-based defaults when source is absent or invalid.
 static void parseSourceFromJson(const Json& j, kanariv::types::Track& t) {
-    if (!j.contains("source") || !j["source"].isObject())
+    if (!j.contains("source") || !j["source"].isObject()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         return;
-    const Json s = j["source"];
+    }
+    const Json s = j["source"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     std::string kindName = "path";
-    if (s.contains("kind") && s["kind"].isString())
-        kindName = s["kind"].get<std::string>();
+    if (s.contains("kind") && s["kind"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        kindName = s["kind"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     auto parsedKind = kanariv::types::sourceKindFromName(kindName);
     if (!parsedKind) {
         throw std::runtime_error("invalid source kind: " + kindName);
     }
     t.source.kind = *parsedKind;
-    if (s.contains("key") && s["key"].isString())
-        t.source.key = s["key"].get<std::string>();
-    else
+    if (s.contains("key") && s["key"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        t.source.key = s["key"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    } else {
         t.source.key.clear();
-    if (s.contains("display_name") && s["display_name"].isString())
-        t.source.display_name = s["display_name"].get<std::string>();
-    else
+    }
+    if (s.contains("display_name") && s["display_name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        t.source.display_name = s["display_name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    } else {
         t.source.display_name.clear();
-    if (s.contains("available") && s["available"].isBoolean())
-        t.source.available = s["available"].get<bool>();
-    else
+    }
+    if (s.contains("available") && s["available"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        t.source.available = s["available"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    } else {
         t.source.available = true;
-    if (t.source.kind == kanariv::types::SourceKind::path && t.source.key.empty())
+    }
+    if (t.source.kind == kanariv::types::SourceKind::path && t.source.key.empty()) {
         t.source.key = t.path;
+    }
 }
 
 // Reads the fingerprint from JSON, falling back to a path-derived fingerprint
 // when the JSON value is absent, empty, or undecodable.
 static void readFingerprint(const Json& j, const std::string& path,
-                            std::array<std::uint8_t, 32>& fp) {
+                            std::array<std::uint8_t, fingerprintSize>& fp) {
     std::string fpHex;
     getStrHelper(j, "fingerprint", fpHex);
     if (!fpHex.empty()) {
-        if (fromHex(fpHex, fp))
+        if (fromHex(fpHex, fp)) {
             return;
+        }
     }
     fp = fallbackFingerprint(path);
 }
 
 // Helper used by readFingerprint — mirrors getStr lambda but as a free function.
 static void getStrHelper(const Json& j, const char* k, std::string& out) {
-    if (j.contains(k) && !j[k].isNull() && j[k].isString())
-        out = j[k].get<std::string>();
-    else
+    if (j.contains(k) && !j[k].isNull() && j[k].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        out = j[k].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    } else {
         out.clear();
+    }
 }
 
 } // namespace kanariv::utils

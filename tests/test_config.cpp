@@ -1,9 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/config.hpp>
 #include <common.hpp>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <kanariv/config.hpp>
 #include <string>
 #include <system_error>
 
@@ -139,7 +139,7 @@ TEST_CASE("config defaults for playback-policy keys", "[config]") {
 
     auto loaded = kanariv::config::loadConfig(cfgPath);
     REQUIRE(loaded.has_value());
-    REQUIRE(loaded->clearStopsPlayback == true);   // default
-    REQUIRE(loaded->repeatDefault == "off");        // default
-    REQUIRE(loaded->autostart == false);            // default
+    REQUIRE(loaded->clearStopsPlayback == true); // default
+    REQUIRE(loaded->repeatDefault == "off");     // default
+    REQUIRE(loaded->autostart == false);         // default
 }

@@ -1,10 +1,10 @@
 #pragma once
 
-#include <kanariv/utils.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <expected>
+#include <kanariv/utils.hpp>
 #include <memory>
 #include <span>
 #include <string>
@@ -62,7 +62,7 @@ class SqliteStatement final {
      * @return Success or Error with StatusCode::Internal and sqlite error message.
      */
     [[nodiscard]] std::expected<void, kanariv::utils::Error> prepare(sqlite3* db,
-                                                                    std::string_view sql);
+                                                                     std::string_view sql);
     /**
      * @brief Binds an int64 at 1-based index.
      * @ingroup kanariv_db

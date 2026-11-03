@@ -1,14 +1,14 @@
 ﻿#include <algorithm>
 #include <atomic>
 #include <bit>
-#include <kanariv/ipc/shm_status.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
-#include <kanariv/windows_fwd.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <expected>
+#include <kanariv/ipc/shm_status.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/windows_fwd.hpp>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -23,18 +23,20 @@
 namespace kanariv::ipc {
 
 // Helpers for bit_cast atomic operations
-double atomicLoadDouble(const std::atomic<uint64_t>& a) noexcept {
+auto atomicLoadDouble(const std::atomic<uint64_t>& a) noexcept -> double {
     return std::bit_cast<double>(a.load(std::memory_order_acquire));
 }
 void atomicStoreDouble(std::atomic<uint64_t>& a, double v) noexcept {
     a.store(std::bit_cast<uint64_t>(v), std::memory_order_relaxed);
 }
-float atomicLoadFloat(const std::atomic<uint32_t>& a) noexcept {
+auto atomicLoadFloat(const std::atomic<uint32_t>& a) noexcept -> float {
     return std::bit_cast<float>(a.load(std::memory_order_acquire));
 }
 void atomicStoreFloat(std::atomic<uint32_t>& a, float v) noexcept {
     a.store(std::bit_cast<uint32_t>(v), std::memory_order_relaxed);
 }
+
+constexpr int spinCountYieldThreshold = 3;
 
 namespace {
 
@@ -48,7 +50,7 @@ struct ShmRaw {
 
 // Opens or creates a shared-memory segment and fills `raw`. Returns an error
 // description on failure (empty string on success).
-std::string openShmRaw(const std::string& name, bool create, ShmRaw& raw) {
+auto openShmRaw(const std::string& name, bool create, ShmRaw& raw) -> std::string {
 #ifdef _WIN32
     std::string fullName = "kanariv-" + name + "-status";
 #elif defined(__ANDROID__)
@@ -89,8 +91,9 @@ std::string openShmRaw(const std::string& name, bool create, ShmRaw& raw) {
 #ifdef _WIN32
     std::wstring wname;
     wname.reserve(fullName.size());
-    for (char c : fullName)
+    for (char c : fullName) {
         wname.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
+    }
 
     DWORD access = fileMapRead | fileMapWrite;
     DWORD protect = pageReadWrite;
@@ -103,12 +106,12 @@ std::string openShmRaw(const std::string& name, bool create, ShmRaw& raw) {
         hMap = ::OpenFileMappingW(access, boolFalse, wname.c_str());
     }
 
-    if (!hMap) {
+    if (hMap == nullptr) {
         return "CreateFileMapping/OpenFileMapping failed: " + std::to_string(::GetLastError());
     }
 
     void* ptr = ::MapViewOfFile(hMap, access, 0, 0, sizeof(AtomicShmStatus));
-    if (!ptr) {
+    if (ptr == nullptr) {
         ::CloseHandle(hMap);
         return "MapViewOfFile failed: " + std::to_string(::GetLastError());
     }
@@ -129,7 +132,7 @@ void closeShmRaw(AtomicShmStatus*& map, std::size_t& size, std::intptr_t& handle
     (void)size;
     (void)created;
     (void)name;
-    if (map) {
+    if (map != nullptr) {
 #if !defined(_WIN32) && !defined(__ANDROID__)
         ::munmap(map, size);
         map = nullptr;
@@ -157,11 +160,12 @@ void closeShmRaw(AtomicShmStatus*& map, std::size_t& size, std::intptr_t& handle
 
 } // namespace
 
-ShmStatusReader::ExpectedShm ShmStatusReader::openReadOnly(const std::string& name) {
+auto ShmStatusReader::openReadOnly(const std::string& name) -> ShmStatusReader::ExpectedShm {
     ShmRaw raw;
     std::string err = openShmRaw(name, false, raw);
-    if (!err.empty())
+    if (!err.empty()) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, err)};
+    }
     ShmStatusReader reader;
     reader.map_ = raw.map;
     reader.size_ = raw.size;
@@ -181,7 +185,7 @@ ShmStatusReader::ShmStatusReader(ShmStatusReader&& other) noexcept
     other.handle_ = -1;
 }
 
-ShmStatusReader& ShmStatusReader::operator=(ShmStatusReader&& other) noexcept {
+auto ShmStatusReader::operator=(ShmStatusReader&& other) noexcept -> ShmStatusReader& {
     if (this != &other) {
         closeShmRaw(map_, size_, handle_, false, name_);
         map_ = other.map_;
@@ -195,26 +199,27 @@ ShmStatusReader& ShmStatusReader::operator=(ShmStatusReader&& other) noexcept {
     return *this;
 }
 
-bool ShmStatusReader::valid() const noexcept {
+auto ShmStatusReader::valid() const noexcept -> bool {
     return map_ != nullptr;
 }
 
-const std::string& ShmStatusReader::name() const noexcept {
+auto ShmStatusReader::name() const noexcept -> const std::string& {
     return name_;
 }
 
 // Seqlock reader: returns a snapshot copy of the status
-ShmStatus ShmStatusReader::snapshot() const {
+auto ShmStatusReader::snapshot() const -> ShmStatus {
     ShmStatus out{};
-    if (!map_)
+    if (map_ == nullptr) {
         return out;
+    }
     AtomicShmStatus* s = map_;
     uint32_t spinCount = 0;
     while (true) {
         uint64_t seq = s->seq.load(std::memory_order_acquire);
-        if (seq & 1) {
+        if ((seq & 1) != 0) {
             // Writer busy, retry with occasional yield
-            if (++spinCount >= 3) {
+            if (++spinCount >= spinCountYieldThreshold) {
                 std::this_thread::yield();
                 spinCount = 0;
             }
@@ -243,11 +248,12 @@ void ShmStatusReader::close() noexcept {
     closeShmRaw(map_, size_, handle_, false, name_);
 }
 
-ShmStatusWriter::ExpectedShm ShmStatusWriter::create(const std::string& name) {
+auto ShmStatusWriter::create(const std::string& name) -> ShmStatusWriter::ExpectedShm {
     ShmRaw raw;
     std::string err = openShmRaw(name, true, raw);
-    if (!err.empty())
+    if (!err.empty()) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, err)};
+    }
     ShmStatusWriter writer;
     writer.map_ = raw.map;
     writer.size_ = raw.size;
@@ -270,7 +276,7 @@ ShmStatusWriter::ShmStatusWriter(ShmStatusWriter&& other) noexcept
     other.create_ = false;
 }
 
-ShmStatusWriter& ShmStatusWriter::operator=(ShmStatusWriter&& other) noexcept {
+auto ShmStatusWriter::operator=(ShmStatusWriter&& other) noexcept -> ShmStatusWriter& {
     if (this != &other) {
         closeShmRaw(map_, size_, handle_, create_, name_);
         map_ = other.map_;
@@ -286,23 +292,25 @@ ShmStatusWriter& ShmStatusWriter::operator=(ShmStatusWriter&& other) noexcept {
     return *this;
 }
 
-bool ShmStatusWriter::valid() const noexcept {
+auto ShmStatusWriter::valid() const noexcept -> bool {
     return map_ != nullptr;
 }
 
-const std::string& ShmStatusWriter::name() const noexcept {
+auto ShmStatusWriter::name() const noexcept -> const std::string& {
     return name_;
 }
 
 // Seqlock writer: publishes the plain update under an odd/even sequence.
 void ShmStatusWriter::publish(const ShmStatusUpdate& u) noexcept {
-    if (!map_)
+    if (map_ == nullptr) {
         return;
+    }
     AtomicShmStatus* s = map_;
     uint64_t old = s->seq.load(std::memory_order_acquire);
     // Ensure old is even
-    if (old & 1)
+    if ((old & 1) != 0) {
         old++;
+    }
 
     // Mark as writing (odd)
     s->seq.store(old + 1, std::memory_order_release);
@@ -331,14 +339,16 @@ void ShmStatusWriter::publish(const ShmStatusUpdate& u) noexcept {
 }
 
 void ShmStatusWriter::setDuration(double dur) noexcept {
-    if (!map_)
+    if (map_ == nullptr) {
         return;
+    }
     atomicStoreDouble(map_->duration, dur);
 }
 
 void ShmStatusWriter::setQueueSize(size_t sz) noexcept {
-    if (!map_)
+    if (map_ == nullptr) {
         return;
+    }
     map_->queueSize.store(sz, std::memory_order_relaxed);
 }
 

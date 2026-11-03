@@ -10,10 +10,10 @@
  * preserve field order across export/import.
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/utils/record_json.hpp>
 #include <expected>
 #include <filesystem>
+#include <kanariv/fwd.hpp>
+#include <kanariv/utils/record_json.hpp>
 
 namespace kanariv::db {
 
@@ -30,8 +30,8 @@ namespace kanariv::db {
  * @see importJson
  * @see trackToJson
  */
-KANARIV_API std::expected<void, kanariv::utils::Error> exportJson(contracts::IDatabase& db,
-                                                     const std::filesystem::path& outPath);
+KANARIV_API std::expected<void, kanariv::utils::Error>
+exportJson(contracts::IDatabase& db, const std::filesystem::path& outPath);
 
 /**
  * @brief Imports tracks from a JSON file (transactional upsert).
@@ -53,7 +53,7 @@ KANARIV_API std::expected<void, kanariv::utils::Error> exportJson(contracts::IDa
  * @see exportJson
  * @see trackFromJson
  */
-KANARIV_API std::expected<void, kanariv::utils::Error> importJson(contracts::IDatabase& db,
-                                                     const std::filesystem::path& inPath);
+KANARIV_API std::expected<void, kanariv::utils::Error>
+importJson(contracts::IDatabase& db, const std::filesystem::path& inPath);
 
 } // namespace kanariv::db

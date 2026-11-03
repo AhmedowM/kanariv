@@ -12,11 +12,11 @@
  *   (batched upsert of the discovered tracks under the database mutex).
  */
 
+#include <expected>
+#include <filesystem>
 #include <kanariv/types/record.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/generator.hpp>
-#include <expected>
-#include <filesystem>
 #include <vector>
 
 namespace kanariv::media {
@@ -42,8 +42,8 @@ enum class ScanMode {
  * @see ScanMode
  * @see scanTracksToVector
  */
-KANARIV_API kanariv::utils::Generator<kanariv::types::Track> scanTracks(const std::filesystem::path& root,
-                                                          ScanMode mode = ScanMode::Sampled);
+KANARIV_API kanariv::utils::Generator<kanariv::types::Track>
+scanTracks(const std::filesystem::path& root, ScanMode mode = ScanMode::Sampled);
 
 /**
  * @brief Scans a directory and collects all tracks into a vector.

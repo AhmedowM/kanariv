@@ -12,9 +12,9 @@
  * too. No dependencies.
  */
 
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
 #include <kanariv/types/format.hpp>
 #include <kanariv/types/parse.hpp>
 #include <kanariv/types/record.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/types/engine.hpp>
 #include <kanariv/types/wire.hpp>

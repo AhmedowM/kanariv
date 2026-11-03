@@ -6,9 +6,9 @@
  * @ingroup kanariv_utils
  */
 
-#include <kanariv/fwd.hpp>
 #include <format>
 #include <functional>
+#include <kanariv/fwd.hpp>
 #include <mutex>
 #include <optional>
 #include <string>

@@ -38,10 +38,10 @@
  * - Seeking uses stream time_base for accurate container positioning
  */
 
-#include <kanariv/fwd.hpp>
 #include <chrono>
 #include <cstdint>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <memory>
 #include <string_view>
 

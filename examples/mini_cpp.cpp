@@ -1,9 +1,9 @@
-#include <kanariv/player/player.hpp>
-#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <expected>
 #include <filesystem>
 #include <iostream>
+#include <kanariv/player/player.hpp>
+#include <kanariv/utils/error.hpp>
 #include <string>
 #include <thread>
 #include <utility>
@@ -14,7 +14,7 @@ namespace kanariv::examples {
 
 class MiniPlayer {
   public:
-    Expected<void> run(const std::string& path) {
+    auto run(const std::string& path) -> Expected<void> {
         auto playerResult = Player::create();
         if (!playerResult) {
             return std::unexpected(playerResult.error());
@@ -35,8 +35,9 @@ class MiniPlayer {
         }
 
         // Wait for playback to finish
+        constexpr int pollSleepMs = 100;
         while (player->state() == State::Playing) {
-            std::this_thread::sleep_for(std::chrono::milliseconds{100});
+            std::this_thread::sleep_for(std::chrono::milliseconds{pollSleepMs});
             double pos = player->position().count();
             if (pos > 0) {
                 std::cout << "\rPlayed: " << pos << "s" << std::flush;
@@ -50,7 +51,9 @@ class MiniPlayer {
 
 } // namespace kanariv::examples
 
-int main(int argc, char** argv) {
+auto main(int argc, char** argv) -> int {
+    constexpr int exitCodeSuccess = 0;
+    constexpr int exitCodeFailure = 1;
     using namespace kanariv::examples;
 
     std::string path;
@@ -67,7 +70,7 @@ int main(int argc, char** argv) {
 
     if (!std::filesystem::exists(path)) {
         std::cerr << "File not found: " << path << "\n";
-        return 1;
+        return exitCodeFailure;
     }
 
     MiniPlayer mini;
@@ -75,7 +78,7 @@ int main(int argc, char** argv) {
     if (!StatusCode) {
         std::cerr << "Error: " << StatusCode.error().message
                   << " (code: " << static_cast<int>(StatusCode.error().code) << ")\n";
-        return 1;
+        return exitCodeFailure;
     }
-    return 0;
+    return exitCodeSuccess;
 }

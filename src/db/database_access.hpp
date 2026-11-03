@@ -18,10 +18,10 @@
  */
 
 #include <array>
-#include <kanariv/db/database.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/db/database.hpp>
 #include <shared_mutex>
 #include <string_view>
 #include <vector>
@@ -94,7 +94,7 @@ struct DatabaseAccess {
      * @return Track or Error.
      */
     static std::expected<kanariv::types::Track, kanariv::utils::Error> getTrackLocked(Database& db,
-                                                                                    int64_t id);
+                                                                                      int64_t id);
     /**
      * @brief Forwards to Database::insertTrackLocked().
      * @ingroup kanariv_db
@@ -136,8 +136,8 @@ struct DatabaseAccess {
      * @param l kanariv::types::Library with updated fields.
      * @return Success or Error InvalidArg/NotFound/Internal.
      */
-    static std::expected<void, kanariv::utils::Error> libraryUpdateLocked(Database& db,
-                                                                         const kanariv::types::Library& l);
+    static std::expected<void, kanariv::utils::Error>
+    libraryUpdateLocked(Database& db, const kanariv::types::Library& l);
 
     // --- Playlist / queue locked helpers ---
     /**

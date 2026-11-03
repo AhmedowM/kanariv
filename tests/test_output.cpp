@@ -1,18 +1,19 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/player/output.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/ring.hpp>
 #include <cmath>
 #include <common.hpp>
 #include <cstddef>
+#include <kanariv/player/output.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <span>
 #include <support/ring_fill.hpp>
 
 TEST_CASE("output callback no alloc") {
     KANARIV_SKIP_IF_NOAUDIO();
     kanariv::utils::SpscRing<float> ring{8192, 2};
-    auto out = kanariv::player::AudioOutput::create({.sampleRate=48000, .channels=2, .ring=&ring, .volume=1.0f});
+    auto out = kanariv::player::AudioOutput::create(
+        {.sampleRate = 48000, .channels = 2, .ring = &ring, .volume = 1.0f});
     REQUIRE(out);
     std::array<float, 512> buf{};
     kanariv::player::detail::fillFromRing(buf, nullptr, 1, 1.0f);
@@ -24,7 +25,8 @@ TEST_CASE("output fillFromRing pattern * volume and tail zero", "[output]") {
     KANARIV_SKIP_IF_NOAUDIO();
     kanariv::utils::SpscRing<float> ring{8192, 2};
     // volume 0.5
-    auto outRes = kanariv::player::AudioOutput::create({.sampleRate=48000, .channels=2, .ring=&ring, .volume=0.5f});
+    auto outRes = kanariv::player::AudioOutput::create(
+        {.sampleRate = 48000, .channels = 2, .ring = &ring, .volume = 0.5f});
     REQUIRE(outRes.has_value());
     auto& out = *outRes.value();
     REQUIRE(out.volume() == 0.5f);
@@ -62,7 +64,8 @@ TEST_CASE("output fillFromRing pattern * volume and tail zero", "[output]") {
 TEST_CASE("output setVolume clamp", "[output]") {
     KANARIV_SKIP_IF_NOAUDIO();
     kanariv::utils::SpscRing<float> ring{1024, 1};
-    auto outRes = kanariv::player::AudioOutput::create({.sampleRate=48000, .channels=1, .ring=&ring, .volume=1.0f});
+    auto outRes = kanariv::player::AudioOutput::create(
+        {.sampleRate = 48000, .channels = 1, .ring = &ring, .volume = 1.0f});
     REQUIRE(outRes.has_value());
     auto& out = *outRes.value();
     out.setVolume(-1.0f);
@@ -80,7 +83,8 @@ TEST_CASE("output setVolume clamp", "[output]") {
 TEST_CASE("output fillFromRing volume 1.0 passthrough", "[output]") {
     KANARIV_SKIP_IF_NOAUDIO();
     kanariv::utils::SpscRing<float> ring{8192, 1};
-    auto outRes = kanariv::player::AudioOutput::create({.sampleRate=48000, .channels=1, .ring=&ring, .volume=1.0f});
+    auto outRes = kanariv::player::AudioOutput::create(
+        {.sampleRate = 48000, .channels = 1, .ring = &ring, .volume = 1.0f});
     REQUIRE(outRes.has_value());
     auto& out = *outRes.value();
     std::array<float, 4> pat{0.1f, 0.2f, 0.3f, 0.4f};

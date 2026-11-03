@@ -6,10 +6,10 @@
  * @ingroup kanariv_client
  */
 
+#include <filesystem>
 #include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <filesystem>
 #include <memory>
 #include <string_view>
 
@@ -36,7 +36,7 @@ class IpcClient {
      * the canonical socket path (honors XDG/LOCALAPPDATA + hash of dbPath).
      */
     static kanariv::utils::Expected<IpcClient> connect(const std::filesystem::path& dbPath,
-                                                      std::string_view socketPathOverride = {});
+                                                       std::string_view socketPathOverride = {});
 
     /**
      * @brief Destructor: closes the connection.

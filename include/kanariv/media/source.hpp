@@ -22,12 +22,12 @@
  *   header only describes how to obtain a reader now.
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/media/reader.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <kanariv/fwd.hpp>
+#include <kanariv/media/reader.hpp>
 #include <memory>
 #include <string>
 #include <string_view>

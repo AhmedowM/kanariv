@@ -1,5 +1,5 @@
-#include <kanariv/app/paths.hpp>
 #include <iostream>
+#include <kanariv/app/paths.hpp>
 #include <vector>
 
 int main() {

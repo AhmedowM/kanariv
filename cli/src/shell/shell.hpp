@@ -1,13 +1,13 @@
 #pragma once
 
-#include <kanariv/app.hpp>
-#include <kanariv/config.hpp>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <kanariv/app.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/utils/error.hpp>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -25,13 +25,14 @@ namespace detail {
 // CLI-internal helpers (adapt parse.hpp string-errors into utils::Error).
 
 /// @brief Parses `s`/`mm:ss`/`hh:mm:ss` into seconds (see parse.hpp).
-std::expected<double, kanariv::utils::Error> parseTime(std::string_view s);
+auto parseTime(std::string_view s) -> std::expected<double, kanariv::utils::Error>;
 /// @brief Parses absolute or `+`/`-` relative seeks into seconds-or-delta.
-std::expected<double, kanariv::utils::Error> parseSeek(std::string_view s);
+auto parseSeek(std::string_view s) -> std::expected<double, kanariv::utils::Error>;
 /// @brief Parses `0-100`/`+n`/`-n`/`mute`/`unmute`/empty(show) into VolumeSet.
-std::expected<kanariv::ipc::VolumeSet, kanariv::utils::Error> parseVolume(std::string_view s);
+auto parseVolume(std::string_view s)
+    -> std::expected<kanariv::ipc::VolumeSet, kanariv::utils::Error>;
 /// @brief parseTime result as a duration.
-std::chrono::duration<double> parseDuration(std::string_view s);
+auto parseDuration(std::string_view s) -> std::chrono::duration<double>;
 
 } // namespace detail
 
@@ -43,7 +44,7 @@ class Shell {
   public:
     explicit Shell(kanariv::config::Config cfg);
     ~Shell();
-    int run(int argc, char** argv);
+    auto run(int argc, char** argv) -> int;
 
   private:
     kanariv::config::Config config_;
@@ -146,7 +147,12 @@ class Shell {
     bool seekJson = false;
     bool jsonFlag = false;
     bool statusWatch = false;
-    int statusInterval = 1000;
+    static constexpr int defaultStatusInterval = 1000;
+    static constexpr int defaultSearchLimit = 50;
+    static constexpr int defaultListLimit = 50;
+    static constexpr int defaultFavLimit = 50;
+    static constexpr int defaultHistoryLimit = 50;
+    int statusInterval = defaultStatusInterval;
     std::string volumeArg;
     bool volumeJson = false;
 
@@ -218,7 +224,7 @@ class Shell {
     bool libScanFullHash = false;
     bool libScanJson = false;
     std::string libSearchQuery;
-    int libSearchLimit = 50;
+    int libSearchLimit = defaultSearchLimit;
     bool libSearchJson = false;
     bool libStatsJson = false;
     int libStatsTopTracks = -1;
@@ -232,7 +238,7 @@ class Shell {
     bool libAddJson = false;
     std::string libRemoveQuery;
     bool libRemoveJson = false;
-    int libListLimit = 50;
+    int libListLimit = defaultListLimit;
     int libListOffset = 0;
     std::string libListQuery;
     std::string libListSort;
@@ -244,7 +250,7 @@ class Shell {
     int libListRating = 0;
     bool libListJson = false;
     int libFavMinRating = 1;
-    int libFavLimit = 50;
+    int libFavLimit = defaultFavLimit;
     bool libFavJson = false;
     std::string libMaintAction = "report";
     bool libMaintDryRun = true;
@@ -269,7 +275,7 @@ class Shell {
     // History
     bool historyJson = false;
     bool historyClearJson = false;
-    int historyLimit = 50;
+    int historyLimit = defaultHistoryLimit;
 
     // Bookmark
     std::string bmAddTime;
@@ -330,37 +336,37 @@ class Shell {
     void setupVersionCommand();
 
     // Environment setup helpers.
-    int setupConfig(const std::string& configPathStr);
+    auto setupConfig(const std::string& configPathStr) -> int;
     void setupDaemonHost();
 
     // Command dispatch handlers.
-    int dispatchVersion();
-    int dispatchDaemonMode();
-    int dispatchDirectPlay();
-    int dispatchStart();
-    int dispatchShutdown();
-    int dispatchPlay();
-    int dispatchPause();
-    int dispatchResume();
-    int dispatchRestart();
-    int dispatchStop();
-    int dispatchNext();
-    int dispatchPrev();
-    int dispatchSeek();
-    int dispatchStatus();
-    int dispatchVolume();
-    int dispatchQueue();
-    int dispatchPlaylist();
-    int dispatchLibrary();
-    int dispatchTag();
-    int dispatchTrack();
-    int dispatchHistory();
-    int dispatchBookmark();
-    int dispatchPreview();
-    int dispatchConfig();
-    int dispatchDevice();
-    int dispatchInfo();
-    int dispatchHelp();
+    auto dispatchVersion() const -> int;
+    auto dispatchDaemonMode() -> int;
+    auto dispatchDirectPlay() -> int;
+    auto dispatchStart() -> int;
+    auto dispatchShutdown() -> int;
+    auto dispatchPlay() -> int;
+    auto dispatchPause() -> int;
+    auto dispatchResume() -> int;
+    auto dispatchRestart() -> int;
+    auto dispatchStop() -> int;
+    auto dispatchNext() -> int;
+    auto dispatchPrev() -> int;
+    auto dispatchSeek() -> int;
+    auto dispatchStatus() -> int;
+    auto dispatchVolume() -> int;
+    auto dispatchQueue() -> int;
+    auto dispatchPlaylist() -> int;
+    auto dispatchLibrary() -> int;
+    auto dispatchTag() -> int;
+    auto dispatchTrack() -> int;
+    auto dispatchHistory() -> int;
+    auto dispatchBookmark() -> int;
+    auto dispatchPreview() -> int;
+    auto dispatchConfig() -> int;
+    auto dispatchDevice() -> int;
+    auto dispatchInfo() -> int;
+    auto dispatchHelp() -> int;
 };
 
 } // namespace kanariv::app::cli

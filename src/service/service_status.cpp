@@ -28,8 +28,8 @@
 #include <kanariv/windows_fwd.hpp>
 
 namespace kanariv::service::detail {
-std::expected<kanariv::ipc::Status, kanariv::utils::Error>
-buildStatus(kanariv::engine::Engine& eng, kanariv::contracts::IDatabase& db) {
+auto buildStatus(kanariv::engine::Engine& eng, kanariv::contracts::IDatabase& db)
+    -> std::expected<kanariv::ipc::Status, kanariv::utils::Error> {
     kanariv::ipc::Status s{};
     s.version = std::string(kanariv::version::version());
     s.state = eng.state();
@@ -56,8 +56,9 @@ buildStatus(kanariv::engine::Engine& eng, kanariv::contracts::IDatabase& db) {
         s.q_size = db.queueCount(activeQ);
         s.q_idx = 0;
         if (s.track_id != 0) {
-            if (auto idx = db.queueIndexOf(activeQ, s.track_id); idx)
+            if (auto idx = db.queueIndexOf(activeQ, s.track_id); idx) {
                 s.q_idx = *idx;
+            }
         }
     } catch (...) {
     }

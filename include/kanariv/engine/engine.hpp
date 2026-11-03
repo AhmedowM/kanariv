@@ -36,13 +36,13 @@
  * cheap; the public API is unchanged.
  */
 
-#include <kanariv/types/db.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/fwd.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -393,7 +393,8 @@ class KANARIV_API Engine final {
     /**
      * @brief Pops one event from the MPSC queue (non-blocking).
      * @ingroup kanariv_engine
-     * @return `std::expected<kanariv::types::EngineEvent, Error>` -- event on success, NotFound if queue empty.
+     * @return `std::expected<kanariv::types::EngineEvent, Error>` -- event on success, NotFound if
+     * queue empty.
      * @par Thread safety
      * Thread-safe; the event queue is a bounded MPSC.
      * @see drainEvents
@@ -519,7 +520,8 @@ class KANARIV_API Engine final {
     /**
      * @brief Constructs Engine with config defaults applied.
      * @ingroup kanariv_engine
-     * @param cfg kanariv::types::EngineConfig; zero poll/gapless/history values are replaced by defaults.
+     * @param cfg kanariv::types::EngineConfig; zero poll/gapless/history values are replaced by
+     * defaults.
      * @details Applies defaults: pollMs 10, gaplessMs 300, historyThresholdPct 60,
      * historyThresholdSecs 90; initializes atomics and copies callbacks.
      */

@@ -1,11 +1,4 @@
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/contracts/database.hpp>
-#include <kanariv/db/database.hpp>
-#include <kanariv/db/maintenance.hpp>
-#include <kanariv/db/scan.hpp>
-#include <kanariv/media/scan.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/log.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <cstddef>
@@ -13,6 +6,13 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <kanariv/contracts/database.hpp>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/maintenance.hpp>
+#include <kanariv/db/scan.hpp>
+#include <kanariv/media/scan.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -156,7 +156,7 @@ TEST_CASE("scanLibrary inserts and dedup by fingerprint", "[db_scan]") {
 
 TEST_CASE("scan non-existent dir returns empty", "[db_scan]") {
     auto tracks = kanariv::media::scanTracksToVector("/nonexistent_path_xyz_12345",
-                                                    kanariv::media::ScanMode::Sampled);
+                                                     kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->empty());
 }

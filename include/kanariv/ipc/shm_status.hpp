@@ -19,11 +19,11 @@
  */
 
 #include <atomic>
-#include <kanariv/fwd.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/fwd.hpp>
+#include <kanariv/utils/error.hpp>
 #include <string>
 #include <string_view>
 

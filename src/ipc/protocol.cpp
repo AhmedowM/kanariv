@@ -1,3 +1,9 @@
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <expected>
+#include <format>
+#include <ipc/protocol_internal.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -9,12 +15,6 @@
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/record_json.hpp>
 #include <kanariv/utils/result.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <exception>
-#include <expected>
-#include <format>
-#include <ipc/protocol_internal.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -25,39 +25,52 @@
 
 namespace kanariv::ipc::detail {
 
-std::string resultCodeToString(kanariv::utils::StatusCode r) {
+auto resultCodeToString(kanariv::utils::StatusCode r) -> std::string {
     return std::string(kanariv::utils::toString(r));
 }
 
-std::expected<kanariv::utils::StatusCode, kanariv::utils::Error>
-resultCodeFromString(std::string_view sv) {
+auto resultCodeFromString(std::string_view sv)
+    -> std::expected<kanariv::utils::StatusCode, kanariv::utils::Error> {
     using R = kanariv::utils::StatusCode;
-    if (sv == "Ok")
+    if (sv == "Ok") {
         return R::Ok;
-    if (sv == "InvalidArg")
+    }
+    if (sv == "InvalidArg") {
         return R::InvalidArg;
-    if (sv == "NotFound")
+    }
+    if (sv == "NotFound") {
         return R::NotFound;
-    if (sv == "Unsupported")
+    }
+    if (sv == "Unsupported") {
         return R::Unsupported;
-    if (sv == "Io")
+    }
+    if (sv == "Io") {
         return R::Io;
-    if (sv == "Device")
+    }
+    if (sv == "Device") {
         return R::Device;
-    if (sv == "State")
+    }
+    if (sv == "State") {
         return R::State;
-    if (sv == "NoMem")
+    }
+    if (sv == "NoMem") {
         return R::NoMem;
-    if (sv == "Internal")
+    }
+    if (sv == "Internal") {
         return R::Internal;
-    if (sv == "AlreadyExists")
+    }
+    if (sv == "AlreadyExists") {
         return R::AlreadyExists;
-    if (sv == "Busy")
+    }
+    if (sv == "Busy") {
         return R::Busy;
-    if (sv == "Corrupt")
+    }
+    if (sv == "Corrupt") {
         return R::Corrupt;
-    if (sv == "NoSpace")
+    }
+    if (sv == "NoSpace") {
         return R::NoSpace;
+    }
     return std::unexpected{kanariv::utils::makeError(R::InvalidArg, "unknown Result code")};
 }
 
@@ -66,35 +79,43 @@ resultCodeFromString(std::string_view sv) {
 // (The former ipc::detail subset is deleted; wire readers tolerate the
 // fuller db field set: all reads are contains-guarded.)
 
-Json playlistToJson(const kanariv::types::Playlist& p) {
+auto playlistToJson(const kanariv::types::Playlist& p) -> Json {
     Json j;
-    j["id"] = p.id;
-    j["name"] = p.name;
-    j["type"] = p.type;
-    j["smart_query"] = p.smart_query;
-    j["created"] = p.created;
-    j["modified"] = p.modified;
-    j["library_id"] = p.library_id;
+    j["id"] = p.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["name"] = p.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["type"] = p.type; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["smart_query"] = p.smart_query; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["created"] = p.created; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["modified"] = p.modified; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["library_id"] = p.library_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-std::expected<kanariv::types::Playlist, kanariv::utils::Error> playlistFromJson(const Json& j) {
+auto playlistFromJson(const Json& j)
+    -> std::expected<kanariv::types::Playlist, kanariv::utils::Error> {
     try {
         kanariv::types::Playlist p{};
-        if (j.contains("id") && j["id"].isNumber())
-            p.id = j["id"].get<int64_t>();
-        if (j.contains("name") && j["name"].isString())
-            p.name = j["name"].get<std::string>();
-        if (j.contains("type") && j["type"].isNumber())
-            p.type = j["type"].get<int32_t>();
-        if (j.contains("smart_query") && j["smart_query"].isString())
-            p.smart_query = j["smart_query"].get<std::string>();
-        if (j.contains("created") && j["created"].isNumber())
-            p.created = j["created"].get<int64_t>();
-        if (j.contains("modified") && j["modified"].isNumber())
-            p.modified = j["modified"].get<int64_t>();
-        if (j.contains("library_id") && j["library_id"].isNumber())
-            p.library_id = j["library_id"].get<int64_t>();
+        if (j.contains("id") && j["id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            p.id = j["id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        }
+        if (j.contains("name") && j["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            p.name = j["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        }
+        if (j.contains("type") && j["type"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            p.type = j["type"].get<int32_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        }
+        if (j.contains("smart_query") && j["smart_query"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            p.smart_query = j["smart_query"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        }
+        if (j.contains("created") && j["created"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            p.created = j["created"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        }
+        if (j.contains("modified") && j["modified"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            p.modified = j["modified"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        }
+        if (j.contains("library_id") && j["library_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            p.library_id = j["library_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        }
         return p;
     } catch (const std::exception& e) {
         return std::unexpected{
@@ -102,23 +123,23 @@ std::expected<kanariv::types::Playlist, kanariv::utils::Error> playlistFromJson(
     }
 }
 
-Json errorToJson(const kanariv::utils::Error& e) {
+auto errorToJson(const kanariv::utils::Error& e) -> Json {
     Json j;
-    j["type"] = "Error";
-    j["code"] = resultCodeToString(e.code);
-    j["code_value"] = std::to_underlying(e.code);
-    j["message"] = e.message;
+    j["type"] = "Error"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["code"] = resultCodeToString(e.code); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["code_value"] = std::to_underlying(e.code); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["message"] = e.message; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-std::expected<kanariv::utils::Error, kanariv::utils::Error> errorFromJson(const Json& j) {
+auto errorFromJson(const Json& j) -> std::expected<kanariv::utils::Error, kanariv::utils::Error> {
     try {
         std::string codeStr;
         std::string msg;
-        if (j.contains("code") && j["code"].isString())
-            codeStr = j["code"].get<std::string>();
-        else if (j.contains("code_value") && j["code_value"].isNumber()) {
-            int v = j["code_value"].get<int>();
+        if (j.contains("code") && j["code"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            codeStr = j["code"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        } else if (j.contains("code_value") && j["code_value"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            int v = j["code_value"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             // map via to_underlying comparison
             for (auto c :
                  {kanariv::utils::StatusCode::Ok, kanariv::utils::StatusCode::InvalidArg,
@@ -134,13 +155,16 @@ std::expected<kanariv::utils::Error, kanariv::utils::Error> errorFromJson(const 
                 }
             }
         }
-        if (j.contains("message") && j["message"].isString())
-            msg = j["message"].get<std::string>();
-        if (codeStr.empty())
+        if (j.contains("message") && j["message"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            msg = j["message"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        }
+        if (codeStr.empty()) {
             codeStr = "Internal";
+        }
         auto rc = resultCodeFromString(codeStr);
-        if (!rc)
+        if (!rc) {
             return std::unexpected{rc.error()};
+        }
         return kanariv::utils::Error{*rc, msg};
     } catch (const std::exception& e) {
         return std::unexpected{
@@ -152,280 +176,308 @@ std::expected<kanariv::utils::Error, kanariv::utils::Error> errorFromJson(const 
 
 namespace kanariv::ipc {
 
-Json toJson(const Command& cmd) {
+constexpr int defaultLibrarySearchLimit = 50;
+constexpr int defaultLibraryStatsTopTracks = 10;
+constexpr int frameByteIndex3 = 3;
+
+auto toJson(const Command& cmd) -> Json {
     return std::visit(
         [](const auto& v) -> Json {
             using T = std::decay_t<decltype(v)>;
             Json j;
             if constexpr (std::is_same_v<T, Play>) {
-                j["type"] = "Play";
+                j["type"] = "Play"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, Pause>) {
-                j["type"] = "Pause";
+                j["type"] = "Pause"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, Resume>) {
-                j["type"] = "Resume";
+                j["type"] = "Resume"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, Restart>) {
-                j["type"] = "Restart";
+                j["type"] = "Restart"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, Stop>) {
-                j["type"] = "Stop";
+                j["type"] = "Stop"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, Next>) {
-                j["type"] = "Next";
+                j["type"] = "Next"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, Prev>) {
-                j["type"] = "Prev";
+                j["type"] = "Prev"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, Seek>) {
-                j["type"] = "Seek";
-                j["seconds"] = v.seconds;
+                j["type"] = "Seek"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["seconds"] = v.seconds; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, StatusReq>) {
-                j["type"] = "StatusReq";
+                j["type"] = "StatusReq"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, StatusWait>) {
-                j["type"] = "StatusWait";
-                j["timeout_ms"] = v.timeout_ms;
+                j["type"] = "StatusWait"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["timeout_ms"] = v.timeout_ms; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, VolumeSet>) {
-                j["type"] = "VolumeSet";
-                if (v.level.has_value())
-                    j["level"] = *v.level;
-                else
-                    j["level"] = nullptr;
-                if (v.mute.has_value())
-                    j["mute"] = *v.mute;
-                else
-                    j["mute"] = nullptr;
-                if (v.deltaPct.has_value())
-                    j["deltaPct"] = *v.deltaPct;
-                else
-                    j["deltaPct"] = nullptr;
+                j["type"] = "VolumeSet"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.level.has_value()) {
+                    j["level"] = *v.level; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["level"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                if (v.mute.has_value()) {
+                    j["mute"] = *v.mute; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["mute"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                if (v.deltaPct.has_value()) {
+                    j["deltaPct"] = *v.deltaPct; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["deltaPct"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, QueueList>) {
-                j["type"] = "QueueList";
-                j["order"] = v.order;
+                j["type"] = "QueueList"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["order"] = v.order; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, QueueQueues>) {
-                j["type"] = "QueueQueues";
+                j["type"] = "QueueQueues"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, QueueCreate>) {
-                j["type"] = "QueueCreate";
-                j["name"] = v.name;
+                j["type"] = "QueueCreate"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["name"] = v.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, QueueDelete>) {
-                j["type"] = "QueueDelete";
-                j["qid"] = v.qid;
+                j["type"] = "QueueDelete"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["qid"] = v.qid; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, PlayFiles>) {
-                j["type"] = "PlayFiles";
-                j["paths"] = Json::array();
+                j["type"] = "PlayFiles"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["paths"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 for (const auto& p : v.paths) {
                     Json e;
                     e = p;
-                    j["paths"].push_back(e);
+                    j["paths"].push_back(e); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 }
-                j["save"] = v.save;
+                j["save"] = v.save; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, QueueSwitch>) {
-                j["type"] = "QueueSwitch";
-                j["qid"] = v.qid;
+                j["type"] = "QueueSwitch"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["qid"] = v.qid; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, QueueAdd>) {
-                j["type"] = "QueueAdd";
-                j["query"] = v.query;
-                j["search"] = v.search;
+                j["type"] = "QueueAdd"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["query"] = v.query; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["search"] = v.search; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, QueueRemove>) {
-                j["type"] = "QueueRemove";
-                j["idOrIndex"] = v.idOrIndex;
+                j["type"] = "QueueRemove"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["idOrIndex"] = v.idOrIndex; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, QueueMove>) {
-                j["type"] = "QueueMove";
-                j["from"] = v.from;
-                j["to"] = v.to;
+                j["type"] = "QueueMove"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["from"] = v.from; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["to"] = v.to; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, QueueClear>) {
-                j["type"] = "QueueClear";
+                j["type"] = "QueueClear"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, QueueShuffle>) {
-                j["type"] = "QueueShuffle";
-                if (v.on.has_value())
-                    j["on"] = *v.on;
-                else
-                    j["on"] = nullptr;
+                j["type"] = "QueueShuffle"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.on.has_value()) {
+                    j["on"] = *v.on; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["on"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, QueueRepeat>) {
-                j["type"] = "QueueRepeat";
-                if (v.mode.has_value())
-                    j["mode"] = std::format("{}", *v.mode);
-                else
-                    j["mode"] = nullptr;
+                j["type"] = "QueueRepeat"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.mode.has_value()) {
+                    j["mode"] = std::format("{}", *v.mode); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["mode"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, PlaylistList>) {
-                j["type"] = "PlaylistList";
+                j["type"] = "PlaylistList"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, PlaylistTracks>) {
-                j["type"] = "PlaylistTracks";
-                j["pid"] = v.pid;
+                j["type"] = "PlaylistTracks"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["pid"] = v.pid; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, PlaylistCreate>) {
-                j["type"] = "PlaylistCreate";
-                j["name"] = v.name;
-                j["smart_query"] = v.smart_query;
+                j["type"] = "PlaylistCreate"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["name"] = v.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["smart_query"] = v.smart_query; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, PlaylistAdd>) {
-                j["type"] = "PlaylistAdd";
-                j["pid"] = v.pid;
-                j["track_id"] = v.track_id;
+                j["type"] = "PlaylistAdd"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["pid"] = v.pid; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["track_id"] = v.track_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, PlaylistLoad>) {
-                j["type"] = "PlaylistLoad";
-                j["pid"] = v.pid;
-                j["play"] = v.play;
-                j["replace"] = v.replace;
+                j["type"] = "PlaylistLoad"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["pid"] = v.pid; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["play"] = v.play; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["replace"] = v.replace; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, PlaylistSave>) {
-                j["type"] = "PlaylistSave";
-                j["name"] = v.name;
-                if (v.queue_id.has_value())
-                    j["queue_id"] = *v.queue_id;
-                else
-                    j["queue_id"] = nullptr;
+                j["type"] = "PlaylistSave"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["name"] = v.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.queue_id.has_value()) {
+                    j["queue_id"] = *v.queue_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["queue_id"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, PlaylistDelete>) {
-                j["type"] = "PlaylistDelete";
-                j["pid"] = v.pid;
+                j["type"] = "PlaylistDelete"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["pid"] = v.pid; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, PlaylistRename>) {
-                j["type"] = "PlaylistRename";
-                j["pid"] = v.pid;
-                j["newName"] = v.newName;
+                j["type"] = "PlaylistRename"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["pid"] = v.pid; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["newName"] = v.newName; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, PlaylistExport>) {
-                j["type"] = "PlaylistExport";
-                j["pid"] = v.pid;
-                j["path"] = v.path;
-                j["format"] = v.format;
+                j["type"] = "PlaylistExport"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["pid"] = v.pid; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["path"] = v.path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["format"] = v.format; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, PlaylistImport>) {
-                j["type"] = "PlaylistImport";
-                j["path"] = v.path;
-                if (v.name.has_value())
-                    j["name"] = *v.name;
-                else
-                    j["name"] = nullptr;
+                j["type"] = "PlaylistImport"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["path"] = v.path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.name.has_value()) {
+                    j["name"] = *v.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["name"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, LibraryScan>) {
-                j["type"] = "LibraryScan";
-                if (v.path.has_value())
-                    j["path"] = *v.path;
-                else
-                    j["path"] = nullptr;
-                j["full_hash"] = v.full_hash;
+                j["type"] = "LibraryScan"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.path.has_value()) {
+                    j["path"] = *v.path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["path"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                j["full_hash"] = v.full_hash; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, LibrarySearch>) {
-                j["type"] = "LibrarySearch";
-                j["query"] = v.query;
-                j["limit"] = v.limit;
+                j["type"] = "LibrarySearch"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["query"] = v.query; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["limit"] = v.limit; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, LibraryStats>) {
-                j["type"] = "LibraryStats";
-                if (v.top_tracks)
-                    j["top_tracks"] = *v.top_tracks;
-                if (v.top_albums)
-                    j["top_albums"] = *v.top_albums;
-                if (v.top_genres)
-                    j["top_genres"] = *v.top_genres;
-                if (v.top_artists)
-                    j["top_artists"] = *v.top_artists;
+                j["type"] = "LibraryStats"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.top_tracks) {
+                    j["top_tracks"] = *v.top_tracks; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                if (v.top_albums) {
+                    j["top_albums"] = *v.top_albums; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                if (v.top_genres) {
+                    j["top_genres"] = *v.top_genres; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                if (v.top_artists) {
+                    j["top_artists"] = *v.top_artists; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, LibraryAdd>) {
-                j["type"] = "LibraryAdd";
-                j["path"] = v.path;
-                j["recursive"] = v.recursive;
+                j["type"] = "LibraryAdd"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["path"] = v.path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["recursive"] = v.recursive; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, LibraryRemove>) {
-                j["type"] = "LibraryRemove";
-                j["query"] = v.query;
+                j["type"] = "LibraryRemove"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["query"] = v.query; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, LibraryList>) {
-                j["type"] = "LibraryList";
-                if (v.query.has_value())
-                    j["query"] = *v.query;
-                else
-                    j["query"] = nullptr;
-                j["limit"] = v.limit;
-                j["offset"] = v.offset;
-                if (v.artist.has_value())
-                    j["artist"] = *v.artist;
-                else
-                    j["artist"] = nullptr;
-                if (v.album.has_value())
-                    j["album"] = *v.album;
-                else
-                    j["album"] = nullptr;
-                if (v.genre.has_value())
-                    j["genre"] = *v.genre;
-                else
-                    j["genre"] = nullptr;
-                if (v.rating.has_value())
-                    j["rating"] = *v.rating;
-                else
-                    j["rating"] = nullptr;
+                j["type"] = "LibraryList"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.query.has_value()) {
+                    j["query"] = *v.query; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["query"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                j["limit"] = v.limit; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["offset"] = v.offset; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.artist.has_value()) {
+                    j["artist"] = *v.artist; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["artist"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                if (v.album.has_value()) {
+                    j["album"] = *v.album; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["album"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                if (v.genre.has_value()) {
+                    j["genre"] = *v.genre; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["genre"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                if (v.rating.has_value()) {
+                    j["rating"] = *v.rating; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["rating"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, LibraryMaintenance>) {
-                j["type"] = "LibraryMaintenance";
-                j["action"] = v.action;
-                j["dry_run"] = v.dry_run;
-                j["library_id"] = v.library_id;
+                j["type"] = "LibraryMaintenance"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["action"] = v.action; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["dry_run"] = v.dry_run; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["library_id"] = v.library_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, TagEdit>) {
-                j["type"] = "TagEdit";
-                j["id"] = v.id;
-                j["field"] = v.field;
-                j["value"] = v.value;
+                j["type"] = "TagEdit"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["id"] = v.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["field"] = v.field; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["value"] = v.value; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, TagGet>) {
-                j["type"] = "TagGet";
-                if (v.id.has_value())
-                    j["id"] = *v.id;
-                if (v.path.has_value())
-                    j["path"] = *v.path;
-                j["cover"] = v.cover;
+                j["type"] = "TagGet"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.id.has_value()) {
+                    j["id"] = *v.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                if (v.path.has_value()) {
+                    j["path"] = *v.path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                j["cover"] = v.cover; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, ConfigGet>) {
-                j["type"] = "ConfigGet";
-                j["key"] = v.key;
+                j["type"] = "ConfigGet"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["key"] = v.key; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, ConfigSet>) {
-                j["type"] = "ConfigSet";
-                j["key"] = v.key;
-                j["value"] = v.value;
+                j["type"] = "ConfigSet"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["key"] = v.key; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["value"] = v.value; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, ConfigList>) {
-                j["type"] = "ConfigList";
+                j["type"] = "ConfigList"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, ConfigExport>) {
-                j["type"] = "ConfigExport";
-                j["path"] = v.path;
+                j["type"] = "ConfigExport"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["path"] = v.path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, ConfigImport>) {
-                j["type"] = "ConfigImport";
-                j["path"] = v.path;
+                j["type"] = "ConfigImport"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["path"] = v.path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, ConfigReset>) {
-                j["type"] = "ConfigReset";
-                if (v.key.has_value())
-                    j["key"] = *v.key;
-                else
-                    j["key"] = nullptr;
+                j["type"] = "ConfigReset"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.key.has_value()) {
+                    j["key"] = *v.key; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["key"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, HistoryList>) {
-                j["type"] = "HistoryList";
-                if (v.limit.has_value())
-                    j["limit"] = *v.limit;
-                else
-                    j["limit"] = nullptr;
+                j["type"] = "HistoryList"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.limit.has_value()) {
+                    j["limit"] = *v.limit; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["limit"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, HistoryClear>) {
-                j["type"] = "HistoryClear";
+                j["type"] = "HistoryClear"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, BookmarkList>) {
-                j["type"] = "BookmarkList";
-                if (v.track_id.has_value())
-                    j["track_id"] = *v.track_id;
-                else
-                    j["track_id"] = nullptr;
+                j["type"] = "BookmarkList"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.track_id.has_value()) {
+                    j["track_id"] = *v.track_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["track_id"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, BookmarkAdd>) {
-                j["type"] = "BookmarkAdd";
-                j["position_ms"] = v.position_ms;
-                j["note"] = v.note;
-                if (v.track_id.has_value())
-                    j["track_id"] = *v.track_id;
-                else
-                    j["track_id"] = nullptr;
+                j["type"] = "BookmarkAdd"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["position_ms"] = v.position_ms; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["note"] = v.note; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.track_id.has_value()) {
+                    j["track_id"] = *v.track_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["track_id"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
             } else if constexpr (std::is_same_v<T, BookmarkRemove>) {
-                j["type"] = "BookmarkRemove";
-                j["id"] = v.id;
+                j["type"] = "BookmarkRemove"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["id"] = v.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, BookmarkGoto>) {
-                j["type"] = "BookmarkGoto";
-                j["id"] = v.id;
+                j["type"] = "BookmarkGoto"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["id"] = v.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, Shutdown>) {
-                j["type"] = "Shutdown";
+                j["type"] = "Shutdown"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, Preview>) {
-                j["type"] = "Preview";
-                j["file"] = v.file;
+                j["type"] = "Preview"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["file"] = v.file; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, DeviceList>) {
-                j["type"] = "DeviceList";
+                j["type"] = "DeviceList"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, DeviceSet>) {
-                j["type"] = "DeviceSet";
-                j["id"] = v.id;
+                j["type"] = "DeviceSet"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["id"] = v.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, DeviceTest>) {
-                j["type"] = "DeviceTest";
-                if (v.id.has_value())
-                    j["id"] = *v.id;
-                else
-                    j["id"] = nullptr;
-                j["tone"] = v.tone;
+                j["type"] = "DeviceTest"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (v.id.has_value()) {
+                    j["id"] = *v.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                } else {
+                    j["id"] = nullptr; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                }
+                j["tone"] = v.tone; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, Info>) {
-                j["type"] = "Info";
+                j["type"] = "Info"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             } else if constexpr (std::is_same_v<T, TrackRate>) {
-                j["type"] = "TrackRate";
-                j["track_id"] = v.track_id;
-                j["rating"] = v.rating;
+                j["type"] = "TrackRate"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["track_id"] = v.track_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                j["rating"] = v.rating; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             }
             return j;
         },
@@ -433,205 +485,296 @@ Json toJson(const Command& cmd) {
 }
 
 // Forward declarations for commandFromJson helpers.
-static std::expected<Play, kanariv::utils::Error> parseCommandPlay(const Json& j);
-static std::expected<Pause, kanariv::utils::Error> parseCommandPause(const Json& j);
-static std::expected<Resume, kanariv::utils::Error> parseCommandResume(const Json& j);
-static std::expected<Restart, kanariv::utils::Error> parseCommandRestart(const Json& j);
-static std::expected<Stop, kanariv::utils::Error> parseCommandStop(const Json& j);
-static std::expected<Next, kanariv::utils::Error> parseCommandNext(const Json& j);
-static std::expected<Prev, kanariv::utils::Error> parseCommandPrev(const Json& j);
-static std::expected<Seek, kanariv::utils::Error> parseCommandSeek(const Json& j);
-static std::expected<StatusReq, kanariv::utils::Error> parseCommandStatusReq(const Json& j);
-static std::expected<StatusWait, kanariv::utils::Error> parseCommandStatusWait(const Json& j);
-static std::expected<VolumeSet, kanariv::utils::Error> parseCommandVolumeSet(const Json& j);
-static std::expected<QueueList, kanariv::utils::Error> parseCommandQueueList(const Json& j);
-static std::expected<QueueQueues, kanariv::utils::Error> parseCommandQueueQueues(const Json& j);
-static std::expected<QueueCreate, kanariv::utils::Error> parseCommandQueueCreate(const Json& j);
-static std::expected<QueueDelete, kanariv::utils::Error> parseCommandQueueDelete(const Json& j);
-static std::expected<PlayFiles, kanariv::utils::Error> parseCommandPlayFiles(const Json& j);
-static std::expected<QueueSwitch, kanariv::utils::Error> parseCommandQueueSwitch(const Json& j);
-static std::expected<QueueAdd, kanariv::utils::Error> parseCommandQueueAdd(const Json& j);
-static std::expected<QueueRemove, kanariv::utils::Error> parseCommandQueueRemove(const Json& j);
-static std::expected<QueueMove, kanariv::utils::Error> parseCommandQueueMove(const Json& j);
-static std::expected<QueueClear, kanariv::utils::Error> parseCommandQueueClear(const Json& j);
-static std::expected<QueueShuffle, kanariv::utils::Error> parseCommandQueueShuffle(const Json& j);
-static std::expected<QueueRepeat, kanariv::utils::Error> parseCommandQueueRepeat(const Json& j);
-static std::expected<PlaylistList, kanariv::utils::Error> parseCommandPlaylistList(const Json& j);
-static std::expected<PlaylistTracks, kanariv::utils::Error>
-parseCommandPlaylistTracks(const Json& j);
-static std::expected<PlaylistCreate, kanariv::utils::Error>
-parseCommandPlaylistCreate(const Json& j);
-static std::expected<PlaylistAdd, kanariv::utils::Error> parseCommandPlaylistAdd(const Json& j);
-static std::expected<PlaylistLoad, kanariv::utils::Error> parseCommandPlaylistLoad(const Json& j);
-static std::expected<PlaylistSave, kanariv::utils::Error> parseCommandPlaylistSave(const Json& j);
-static std::expected<PlaylistDelete, kanariv::utils::Error>
-parseCommandPlaylistDelete(const Json& j);
-static std::expected<PlaylistRename, kanariv::utils::Error>
-parseCommandPlaylistRename(const Json& j);
-static std::expected<PlaylistExport, kanariv::utils::Error>
-parseCommandPlaylistExport(const Json& j);
-static std::expected<PlaylistImport, kanariv::utils::Error>
-parseCommandPlaylistImport(const Json& j);
-static std::expected<LibraryScan, kanariv::utils::Error> parseCommandLibraryScan(const Json& j);
-static std::expected<LibrarySearch, kanariv::utils::Error> parseCommandLibrarySearch(const Json& j);
-static std::expected<LibraryStats, kanariv::utils::Error> parseCommandLibraryStats(const Json& j);
-static std::expected<LibraryAdd, kanariv::utils::Error> parseCommandLibraryAdd(const Json& j);
-static std::expected<LibraryRemove, kanariv::utils::Error> parseCommandLibraryRemove(const Json& j);
-static std::expected<LibraryList, kanariv::utils::Error> parseCommandLibraryList(const Json& j);
-static std::expected<LibraryMaintenance, kanariv::utils::Error>
-parseCommandLibraryMaintenance(const Json& j);
-static std::expected<TagEdit, kanariv::utils::Error> parseCommandTagEdit(const Json& j);
-static std::expected<TagGet, kanariv::utils::Error> parseCommandTagGet(const Json& j);
-static std::expected<ConfigGet, kanariv::utils::Error> parseCommandConfigGet(const Json& j);
-static std::expected<ConfigSet, kanariv::utils::Error> parseCommandConfigSet(const Json& j);
-static std::expected<ConfigList, kanariv::utils::Error> parseCommandConfigList(const Json& j);
-static std::expected<ConfigExport, kanariv::utils::Error> parseCommandConfigExport(const Json& j);
-static std::expected<ConfigImport, kanariv::utils::Error> parseCommandConfigImport(const Json& j);
-static std::expected<ConfigReset, kanariv::utils::Error> parseCommandConfigReset(const Json& j);
-static std::expected<HistoryList, kanariv::utils::Error> parseCommandHistoryList(const Json& j);
-static std::expected<HistoryClear, kanariv::utils::Error> parseCommandHistoryClear(const Json& j);
-static std::expected<BookmarkList, kanariv::utils::Error> parseCommandBookmarkList(const Json& j);
-static std::expected<BookmarkAdd, kanariv::utils::Error> parseCommandBookmarkAdd(const Json& j);
-static std::expected<BookmarkRemove, kanariv::utils::Error>
-parseCommandBookmarkRemove(const Json& j);
-static std::expected<BookmarkGoto, kanariv::utils::Error> parseCommandBookmarkGoto(const Json& j);
-static std::expected<Shutdown, kanariv::utils::Error> parseCommandShutdown(const Json& j);
-static std::expected<Preview, kanariv::utils::Error> parseCommandPreview(const Json& j);
-static std::expected<DeviceList, kanariv::utils::Error> parseCommandDeviceList(const Json& j);
-static std::expected<DeviceSet, kanariv::utils::Error> parseCommandDeviceSet(const Json& j);
-static std::expected<DeviceTest, kanariv::utils::Error> parseCommandDeviceTest(const Json& j);
-static std::expected<Info, kanariv::utils::Error> parseCommandInfo(const Json& j);
-static std::expected<TrackRate, kanariv::utils::Error> parseCommandTrackRate(const Json& j);
+static auto parseCommandPlay(const Json& j) -> std::expected<Play, kanariv::utils::Error>;
+static auto parseCommandPause(const Json& j) -> std::expected<Pause, kanariv::utils::Error>;
+static auto parseCommandResume(const Json& j) -> std::expected<Resume, kanariv::utils::Error>;
+static auto parseCommandRestart(const Json& j) -> std::expected<Restart, kanariv::utils::Error>;
+static auto parseCommandStop(const Json& j) -> std::expected<Stop, kanariv::utils::Error>;
+static auto parseCommandNext(const Json& j) -> std::expected<Next, kanariv::utils::Error>;
+static auto parseCommandPrev(const Json& j) -> std::expected<Prev, kanariv::utils::Error>;
+static auto parseCommandSeek(const Json& j) -> std::expected<Seek, kanariv::utils::Error>;
+static auto parseCommandStatusReq(const Json& j) -> std::expected<StatusReq, kanariv::utils::Error>;
+static auto parseCommandStatusWait(const Json& j)
+    -> std::expected<StatusWait, kanariv::utils::Error>;
+static auto parseCommandVolumeSet(const Json& j) -> std::expected<VolumeSet, kanariv::utils::Error>;
+static auto parseCommandQueueList(const Json& j) -> std::expected<QueueList, kanariv::utils::Error>;
+static auto parseCommandQueueQueues(const Json& j)
+    -> std::expected<QueueQueues, kanariv::utils::Error>;
+static auto parseCommandQueueCreate(const Json& j)
+    -> std::expected<QueueCreate, kanariv::utils::Error>;
+static auto parseCommandQueueDelete(const Json& j)
+    -> std::expected<QueueDelete, kanariv::utils::Error>;
+static auto parseCommandPlayFiles(const Json& j) -> std::expected<PlayFiles, kanariv::utils::Error>;
+static auto parseCommandQueueSwitch(const Json& j)
+    -> std::expected<QueueSwitch, kanariv::utils::Error>;
+static auto parseCommandQueueAdd(const Json& j) -> std::expected<QueueAdd, kanariv::utils::Error>;
+static auto parseCommandQueueRemove(const Json& j)
+    -> std::expected<QueueRemove, kanariv::utils::Error>;
+static auto parseCommandQueueMove(const Json& j) -> std::expected<QueueMove, kanariv::utils::Error>;
+static auto parseCommandQueueClear(const Json& j)
+    -> std::expected<QueueClear, kanariv::utils::Error>;
+static auto parseCommandQueueShuffle(const Json& j)
+    -> std::expected<QueueShuffle, kanariv::utils::Error>;
+static auto parseCommandQueueRepeat(const Json& j)
+    -> std::expected<QueueRepeat, kanariv::utils::Error>;
+static auto parseCommandPlaylistList(const Json& j)
+    -> std::expected<PlaylistList, kanariv::utils::Error>;
+static auto parseCommandPlaylistTracks(const Json& j)
+    -> std::expected<PlaylistTracks, kanariv::utils::Error>;
+static auto parseCommandPlaylistCreate(const Json& j)
+    -> std::expected<PlaylistCreate, kanariv::utils::Error>;
+static auto parseCommandPlaylistAdd(const Json& j)
+    -> std::expected<PlaylistAdd, kanariv::utils::Error>;
+static auto parseCommandPlaylistLoad(const Json& j)
+    -> std::expected<PlaylistLoad, kanariv::utils::Error>;
+static auto parseCommandPlaylistSave(const Json& j)
+    -> std::expected<PlaylistSave, kanariv::utils::Error>;
+static auto parseCommandPlaylistDelete(const Json& j)
+    -> std::expected<PlaylistDelete, kanariv::utils::Error>;
+static auto parseCommandPlaylistRename(const Json& j)
+    -> std::expected<PlaylistRename, kanariv::utils::Error>;
+static auto parseCommandPlaylistExport(const Json& j)
+    -> std::expected<PlaylistExport, kanariv::utils::Error>;
+static auto parseCommandPlaylistImport(const Json& j)
+    -> std::expected<PlaylistImport, kanariv::utils::Error>;
+static auto parseCommandLibraryScan(const Json& j)
+    -> std::expected<LibraryScan, kanariv::utils::Error>;
+static auto parseCommandLibrarySearch(const Json& j)
+    -> std::expected<LibrarySearch, kanariv::utils::Error>;
+static auto parseCommandLibraryStats(const Json& j)
+    -> std::expected<LibraryStats, kanariv::utils::Error>;
+static auto parseCommandLibraryAdd(const Json& j)
+    -> std::expected<LibraryAdd, kanariv::utils::Error>;
+static auto parseCommandLibraryRemove(const Json& j)
+    -> std::expected<LibraryRemove, kanariv::utils::Error>;
+static auto parseCommandLibraryList(const Json& j)
+    -> std::expected<LibraryList, kanariv::utils::Error>;
+static auto parseCommandLibraryMaintenance(const Json& j)
+    -> std::expected<LibraryMaintenance, kanariv::utils::Error>;
+static auto parseCommandTagEdit(const Json& j) -> std::expected<TagEdit, kanariv::utils::Error>;
+static auto parseCommandTagGet(const Json& j) -> std::expected<TagGet, kanariv::utils::Error>;
+static auto parseCommandConfigGet(const Json& j) -> std::expected<ConfigGet, kanariv::utils::Error>;
+static auto parseCommandConfigSet(const Json& j) -> std::expected<ConfigSet, kanariv::utils::Error>;
+static auto parseCommandConfigList(const Json& j)
+    -> std::expected<ConfigList, kanariv::utils::Error>;
+static auto parseCommandConfigExport(const Json& j)
+    -> std::expected<ConfigExport, kanariv::utils::Error>;
+static auto parseCommandConfigImport(const Json& j)
+    -> std::expected<ConfigImport, kanariv::utils::Error>;
+static auto parseCommandConfigReset(const Json& j)
+    -> std::expected<ConfigReset, kanariv::utils::Error>;
+static auto parseCommandHistoryList(const Json& j)
+    -> std::expected<HistoryList, kanariv::utils::Error>;
+static auto parseCommandHistoryClear(const Json& j)
+    -> std::expected<HistoryClear, kanariv::utils::Error>;
+static auto parseCommandBookmarkList(const Json& j)
+    -> std::expected<BookmarkList, kanariv::utils::Error>;
+static auto parseCommandBookmarkAdd(const Json& j)
+    -> std::expected<BookmarkAdd, kanariv::utils::Error>;
+static auto parseCommandBookmarkRemove(const Json& j)
+    -> std::expected<BookmarkRemove, kanariv::utils::Error>;
+static auto parseCommandBookmarkGoto(const Json& j)
+    -> std::expected<BookmarkGoto, kanariv::utils::Error>;
+static auto parseCommandShutdown(const Json& j) -> std::expected<Shutdown, kanariv::utils::Error>;
+static auto parseCommandPreview(const Json& j) -> std::expected<Preview, kanariv::utils::Error>;
+static auto parseCommandDeviceList(const Json& j)
+    -> std::expected<DeviceList, kanariv::utils::Error>;
+static auto parseCommandDeviceSet(const Json& j) -> std::expected<DeviceSet, kanariv::utils::Error>;
+static auto parseCommandDeviceTest(const Json& j)
+    -> std::expected<DeviceTest, kanariv::utils::Error>;
+static auto parseCommandInfo(const Json& j) -> std::expected<Info, kanariv::utils::Error>;
+static auto parseCommandTrackRate(const Json& j) -> std::expected<TrackRate, kanariv::utils::Error>;
 
-std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
+auto commandFromJson(const Json& j) -> std::expected<Command, kanariv::utils::Error> {
     try {
-        if (!j.contains("type") || !j["type"].isString()) {
+        if (!j.contains("type") || !j["type"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "missing type")};
         }
-        std::string t = j["type"].get<std::string>();
-        if (t == "Play")
+        auto t = j["type"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (t == "Play") {
             return parseCommandPlay(j);
-        if (t == "Pause")
+        }
+        if (t == "Pause") {
             return parseCommandPause(j);
-        if (t == "Resume")
+        }
+        if (t == "Resume") {
             return parseCommandResume(j);
-        if (t == "Restart")
+        }
+        if (t == "Restart") {
             return parseCommandRestart(j);
-        if (t == "Stop")
+        }
+        if (t == "Stop") {
             return parseCommandStop(j);
-        if (t == "Next")
+        }
+        if (t == "Next") {
             return parseCommandNext(j);
-        if (t == "Prev")
+        }
+        if (t == "Prev") {
             return parseCommandPrev(j);
-        if (t == "Seek")
+        }
+        if (t == "Seek") {
             return parseCommandSeek(j);
-        if (t == "StatusReq")
+        }
+        if (t == "StatusReq") {
             return parseCommandStatusReq(j);
-        if (t == "StatusWait")
+        }
+        if (t == "StatusWait") {
             return parseCommandStatusWait(j);
-        if (t == "VolumeSet")
+        }
+        if (t == "VolumeSet") {
             return parseCommandVolumeSet(j);
-        if (t == "QueueList")
+        }
+        if (t == "QueueList") {
             return parseCommandQueueList(j);
-        if (t == "QueueQueues")
+        }
+        if (t == "QueueQueues") {
             return parseCommandQueueQueues(j);
-        if (t == "QueueCreate")
+        }
+        if (t == "QueueCreate") {
             return parseCommandQueueCreate(j);
-        if (t == "QueueDelete")
+        }
+        if (t == "QueueDelete") {
             return parseCommandQueueDelete(j);
-        if (t == "PlayFiles")
+        }
+        if (t == "PlayFiles") {
             return parseCommandPlayFiles(j);
-        if (t == "QueueSwitch")
+        }
+        if (t == "QueueSwitch") {
             return parseCommandQueueSwitch(j);
-        if (t == "QueueAdd")
+        }
+        if (t == "QueueAdd") {
             return parseCommandQueueAdd(j);
-        if (t == "QueueRemove")
+        }
+        if (t == "QueueRemove") {
             return parseCommandQueueRemove(j);
-        if (t == "QueueMove")
+        }
+        if (t == "QueueMove") {
             return parseCommandQueueMove(j);
-        if (t == "QueueClear")
+        }
+        if (t == "QueueClear") {
             return parseCommandQueueClear(j);
-        if (t == "QueueShuffle")
+        }
+        if (t == "QueueShuffle") {
             return parseCommandQueueShuffle(j);
-        if (t == "QueueRepeat")
+        }
+        if (t == "QueueRepeat") {
             return parseCommandQueueRepeat(j);
-        if (t == "PlaylistList")
+        }
+        if (t == "PlaylistList") {
             return parseCommandPlaylistList(j);
-        if (t == "PlaylistTracks")
+        }
+        if (t == "PlaylistTracks") {
             return parseCommandPlaylistTracks(j);
-        if (t == "PlaylistCreate")
+        }
+        if (t == "PlaylistCreate") {
             return parseCommandPlaylistCreate(j);
-        if (t == "PlaylistAdd")
+        }
+        if (t == "PlaylistAdd") {
             return parseCommandPlaylistAdd(j);
-        if (t == "PlaylistLoad")
+        }
+        if (t == "PlaylistLoad") {
             return parseCommandPlaylistLoad(j);
-        if (t == "PlaylistSave")
+        }
+        if (t == "PlaylistSave") {
             return parseCommandPlaylistSave(j);
-        if (t == "PlaylistDelete")
+        }
+        if (t == "PlaylistDelete") {
             return parseCommandPlaylistDelete(j);
-        if (t == "PlaylistRename")
+        }
+        if (t == "PlaylistRename") {
             return parseCommandPlaylistRename(j);
-        if (t == "PlaylistExport")
+        }
+        if (t == "PlaylistExport") {
             return parseCommandPlaylistExport(j);
-        if (t == "PlaylistImport")
+        }
+        if (t == "PlaylistImport") {
             return parseCommandPlaylistImport(j);
-        if (t == "LibraryScan")
+        }
+        if (t == "LibraryScan") {
             return parseCommandLibraryScan(j);
-        if (t == "LibrarySearch")
+        }
+        if (t == "LibrarySearch") {
             return parseCommandLibrarySearch(j);
-        if (t == "LibraryStats" || t == "LibraryStatsDetailed")
+        }
+        if (t == "LibraryStats" || t == "LibraryStatsDetailed") {
             return parseCommandLibraryStats(j);
-        if (t == "LibraryAdd")
+        }
+        if (t == "LibraryAdd") {
             return parseCommandLibraryAdd(j);
-        if (t == "LibraryRemove")
+        }
+        if (t == "LibraryRemove") {
             return parseCommandLibraryRemove(j);
-        if (t == "LibraryList")
+        }
+        if (t == "LibraryList") {
             return parseCommandLibraryList(j);
-        if (t == "LibraryMaintenance")
+        }
+        if (t == "LibraryMaintenance") {
             return parseCommandLibraryMaintenance(j);
-        if (t == "TagEdit")
+        }
+        if (t == "TagEdit") {
             return parseCommandTagEdit(j);
-        if (t == "TagGet")
+        }
+        if (t == "TagGet") {
             return parseCommandTagGet(j);
-        if (t == "ConfigGet")
+        }
+        if (t == "ConfigGet") {
             return parseCommandConfigGet(j);
-        if (t == "ConfigSet")
+        }
+        if (t == "ConfigSet") {
             return parseCommandConfigSet(j);
-        if (t == "ConfigList")
+        }
+        if (t == "ConfigList") {
             return parseCommandConfigList(j);
-        if (t == "ConfigExport")
+        }
+        if (t == "ConfigExport") {
             return parseCommandConfigExport(j);
-        if (t == "ConfigImport")
+        }
+        if (t == "ConfigImport") {
             return parseCommandConfigImport(j);
-        if (t == "ConfigReset")
+        }
+        if (t == "ConfigReset") {
             return parseCommandConfigReset(j);
-        if (t == "HistoryList")
+        }
+        if (t == "HistoryList") {
             return parseCommandHistoryList(j);
-        if (t == "HistoryClear")
+        }
+        if (t == "HistoryClear") {
             return parseCommandHistoryClear(j);
-        if (t == "BookmarkList")
+        }
+        if (t == "BookmarkList") {
             return parseCommandBookmarkList(j);
-        if (t == "BookmarkAdd")
+        }
+        if (t == "BookmarkAdd") {
             return parseCommandBookmarkAdd(j);
-        if (t == "BookmarkRemove")
+        }
+        if (t == "BookmarkRemove") {
             return parseCommandBookmarkRemove(j);
-        if (t == "BookmarkGoto")
+        }
+        if (t == "BookmarkGoto") {
             return parseCommandBookmarkGoto(j);
-        if (t == "Shutdown")
+        }
+        if (t == "Shutdown") {
             return parseCommandShutdown(j);
-        if (t == "Preview")
+        }
+        if (t == "Preview") {
             return parseCommandPreview(j);
-        if (t == "DeviceList")
+        }
+        if (t == "DeviceList") {
             return parseCommandDeviceList(j);
-        if (t == "DeviceSet")
+        }
+        if (t == "DeviceSet") {
             return parseCommandDeviceSet(j);
-        if (t == "DeviceTest")
+        }
+        if (t == "DeviceTest") {
             return parseCommandDeviceTest(j);
-        if (t == "Info")
+        }
+        if (t == "Info") {
             return parseCommandInfo(j);
-        if (t == "TrackRate")
+        }
+        if (t == "TrackRate") {
             return parseCommandTrackRate(j);
+        }
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "unknown Command type: " + t)};
     } catch (const std::exception& e) {
@@ -642,567 +785,730 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
 
 // Command parsing helper implementations.
 
-static std::expected<Play, kanariv::utils::Error> parseCommandPlay(const Json& /*j*/) {
+static auto parseCommandPlay(const Json& /*j*/) -> std::expected<Play, kanariv::utils::Error> {
     return Play{};
 }
 
-static std::expected<Pause, kanariv::utils::Error> parseCommandPause(const Json& /*j*/) {
+static auto parseCommandPause(const Json& /*j*/) -> std::expected<Pause, kanariv::utils::Error> {
     return Pause{};
 }
 
-static std::expected<Resume, kanariv::utils::Error> parseCommandResume(const Json& /*j*/) {
+static auto parseCommandResume(const Json& /*j*/) -> std::expected<Resume, kanariv::utils::Error> {
     return Resume{};
 }
 
-static std::expected<Restart, kanariv::utils::Error> parseCommandRestart(const Json& /*j*/) {
+static auto parseCommandRestart(const Json& /*j*/)
+    -> std::expected<Restart, kanariv::utils::Error> {
     return Restart{};
 }
 
-static std::expected<Stop, kanariv::utils::Error> parseCommandStop(const Json& /*j*/) {
+static auto parseCommandStop(const Json& /*j*/) -> std::expected<Stop, kanariv::utils::Error> {
     return Stop{};
 }
 
-static std::expected<Next, kanariv::utils::Error> parseCommandNext(const Json& /*j*/) {
+static auto parseCommandNext(const Json& /*j*/) -> std::expected<Next, kanariv::utils::Error> {
     return Next{};
 }
 
-static std::expected<Prev, kanariv::utils::Error> parseCommandPrev(const Json& /*j*/) {
+static auto parseCommandPrev(const Json& /*j*/) -> std::expected<Prev, kanariv::utils::Error> {
     return Prev{};
 }
 
-static std::expected<Seek, kanariv::utils::Error> parseCommandSeek(const Json& j) {
+static auto parseCommandSeek(const Json& j) -> std::expected<Seek, kanariv::utils::Error> {
     double sec = 0;
-    if (j.contains("seconds") && j["seconds"].isNumber())
-        sec = j["seconds"].get<double>();
+    if (j.contains("seconds") && j["seconds"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        sec = j["seconds"].get<double>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return Seek{sec};
 }
 
-static std::expected<StatusReq, kanariv::utils::Error> parseCommandStatusReq(const Json& /*j*/) {
+static auto parseCommandStatusReq(const Json& /*j*/)
+    -> std::expected<StatusReq, kanariv::utils::Error> {
     return StatusReq{};
 }
 
-static std::expected<StatusWait, kanariv::utils::Error> parseCommandStatusWait(const Json& j) {
+static auto parseCommandStatusWait(const Json& j)
+    -> std::expected<StatusWait, kanariv::utils::Error> {
     StatusWait sw{};
-    if (j.contains("timeout_ms") && j["timeout_ms"].isNumber())
-        sw.timeout_ms = j["timeout_ms"].get<int>();
+    if (j.contains("timeout_ms") && j["timeout_ms"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        sw.timeout_ms = j["timeout_ms"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return sw;
 }
 
-static std::expected<VolumeSet, kanariv::utils::Error> parseCommandVolumeSet(const Json& j) {
+static auto parseCommandVolumeSet(const Json& j)
+    -> std::expected<VolumeSet, kanariv::utils::Error> {
     VolumeSet v{};
-    if (j.contains("level") && !j["level"].isNull() && j["level"].isNumber())
-        v.level = j["level"].get<float>();
-    if (j.contains("mute") && !j["mute"].isNull() && j["mute"].isBoolean())
-        v.mute = j["mute"].get<bool>();
-    if (j.contains("deltaPct") && !j["deltaPct"].isNull() && j["deltaPct"].isNumber())
-        v.deltaPct = j["deltaPct"].get<int>();
+    if (j.contains("level") && !j["level"].isNull() && j["level"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.level = j["level"].get<float>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("mute") && !j["mute"].isNull() && j["mute"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.mute = j["mute"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("deltaPct") && !j["deltaPct"].isNull() && j["deltaPct"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.deltaPct = j["deltaPct"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<QueueList, kanariv::utils::Error> parseCommandQueueList(const Json& j) {
+static auto parseCommandQueueList(const Json& j)
+    -> std::expected<QueueList, kanariv::utils::Error> {
     QueueList q{};
-    if (j.contains("order") && j["order"].isString())
-        q.order = j["order"].get<std::string>();
+    if (j.contains("order") && j["order"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        q.order = j["order"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return q;
 }
 
-static std::expected<QueueQueues, kanariv::utils::Error>
-parseCommandQueueQueues(const Json& /*j*/) {
+static auto parseCommandQueueQueues(const Json& /*j*/)
+    -> std::expected<QueueQueues, kanariv::utils::Error> {
     return QueueQueues{};
 }
 
-static std::expected<QueueCreate, kanariv::utils::Error> parseCommandQueueCreate(const Json& j) {
+static auto parseCommandQueueCreate(const Json& j)
+    -> std::expected<QueueCreate, kanariv::utils::Error> {
     QueueCreate q{};
-    if (j.contains("name") && j["name"].isString())
-        q.name = j["name"].get<std::string>();
+    if (j.contains("name") && j["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        q.name = j["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return q;
 }
 
-static std::expected<QueueDelete, kanariv::utils::Error> parseCommandQueueDelete(const Json& j) {
+static auto parseCommandQueueDelete(const Json& j)
+    -> std::expected<QueueDelete, kanariv::utils::Error> {
     int64_t qid = 1;
-    if (j.contains("qid") && j["qid"].isNumber())
-        qid = j["qid"].get<int64_t>();
+    if (j.contains("qid") && j["qid"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        qid = j["qid"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return QueueDelete{qid};
 }
 
-static std::expected<PlayFiles, kanariv::utils::Error> parseCommandPlayFiles(const Json& j) {
+static auto parseCommandPlayFiles(const Json& j)
+    -> std::expected<PlayFiles, kanariv::utils::Error> {
     PlayFiles p{};
-    if (j.contains("paths") && j["paths"].isArray()) {
-        const Json arr = j["paths"];
+    if (j.contains("paths") && j["paths"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json arr = j["paths"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t i = 0, n = arr.size(); i < n; ++i) {
             auto je = arr.at(i);
-            if (!je)
+            if (!je) {
                 return std::unexpected{je.error()};
-            if (je->isString())
+            }
+            if (je->isString()) {
                 p.paths.push_back(je->get<std::string>());
+            }
         }
     }
-    if (j.contains("save") && j["save"].isBoolean())
-        p.save = j["save"].get<bool>();
+    if (j.contains("save") && j["save"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        p.save = j["save"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return p;
 }
 
-static std::expected<QueueSwitch, kanariv::utils::Error> parseCommandQueueSwitch(const Json& j) {
+static auto parseCommandQueueSwitch(const Json& j)
+    -> std::expected<QueueSwitch, kanariv::utils::Error> {
     int64_t qid = 1;
-    if (j.contains("qid") && j["qid"].isNumber())
-        qid = j["qid"].get<int64_t>();
+    if (j.contains("qid") && j["qid"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        qid = j["qid"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return QueueSwitch{qid};
 }
 
-static std::expected<QueueAdd, kanariv::utils::Error> parseCommandQueueAdd(const Json& j) {
+static auto parseCommandQueueAdd(const Json& j) -> std::expected<QueueAdd, kanariv::utils::Error> {
     std::string q;
     bool search = false;
-    if (j.contains("query") && j["query"].isString())
-        q = j["query"].get<std::string>();
-    if (j.contains("search") && j["search"].isBoolean())
-        search = j["search"].get<bool>();
+    if (j.contains("query") && j["query"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        q = j["query"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("search") && j["search"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        search = j["search"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return QueueAdd{.query = std::move(q), .search = search};
 }
 
-static std::expected<QueueRemove, kanariv::utils::Error> parseCommandQueueRemove(const Json& j) {
+static auto parseCommandQueueRemove(const Json& j)
+    -> std::expected<QueueRemove, kanariv::utils::Error> {
     std::string id;
-    if (j.contains("idOrIndex") && j["idOrIndex"].isString())
-        id = j["idOrIndex"].get<std::string>();
+    if (j.contains("idOrIndex") && j["idOrIndex"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        id = j["idOrIndex"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return QueueRemove{std::move(id)};
 }
 
-static std::expected<QueueMove, kanariv::utils::Error> parseCommandQueueMove(const Json& j) {
+static auto parseCommandQueueMove(const Json& j)
+    -> std::expected<QueueMove, kanariv::utils::Error> {
     std::size_t from = 0, to = 0;
-    if (j.contains("from") && j["from"].isNumber())
-        from = j["from"].get<std::size_t>();
-    if (j.contains("to") && j["to"].isNumber())
-        to = j["to"].get<std::size_t>();
+    if (j.contains("from") && j["from"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        from = j["from"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("to") && j["to"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        to = j["to"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return QueueMove{.from = from, .to = to};
 }
 
-static std::expected<QueueClear, kanariv::utils::Error> parseCommandQueueClear(const Json& /*j*/) {
+static auto parseCommandQueueClear(const Json& /*j*/)
+    -> std::expected<QueueClear, kanariv::utils::Error> {
     return QueueClear{};
 }
 
-static std::expected<QueueShuffle, kanariv::utils::Error> parseCommandQueueShuffle(const Json& j) {
+static auto parseCommandQueueShuffle(const Json& j)
+    -> std::expected<QueueShuffle, kanariv::utils::Error> {
     QueueShuffle v{};
-    if (j.contains("on") && !j["on"].isNull() && j["on"].isBoolean())
-        v.on = j["on"].get<bool>();
+    if (j.contains("on") && !j["on"].isNull() && j["on"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.on = j["on"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<QueueRepeat, kanariv::utils::Error> parseCommandQueueRepeat(const Json& j) {
+static auto parseCommandQueueRepeat(const Json& j)
+    -> std::expected<QueueRepeat, kanariv::utils::Error> {
     QueueRepeat v{};
-    if (j.contains("mode") && !j["mode"].isNull() && j["mode"].isString()) {
-        auto m = kanariv::types::parseRepeatMode(j["mode"].get<std::string>());
-        if (!m)
+    if (j.contains("mode") && !j["mode"].isNull() && j["mode"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        auto m = kanariv::types::parseRepeatMode(j["mode"].get<std::string>()); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (!m) {
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                              "unknown RepeatMode")};
+        }
         v.mode = *m;
     }
     return v;
 }
 
-static std::expected<PlaylistList, kanariv::utils::Error>
-parseCommandPlaylistList(const Json& /*j*/) {
+static auto parseCommandPlaylistList(const Json& /*j*/)
+    -> std::expected<PlaylistList, kanariv::utils::Error> {
     return PlaylistList{};
 }
 
-static std::expected<PlaylistTracks, kanariv::utils::Error>
-parseCommandPlaylistTracks(const Json& j) {
+static auto parseCommandPlaylistTracks(const Json& j)
+    -> std::expected<PlaylistTracks, kanariv::utils::Error> {
     int64_t pid = 0;
-    if (j.contains("pid") && j["pid"].isNumber())
-        pid = j["pid"].get<int64_t>();
+    if (j.contains("pid") && j["pid"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        pid = j["pid"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return PlaylistTracks{pid};
 }
 
-static std::expected<PlaylistCreate, kanariv::utils::Error>
-parseCommandPlaylistCreate(const Json& j) {
+static auto parseCommandPlaylistCreate(const Json& j)
+    -> std::expected<PlaylistCreate, kanariv::utils::Error> {
     PlaylistCreate pc;
-    if (j.contains("name") && j["name"].isString())
-        pc.name = j["name"].get<std::string>();
-    if (j.contains("smart_query") && j["smart_query"].isString())
-        pc.smart_query = j["smart_query"].get<std::string>();
+    if (j.contains("name") && j["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        pc.name = j["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("smart_query") && j["smart_query"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        pc.smart_query = j["smart_query"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return pc;
 }
 
-static std::expected<PlaylistAdd, kanariv::utils::Error> parseCommandPlaylistAdd(const Json& j) {
+static auto parseCommandPlaylistAdd(const Json& j)
+    -> std::expected<PlaylistAdd, kanariv::utils::Error> {
     int64_t pid = 0;
     int64_t tid = 0;
-    if (j.contains("pid") && j["pid"].isNumber())
-        pid = j["pid"].get<int64_t>();
-    if (j.contains("track_id") && j["track_id"].isNumber())
-        tid = j["track_id"].get<int64_t>();
+    if (j.contains("pid") && j["pid"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        pid = j["pid"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("track_id") && j["track_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        tid = j["track_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return PlaylistAdd{.pid = pid, .track_id = tid};
 }
 
-static std::expected<PlaylistLoad, kanariv::utils::Error> parseCommandPlaylistLoad(const Json& j) {
+static auto parseCommandPlaylistLoad(const Json& j)
+    -> std::expected<PlaylistLoad, kanariv::utils::Error> {
     int64_t pid = 0;
     bool play = false;
     bool replace = false;
-    if (j.contains("pid") && j["pid"].isNumber())
-        pid = j["pid"].get<int64_t>();
-    if (j.contains("play") && j["play"].isBoolean())
-        play = j["play"].get<bool>();
-    if (j.contains("replace") && j["replace"].isBoolean())
-        replace = j["replace"].get<bool>();
+    if (j.contains("pid") && j["pid"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        pid = j["pid"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("play") && j["play"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        play = j["play"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("replace") && j["replace"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        replace = j["replace"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return PlaylistLoad{.pid = pid, .play = play, .replace = replace};
 }
 
-static std::expected<PlaylistSave, kanariv::utils::Error> parseCommandPlaylistSave(const Json& j) {
+static auto parseCommandPlaylistSave(const Json& j)
+    -> std::expected<PlaylistSave, kanariv::utils::Error> {
     std::string name;
     std::optional<int64_t> qid;
-    if (j.contains("name") && j["name"].isString())
-        name = j["name"].get<std::string>();
-    if (j.contains("queue_id") && !j["queue_id"].isNull() && j["queue_id"].isNumber())
-        qid = j["queue_id"].get<int64_t>();
+    if (j.contains("name") && j["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        name = j["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("queue_id") && !j["queue_id"].isNull() && j["queue_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        qid = j["queue_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return PlaylistSave{.name = std::move(name), .queue_id = qid};
 }
 
-static std::expected<PlaylistDelete, kanariv::utils::Error>
-parseCommandPlaylistDelete(const Json& j) {
+static auto parseCommandPlaylistDelete(const Json& j)
+    -> std::expected<PlaylistDelete, kanariv::utils::Error> {
     int64_t pid = 0;
-    if (j.contains("pid") && j["pid"].isNumber())
-        pid = j["pid"].get<int64_t>();
+    if (j.contains("pid") && j["pid"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        pid = j["pid"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return PlaylistDelete{pid};
 }
 
-static std::expected<PlaylistRename, kanariv::utils::Error>
-parseCommandPlaylistRename(const Json& j) {
+static auto parseCommandPlaylistRename(const Json& j)
+    -> std::expected<PlaylistRename, kanariv::utils::Error> {
     int64_t pid = 0;
     std::string newName;
-    if (j.contains("pid") && j["pid"].isNumber())
-        pid = j["pid"].get<int64_t>();
-    if (j.contains("newName") && j["newName"].isString())
-        newName = j["newName"].get<std::string>();
+    if (j.contains("pid") && j["pid"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        pid = j["pid"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("newName") && j["newName"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        newName = j["newName"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return PlaylistRename{.pid = pid, .newName = std::move(newName)};
 }
 
-static std::expected<PlaylistExport, kanariv::utils::Error>
-parseCommandPlaylistExport(const Json& j) {
+static auto parseCommandPlaylistExport(const Json& j)
+    -> std::expected<PlaylistExport, kanariv::utils::Error> {
     int64_t pid = 0;
     std::string path;
     std::string format = "m3u";
-    if (j.contains("pid") && j["pid"].isNumber())
-        pid = j["pid"].get<int64_t>();
-    if (j.contains("path") && j["path"].isString())
-        path = j["path"].get<std::string>();
-    if (j.contains("format") && j["format"].isString())
-        format = j["format"].get<std::string>();
+    if (j.contains("pid") && j["pid"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        pid = j["pid"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("path") && j["path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        path = j["path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("format") && j["format"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        format = j["format"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return PlaylistExport{.pid = pid, .path = std::move(path), .format = std::move(format)};
 }
 
-static std::expected<PlaylistImport, kanariv::utils::Error>
-parseCommandPlaylistImport(const Json& j) {
+static auto parseCommandPlaylistImport(const Json& j)
+    -> std::expected<PlaylistImport, kanariv::utils::Error> {
     std::string path;
     std::optional<std::string> name;
-    if (j.contains("path") && j["path"].isString())
-        path = j["path"].get<std::string>();
-    if (j.contains("name") && !j["name"].isNull() && j["name"].isString())
-        name = j["name"].get<std::string>();
+    if (j.contains("path") && j["path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        path = j["path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("name") && !j["name"].isNull() && j["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        name = j["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return PlaylistImport{.path = std::move(path), .name = name};
 }
 
-static std::expected<LibraryScan, kanariv::utils::Error> parseCommandLibraryScan(const Json& j) {
+static auto parseCommandLibraryScan(const Json& j)
+    -> std::expected<LibraryScan, kanariv::utils::Error> {
     LibraryScan v{};
-    if (j.contains("path") && !j["path"].isNull() && j["path"].isString())
-        v.path = j["path"].get<std::string>();
-    if (j.contains("full_hash") && j["full_hash"].isBoolean())
-        v.full_hash = j["full_hash"].get<bool>();
-    else if (j.contains("mode") && j["mode"].isString())
-        v.full_hash = (j["mode"].get<std::string>() == "full");
+    if (j.contains("path") && !j["path"].isNull() && j["path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.path = j["path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("full_hash") && j["full_hash"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.full_hash = j["full_hash"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    } else if (j.contains("mode") && j["mode"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.full_hash = (j["mode"].get<std::string>() == "full"); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<LibrarySearch, kanariv::utils::Error>
-parseCommandLibrarySearch(const Json& j) {
+static auto parseCommandLibrarySearch(const Json& j)
+    -> std::expected<LibrarySearch, kanariv::utils::Error> {
     std::string q;
-    int lim = 50;
-    if (j.contains("query") && j["query"].isString())
-        q = j["query"].get<std::string>();
-    if (j.contains("limit") && j["limit"].isNumber())
-        lim = j["limit"].get<int>();
+    int lim = defaultLibrarySearchLimit;
+    if (j.contains("query") && j["query"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        q = j["query"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("limit") && j["limit"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        lim = j["limit"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return LibrarySearch{.query = std::move(q), .limit = lim};
 }
 
-static std::expected<LibraryStats, kanariv::utils::Error> parseCommandLibraryStats(const Json& j) {
+static auto parseCommandLibraryStats(const Json& j)
+    -> std::expected<LibraryStats, kanariv::utils::Error> {
     LibraryStats v{};
     const std::string t =
-        j.contains("type") && j["type"].isString() ? j["type"].get<std::string>() : std::string{};
-    if (j.contains("top_tracks") && j["top_tracks"].isNumber())
-        v.top_tracks = j["top_tracks"].get<int>();
-    else if (t == "LibraryStatsDetailed")
-        v.top_tracks = 10;
-    if (j.contains("top_albums") && j["top_albums"].isNumber())
-        v.top_albums = j["top_albums"].get<int>();
-    if (j.contains("top_genres") && j["top_genres"].isNumber())
-        v.top_genres = j["top_genres"].get<int>();
-    if (j.contains("top_artists") && j["top_artists"].isNumber())
-        v.top_artists = j["top_artists"].get<int>();
+        j.contains("type") && j["type"].isString() ? j["type"].get<std::string>() : std::string{}; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (j.contains("top_tracks") && j["top_tracks"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.top_tracks = j["top_tracks"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    } else if (t == "LibraryStatsDetailed") {
+        v.top_tracks = defaultLibraryStatsTopTracks;
+    }
+    if (j.contains("top_albums") && j["top_albums"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.top_albums = j["top_albums"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("top_genres") && j["top_genres"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.top_genres = j["top_genres"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("top_artists") && j["top_artists"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.top_artists = j["top_artists"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<LibraryAdd, kanariv::utils::Error> parseCommandLibraryAdd(const Json& j) {
+static auto parseCommandLibraryAdd(const Json& j)
+    -> std::expected<LibraryAdd, kanariv::utils::Error> {
     std::string p;
     bool rec = false;
-    if (j.contains("path") && j["path"].isString())
-        p = j["path"].get<std::string>();
-    if (j.contains("recursive") && j["recursive"].isBoolean())
-        rec = j["recursive"].get<bool>();
+    if (j.contains("path") && j["path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        p = j["path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("recursive") && j["recursive"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        rec = j["recursive"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return LibraryAdd{.path = std::move(p), .recursive = rec};
 }
 
-static std::expected<LibraryRemove, kanariv::utils::Error>
-parseCommandLibraryRemove(const Json& j) {
+static auto parseCommandLibraryRemove(const Json& j)
+    -> std::expected<LibraryRemove, kanariv::utils::Error> {
     std::string q;
-    if (j.contains("query") && j["query"].isString())
-        q = j["query"].get<std::string>();
-    else if (j.contains("id") && j["id"].isString())
-        q = j["id"].get<std::string>();
-    else if (j.contains("id") && j["id"].isNumber())
-        q = std::to_string(j["id"].get<int64_t>());
+    if (j.contains("query") && j["query"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        q = j["query"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    } else if (j.contains("id") && j["id"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        q = j["id"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    } else if (j.contains("id") && j["id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        q = std::to_string(j["id"].get<int64_t>()); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return LibraryRemove{std::move(q)};
 }
 
-static std::expected<LibraryList, kanariv::utils::Error> parseCommandLibraryList(const Json& j) {
+static auto parseCommandLibraryList(const Json& j)
+    -> std::expected<LibraryList, kanariv::utils::Error> {
     LibraryList v{};
-    if (j.contains("query") && !j["query"].isNull() && j["query"].isString())
-        v.query = j["query"].get<std::string>();
-    if (j.contains("limit") && j["limit"].isNumber())
-        v.limit = j["limit"].get<int>();
-    if (j.contains("offset") && j["offset"].isNumber())
-        v.offset = j["offset"].get<int>();
-    if (j.contains("artist") && !j["artist"].isNull() && j["artist"].isString())
-        v.artist = j["artist"].get<std::string>();
-    if (j.contains("album") && !j["album"].isNull() && j["album"].isString())
-        v.album = j["album"].get<std::string>();
-    if (j.contains("genre") && !j["genre"].isNull() && j["genre"].isString())
-        v.genre = j["genre"].get<std::string>();
-    if (j.contains("rating") && !j["rating"].isNull() && j["rating"].isNumber())
-        v.rating = j["rating"].get<int32_t>();
+    if (j.contains("query") && !j["query"].isNull() && j["query"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.query = j["query"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("limit") && j["limit"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.limit = j["limit"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("offset") && j["offset"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.offset = j["offset"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("artist") && !j["artist"].isNull() && j["artist"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.artist = j["artist"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("album") && !j["album"].isNull() && j["album"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.album = j["album"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("genre") && !j["genre"].isNull() && j["genre"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.genre = j["genre"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("rating") && !j["rating"].isNull() && j["rating"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.rating = j["rating"].get<int32_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<LibraryMaintenance, kanariv::utils::Error>
-parseCommandLibraryMaintenance(const Json& j) {
+static auto parseCommandLibraryMaintenance(const Json& j)
+    -> std::expected<LibraryMaintenance, kanariv::utils::Error> {
     LibraryMaintenance v{};
-    if (j.contains("action") && j["action"].isString())
-        v.action = j["action"].get<std::string>();
-    if (j.contains("dry_run") && j["dry_run"].isBoolean())
-        v.dry_run = j["dry_run"].get<bool>();
-    if (j.contains("library_id") && j["library_id"].isNumber())
-        v.library_id = j["library_id"].get<int64_t>();
+    if (j.contains("action") && j["action"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.action = j["action"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("dry_run") && j["dry_run"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.dry_run = j["dry_run"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("library_id") && j["library_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.library_id = j["library_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<TagEdit, kanariv::utils::Error> parseCommandTagEdit(const Json& j) {
+static auto parseCommandTagEdit(const Json& j) -> std::expected<TagEdit, kanariv::utils::Error> {
     int64_t id = 0;
     std::string field, value;
-    if (j.contains("id") && j["id"].isNumber())
-        id = j["id"].get<int64_t>();
-    if (j.contains("field") && j["field"].isString())
-        field = j["field"].get<std::string>();
-    if (j.contains("value") && j["value"].isString())
-        value = j["value"].get<std::string>();
+    if (j.contains("id") && j["id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        id = j["id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("field") && j["field"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        field = j["field"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("value") && j["value"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        value = j["value"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return TagEdit{.id = id, .field = std::move(field), .value = std::move(value)};
 }
 
-static std::expected<TagGet, kanariv::utils::Error> parseCommandTagGet(const Json& j) {
+static auto parseCommandTagGet(const Json& j) -> std::expected<TagGet, kanariv::utils::Error> {
     TagGet tg{};
-    if (j.contains("id") && j["id"].isNumber())
-        tg.id = j["id"].get<int64_t>();
-    if (j.contains("path") && j["path"].isString())
-        tg.path = j["path"].get<std::string>();
-    if (j.contains("cover") && j["cover"].isBoolean())
-        tg.cover = j["cover"].get<bool>();
+    if (j.contains("id") && j["id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        tg.id = j["id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("path") && j["path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        tg.path = j["path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("cover") && j["cover"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        tg.cover = j["cover"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return tg;
 }
 
-static std::expected<ConfigGet, kanariv::utils::Error> parseCommandConfigGet(const Json& j) {
+static auto parseCommandConfigGet(const Json& j)
+    -> std::expected<ConfigGet, kanariv::utils::Error> {
     std::string k;
-    if (j.contains("key") && j["key"].isString())
-        k = j["key"].get<std::string>();
+    if (j.contains("key") && j["key"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        k = j["key"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return ConfigGet{std::move(k)};
 }
 
-static std::expected<ConfigSet, kanariv::utils::Error> parseCommandConfigSet(const Json& j) {
+static auto parseCommandConfigSet(const Json& j)
+    -> std::expected<ConfigSet, kanariv::utils::Error> {
     std::string k, v;
-    if (j.contains("key") && j["key"].isString())
-        k = j["key"].get<std::string>();
-    if (j.contains("value") && j["value"].isString())
-        v = j["value"].get<std::string>();
+    if (j.contains("key") && j["key"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        k = j["key"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("value") && j["value"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v = j["value"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return ConfigSet{.key = std::move(k), .value = std::move(v)};
 }
 
-static std::expected<ConfigList, kanariv::utils::Error> parseCommandConfigList(const Json& /*j*/) {
+static auto parseCommandConfigList(const Json& /*j*/)
+    -> std::expected<ConfigList, kanariv::utils::Error> {
     return ConfigList{};
 }
 
-static std::expected<ConfigExport, kanariv::utils::Error> parseCommandConfigExport(const Json& j) {
+static auto parseCommandConfigExport(const Json& j)
+    -> std::expected<ConfigExport, kanariv::utils::Error> {
     std::string p;
-    if (j.contains("path") && j["path"].isString())
-        p = j["path"].get<std::string>();
+    if (j.contains("path") && j["path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        p = j["path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return ConfigExport{std::move(p)};
 }
 
-static std::expected<ConfigImport, kanariv::utils::Error> parseCommandConfigImport(const Json& j) {
+static auto parseCommandConfigImport(const Json& j)
+    -> std::expected<ConfigImport, kanariv::utils::Error> {
     std::string p;
-    if (j.contains("path") && j["path"].isString())
-        p = j["path"].get<std::string>();
+    if (j.contains("path") && j["path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        p = j["path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return ConfigImport{std::move(p)};
 }
 
-static std::expected<ConfigReset, kanariv::utils::Error> parseCommandConfigReset(const Json& j) {
+static auto parseCommandConfigReset(const Json& j)
+    -> std::expected<ConfigReset, kanariv::utils::Error> {
     std::optional<std::string> k;
-    if (j.contains("key") && !j["key"].isNull() && j["key"].isString())
-        k = j["key"].get<std::string>();
+    if (j.contains("key") && !j["key"].isNull() && j["key"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        k = j["key"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return ConfigReset{std::move(k)};
 }
 
-static std::expected<HistoryList, kanariv::utils::Error> parseCommandHistoryList(const Json& j) {
+static auto parseCommandHistoryList(const Json& j)
+    -> std::expected<HistoryList, kanariv::utils::Error> {
     HistoryList v{};
-    if (j.contains("limit") && !j["limit"].isNull() && j["limit"].isNumber())
-        v.limit = j["limit"].get<int>();
+    if (j.contains("limit") && !j["limit"].isNull() && j["limit"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.limit = j["limit"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<HistoryClear, kanariv::utils::Error>
-parseCommandHistoryClear(const Json& /*j*/) {
+static auto parseCommandHistoryClear(const Json& /*j*/)
+    -> std::expected<HistoryClear, kanariv::utils::Error> {
     return HistoryClear{};
 }
 
-static std::expected<BookmarkList, kanariv::utils::Error> parseCommandBookmarkList(const Json& j) {
+static auto parseCommandBookmarkList(const Json& j)
+    -> std::expected<BookmarkList, kanariv::utils::Error> {
     BookmarkList v{};
-    if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber())
-        v.track_id = j["track_id"].get<int64_t>();
+    if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.track_id = j["track_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<BookmarkAdd, kanariv::utils::Error> parseCommandBookmarkAdd(const Json& j) {
+static auto parseCommandBookmarkAdd(const Json& j)
+    -> std::expected<BookmarkAdd, kanariv::utils::Error> {
     BookmarkAdd v{};
-    if (j.contains("position_ms") && j["position_ms"].isNumber())
-        v.position_ms = j["position_ms"].get<int64_t>();
-    if (j.contains("note") && j["note"].isString())
-        v.note = j["note"].get<std::string>();
-    if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber())
-        v.track_id = j["track_id"].get<int64_t>();
+    if (j.contains("position_ms") && j["position_ms"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.position_ms = j["position_ms"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("note") && j["note"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.note = j["note"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.track_id = j["track_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<BookmarkRemove, kanariv::utils::Error>
-parseCommandBookmarkRemove(const Json& j) {
+static auto parseCommandBookmarkRemove(const Json& j)
+    -> std::expected<BookmarkRemove, kanariv::utils::Error> {
     BookmarkRemove v{};
-    if (j.contains("id") && j["id"].isNumber())
-        v.id = j["id"].get<int64_t>();
+    if (j.contains("id") && j["id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.id = j["id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<BookmarkGoto, kanariv::utils::Error> parseCommandBookmarkGoto(const Json& j) {
+static auto parseCommandBookmarkGoto(const Json& j)
+    -> std::expected<BookmarkGoto, kanariv::utils::Error> {
     BookmarkGoto v{};
-    if (j.contains("id") && j["id"].isNumber())
-        v.id = j["id"].get<int64_t>();
+    if (j.contains("id") && j["id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        v.id = j["id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return v;
 }
 
-static std::expected<Shutdown, kanariv::utils::Error> parseCommandShutdown(const Json& /*j*/) {
+static auto parseCommandShutdown(const Json& /*j*/)
+    -> std::expected<Shutdown, kanariv::utils::Error> {
     return Shutdown{};
 }
 
-static std::expected<Preview, kanariv::utils::Error> parseCommandPreview(const Json& j) {
+static auto parseCommandPreview(const Json& j) -> std::expected<Preview, kanariv::utils::Error> {
     std::string f;
-    if (j.contains("file") && j["file"].isString())
-        f = j["file"].get<std::string>();
+    if (j.contains("file") && j["file"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        f = j["file"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return Preview{std::move(f)};
 }
 
-static std::expected<DeviceList, kanariv::utils::Error> parseCommandDeviceList(const Json& /*j*/) {
+static auto parseCommandDeviceList(const Json& /*j*/)
+    -> std::expected<DeviceList, kanariv::utils::Error> {
     return DeviceList{};
 }
 
-static std::expected<DeviceSet, kanariv::utils::Error> parseCommandDeviceSet(const Json& j) {
+static auto parseCommandDeviceSet(const Json& j)
+    -> std::expected<DeviceSet, kanariv::utils::Error> {
     std::string id;
-    if (j.contains("id") && j["id"].isString())
-        id = j["id"].get<std::string>();
+    if (j.contains("id") && j["id"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        id = j["id"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return DeviceSet{std::move(id)};
 }
 
-static std::expected<DeviceTest, kanariv::utils::Error> parseCommandDeviceTest(const Json& j) {
+static auto parseCommandDeviceTest(const Json& j)
+    -> std::expected<DeviceTest, kanariv::utils::Error> {
     std::optional<std::string> id;
-    if (j.contains("id") && !j["id"].isNull() && j["id"].isString())
-        id = j["id"].get<std::string>();
+    if (j.contains("id") && !j["id"].isNull() && j["id"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        id = j["id"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     DeviceTest dt{.id = std::move(id)};
-    if (j.contains("tone") && j["tone"].isBoolean())
-        dt.tone = j["tone"].get<bool>();
+    if (j.contains("tone") && j["tone"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        dt.tone = j["tone"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return dt;
 }
 
-static std::expected<Info, kanariv::utils::Error> parseCommandInfo(const Json& /*j*/) {
+static auto parseCommandInfo(const Json& /*j*/) -> std::expected<Info, kanariv::utils::Error> {
     return Info{};
 }
 
-static std::expected<TrackRate, kanariv::utils::Error> parseCommandTrackRate(const Json& j) {
+static auto parseCommandTrackRate(const Json& j)
+    -> std::expected<TrackRate, kanariv::utils::Error> {
     TrackRate tr{};
-    if (j.contains("track_id") && j["track_id"].isNumber())
-        tr.track_id = j["track_id"].get<int64_t>();
-    if (j.contains("rating") && j["rating"].isNumber())
-        tr.rating = j["rating"].get<int32_t>();
+    if (j.contains("track_id") && j["track_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        tr.track_id = j["track_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("rating") && j["rating"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        tr.rating = j["rating"].get<int32_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return tr;
 }
 
 // Forward declarations for toJson helpers.
-static Json toJsonStatus(const Status& v);
-static Json toJsonQueueTracks(const QueueTracks& v);
-static Json toJsonQueues(const Queues& v);
-static Json toJsonQueueCreated(const QueueCreated& v);
-static Json toJsonPlaylistLoaded(const PlaylistLoaded& v);
-static Json toJsonVolumeInfo(const VolumeInfo& v);
-static Json toJsonLibraryStats(const kanariv::types::LibraryStats& v);
-static Json toJsonTracks(const Tracks& v);
-static Json toJsonSearchResults(const SearchResults& v);
-static Json toJsonScanReport(const ScanReport& v);
-static Json toJsonPlaylists(const Playlists& v);
-static Json toJsonPlaylistData(const PlaylistData& v);
-static Json toJsonPlaylistCreated(const PlaylistCreated& v);
-static Json toJsonPlaylistImportReport(const PlaylistImportReport& v);
-static Json toJsonLibraryMaintenanceReport(const LibraryMaintenanceReport& v);
-static Json toJsonConfigValue(const ConfigValue& v);
-static Json toJsonConfigValues(const ConfigValues& v);
-static Json toJsonSingleTrack(const SingleTrack& v);
-static Json toJsonTrackInfo(const TrackInfo& v);
-static Json toJsonHistory(const History& v);
-static Json toJsonBookmarks(const Bookmarks& v);
-static Json toJsonDevices(const Devices& v);
-static Json toJsonEmpty(const Empty& v);
+static auto toJsonStatus(const Status& v) -> Json;
+static auto toJsonQueueTracks(const QueueTracks& v) -> Json;
+static auto toJsonQueues(const Queues& v) -> Json;
+static auto toJsonQueueCreated(const QueueCreated& v) -> Json;
+static auto toJsonPlaylistLoaded(const PlaylistLoaded& v) -> Json;
+static auto toJsonVolumeInfo(const VolumeInfo& v) -> Json;
+static auto toJsonLibraryStats(const kanariv::types::LibraryStats& v) -> Json;
+static auto toJsonTracks(const Tracks& v) -> Json;
+static auto toJsonSearchResults(const SearchResults& v) -> Json;
+static auto toJsonScanReport(const ScanReport& v) -> Json;
+static auto toJsonPlaylists(const Playlists& v) -> Json;
+static auto toJsonPlaylistData(const PlaylistData& v) -> Json;
+static auto toJsonPlaylistCreated(const PlaylistCreated& v) -> Json;
+static auto toJsonPlaylistImportReport(const PlaylistImportReport& v) -> Json;
+static auto toJsonLibraryMaintenanceReport(const LibraryMaintenanceReport& v) -> Json;
+static auto toJsonConfigValue(const ConfigValue& v) -> Json;
+static auto toJsonConfigValues(const ConfigValues& v) -> Json;
+static auto toJsonSingleTrack(const SingleTrack& v) -> Json;
+static auto toJsonTrackInfo(const TrackInfo& v) -> Json;
+static auto toJsonHistory(const History& v) -> Json;
+static auto toJsonBookmarks(const Bookmarks& v) -> Json;
+static auto toJsonDevices(const Devices& v) -> Json;
+static auto toJsonEmpty(const Empty& v) -> Json;
 
-Json toJson(const Result& r) {
+auto toJson(const Result& r) -> Json {
     return std::visit(
         [](const auto& v) -> Json {
             using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, Status>) return toJsonStatus(v);
-            if constexpr (std::is_same_v<T, QueueTracks>) return toJsonQueueTracks(v);
-            if constexpr (std::is_same_v<T, Queues>) return toJsonQueues(v);
-            if constexpr (std::is_same_v<T, QueueCreated>) return toJsonQueueCreated(v);
-            if constexpr (std::is_same_v<T, PlaylistLoaded>) return toJsonPlaylistLoaded(v);
-            if constexpr (std::is_same_v<T, VolumeInfo>) return toJsonVolumeInfo(v);
-            if constexpr (std::is_same_v<T, kanariv::types::LibraryStats>)
+            if constexpr (std::is_same_v<T, Status>) {
+                return toJsonStatus(v);
+            }
+            if constexpr (std::is_same_v<T, QueueTracks>) {
+                return toJsonQueueTracks(v);
+            }
+            if constexpr (std::is_same_v<T, Queues>) {
+                return toJsonQueues(v);
+            }
+            if constexpr (std::is_same_v<T, QueueCreated>) {
+                return toJsonQueueCreated(v);
+            }
+            if constexpr (std::is_same_v<T, PlaylistLoaded>) {
+                return toJsonPlaylistLoaded(v);
+            }
+            if constexpr (std::is_same_v<T, VolumeInfo>) {
+                return toJsonVolumeInfo(v);
+            }
+            if constexpr (std::is_same_v<T, kanariv::types::LibraryStats>) {
                 return toJsonLibraryStats(v);
-            if constexpr (std::is_same_v<T, Tracks>) return toJsonTracks(v);
-            if constexpr (std::is_same_v<T, SearchResults>) return toJsonSearchResults(v);
-            if constexpr (std::is_same_v<T, ScanReport>) return toJsonScanReport(v);
-            if constexpr (std::is_same_v<T, Playlists>) return toJsonPlaylists(v);
-            if constexpr (std::is_same_v<T, PlaylistData>) return toJsonPlaylistData(v);
-            if constexpr (std::is_same_v<T, PlaylistCreated>) return toJsonPlaylistCreated(v);
-            if constexpr (std::is_same_v<T, PlaylistImportReport>)
+            }
+            if constexpr (std::is_same_v<T, Tracks>) {
+                return toJsonTracks(v);
+            }
+            if constexpr (std::is_same_v<T, SearchResults>) {
+                return toJsonSearchResults(v);
+            }
+            if constexpr (std::is_same_v<T, ScanReport>) {
+                return toJsonScanReport(v);
+            }
+            if constexpr (std::is_same_v<T, Playlists>) {
+                return toJsonPlaylists(v);
+            }
+            if constexpr (std::is_same_v<T, PlaylistData>) {
+                return toJsonPlaylistData(v);
+            }
+            if constexpr (std::is_same_v<T, PlaylistCreated>) {
+                return toJsonPlaylistCreated(v);
+            }
+            if constexpr (std::is_same_v<T, PlaylistImportReport>) {
                 return toJsonPlaylistImportReport(v);
-            if constexpr (std::is_same_v<T, LibraryMaintenanceReport>)
+            }
+            if constexpr (std::is_same_v<T, LibraryMaintenanceReport>) {
                 return toJsonLibraryMaintenanceReport(v);
-            if constexpr (std::is_same_v<T, ConfigValue>) return toJsonConfigValue(v);
-            if constexpr (std::is_same_v<T, ConfigValues>) return toJsonConfigValues(v);
-            if constexpr (std::is_same_v<T, SingleTrack>) return toJsonSingleTrack(v);
-            if constexpr (std::is_same_v<T, TrackInfo>) return toJsonTrackInfo(v);
-            if constexpr (std::is_same_v<T, History>) return toJsonHistory(v);
-            if constexpr (std::is_same_v<T, Bookmarks>) return toJsonBookmarks(v);
-            if constexpr (std::is_same_v<T, Devices>) return toJsonDevices(v);
-            if constexpr (std::is_same_v<T, Empty>) return toJsonEmpty(v);
-            if constexpr (std::is_same_v<T, kanariv::utils::Error>)
+            }
+            if constexpr (std::is_same_v<T, ConfigValue>) {
+                return toJsonConfigValue(v);
+            }
+            if constexpr (std::is_same_v<T, ConfigValues>) {
+                return toJsonConfigValues(v);
+            }
+            if constexpr (std::is_same_v<T, SingleTrack>) {
+                return toJsonSingleTrack(v);
+            }
+            if constexpr (std::is_same_v<T, TrackInfo>) {
+                return toJsonTrackInfo(v);
+            }
+            if constexpr (std::is_same_v<T, History>) {
+                return toJsonHistory(v);
+            }
+            if constexpr (std::is_same_v<T, Bookmarks>) {
+                return toJsonBookmarks(v);
+            }
+            if constexpr (std::is_same_v<T, Devices>) {
+                return toJsonDevices(v);
+            }
+            if constexpr (std::is_same_v<T, Empty>) {
+                return toJsonEmpty(v);
+            }
+            if constexpr (std::is_same_v<T, kanariv::utils::Error>) {
                 return detail::errorToJson(v);
+            }
             Json j;
-            j["type"] = "Unknown";
+            j["type"] = "Unknown"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             return j;
         },
         r);
@@ -1210,446 +1516,519 @@ Json toJson(const Result& r) {
 
 // toJson helper implementations.
 
-static Json toJsonStatus(const Status& v) {
+static auto toJsonStatus(const Status& v) -> Json {
     Json j;
-    j["type"] = "Status";
-    j["state"] = std::format("{}", v.state);
-    j["state_value"] = std::to_underlying(v.state);
-    j["pos"] = v.pos;
-    j["dur"] = v.dur;
-    j["vol"] = v.vol;
-    j["muted"] = v.muted;
-    j["shuffle"] = v.shuffle;
-    j["repeat"] = std::format("{}", v.repeat);
-    j["repeat_value"] = std::to_underlying(v.repeat);
-    j["track_id"] = v.track_id;
-    j["title"] = v.title;
-    j["artist"] = v.artist;
-    j["path"] = v.path;
-    j["q_size"] = v.q_size;
-    j["q_idx"] = v.q_idx;
-    j["version"] = v.version;
+    j["type"] = "Status"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["state"] = std::format("{}", v.state); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["state_value"] = std::to_underlying(v.state); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["pos"] = v.pos; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["dur"] = v.dur; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["vol"] = v.vol; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["muted"] = v.muted; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["shuffle"] = v.shuffle; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["repeat"] = std::format("{}", v.repeat); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["repeat_value"] = std::to_underlying(v.repeat); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["track_id"] = v.track_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["title"] = v.title; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["artist"] = v.artist; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["path"] = v.path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["q_size"] = v.q_size; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["q_idx"] = v.q_idx; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["version"] = v.version; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonQueueTracks(const QueueTracks& v) {
+static auto toJsonQueueTracks(const QueueTracks& v) -> Json {
     Json j;
-    j["type"] = "QueueTracks";
-    j["tracks"] = Json::array();
-    for (const auto& t : v.tracks)
-        j["tracks"].push_back(kanariv::utils::trackToJson(t));
+    j["type"] = "QueueTracks"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["tracks"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (const auto& t : v.tracks) {
+        j["tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return j;
 }
 
-static Json toJsonQueues(const Queues& v) {
+static auto toJsonQueues(const Queues& v) -> Json {
     Json j;
-    j["type"] = "Queues";
-    j["queues"] = Json::array();
+    j["type"] = "Queues"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["queues"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (const auto& q : v.entries) {
         Json e = Json::object();
-        e["id"] = q.id;
-        e["name"] = q.name;
-        e["tracks"] = q.tracks;
-        e["active"] = q.active;
-        e["temp"] = q.temp;
-        j["queues"].push_back(e);
+        e["id"] = q.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        e["name"] = q.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        e["tracks"] = q.tracks; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        e["active"] = q.active; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        e["temp"] = q.temp; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["queues"].push_back(e); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     return j;
 }
 
-static Json toJsonQueueCreated(const QueueCreated& v) {
+static auto toJsonQueueCreated(const QueueCreated& v) -> Json {
     Json j;
-    j["type"] = "QueueCreated";
-    j["id"] = v.id;
-    j["name"] = v.name;
+    j["type"] = "QueueCreated"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["id"] = v.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["name"] = v.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonPlaylistLoaded(const PlaylistLoaded& v) {
+static auto toJsonPlaylistLoaded(const PlaylistLoaded& v) -> Json {
     Json j;
-    j["type"] = "PlaylistLoaded";
-    j["queue_id"] = v.queue_id;
-    j["status"] = toJson(Result{v.status});
+    j["type"] = "PlaylistLoaded"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["queue_id"] = v.queue_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["status"] = toJson(Result{v.status}); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonVolumeInfo(const VolumeInfo& v) {
+static auto toJsonVolumeInfo(const VolumeInfo& v) -> Json {
     Json j;
-    j["type"] = "VolumeInfo";
-    j["vol"] = v.vol;
-    j["muted"] = v.muted;
+    j["type"] = "VolumeInfo"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["vol"] = v.vol; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["muted"] = v.muted; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonLibraryStats(const kanariv::types::LibraryStats& v) {
+static auto toJsonLibraryStats(const kanariv::types::LibraryStats& v) -> Json {
     Json j;
-    j["type"] = "LibraryStats";
-    j["tracks"] = v.tracks;
-    j["queues"] = v.queues;
-    j["playlists"] = v.playlists;
-    j["total_duration_ms"] = v.total_duration_ms;
-    j["total_play_time_ms"] = v.total_play_time_ms;
+    j["type"] = "LibraryStats"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["tracks"] = v.tracks; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["queues"] = v.queues; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["playlists"] = v.playlists; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["total_duration_ms"] = v.total_duration_ms; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["total_play_time_ms"] = v.total_play_time_ms; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     if (v.top_tracks) {
-        j["top_tracks"] = Json::array();
-        for (const auto& t : *v.top_tracks)
-            j["top_tracks"].push_back(kanariv::utils::trackToJson(t));
+        j["top_tracks"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        for (const auto& t : *v.top_tracks) {
+            j["top_tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        }
     }
     if (v.top_albums) {
-        j["top_albums"] = Json::array();
+        j["top_albums"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (const auto& e : *v.top_albums) {
             Json je;
-            je["name"] = e.name;
-            je["track_count"] = static_cast<int64_t>(e.track_count);
-            je["total_plays"] = e.total_plays;
-            j["top_albums"].push_back(je);
+            je["name"] = e.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            je["track_count"] = static_cast<int64_t>(e.track_count); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            je["total_plays"] = e.total_plays; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            j["top_albums"].push_back(je); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
     }
     if (v.top_genres) {
-        j["top_genres"] = Json::array();
+        j["top_genres"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (const auto& e : *v.top_genres) {
             Json je;
-            je["name"] = e.name;
-            je["track_count"] = static_cast<int64_t>(e.track_count);
-            je["total_plays"] = e.total_plays;
-            j["top_genres"].push_back(je);
+            je["name"] = e.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            je["track_count"] = static_cast<int64_t>(e.track_count); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            je["total_plays"] = e.total_plays; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            j["top_genres"].push_back(je); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
     }
     if (v.top_artists) {
-        j["top_artists"] = Json::array();
+        j["top_artists"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (const auto& e : *v.top_artists) {
             Json je;
-            je["name"] = e.name;
-            je["track_count"] = static_cast<int64_t>(e.track_count);
-            je["total_plays"] = e.total_plays;
-            j["top_artists"].push_back(je);
+            je["name"] = e.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            je["track_count"] = static_cast<int64_t>(e.track_count); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            je["total_plays"] = e.total_plays; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            j["top_artists"].push_back(je); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
     }
     return j;
 }
 
-static Json toJsonTracks(const Tracks& v) {
+static auto toJsonTracks(const Tracks& v) -> Json {
     Json j;
-    j["type"] = "Tracks";
-    j["tracks"] = Json::array();
-    for (const auto& t : v.tracks)
-        j["tracks"].push_back(kanariv::utils::trackToJson(t));
+    j["type"] = "Tracks"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["tracks"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (const auto& t : v.tracks) {
+        j["tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return j;
 }
 
-static Json toJsonSearchResults(const SearchResults& v) {
+static auto toJsonSearchResults(const SearchResults& v) -> Json {
     Json j;
-    j["type"] = "SearchResults";
-    j["query"] = v.query;
-    j["tracks"] = Json::array();
-    for (const auto& t : v.tracks)
-        j["tracks"].push_back(kanariv::utils::trackToJson(t));
+    j["type"] = "SearchResults"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["query"] = v.query; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["tracks"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (const auto& t : v.tracks) {
+        j["tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return j;
 }
 
-static Json toJsonScanReport(const ScanReport& v) {
+static auto toJsonScanReport(const ScanReport& v) -> Json {
     Json j;
-    j["type"] = "ScanReport";
-    j["added"] = v.added;
+    j["type"] = "ScanReport"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["added"] = v.added; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonPlaylists(const Playlists& v) {
+static auto toJsonPlaylists(const Playlists& v) -> Json {
     Json j;
-    j["type"] = "Playlists";
-    j["playlists"] = Json::array();
-    for (const auto& p : v.playlists)
-        j["playlists"].push_back(detail::playlistToJson(p));
+    j["type"] = "Playlists"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["playlists"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (const auto& p : v.playlists) {
+        j["playlists"].push_back(detail::playlistToJson(p)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return j;
 }
 
-static Json toJsonPlaylistData(const PlaylistData& v) {
+static auto toJsonPlaylistData(const PlaylistData& v) -> Json {
     Json j;
-    j["type"] = "PlaylistData";
-    j["tracks"] = Json::array();
-    for (const auto& t : v.tracks)
-        j["tracks"].push_back(kanariv::utils::trackToJson(t));
-    j["format"] = v.format;
+    j["type"] = "PlaylistData"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["tracks"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (const auto& t : v.tracks) {
+        j["tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    j["format"] = v.format; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonPlaylistCreated(const PlaylistCreated& v) {
+static auto toJsonPlaylistCreated(const PlaylistCreated& v) -> Json {
     Json j;
-    j["type"] = "PlaylistCreated";
-    j["id"] = v.id;
-    j["name"] = v.name;
+    j["type"] = "PlaylistCreated"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["id"] = v.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["name"] = v.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonPlaylistImportReport(const PlaylistImportReport& v) {
+static auto toJsonPlaylistImportReport(const PlaylistImportReport& v) -> Json {
     Json j;
-    j["type"] = "PlaylistImportReport";
-    j["pid"] = v.pid;
-    j["name"] = v.name;
-    j["tracks"] = Json::array();
-    for (const auto& t : v.tracks)
-        j["tracks"].push_back(kanariv::utils::trackToJson(t));
-    j["matched"] = v.matched;
-    j["skipped"] = v.skipped;
-    j["duplicates"] = v.duplicates;
+    j["type"] = "PlaylistImportReport"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["pid"] = v.pid; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["name"] = v.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["tracks"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (const auto& t : v.tracks) {
+        j["tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    j["matched"] = v.matched; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["skipped"] = v.skipped; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["duplicates"] = v.duplicates; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonLibraryMaintenanceReport(const LibraryMaintenanceReport& v) {
+static auto toJsonLibraryMaintenanceReport(const LibraryMaintenanceReport& v) -> Json {
     Json j;
-    j["type"] = "LibraryMaintenanceReport";
-    j["tracks_checked"] = v.tracks_checked;
-    j["missing_tracks"] = Json::array();
-    for (const auto& t : v.missing_tracks)
-        j["missing_tracks"].push_back(kanariv::utils::trackToJson(t));
-    j["duplicate_groups"] = v.duplicate_groups;
-    j["duplicate_tracks"] = v.duplicate_tracks;
+    j["type"] = "LibraryMaintenanceReport"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["tracks_checked"] = v.tracks_checked; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["missing_tracks"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (const auto& t : v.missing_tracks) {
+        j["missing_tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    j["duplicate_groups"] = v.duplicate_groups; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["duplicate_tracks"] = v.duplicate_tracks; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonConfigValue(const ConfigValue& v) {
+static auto toJsonConfigValue(const ConfigValue& v) -> Json {
     Json j;
-    j["type"] = "ConfigValue";
-    j["key"] = v.key;
-    j["value"] = v.value;
+    j["type"] = "ConfigValue"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["key"] = v.key; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["value"] = v.value; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonConfigValues(const ConfigValues& v) {
+static auto toJsonConfigValues(const ConfigValues& v) -> Json {
     Json j;
-    j["type"] = "ConfigValues";
-    j["values"] = Json::array();
+    j["type"] = "ConfigValues"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["values"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (const auto& cv : v.values) {
         Json kv = Json::object();
-        kv["key"] = cv.key;
-        kv["value"] = cv.value;
-        j["values"].push_back(kv);
+        kv["key"] = cv.key; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        kv["value"] = cv.value; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["values"].push_back(kv); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     return j;
 }
 
-static Json toJsonSingleTrack(const SingleTrack& v) {
+static auto toJsonSingleTrack(const SingleTrack& v) -> Json {
     Json j;
-    j["type"] = "SingleTrack";
-    j["track"] = kanariv::utils::trackToJson(v.track);
-    if (!v.cover_mime.empty())
-        j["cover_mime"] = v.cover_mime;
-    if (!v.cover_data.empty())
-        j["cover_data"] = v.cover_data;
+    j["type"] = "SingleTrack"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["track"] = kanariv::utils::trackToJson(v.track); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (!v.cover_mime.empty()) {
+        j["cover_mime"] = v.cover_mime; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (!v.cover_data.empty()) {
+        j["cover_data"] = v.cover_data; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return j;
 }
 
-static Json toJsonTrackInfo(const TrackInfo& v) {
+static auto toJsonTrackInfo(const TrackInfo& v) -> Json {
     Json j;
-    j["type"] = "TrackInfo";
-    j["track"] = kanariv::utils::trackToJson(v.track);
-    j["play_count"] = v.play_count;
-    j["last_played"] = v.last_played;
+    j["type"] = "TrackInfo"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["track"] = kanariv::utils::trackToJson(v.track); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["play_count"] = v.play_count; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["last_played"] = v.last_played; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
-static Json toJsonHistory(const History& v) {
+static auto toJsonHistory(const History& v) -> Json {
     Json j;
-    j["type"] = "History";
-    j["entries"] = Json::array();
+    j["type"] = "History"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["entries"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (const auto& e : v.entries) {
         Json ej;
-        ej["id"] = e.id;
-        ej["track_id"] = e.track_id;
-        ej["started_at"] = e.started_at;
-        ej["completed_at"] = e.completed_at;
-        ej["position_ms"] = e.position_ms;
-        ej["completion_pct"] = e.completion_pct;
-        ej["queue_id"] = e.queue_id;
-        ej["title"] = e.title;
-        ej["artist"] = e.artist;
-        ej["path"] = e.path;
-        ej["duration"] = e.duration;
-        j["entries"].push_back(ej);
+        ej["id"] = e.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["track_id"] = e.track_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["started_at"] = e.started_at; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["completed_at"] = e.completed_at; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["position_ms"] = e.position_ms; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["completion_pct"] = e.completion_pct; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["queue_id"] = e.queue_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["title"] = e.title; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["artist"] = e.artist; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["path"] = e.path; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["duration"] = e.duration; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["entries"].push_back(ej); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     return j;
 }
 
-static Json toJsonBookmarks(const Bookmarks& v) {
+static auto toJsonBookmarks(const Bookmarks& v) -> Json {
     Json j;
-    j["type"] = "Bookmarks";
-    j["entries"] = Json::array();
+    j["type"] = "Bookmarks"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["entries"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (const auto& e : v.entries) {
         Json ej;
-        ej["id"] = e.id;
-        ej["track_id"] = e.track_id;
-        ej["position_ms"] = e.position_ms;
-        ej["note"] = e.note;
-        ej["created"] = e.created;
-        j["entries"].push_back(ej);
+        ej["id"] = e.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["track_id"] = e.track_id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["position_ms"] = e.position_ms; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["note"] = e.note; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ej["created"] = e.created; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["entries"].push_back(ej); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     return j;
 }
 
-static Json toJsonDevices(const Devices& v) {
+static auto toJsonDevices(const Devices& v) -> Json {
     Json j;
-    j["type"] = "Devices";
-    j["devices"] = Json::array();
+    j["type"] = "Devices"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["devices"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (const auto& d : v.devices) {
         Json dj;
-        dj["id"] = d.id;
-        dj["name"] = d.name;
-        dj["isDefault"] = d.isDefault;
-        j["devices"].push_back(dj);
+        dj["id"] = d.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        dj["name"] = d.name; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        dj["isDefault"] = d.isDefault; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["devices"].push_back(dj); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     return j;
 }
 
-static Json toJsonEmpty(const Empty& /*v*/) {
+static auto toJsonEmpty(const Empty& /*v*/) -> Json {
     Json j;
-    j["type"] = "Empty";
+    j["type"] = "Empty"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j;
 }
 
 // Forward declarations for resultFromJson helpers.
-static std::expected<Status, kanariv::utils::Error> parseResultStatus(const Json& j);
-static std::expected<QueueTracks, kanariv::utils::Error> parseResultQueueTracks(const Json& j);
-static std::expected<Queues, kanariv::utils::Error> parseResultQueues(const Json& j);
-static std::expected<QueueCreated, kanariv::utils::Error> parseResultQueueCreated(const Json& j);
-static std::expected<PlaylistLoaded, kanariv::utils::Error> parseResultPlaylistLoaded(const Json& j);
-static std::expected<VolumeInfo, kanariv::utils::Error> parseResultVolumeInfo(const Json& j);
-static std::expected<kanariv::types::LibraryStats, kanariv::utils::Error>
-parseResultLibraryStats(const Json& j);
-static std::expected<Tracks, kanariv::utils::Error> parseResultTracks(const Json& j);
-static std::expected<SearchResults, kanariv::utils::Error> parseResultSearchResults(const Json& j);
-static std::expected<ScanReport, kanariv::utils::Error> parseResultScanReport(const Json& j);
-static std::expected<Playlists, kanariv::utils::Error> parseResultPlaylists(const Json& j);
-static std::expected<PlaylistData, kanariv::utils::Error> parseResultPlaylistData(const Json& j);
-static std::expected<PlaylistCreated, kanariv::utils::Error> parseResultPlaylistCreated(const Json& j);
-static std::expected<PlaylistImportReport, kanariv::utils::Error>
-parseResultPlaylistImportReport(const Json& j);
-static std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
-parseResultLibraryMaintenanceReport(const Json& j);
-static std::expected<ConfigValue, kanariv::utils::Error> parseResultConfigValue(const Json& j);
-static std::expected<ConfigValues, kanariv::utils::Error> parseResultConfigValues(const Json& j);
-static std::expected<SingleTrack, kanariv::utils::Error> parseResultSingleTrack(const Json& j);
-static std::expected<TrackInfo, kanariv::utils::Error> parseResultTrackInfo(const Json& j);
-static std::expected<History, kanariv::utils::Error> parseResultHistory(const Json& j);
-static std::expected<Bookmarks, kanariv::utils::Error> parseResultBookmarks(const Json& j);
-static std::expected<Devices, kanariv::utils::Error> parseResultDevices(const Json& j);
+static auto parseResultStatus(const Json& j) -> std::expected<Status, kanariv::utils::Error>;
+static auto parseResultQueueTracks(const Json& j)
+    -> std::expected<QueueTracks, kanariv::utils::Error>;
+static auto parseResultQueues(const Json& j) -> std::expected<Queues, kanariv::utils::Error>;
+static auto parseResultQueueCreated(const Json& j)
+    -> std::expected<QueueCreated, kanariv::utils::Error>;
+static auto parseResultPlaylistLoaded(const Json& j)
+    -> std::expected<PlaylistLoaded, kanariv::utils::Error>;
+static auto parseResultVolumeInfo(const Json& j)
+    -> std::expected<VolumeInfo, kanariv::utils::Error>;
+static auto parseResultLibraryStats(const Json& j)
+    -> std::expected<kanariv::types::LibraryStats, kanariv::utils::Error>;
+static auto parseResultTracks(const Json& j) -> std::expected<Tracks, kanariv::utils::Error>;
+static auto parseResultSearchResults(const Json& j)
+    -> std::expected<SearchResults, kanariv::utils::Error>;
+static auto parseResultScanReport(const Json& j)
+    -> std::expected<ScanReport, kanariv::utils::Error>;
+static auto parseResultPlaylists(const Json& j) -> std::expected<Playlists, kanariv::utils::Error>;
+static auto parseResultPlaylistData(const Json& j)
+    -> std::expected<PlaylistData, kanariv::utils::Error>;
+static auto parseResultPlaylistCreated(const Json& j)
+    -> std::expected<PlaylistCreated, kanariv::utils::Error>;
+static auto parseResultPlaylistImportReport(const Json& j)
+    -> std::expected<PlaylistImportReport, kanariv::utils::Error>;
+static auto parseResultLibraryMaintenanceReport(const Json& j)
+    -> std::expected<LibraryMaintenanceReport, kanariv::utils::Error>;
+static auto parseResultConfigValue(const Json& j)
+    -> std::expected<ConfigValue, kanariv::utils::Error>;
+static auto parseResultConfigValues(const Json& j)
+    -> std::expected<ConfigValues, kanariv::utils::Error>;
+static auto parseResultSingleTrack(const Json& j)
+    -> std::expected<SingleTrack, kanariv::utils::Error>;
+static auto parseResultTrackInfo(const Json& j) -> std::expected<TrackInfo, kanariv::utils::Error>;
+static auto parseResultHistory(const Json& j) -> std::expected<History, kanariv::utils::Error>;
+static auto parseResultBookmarks(const Json& j) -> std::expected<Bookmarks, kanariv::utils::Error>;
+static auto parseResultDevices(const Json& j) -> std::expected<Devices, kanariv::utils::Error>;
 
-std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
+auto resultFromJson(const Json& j) -> std::expected<Result, kanariv::utils::Error> {
     try {
-        if (!j.contains("type") || !j["type"].isString()) {
+        if (!j.contains("type") || !j["type"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                            "missing Result type")};
+                                                             "missing Result type")};
         }
-        std::string t = j["type"].get<std::string>();
-        if (t == "Status") return parseResultStatus(j);
-        if (t == "QueueTracks") return parseResultQueueTracks(j);
-        if (t == "Queues") return parseResultQueues(j);
-        if (t == "QueueCreated") return parseResultQueueCreated(j);
-        if (t == "PlaylistLoaded") return parseResultPlaylistLoaded(j);
-        if (t == "VolumeInfo") return parseResultVolumeInfo(j);
-        if (t == "LibraryStats" || t == "LibraryStatsDetailed") return parseResultLibraryStats(j);
-        if (t == "Tracks") return parseResultTracks(j);
-        if (t == "SearchResults") return parseResultSearchResults(j);
-        if (t == "ScanReport") return parseResultScanReport(j);
-        if (t == "Playlists") return parseResultPlaylists(j);
-        if (t == "PlaylistData") return parseResultPlaylistData(j);
-        if (t == "PlaylistCreated") return parseResultPlaylistCreated(j);
-        if (t == "PlaylistImportReport") return parseResultPlaylistImportReport(j);
-        if (t == "LibraryMaintenanceReport") return parseResultLibraryMaintenanceReport(j);
-        if (t == "ConfigValue") return parseResultConfigValue(j);
-        if (t == "ConfigValues") return parseResultConfigValues(j);
-        if (t == "SingleTrack") return parseResultSingleTrack(j);
-        if (t == "TrackInfo") return parseResultTrackInfo(j);
-        if (t == "History") return parseResultHistory(j);
-        if (t == "Bookmarks") return parseResultBookmarks(j);
-        if (t == "Devices") return parseResultDevices(j);
-        if (t == "Empty") return Result{Empty{}};
+        auto t = j["type"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (t == "Status") {
+            return parseResultStatus(j);
+        }
+        if (t == "QueueTracks") {
+            return parseResultQueueTracks(j);
+        }
+        if (t == "Queues") {
+            return parseResultQueues(j);
+        }
+        if (t == "QueueCreated") {
+            return parseResultQueueCreated(j);
+        }
+        if (t == "PlaylistLoaded") {
+            return parseResultPlaylistLoaded(j);
+        }
+        if (t == "VolumeInfo") {
+            return parseResultVolumeInfo(j);
+        }
+        if (t == "LibraryStats" || t == "LibraryStatsDetailed") {
+            return parseResultLibraryStats(j);
+        }
+        if (t == "Tracks") {
+            return parseResultTracks(j);
+        }
+        if (t == "SearchResults") {
+            return parseResultSearchResults(j);
+        }
+        if (t == "ScanReport") {
+            return parseResultScanReport(j);
+        }
+        if (t == "Playlists") {
+            return parseResultPlaylists(j);
+        }
+        if (t == "PlaylistData") {
+            return parseResultPlaylistData(j);
+        }
+        if (t == "PlaylistCreated") {
+            return parseResultPlaylistCreated(j);
+        }
+        if (t == "PlaylistImportReport") {
+            return parseResultPlaylistImportReport(j);
+        }
+        if (t == "LibraryMaintenanceReport") {
+            return parseResultLibraryMaintenanceReport(j);
+        }
+        if (t == "ConfigValue") {
+            return parseResultConfigValue(j);
+        }
+        if (t == "ConfigValues") {
+            return parseResultConfigValues(j);
+        }
+        if (t == "SingleTrack") {
+            return parseResultSingleTrack(j);
+        }
+        if (t == "TrackInfo") {
+            return parseResultTrackInfo(j);
+        }
+        if (t == "History") {
+            return parseResultHistory(j);
+        }
+        if (t == "Bookmarks") {
+            return parseResultBookmarks(j);
+        }
+        if (t == "Devices") {
+            return parseResultDevices(j);
+        }
+        if (t == "Empty") {
+            return Result{Empty{}};
+        }
         if (t == "Error") {
             auto e = detail::errorFromJson(j);
-            if (!e)
+            if (!e) {
                 return std::unexpected{e.error()};
+            }
             return Result{*e};
         }
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                        "unknown Result type: " + t)};
+                                                         "unknown Result type: " + t)};
     } catch (const std::exception& e) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
-std::string serializeRequest(const IpcRequest& req) {
+auto serializeRequest(const IpcRequest& req) -> std::string {
     Json j;
-    j["id"] = req.id;
-    j["cmd"] = toJson(req.cmd);
+    j["id"] = req.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["cmd"] = toJson(req.cmd); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return j.dump();
 }
 
-std::expected<IpcRequest, kanariv::utils::Error> deserializeRequest(std::string_view sv) {
+auto deserializeRequest(std::string_view sv) -> std::expected<IpcRequest, kanariv::utils::Error> {
     try {
         const Json j = Json::parse(sv);
         if (!j.contains("id") || !j.contains("cmd")) {
-            return std::unexpected{
-                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "missing id/cmd")};
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                             "missing id/cmd")};
         }
-        uint32_t id = j["id"].get<uint32_t>();
-        auto cmd = commandFromJson(j["cmd"]);
-        if (!cmd)
+        auto id = j["id"].get<uint32_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        auto cmd = commandFromJson(j["cmd"]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (!cmd) {
             return std::unexpected{cmd.error()};
-        return IpcRequest{.id=id, .cmd=std::move(*cmd)};
+        }
+        return IpcRequest{.id = id, .cmd = std::move(*cmd)};
     } catch (const std::exception& e) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
 }
 
-std::string serializeReply(const IpcReply& rep) {
+auto serializeReply(const IpcReply& rep) -> std::string {
     Json j;
-    j["id"] = rep.id;
+    j["id"] = rep.id; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     if (rep.result.has_value()) {
-        j["ok"] = true;
-        j["result"] = toJson(*rep.result);
+        j["ok"] = true; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["result"] = toJson(*rep.result); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     } else {
-        j["ok"] = false;
-        j["error"] = detail::errorToJson(rep.result.error());
+        j["ok"] = false; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["error"] = detail::errorToJson(rep.result.error()); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     return j.dump();
 }
 
-std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view sv) {
+auto deserializeReply(std::string_view sv) -> std::expected<IpcReply, kanariv::utils::Error> {
     try {
         const Json j = Json::parse(sv);
         if (!j.contains("id")) {
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "missing id")};
         }
-        uint32_t id = j["id"].get<uint32_t>();
+        auto id = j["id"].get<uint32_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         bool ok = true;
-        if (j.contains("ok") && j["ok"].isBoolean())
-            ok = j["ok"].get<bool>();
-        else if (j.contains("error"))
+        if (j.contains("ok") && j["ok"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            ok = j["ok"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        } else if (j.contains("error")) {
             ok = false;
+        }
 
         if (ok) {
             if (!j.contains("result")) {
                 return std::unexpected{kanariv::utils::makeError(
                     kanariv::utils::StatusCode::InvalidArg, "missing result")};
             }
-            auto r = resultFromJson(j["result"]);
-            if (!r)
+            auto r = resultFromJson(j["result"]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (!r) {
                 return std::unexpected{r.error()};
-            return IpcReply{.id=id, .result=std::move(*r)};
+            }
+            return IpcReply{.id = id, .result = std::move(*r)};
         } else {
             Json ej;
-            if (j.contains("error"))
-                ej = j["error"];
-            else if (j.contains("result"))
-                ej = j["result"];
-            else
+            if (j.contains("error")) {
+                ej = j["error"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            } else if (j.contains("result")) {
+                ej = j["result"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            } else {
                 return std::unexpected{kanariv::utils::makeError(
                     kanariv::utils::StatusCode::InvalidArg, "missing error")};
+            }
             auto e = detail::errorFromJson(ej);
-            if (!e)
+            if (!e) {
                 return std::unexpected{e.error()};
-            return IpcReply{.id=id, .result=std::unexpected{*e}};
+            }
+            return IpcReply{.id = id, .result = std::unexpected{*e}};
         }
     } catch (const std::exception& e) {
         return std::unexpected{
@@ -1659,528 +2038,650 @@ std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view
 
 // Result parsing helper implementations.
 
-static std::expected<Status, kanariv::utils::Error> parseResultStatus(const Json& j) {
+static auto parseResultStatus(const Json& j) -> std::expected<Status, kanariv::utils::Error> {
     Status s{};
-    if (j.contains("state") && j["state"].isString()) {
-        auto ps = kanariv::types::parsePlaybackState(j["state"].get<std::string>());
-        if (!ps)
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::InvalidArg, "unknown PlaybackState")};
+    if (j.contains("state") && j["state"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        auto ps = kanariv::types::parsePlaybackState(j["state"].get<std::string>()); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (!ps) {
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                             "unknown PlaybackState")};
+        }
         s.state = *ps;
-    } else if (j.contains("state_value") && j["state_value"].isNumber()) {
-        int v = j["state_value"].get<int>();
+    } else if (j.contains("state_value") && j["state_value"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        int v = j["state_value"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         s.state = static_cast<kanariv::types::PlaybackState>(v);
     }
-    if (j.contains("pos") && j["pos"].isNumber())
-        s.pos = j["pos"].get<double>();
-    if (j.contains("dur") && j["dur"].isNumber())
-        s.dur = j["dur"].get<double>();
-    if (j.contains("vol") && j["vol"].isNumber())
-        s.vol = j["vol"].get<float>();
-    if (j.contains("muted") && j["muted"].isBoolean())
-        s.muted = j["muted"].get<bool>();
-    if (j.contains("shuffle") && j["shuffle"].isBoolean())
-        s.shuffle = j["shuffle"].get<bool>();
-    if (j.contains("repeat") && j["repeat"].isString()) {
-        auto rm = kanariv::types::parseRepeatMode(j["repeat"].get<std::string>());
-        if (!rm)
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::InvalidArg, "unknown RepeatMode")};
+    if (j.contains("pos") && j["pos"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.pos = j["pos"].get<double>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("dur") && j["dur"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.dur = j["dur"].get<double>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("vol") && j["vol"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.vol = j["vol"].get<float>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("muted") && j["muted"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.muted = j["muted"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("shuffle") && j["shuffle"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.shuffle = j["shuffle"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("repeat") && j["repeat"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        auto rm = kanariv::types::parseRepeatMode(j["repeat"].get<std::string>()); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (!rm) {
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                             "unknown RepeatMode")};
+        }
         s.repeat = *rm;
-    } else if (j.contains("repeat_value") && j["repeat_value"].isNumber()) {
-        int v = j["repeat_value"].get<int>();
+    } else if (j.contains("repeat_value") && j["repeat_value"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        int v = j["repeat_value"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         s.repeat = static_cast<kanariv::types::RepeatMode>(v);
     }
-    if (j.contains("track_id") && j["track_id"].isNumber())
-        s.track_id = j["track_id"].get<int64_t>();
-    if (j.contains("title") && j["title"].isString())
-        s.title = j["title"].get<std::string>();
-    if (j.contains("artist") && j["artist"].isString())
-        s.artist = j["artist"].get<std::string>();
-    if (j.contains("path") && j["path"].isString())
-        s.path = j["path"].get<std::string>();
-    if (j.contains("q_size") && j["q_size"].isNumber())
-        s.q_size = j["q_size"].get<std::size_t>();
-    if (j.contains("q_idx") && j["q_idx"].isNumber())
-        s.q_idx = j["q_idx"].get<std::size_t>();
-    if (j.contains("version") && j["version"].isString())
-        s.version = j["version"].get<std::string>();
+    if (j.contains("track_id") && j["track_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.track_id = j["track_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("title") && j["title"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.title = j["title"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("artist") && j["artist"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.artist = j["artist"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("path") && j["path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.path = j["path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("q_size") && j["q_size"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.q_size = j["q_size"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("q_idx") && j["q_idx"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.q_idx = j["q_idx"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("version") && j["version"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        s.version = j["version"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return s;
 }
 
-static std::expected<QueueTracks, kanariv::utils::Error> parseResultQueueTracks(const Json& j) {
+static auto parseResultQueueTracks(const Json& j)
+    -> std::expected<QueueTracks, kanariv::utils::Error> {
     QueueTracks qt{};
-    if (j.contains("tracks") && j["tracks"].isArray()) {
-        const Json tracks = j["tracks"];
+    if (j.contains("tracks") && j["tracks"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json tracks = j["tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ti = 0, tn = tracks.size(); ti < tn; ++ti) {
             auto jt = tracks.at(ti);
-            if (!jt)
+            if (!jt) {
                 return std::unexpected{jt.error()};
+            }
             auto tr = kanariv::utils::trackFromJson(*jt);
-            if (!tr)
+            if (!tr) {
                 return std::unexpected{tr.error()};
+            }
             qt.tracks.push_back(std::move(*tr));
         }
     }
     return qt;
 }
 
-static std::expected<Queues, kanariv::utils::Error> parseResultQueues(const Json& j) {
+static auto parseResultQueues(const Json& j) -> std::expected<Queues, kanariv::utils::Error> {
     Queues qs{};
-    if (j.contains("queues") && j["queues"].isArray()) {
-        const Json arr = j["queues"];
+    if (j.contains("queues") && j["queues"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json arr = j["queues"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t qi = 0, qn = arr.size(); qi < qn; ++qi) {
             auto je = arr.at(qi);
-            if (!je)
+            if (!je) {
                 return std::unexpected{je.error()};
+            }
             QueueEntry e{};
-            if (auto idExp = je->at("id"); idExp && idExp->isNumber())
+            if (auto idExp = je->at("id"); idExp && idExp->isNumber()) {
                 e.id = idExp->get<int64_t>();
-            if (auto nameExp = je->at("name"); nameExp && nameExp->isString())
+            }
+            if (auto nameExp = je->at("name"); nameExp && nameExp->isString()) {
                 e.name = nameExp->get<std::string>();
-            if (auto trExp = je->at("tracks"); trExp && trExp->isNumber())
+            }
+            if (auto trExp = je->at("tracks"); trExp && trExp->isNumber()) {
                 e.tracks = trExp->get<std::size_t>();
-            if (auto acExp = je->at("active"); acExp && acExp->isBoolean())
+            }
+            if (auto acExp = je->at("active"); acExp && acExp->isBoolean()) {
                 e.active = acExp->get<bool>();
-            if (auto tmExp = je->at("temp"); tmExp && tmExp->isBoolean())
+            }
+            if (auto tmExp = je->at("temp"); tmExp && tmExp->isBoolean()) {
                 e.temp = tmExp->get<bool>();
+            }
             qs.entries.push_back(std::move(e));
         }
     }
     return qs;
 }
 
-static std::expected<QueueCreated, kanariv::utils::Error> parseResultQueueCreated(const Json& j) {
+static auto parseResultQueueCreated(const Json& j)
+    -> std::expected<QueueCreated, kanariv::utils::Error> {
     QueueCreated q{};
-    if (j.contains("id") && j["id"].isNumber())
-        q.id = j["id"].get<int64_t>();
-    if (j.contains("name") && j["name"].isString())
-        q.name = j["name"].get<std::string>();
+    if (j.contains("id") && j["id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        q.id = j["id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("name") && j["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        q.name = j["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return q;
 }
 
-static std::expected<PlaylistLoaded, kanariv::utils::Error> parseResultPlaylistLoaded(const Json& j) {
+static auto parseResultPlaylistLoaded(const Json& j)
+    -> std::expected<PlaylistLoaded, kanariv::utils::Error> {
     PlaylistLoaded p{};
-    if (j.contains("queue_id") && j["queue_id"].isNumber())
-        p.queue_id = j["queue_id"].get<int64_t>();
+    if (j.contains("queue_id") && j["queue_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        p.queue_id = j["queue_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     if (j.contains("status")) {
-        auto sub = resultFromJson(j["status"]);
-        if (!sub)
+        auto sub = resultFromJson(j["status"]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (!sub) {
             return std::unexpected{sub.error()};
-        if (auto* st = std::get_if<Status>(&*sub))
+        }
+        if (auto* st = std::get_if<Status>(&*sub)) {
             p.status = std::move(*st);
-        else
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::Corrupt, "PlaylistLoaded status not a Status")};
+        } else {
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
+                                                             "PlaylistLoaded status not a Status")};
+        }
     }
     return p;
 }
 
-static std::expected<VolumeInfo, kanariv::utils::Error> parseResultVolumeInfo(const Json& j) {
+static auto parseResultVolumeInfo(const Json& j)
+    -> std::expected<VolumeInfo, kanariv::utils::Error> {
     VolumeInfo vi{};
-    if (j.contains("vol") && j["vol"].isNumber())
-        vi.vol = j["vol"].get<float>();
-    if (j.contains("muted") && j["muted"].isBoolean())
-        vi.muted = j["muted"].get<bool>();
+    if (j.contains("vol") && j["vol"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        vi.vol = j["vol"].get<float>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("muted") && j["muted"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        vi.muted = j["muted"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return vi;
 }
 
-static std::expected<kanariv::types::LibraryStats, kanariv::utils::Error>
-parseResultLibraryStats(const Json& j) {
+static auto parseResultLibraryStats(const Json& j)
+    -> std::expected<kanariv::types::LibraryStats, kanariv::utils::Error> {
     kanariv::types::LibraryStats ls{};
-    if (j.contains("tracks") && j["tracks"].isNumber())
-        ls.tracks = j["tracks"].get<std::size_t>();
-    if (j.contains("queues") && j["queues"].isNumber())
-        ls.queues = j["queues"].get<std::size_t>();
-    if (j.contains("playlists") && j["playlists"].isNumber())
-        ls.playlists = j["playlists"].get<std::size_t>();
-    if (j.contains("total_duration_ms") && j["total_duration_ms"].isNumber())
-        ls.total_duration_ms = j["total_duration_ms"].get<int64_t>();
-    if (j.contains("total_play_time_ms") && j["total_play_time_ms"].isNumber())
-        ls.total_play_time_ms = j["total_play_time_ms"].get<int64_t>();
-    if (j.contains("top_tracks") && j["top_tracks"].isArray()) {
+    if (j.contains("tracks") && j["tracks"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ls.tracks = j["tracks"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("queues") && j["queues"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ls.queues = j["queues"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("playlists") && j["playlists"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ls.playlists = j["playlists"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("total_duration_ms") && j["total_duration_ms"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ls.total_duration_ms = j["total_duration_ms"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("total_play_time_ms") && j["total_play_time_ms"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ls.total_play_time_ms = j["total_play_time_ms"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("top_tracks") && j["top_tracks"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         ls.top_tracks.emplace();
-        const Json topTracks = j["top_tracks"];
+        const Json topTracks = j["top_tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ti = 0, tn = topTracks.size(); ti < tn; ++ti) {
             auto jt = topTracks.at(ti);
-            if (!jt)
+            if (!jt) {
                 return std::unexpected{jt.error()};
+            }
             auto tr = kanariv::utils::trackFromJson(*jt);
-            if (!tr)
+            if (!tr) {
                 return std::unexpected{tr.error()};
+            }
             ls.top_tracks->push_back(std::move(*tr));
         }
     }
-    if (j.contains("top_albums") && j["top_albums"].isArray()) {
+    if (j.contains("top_albums") && j["top_albums"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         ls.top_albums.emplace();
-        const Json topAlbums = j["top_albums"];
+        const Json topAlbums = j["top_albums"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ti = 0, tn = topAlbums.size(); ti < tn; ++ti) {
             auto jt = topAlbums.at(ti);
-            if (!jt)
+            if (!jt) {
                 return std::unexpected{jt.error()};
+            }
             const Json& jo = *jt;
             kanariv::types::TopEntity e;
-            if (jo.contains("name") && jo["name"].isString())
-                e.name = jo["name"].get<std::string>();
-            if (jo.contains("track_count") && jo["track_count"].isNumber())
-                e.track_count = static_cast<std::size_t>(jo["track_count"].get<int64_t>());
-            if (jo.contains("total_plays") && jo["total_plays"].isNumber())
-                e.total_plays = jo["total_plays"].get<int64_t>();
+            if (jo.contains("name") && jo["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.name = jo["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jo.contains("track_count") && jo["track_count"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.track_count = static_cast<std::size_t>(jo["track_count"].get<int64_t>()); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jo.contains("total_plays") && jo["total_plays"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.total_plays = jo["total_plays"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
             ls.top_albums->push_back(std::move(e));
         }
     }
-    if (j.contains("top_genres") && j["top_genres"].isArray()) {
+    if (j.contains("top_genres") && j["top_genres"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         ls.top_genres.emplace();
-        const Json topGenres = j["top_genres"];
+        const Json topGenres = j["top_genres"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ti = 0, tn = topGenres.size(); ti < tn; ++ti) {
             auto jt = topGenres.at(ti);
-            if (!jt)
+            if (!jt) {
                 return std::unexpected{jt.error()};
+            }
             const Json& jo = *jt;
             kanariv::types::TopEntity e;
-            if (jo.contains("name") && jo["name"].isString())
-                e.name = jo["name"].get<std::string>();
-            if (jo.contains("track_count") && jo["track_count"].isNumber())
-                e.track_count = static_cast<std::size_t>(jo["track_count"].get<int64_t>());
-            if (jo.contains("total_plays") && jo["total_plays"].isNumber())
-                e.total_plays = jo["total_plays"].get<int64_t>();
+            if (jo.contains("name") && jo["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.name = jo["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jo.contains("track_count") && jo["track_count"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.track_count = static_cast<std::size_t>(jo["track_count"].get<int64_t>()); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jo.contains("total_plays") && jo["total_plays"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.total_plays = jo["total_plays"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
             ls.top_genres->push_back(std::move(e));
         }
     }
-    if (j.contains("top_artists") && j["top_artists"].isArray()) {
+    if (j.contains("top_artists") && j["top_artists"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         ls.top_artists.emplace();
-        const Json topArtists = j["top_artists"];
+        const Json topArtists = j["top_artists"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ti = 0, tn = topArtists.size(); ti < tn; ++ti) {
             auto jt = topArtists.at(ti);
-            if (!jt)
+            if (!jt) {
                 return std::unexpected{jt.error()};
+            }
             const Json& jo = *jt;
             kanariv::types::TopEntity e;
-            if (jo.contains("name") && jo["name"].isString())
-                e.name = jo["name"].get<std::string>();
-            if (jo.contains("track_count") && jo["track_count"].isNumber())
-                e.track_count = static_cast<std::size_t>(jo["track_count"].get<int64_t>());
-            if (jo.contains("total_plays") && jo["total_plays"].isNumber())
-                e.total_plays = jo["total_plays"].get<int64_t>();
+            if (jo.contains("name") && jo["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.name = jo["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jo.contains("track_count") && jo["track_count"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.track_count = static_cast<std::size_t>(jo["track_count"].get<int64_t>()); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jo.contains("total_plays") && jo["total_plays"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.total_plays = jo["total_plays"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
             ls.top_artists->push_back(std::move(e));
         }
     }
     return ls;
 }
 
-static std::expected<Tracks, kanariv::utils::Error> parseResultTracks(const Json& j) {
+static auto parseResultTracks(const Json& j) -> std::expected<Tracks, kanariv::utils::Error> {
     Tracks trs{};
-    if (j.contains("tracks") && j["tracks"].isArray()) {
-        const Json tracks = j["tracks"];
+    if (j.contains("tracks") && j["tracks"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json tracks = j["tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ti = 0, tn = tracks.size(); ti < tn; ++ti) {
             auto jt = tracks.at(ti);
-            if (!jt)
+            if (!jt) {
                 return std::unexpected{jt.error()};
+            }
             auto tr = kanariv::utils::trackFromJson(*jt);
-            if (!tr)
+            if (!tr) {
                 return std::unexpected{tr.error()};
+            }
             trs.tracks.push_back(std::move(*tr));
         }
     }
     return trs;
 }
 
-static std::expected<SearchResults, kanariv::utils::Error> parseResultSearchResults(const Json& j) {
+static auto parseResultSearchResults(const Json& j)
+    -> std::expected<SearchResults, kanariv::utils::Error> {
     SearchResults sr{};
-    if (j.contains("query") && j["query"].isString())
-        sr.query = j["query"].get<std::string>();
-    if (j.contains("tracks") && j["tracks"].isArray()) {
-        const Json tracks = j["tracks"];
+    if (j.contains("query") && j["query"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        sr.query = j["query"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("tracks") && j["tracks"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json tracks = j["tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ti = 0, tn = tracks.size(); ti < tn; ++ti) {
             auto jt = tracks.at(ti);
-            if (!jt)
+            if (!jt) {
                 return std::unexpected{jt.error()};
+            }
             auto tr = kanariv::utils::trackFromJson(*jt);
-            if (!tr)
+            if (!tr) {
                 return std::unexpected{tr.error()};
+            }
             sr.tracks.push_back(std::move(*tr));
         }
     }
     return sr;
 }
 
-static std::expected<ScanReport, kanariv::utils::Error> parseResultScanReport(const Json& j) {
+static auto parseResultScanReport(const Json& j)
+    -> std::expected<ScanReport, kanariv::utils::Error> {
     ScanReport sr{};
-    if (j.contains("added") && j["added"].isNumber())
-        sr.added = j["added"].get<std::size_t>();
+    if (j.contains("added") && j["added"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        sr.added = j["added"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return sr;
 }
 
-static std::expected<Playlists, kanariv::utils::Error> parseResultPlaylists(const Json& j) {
+static auto parseResultPlaylists(const Json& j) -> std::expected<Playlists, kanariv::utils::Error> {
     Playlists pl{};
-    if (j.contains("playlists") && j["playlists"].isArray()) {
-        const Json playlists = j["playlists"];
+    if (j.contains("playlists") && j["playlists"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json playlists = j["playlists"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t pi = 0, pn = playlists.size(); pi < pn; ++pi) {
             auto jp = playlists.at(pi);
-            if (!jp)
+            if (!jp) {
                 return std::unexpected{jp.error()};
+            }
             auto pr = detail::playlistFromJson(*jp);
-            if (!pr)
+            if (!pr) {
                 return std::unexpected{pr.error()};
+            }
             pl.playlists.push_back(std::move(*pr));
         }
     }
     return pl;
 }
 
-static std::expected<PlaylistData, kanariv::utils::Error> parseResultPlaylistData(const Json& j) {
+static auto parseResultPlaylistData(const Json& j)
+    -> std::expected<PlaylistData, kanariv::utils::Error> {
     PlaylistData pd{};
-    if (j.contains("tracks") && j["tracks"].isArray()) {
-        const Json tracks = j["tracks"];
+    if (j.contains("tracks") && j["tracks"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json tracks = j["tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ti = 0, tn = tracks.size(); ti < tn; ++ti) {
             auto jt = tracks.at(ti);
-            if (!jt)
+            if (!jt) {
                 return std::unexpected{jt.error()};
+            }
             auto tr = kanariv::utils::trackFromJson(*jt);
-            if (!tr)
+            if (!tr) {
                 return std::unexpected{tr.error()};
+            }
             pd.tracks.push_back(std::move(*tr));
         }
     }
-    if (j.contains("format") && j["format"].isString())
-        pd.format = j["format"].get<std::string>();
+    if (j.contains("format") && j["format"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        pd.format = j["format"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return pd;
 }
 
-static std::expected<PlaylistCreated, kanariv::utils::Error> parseResultPlaylistCreated(const Json& j) {
+static auto parseResultPlaylistCreated(const Json& j)
+    -> std::expected<PlaylistCreated, kanariv::utils::Error> {
     PlaylistCreated p{};
-    if (j.contains("id") && j["id"].isNumber())
-        p.id = j["id"].get<int64_t>();
-    if (j.contains("name") && j["name"].isString())
-        p.name = j["name"].get<std::string>();
+    if (j.contains("id") && j["id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        p.id = j["id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("name") && j["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        p.name = j["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return p;
 }
 
-static std::expected<PlaylistImportReport, kanariv::utils::Error>
-parseResultPlaylistImportReport(const Json& j) {
+static auto parseResultPlaylistImportReport(const Json& j)
+    -> std::expected<PlaylistImportReport, kanariv::utils::Error> {
     PlaylistImportReport r{};
-    if (j.contains("pid") && j["pid"].isNumber())
-        r.pid = j["pid"].get<int64_t>();
-    if (j.contains("name") && j["name"].isString())
-        r.name = j["name"].get<std::string>();
-    if (j.contains("tracks") && j["tracks"].isArray()) {
-        const Json tracks = j["tracks"];
+    if (j.contains("pid") && j["pid"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        r.pid = j["pid"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("name") && j["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        r.name = j["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("tracks") && j["tracks"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json tracks = j["tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ti = 0, tn = tracks.size(); ti < tn; ++ti) {
             auto jt = tracks.at(ti);
-            if (!jt)
+            if (!jt) {
                 return std::unexpected{jt.error()};
+            }
             auto tr = kanariv::utils::trackFromJson(*jt);
-            if (!tr)
+            if (!tr) {
                 return std::unexpected{tr.error()};
+            }
             r.tracks.push_back(std::move(*tr));
         }
     }
-    if (j.contains("matched") && j["matched"].isNumber())
-        r.matched = j["matched"].get<std::size_t>();
-    if (j.contains("skipped") && j["skipped"].isNumber())
-        r.skipped = j["skipped"].get<std::size_t>();
-    if (j.contains("duplicates") && j["duplicates"].isNumber())
-        r.duplicates = j["duplicates"].get<std::size_t>();
+    if (j.contains("matched") && j["matched"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        r.matched = j["matched"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("skipped") && j["skipped"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        r.skipped = j["skipped"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("duplicates") && j["duplicates"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        r.duplicates = j["duplicates"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return r;
 }
 
-static std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
-parseResultLibraryMaintenanceReport(const Json& j) {
+static auto parseResultLibraryMaintenanceReport(const Json& j)
+    -> std::expected<LibraryMaintenanceReport, kanariv::utils::Error> {
     LibraryMaintenanceReport r{};
-    if (j.contains("tracks_checked") && j["tracks_checked"].isNumber())
-        r.tracks_checked = j["tracks_checked"].get<std::size_t>();
-    if (j.contains("missing_tracks") && j["missing_tracks"].isArray()) {
-        const Json tracks = j["missing_tracks"];
+    if (j.contains("tracks_checked") && j["tracks_checked"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        r.tracks_checked = j["tracks_checked"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("missing_tracks") && j["missing_tracks"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json tracks = j["missing_tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ti = 0, tn = tracks.size(); ti < tn; ++ti) {
             auto jt = tracks.at(ti);
-            if (!jt)
+            if (!jt) {
                 return std::unexpected{jt.error()};
+            }
             auto tr = kanariv::utils::trackFromJson(*jt);
-            if (!tr)
+            if (!tr) {
                 return std::unexpected{tr.error()};
+            }
             r.missing_tracks.push_back(std::move(*tr));
         }
     }
-    if (j.contains("duplicate_groups") && j["duplicate_groups"].isNumber())
-        r.duplicate_groups = j["duplicate_groups"].get<std::size_t>();
-    if (j.contains("duplicate_tracks") && j["duplicate_tracks"].isNumber())
-        r.duplicate_tracks = j["duplicate_tracks"].get<std::size_t>();
+    if (j.contains("duplicate_groups") && j["duplicate_groups"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        r.duplicate_groups = j["duplicate_groups"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("duplicate_tracks") && j["duplicate_tracks"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        r.duplicate_tracks = j["duplicate_tracks"].get<std::size_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return r;
 }
 
-static std::expected<ConfigValue, kanariv::utils::Error> parseResultConfigValue(const Json& j) {
+static auto parseResultConfigValue(const Json& j)
+    -> std::expected<ConfigValue, kanariv::utils::Error> {
     ConfigValue cv{};
-    if (j.contains("key") && j["key"].isString())
-        cv.key = j["key"].get<std::string>();
-    if (j.contains("value") && j["value"].isString())
-        cv.value = j["value"].get<std::string>();
+    if (j.contains("key") && j["key"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        cv.key = j["key"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("value") && j["value"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        cv.value = j["value"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return cv;
 }
 
-static std::expected<ConfigValues, kanariv::utils::Error> parseResultConfigValues(const Json& j) {
+static auto parseResultConfigValues(const Json& j)
+    -> std::expected<ConfigValues, kanariv::utils::Error> {
     ConfigValues cvs{};
-    if (j.contains("values") && j["values"].isArray()) {
-        const Json values = j["values"];
+    if (j.contains("values") && j["values"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json values = j["values"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t vi = 0, vn = values.size(); vi < vn; ++vi) {
             auto jvExp = values.at(vi);
-            if (!jvExp)
+            if (!jvExp) {
                 return std::unexpected{jvExp.error()};
+            }
             const Json jv = std::move(*jvExp);
             ConfigValue cv{};
-            if (jv.contains("key") && jv["key"].isString())
-                cv.key = jv["key"].get<std::string>();
-            if (jv.contains("value") && jv["value"].isString())
-                cv.value = jv["value"].get<std::string>();
+            if (jv.contains("key") && jv["key"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                cv.key = jv["key"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jv.contains("value") && jv["value"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                cv.value = jv["value"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
             cvs.values.push_back(std::move(cv));
         }
     }
     return cvs;
 }
 
-static std::expected<SingleTrack, kanariv::utils::Error> parseResultSingleTrack(const Json& j) {
+static auto parseResultSingleTrack(const Json& j)
+    -> std::expected<SingleTrack, kanariv::utils::Error> {
     SingleTrack st{};
     if (j.contains("track")) {
-        auto tr = kanariv::utils::trackFromJson(j["track"]);
-        if (!tr)
+        auto tr = kanariv::utils::trackFromJson(j["track"]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (!tr) {
             return std::unexpected{tr.error()};
+        }
         st.track = std::move(*tr);
     } else if (j.contains("id")) {
         auto tr = kanariv::utils::trackFromJson(j);
-        if (!tr)
+        if (!tr) {
             return std::unexpected{tr.error()};
+        }
         st.track = std::move(*tr);
     }
-    if (j.contains("cover_mime") && j["cover_mime"].isString())
-        st.cover_mime = j["cover_mime"].get<std::string>();
-    if (j.contains("cover_data") && j["cover_data"].isString())
-        st.cover_data = j["cover_data"].get<std::string>();
+    if (j.contains("cover_mime") && j["cover_mime"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        st.cover_mime = j["cover_mime"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("cover_data") && j["cover_data"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        st.cover_data = j["cover_data"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return st;
 }
 
-static std::expected<TrackInfo, kanariv::utils::Error> parseResultTrackInfo(const Json& j) {
+static auto parseResultTrackInfo(const Json& j) -> std::expected<TrackInfo, kanariv::utils::Error> {
     TrackInfo ti{};
     if (j.contains("track")) {
-        auto tr = kanariv::utils::trackFromJson(j["track"]);
-        if (!tr)
+        auto tr = kanariv::utils::trackFromJson(j["track"]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (!tr) {
             return std::unexpected{tr.error()};
+        }
         ti.track = std::move(*tr);
     }
-    if (j.contains("play_count") && j["play_count"].isNumber())
-        ti.play_count = j["play_count"].get<int64_t>();
-    if (j.contains("last_played") && j["last_played"].isNumber())
-        ti.last_played = j["last_played"].get<int64_t>();
+    if (j.contains("play_count") && j["play_count"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ti.play_count = j["play_count"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
+    if (j.contains("last_played") && j["last_played"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        ti.last_played = j["last_played"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    }
     return ti;
 }
 
-static std::expected<History, kanariv::utils::Error> parseResultHistory(const Json& j) {
+static auto parseResultHistory(const Json& j) -> std::expected<History, kanariv::utils::Error> {
     History h{};
-    if (j.contains("entries") && j["entries"].isArray()) {
-        const Json entries = j["entries"];
+    if (j.contains("entries") && j["entries"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json entries = j["entries"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t ei = 0, en = entries.size(); ei < en; ++ei) {
             auto jeExp = entries.at(ei);
-            if (!jeExp)
+            if (!jeExp) {
                 return std::unexpected{jeExp.error()};
+            }
             const Json je = std::move(*jeExp);
             types::HistoryEntry e{};
-            if (je.contains("id") && je["id"].isNumber())
-                e.id = je["id"].get<int64_t>();
-            if (je.contains("track_id") && je["track_id"].isNumber())
-                e.track_id = je["track_id"].get<int64_t>();
-            if (je.contains("started_at") && je["started_at"].isNumber())
-                e.started_at = je["started_at"].get<int64_t>();
-            if (je.contains("completed_at") && je["completed_at"].isNumber())
-                e.completed_at = je["completed_at"].get<int64_t>();
-            if (je.contains("position_ms") && je["position_ms"].isNumber())
-                e.position_ms = je["position_ms"].get<int64_t>();
-            if (je.contains("completion_pct") && je["completion_pct"].isNumber())
-                e.completion_pct = je["completion_pct"].get<double>();
-            if (je.contains("queue_id") && je["queue_id"].isNumber())
-                e.queue_id = je["queue_id"].get<int64_t>();
-            if (je.contains("title") && je["title"].isString())
-                e.title = je["title"].get<std::string>();
-            if (je.contains("artist") && je["artist"].isString())
-                e.artist = je["artist"].get<std::string>();
-            if (je.contains("path") && je["path"].isString())
-                e.path = je["path"].get<std::string>();
-            if (je.contains("duration") && je["duration"].isNumber())
-                e.duration = je["duration"].get<double>();
+            if (je.contains("id") && je["id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.id = je["id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (je.contains("track_id") && je["track_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.track_id = je["track_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (je.contains("started_at") && je["started_at"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.started_at = je["started_at"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (je.contains("completed_at") && je["completed_at"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.completed_at = je["completed_at"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (je.contains("position_ms") && je["position_ms"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.position_ms = je["position_ms"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (je.contains("completion_pct") && je["completion_pct"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.completion_pct = je["completion_pct"].get<double>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (je.contains("queue_id") && je["queue_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.queue_id = je["queue_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (je.contains("title") && je["title"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.title = je["title"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (je.contains("artist") && je["artist"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.artist = je["artist"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (je.contains("path") && je["path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.path = je["path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (je.contains("duration") && je["duration"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.duration = je["duration"].get<double>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
             h.entries.push_back(std::move(e));
         }
     }
     return h;
 }
 
-static std::expected<Bookmarks, kanariv::utils::Error> parseResultBookmarks(const Json& j) {
+static auto parseResultBookmarks(const Json& j) -> std::expected<Bookmarks, kanariv::utils::Error> {
     Bookmarks b{};
-    if (j.contains("entries") && j["entries"].isArray()) {
-        const Json entries = j["entries"];
+    if (j.contains("entries") && j["entries"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json entries = j["entries"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t bi = 0, bn = entries.size(); bi < bn; ++bi) {
             auto jbExp = entries.at(bi);
-            if (!jbExp)
+            if (!jbExp) {
                 return std::unexpected{jbExp.error()};
+            }
             const Json jb = std::move(*jbExp);
             types::Bookmark e{};
-            if (jb.contains("id") && jb["id"].isNumber())
-                e.id = jb["id"].get<int64_t>();
-            if (jb.contains("track_id") && jb["track_id"].isNumber())
-                e.track_id = jb["track_id"].get<int64_t>();
-            if (jb.contains("position_ms") && jb["position_ms"].isNumber())
-                e.position_ms = jb["position_ms"].get<int64_t>();
-            if (jb.contains("note") && jb["note"].isString())
-                e.note = jb["note"].get<std::string>();
-            if (jb.contains("created") && jb["created"].isNumber())
-                e.created = jb["created"].get<int64_t>();
+            if (jb.contains("id") && jb["id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.id = jb["id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jb.contains("track_id") && jb["track_id"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.track_id = jb["track_id"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jb.contains("position_ms") && jb["position_ms"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.position_ms = jb["position_ms"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jb.contains("note") && jb["note"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.note = jb["note"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jb.contains("created") && jb["created"].isNumber()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.created = jb["created"].get<int64_t>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
             b.entries.push_back(std::move(e));
         }
     }
     return b;
 }
 
-static std::expected<Devices, kanariv::utils::Error> parseResultDevices(const Json& j) {
+static auto parseResultDevices(const Json& j) -> std::expected<Devices, kanariv::utils::Error> {
     Devices d{};
-    if (j.contains("devices") && j["devices"].isArray()) {
-        const Json devices = j["devices"];
+    if (j.contains("devices") && j["devices"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json devices = j["devices"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (std::size_t di_ = 0, dn = devices.size(); di_ < dn; ++di_) {
             auto jdExp = devices.at(di_);
-            if (!jdExp)
+            if (!jdExp) {
                 return std::unexpected{jdExp.error()};
+            }
             const Json jd = std::move(*jdExp);
             types::DeviceInfo di{};
-            if (jd.contains("id") && jd["id"].isString())
-                di.id = jd["id"].get<std::string>();
-            if (jd.contains("name") && jd["name"].isString())
-                di.name = jd["name"].get<std::string>();
-            if (jd.contains("isDefault") && jd["isDefault"].isBoolean())
-                di.isDefault = jd["isDefault"].get<bool>();
+            if (jd.contains("id") && jd["id"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                di.id = jd["id"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jd.contains("name") && jd["name"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                di.name = jd["name"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
+            if (jd.contains("isDefault") && jd["isDefault"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                di.isDefault = jd["isDefault"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            }
             d.devices.push_back(std::move(di));
         }
     }
     return d;
 }
 
-std::vector<std::byte> frame(std::string_view json) {
+constexpr uint32_t frameLenShift3 = 24;
+constexpr uint32_t frameLenShift2 = 16;
+constexpr uint32_t frameLenShift1 = 8;
+constexpr uint32_t frameLenMask = 0xFF;
+
+auto frame(std::string_view json) -> std::vector<std::byte> {
     std::vector<std::byte> out;
     out.reserve(4 + json.size());
-    uint32_t len = static_cast<uint32_t>(json.size());
-    out.push_back(static_cast<std::byte>((len >> 24) & 0xFF));
-    out.push_back(static_cast<std::byte>((len >> 16) & 0xFF));
-    out.push_back(static_cast<std::byte>((len >> 8) & 0xFF));
-    out.push_back(static_cast<std::byte>(len & 0xFF));
+    auto len = static_cast<uint32_t>(json.size());
+    out.push_back(static_cast<std::byte>((len >> frameLenShift3) & frameLenMask));
+    out.push_back(static_cast<std::byte>((len >> frameLenShift2) & frameLenMask));
+    out.push_back(static_cast<std::byte>((len >> frameLenShift1) & frameLenMask));
+    out.push_back(static_cast<std::byte>(len & frameLenMask));
     const auto* bytes = reinterpret_cast<const std::byte*>(json.data());
     out.insert(out.end(), bytes, bytes + json.size());
     return out;
 }
 
-
-std::expected<std::string, kanariv::utils::Error> deframe(std::span<const std::byte> buf) {
+auto deframe(std::span<const std::byte> buf) -> std::expected<std::string, kanariv::utils::Error> {
     if (buf.size() < 4) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too short")};
     }
-    uint32_t len = (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[0])) << 24) |
-                   (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[1])) << 16) |
-                   (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[2])) << 8) |
-                   static_cast<uint32_t>(std::to_integer<unsigned char>(buf[3]));
+    uint32_t len = (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[0])) << frameLenShift3) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                   (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[1])) << frameLenShift2) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                   (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[2])) << frameLenShift1) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                   static_cast<uint32_t>(std::to_integer<unsigned char>(buf[frameByteIndex3])); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     if (buf.size() < 4 + len) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame incomplete")};
@@ -2188,16 +2689,16 @@ std::expected<std::string, kanariv::utils::Error> deframe(std::span<const std::b
     std::string s;
     s.reserve(len);
     for (std::size_t i = 0; i < len; ++i) {
-        s.push_back(static_cast<char>(std::to_integer<unsigned char>(buf[4 + i])));
+        s.push_back(static_cast<char>(std::to_integer<unsigned char>(buf[4 + i]))); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     return s;
 }
 
-std::string toJsonString(const Result& r) {
+auto toJsonString(const Result& r) -> std::string {
     return toJson(r).dump(2);
 }
 
-std::string toJsonString(const Command& c) {
+auto toJsonString(const Command& c) -> std::string {
     return toJson(c).dump(2);
 }
 

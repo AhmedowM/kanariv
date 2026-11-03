@@ -12,10 +12,10 @@
  * Internal header: lives in `src/`, not installed.
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <expected>
+#include <kanariv/fwd.hpp>
+#include <kanariv/utils/error.hpp>
 #include <memory>
 #include <string>
 #include <utils/function.hpp>

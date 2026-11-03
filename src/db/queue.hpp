@@ -1,11 +1,11 @@
 #pragma once
 
-#include <kanariv/types/db.hpp>
-#include <kanariv/utils.hpp>
 #include <cstdint>
 #include <db/detail.hpp>
 #include <db/statement.hpp>
 #include <expected>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils.hpp>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,7 +47,7 @@ namespace kanariv::db {
  * Caller must hold Database::mutex().
  */
 std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64_t qid, int64_t tid,
-                                                             int64_t pos = -1);
+                                                              int64_t pos = -1);
 
 /**
  * @brief Dequeues the head item (caller holds DB mutex).
@@ -61,7 +61,7 @@ std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64
  * Caller must hold Database::mutex() exclusively.
  */
 std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLocked(sqlite3* db,
-                                                                                 int64_t qid);
+                                                                                   int64_t qid);
 
 /**
  * @brief Removes item at position (caller holds DB mutex).
@@ -136,7 +136,8 @@ std::optional<size_t> queueIndexOfLocked(sqlite3* db, int64_t qid, int64_t track
  * @par Thread safety
  * Caller must hold Database::mutex().
  */
-std::expected<kanariv::types::Queue, kanariv::utils::Error> getQueueLocked(sqlite3* db, int64_t qid);
+std::expected<kanariv::types::Queue, kanariv::utils::Error> getQueueLocked(sqlite3* db,
+                                                                           int64_t qid);
 
 /**
  * @brief Lists all queue containers (caller holds DB mutex).
@@ -146,7 +147,8 @@ std::expected<kanariv::types::Queue, kanariv::utils::Error> getQueueLocked(sqlit
  * @par Thread safety
  * Caller must hold Database::mutex().
  */
-std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error> listQueuesLocked(sqlite3* db);
+std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error>
+listQueuesLocked(sqlite3* db);
 
 /**
  * @brief Creates a queue container (caller holds DB mutex).
@@ -159,7 +161,7 @@ std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error> listQue
  * Caller must hold Database::mutex() exclusively.
  */
 std::expected<int64_t, kanariv::utils::Error> createQueueLocked(sqlite3* db, std::string_view name,
-                                                               int64_t library_id = 1);
+                                                                int64_t library_id = 1);
 
 /**
  * @brief Deletes a queue container and its items (caller holds DB mutex).
@@ -184,7 +186,7 @@ std::expected<void, kanariv::utils::Error> deleteQueueLocked(sqlite3* db, int64_
  * Caller must hold Database::mutex() exclusively.
  */
 std::expected<void, kanariv::utils::Error> setQueueRepeatLocked(sqlite3* db, int64_t qid,
-                                                               int repeat_mode);
+                                                                int repeat_mode);
 
 /**
  * @brief Sets the temporary flag for a queue (caller holds DB mutex).

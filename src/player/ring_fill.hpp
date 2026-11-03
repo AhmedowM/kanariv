@@ -1,9 +1,9 @@
 #pragma once
 
 #include <algorithm>
-#include <kanariv/utils/ring.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/utils/ring.hpp>
 #include <span>
 
 namespace kanariv::player::detail {

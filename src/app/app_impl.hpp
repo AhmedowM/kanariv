@@ -8,15 +8,15 @@
  * (not installed) so downstream consumers never see them.
  */
 
+#include <chrono>
+#include <expected>
+#include <filesystem>
+#include <functional>
 #include <kanariv/app/app.hpp>
 #include <kanariv/config.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
-#include <chrono>
-#include <expected>
-#include <filesystem>
-#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -33,7 +33,7 @@ struct App::Impl {
      */
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     sendRaw(const kanariv::ipc::Command& cmd,
-            std::chrono::milliseconds timeout = std::chrono::milliseconds{2000});
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{2000}) const;
 
     /**
      * @brief Pairs a result with its success line, passing errors through.
@@ -79,7 +79,7 @@ struct App::Impl {
     std::string transportWho(const std::expected<kanariv::ipc::Result, kanariv::utils::Error>& res);
 
     kanariv::config::Config config_; ///< Bound config (db/socket/log paths).
-    std::string argv0_;             ///< Executable path for POSIX re-spawn.
+    std::string argv0_;              ///< Executable path for POSIX re-spawn.
     std::function<AppResult(bool foreground)> daemonHost_{}; ///< Injected foreground daemon host.
     std::function<AppResult(const std::string& file)>
         previewHost_{}; ///< Injected local preview host.

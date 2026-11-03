@@ -22,9 +22,9 @@
  * Internal header: lives in `src/`, not installed.
  */
 
-#include <kanariv/utils/log.hpp>
 #include <cstddef>
 #include <filesystem>
+#include <kanariv/utils/log.hpp>
 #include <memory>
 
 namespace kanariv::utils {

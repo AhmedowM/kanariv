@@ -1,8 +1,8 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <cstddef>
+#include <kanariv/utils/ring.hpp>
 #include <span>
 #include <stop_token>
 #include <thread>

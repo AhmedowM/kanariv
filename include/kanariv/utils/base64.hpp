@@ -10,11 +10,11 @@
  */
 
 #include <array>
-#include <kanariv/utils/error.hpp>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/utils/error.hpp>
 #include <span>
 #include <string>
 #include <string_view>
@@ -81,10 +81,9 @@ inline std::string Base64::encode(std::span<const std::byte> data) {
 
     std::size_t i = 0;
     while (i + 3 <= data.size()) {
-        std::uint32_t triple =
-            (static_cast<std::uint32_t>(data[i]) << 16) |
-            (static_cast<std::uint32_t>(data[i + 1]) << 8) |
-            static_cast<std::uint32_t>(data[i + 2]);
+        std::uint32_t triple = (static_cast<std::uint32_t>(data[i]) << 16) |
+                               (static_cast<std::uint32_t>(data[i + 1]) << 8) |
+                               static_cast<std::uint32_t>(data[i + 2]);
         out.push_back(kEncodeTable[(triple >> 18) & 0x3F]);
         out.push_back(kEncodeTable[(triple >> 12) & 0x3F]);
         out.push_back(kEncodeTable[(triple >> 6) & 0x3F]);
@@ -100,9 +99,8 @@ inline std::string Base64::encode(std::span<const std::byte> data) {
         out.push_back('=');
         out.push_back('=');
     } else if (remaining == 2) {
-        std::uint32_t triple =
-            (static_cast<std::uint32_t>(data[i]) << 16) |
-            (static_cast<std::uint32_t>(data[i + 1]) << 8);
+        std::uint32_t triple = (static_cast<std::uint32_t>(data[i]) << 16) |
+                               (static_cast<std::uint32_t>(data[i + 1]) << 8);
         out.push_back(kEncodeTable[(triple >> 18) & 0x3F]);
         out.push_back(kEncodeTable[(triple >> 12) & 0x3F]);
         out.push_back(kEncodeTable[(triple >> 6) & 0x3F]);
@@ -129,26 +127,23 @@ Base64::decode(std::string_view encoded) {
     // RFC 4648: total encoded length (including '=' padding) must be a
     // multiple of 4.
     if (clean.size() % 4 != 0)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg,
-            "base64: invalid encoded length")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "base64: invalid encoded length")};
 
     // Count trailing padding ('=' characters at the end).
     std::size_t padCount = 0;
-    while (padCount < clean.size() &&
-           clean[clean.size() - 1 - padCount] == '=')
+    while (padCount < clean.size() && clean[clean.size() - 1 - padCount] == '=')
         ++padCount;
     if (padCount > 2)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg,
-            "base64: too many padding characters")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "base64: too many padding characters")};
 
     // Padding must appear only at the end of the string.
     const std::size_t dataEnd = clean.size() - padCount;
     if (clean.find('=') < dataEnd)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg,
-            "base64: padding character in middle of string")};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                      "base64: padding character in middle of string")};
 
     // RFC 4648 section 3.5: validate unused padding bits are zero.
     // With one '=': the last 2 bits of the last data character must be 0.
@@ -156,15 +151,13 @@ Base64::decode(std::string_view encoded) {
     if (padCount == 1 && dataEnd > 0) {
         std::int8_t v = decodeChar(clean[dataEnd - 1]);
         if (v < 0 || (v & 0x03) != 0)
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::InvalidArg,
-                "base64: non-zero padding bits")};
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                             "base64: non-zero padding bits")};
     } else if (padCount == 2 && dataEnd > 0) {
         std::int8_t v = decodeChar(clean[dataEnd - 1]);
         if (v < 0 || (v & 0x0F) != 0)
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::InvalidArg,
-                "base64: non-zero padding bits")};
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                             "base64: non-zero padding bits")};
     }
 
     // Decode: process 4 characters at a time, yielding up to 3 bytes per
@@ -191,9 +184,8 @@ Base64::decode(std::string_view encoded) {
 
         // A group must have at least 2 data characters to produce output.
         if (validChars < 2)
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::InvalidArg,
-                "base64: invalid encoded length")};
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                             "base64: invalid encoded length")};
 
         // Align the significant bits to the top of the 24-bit buffer.
         buffer <<= (4 - validChars) * 6;

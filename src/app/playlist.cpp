@@ -11,17 +11,17 @@
 #include <app/detail.hpp>
 #include <app/format_internal.hpp>
 #include <app/paths_internal.hpp>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <format>
+#include <fstream>
 #include <kanariv/app/app.hpp>
 #include <kanariv/app/paths.hpp>
 #include <kanariv/client/client.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
-#include <cstdint>
-#include <expected>
-#include <filesystem>
-#include <format>
-#include <fstream>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -31,24 +31,27 @@
 
 namespace kanariv::app {
 
-AppResult App::playlistList() {
+constexpr int playlistSearchLimit = 50;
+constexpr int playlistExportTimeoutMs = 5000;
+
+auto App::playlistList() -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::PlaylistList{}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
-AppResult App::playlistTracks(std::int64_t pid) {
+auto App::playlistTracks(std::int64_t pid) -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::PlaylistTracks{pid}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
-AppResult App::playlistCreate(const std::string& name,
-                              const std::string& smart_query) {
-    kanariv::ipc::PlaylistCreate pc{.name=name};
+auto App::playlistCreate(const std::string& name, const std::string& smart_query) -> AppResult {
+    kanariv::ipc::PlaylistCreate pc{.name = name};
     pc.smart_query = smart_query;
     kanariv::ipc::Command cmd{std::move(pc)};
     auto res = impl_->sendRaw(cmd);
-    if (!res)
+    if (!res) {
         return std::unexpected{res.error()};
+    }
     if (auto* pcRes = std::get_if<kanariv::ipc::PlaylistCreated>(&*res)) {
         // Hoisted: copy before Outcome moves *res (see App::resume).
         std::int64_t id = pcRes->id;
@@ -62,14 +65,16 @@ AppResult App::playlistCreate(const std::string& name,
         .result = std::move(*res), .line = std::nullopt, .toStderr = false, .failed = false};
 }
 
-BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& ids,
-                             const std::vector<std::string>& paths, bool recursive) {
-    if (ids.empty() && paths.empty())
+auto App::playlistAdd(std::int64_t pid, const std::vector<std::string>& ids,
+                      const std::vector<std::string>& paths, bool recursive) -> BatchResult {
+    if (ids.empty() && paths.empty()) {
         return BatchReport::fail("playlist add: need --id ID or PATH");
+    }
     std::vector<int64_t> resolved;
-    for (auto& s : ids) {
-        if (!kanariv::app::isNumeric(s))
+    for (const auto& s : ids) {
+        if (!kanariv::app::isNumeric(s)) {
             return BatchReport::fail("playlist add: --id needs numeric ids");
+        }
         try {
             resolved.push_back(std::stoll(s));
         } catch (...) {
@@ -79,8 +84,9 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
     // PATHs: expand, ensure library rows, resolve exact ids.
     std::vector<std::string> files;
     std::vector<std::string> unmatched;
-    for (auto& tok : paths)
+    for (const auto& tok : paths) {
         kanariv::app::expandAddToken(tok, recursive, files, unmatched);
+    }
     BatchReport rep;
     bool hardFail = false;
     for (auto& u : unmatched) {
@@ -92,9 +98,9 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
             detail::emitLine(rep.err, std::format("No files matched: {}", u));
         } else {
             std::error_code ec;
-            if (std::filesystem::is_directory(u, ec) && !ec)
+            if (std::filesystem::is_directory(u, ec) && !ec) {
                 detail::emitLine(rep.err, std::format("No files matched: {}", u));
-            else {
+            } else {
                 detail::emitLine(rep.err, std::format("playlist add: no such file: {}", u));
                 hardFail = true;
             }
@@ -109,7 +115,7 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
             continue;
         }
         std::string fn = std::filesystem::path(f).filename().generic_string();
-        kanariv::ipc::Command scmd{kanariv::ipc::LibrarySearch{.query = fn, .limit = 50}};
+        kanariv::ipc::Command scmd{kanariv::ipc::LibrarySearch{.query = fn, .limit = playlistSearchLimit}};
         auto sres = impl_->sendRaw(scmd);
         if (!sres) {
             detail::renderErrorInto(rep.err, sres.error());
@@ -117,7 +123,7 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
             continue;
         }
         auto* sr = std::get_if<kanariv::ipc::SearchResults>(&*sres);
-        if (!sr) {
+        if (sr == nullptr) {
             detail::renderInto(rep.out, *sres);
             hardFail = true;
             continue;
@@ -158,8 +164,9 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
                 label = kanariv::app::addedLabel(st->track);
             }
         }
-        if (label.empty())
+        if (label.empty()) {
             label = "track " + std::to_string(tid);
+        }
         detail::emitLine(rep.out, std::format("Added {} to playlist {}", label, pid));
         ++added;
     }
@@ -169,18 +176,20 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
     return rep;
 }
 
-AppResult App::playlistLoad(std::int64_t pid, bool play, bool replace) {
+auto App::playlistLoad(std::int64_t pid, bool play, bool replace) -> AppResult {
     kanariv::ipc::Command cmd{
         kanariv::ipc::PlaylistLoad{.pid = pid, .play = play, .replace = replace}};
     auto res = impl_->sendRaw(cmd);
-    if (!res)
+    if (!res) {
         return std::unexpected{res.error()};
+    }
     if (auto* pl = std::get_if<kanariv::ipc::PlaylistLoaded>(&*res)) {
         std::string line =
             replace ? std::format("Replaced queue {} with playlist {}", pl->queue_id, pid)
                     : std::format("Loaded playlist {} into queue {}", pid, pl->queue_id);
-        if (play)
+        if (play) {
             line += std::format("\nPlaying {}", kanariv::app::trackWho(pl->status));
+        }
         return Outcome{
             .result = std::move(*res), .line = std::move(line), .toStderr = false, .failed = false};
     }
@@ -188,32 +197,33 @@ AppResult App::playlistLoad(std::int64_t pid, bool play, bool replace) {
         .result = std::move(*res), .line = std::nullopt, .toStderr = false, .failed = false};
 }
 
-AppResult App::playlistSave(const std::string& name, std::optional<std::int64_t> qid) {
+auto App::playlistSave(const std::string& name, std::optional<std::int64_t> qid) -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::PlaylistSave{.name = name, .queue_id = qid}};
     std::string line = std::format("Saved playlist '{}'", name);
     return impl_->confirm(impl_->sendRaw(cmd), std::move(line));
 }
 
-AppResult App::playlistDelete(std::int64_t pid) {
+auto App::playlistDelete(std::int64_t pid) -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::PlaylistDelete{pid}};
     return impl_->confirm(impl_->sendRaw(cmd), std::format("Deleted playlist {}", pid));
 }
 
-AppResult App::playlistRename(std::int64_t pid, const std::string& name) {
+auto App::playlistRename(std::int64_t pid, const std::string& name) -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::PlaylistRename{.pid = pid, .newName = name}};
     return impl_->confirm(impl_->sendRaw(cmd),
                           std::format("Renamed playlist {} to '{}'", pid, name));
 }
 
-BatchResult App::playlistExport(std::int64_t pid, const std::string& path,
-                                const std::string& format) {
+auto App::playlistExport(std::int64_t pid, const std::string& path, const std::string& format)
+    -> BatchResult {
     kanariv::ipc::Command cmd{
         kanariv::ipc::PlaylistExport{.pid = pid, .path = path, .format = format}};
     kanariv::client::Client client{impl_->config_.dbPath, impl_->config_.socketPath};
-    auto timeout = std::chrono::milliseconds{5000};
+    auto timeout = std::chrono::milliseconds{playlistExportTimeoutMs};
     auto cliRes = client.send(cmd, timeout);
-    if (!cliRes)
+    if (!cliRes) {
         return BatchReport::fail(std::format("export: {}", cliRes.error().message));
+    }
     if (std::holds_alternative<kanariv::utils::Error>(*cliRes)) {
         return BatchReport::fail(
             std::format("export: {}", std::get<kanariv::utils::Error>(*cliRes).message));
@@ -222,8 +232,9 @@ BatchResult App::playlistExport(std::int64_t pid, const std::string& path,
     if (std::holds_alternative<kanariv::ipc::PlaylistData>(*cliRes)) {
         auto& pd = std::get<kanariv::ipc::PlaylistData>(*cliRes);
         std::ofstream ofs(path);
-        if (!ofs)
+        if (!ofs) {
             return BatchReport::fail(std::format("export: failed to open output file '{}'", path));
+        }
         if (pd.format == "m3u" || pd.format == "pls") {
             kanariv::app::writePlaylistText(ofs, pd.tracks, pd.format);
         } else if (pd.format == "json") {
@@ -237,7 +248,7 @@ BatchResult App::playlistExport(std::int64_t pid, const std::string& path,
     return BatchReport::fail("export: unexpected response from daemon");
 }
 
-AppResult App::playlistImport(const std::string& path, std::optional<std::string> name) {
+auto App::playlistImport(const std::string& path, std::optional<std::string> name) -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::PlaylistImport{.path = path, .name = std::move(name)}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }

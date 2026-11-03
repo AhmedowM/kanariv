@@ -1,19 +1,19 @@
-#include <kanariv/db/database.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/engine/engine.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <expected>
 #include <filesystem>
 #include <iostream>
+#include <kanariv/db/database.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <array>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -22,7 +22,30 @@ using namespace kanariv::db;
 
 namespace {
 
-std::string findSample() {
+constexpr int demoTracksCount = 2;
+constexpr int fingerprintSize = 32;
+constexpr int fingerprintBaseByte = 0xC0;
+constexpr int demoTrackSize = 176444;
+constexpr int demoMtimeBase = 1700000000;
+constexpr int demoSampleRate = 44100;
+constexpr int demoChannels = 1;
+constexpr int demoBitrate = 128;
+constexpr int demoYear = 2026;
+constexpr int demoLibraryId = 1;
+constexpr int defaultQueueId = 1;
+constexpr int defaultPosition = -1;
+constexpr int pollAttempts = 20;
+constexpr int pollSleepMs = 100;
+constexpr int drainCheckTick = 10;
+constexpr int eventBufferSize = 64;
+constexpr int demoPollMs = 10;
+constexpr int demoGaplessMs = 300;
+constexpr int demoHistoryThresholdPct = 60;
+constexpr int demoHistoryThresholdSecs = 90;
+constexpr int exitCodeFailure = 1;
+constexpr int exitCodeSuccess = 0;
+
+auto findSample() -> std::string {
     auto toAbs = [](std::string s) -> std::string {
         try {
             return std::filesystem::absolute(s).string();
@@ -31,29 +54,35 @@ std::string findSample() {
         }
     };
     if (auto* env = std::getenv("KANARIV_SAMPLE")) {
-        if (std::filesystem::exists(env))
+        if (std::filesystem::exists(env)) {
             return toAbs(env);
+        }
     }
     if (auto* env = std::getenv("KANARIV_FIXTURE")) {
-        if (std::filesystem::exists(env))
+        if (std::filesystem::exists(env)) {
             return toAbs(env);
+        }
     }
-    for (auto* c : {"tests/fixtures/sample.wav", "./tests/fixtures/sample.wav",
+    for (const auto* c : {"tests/fixtures/sample.wav", "./tests/fixtures/sample.wav",
                     "../tests/fixtures/sample.wav",
                     "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav",
                     "C:/Users/Secondary/Projects/kanariv/tests/fixtures/sample.wav"}) {
-        if (std::filesystem::exists(c))
+        if (std::filesystem::exists(c)) {
             return toAbs(c);
+        }
     }
-    if (auto* env = std::getenv("KANARIV_SAMPLE"))
+    if (auto* env = std::getenv("KANARIV_SAMPLE")) {
         return toAbs(env);
-    if (std::filesystem::exists("C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav"))
+    }
+    if (std::filesystem::exists(
+            "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav")) {
         return "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav";
+    }
     return "tests/fixtures/sample.wav";
 }
 
-std::expected<std::unique_ptr<Database>, kanariv::utils::Error>
-openDbWithFallback(const std::string& path, std::string& used) {
+auto openDbWithFallback(const std::string& path, std::string& used)
+    -> std::expected<std::unique_ptr<Database>, kanariv::utils::Error> {
     auto r = Database::open(path);
     if (r) {
         used = path;
@@ -71,36 +100,38 @@ openDbWithFallback(const std::string& path, std::string& used) {
 
 void ensureQueueHasTracks(Database& db, const std::string& samplePath) {
     auto q = db.listQueueItems(1);
-    if (q && !q->empty())
+    if (q && !q->empty()) {
         return;
+    }
     std::cout << "[engine_demo] queue empty, populating 2 demo tracks sample='" << samplePath
               << "'\n";
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < demoTracksCount; ++i) {
         kanariv::types::Track t;
-        for (int b = 0; b < 32; ++b)
-            t.fingerprint[b] = static_cast<uint8_t>(0xC0 + i * 32 + b);
+        for (int b = 0; b < fingerprintSize; ++b) {
+            t.fingerprint.at(b) = static_cast<uint8_t>(fingerprintBaseByte + i * fingerprintSize + b);
+        }
         t.path = samplePath;
-        t.size = 176444;
-        t.mtime = 1700000000 + i;
+        t.size = demoTrackSize;
+        t.mtime = demoMtimeBase + i;
         t.duration = 1.0;
-        t.sample_rate = 44100;
-        t.channels = 1;
-        t.bitrate = 128;
+        t.sample_rate = demoSampleRate;
+        t.channels = demoChannels;
+        t.bitrate = demoBitrate;
         t.title = "engine_demo Track " + std::to_string(i + 1);
         t.artist = "kanariv demo";
         t.album = "engine_demo";
         t.genre = "Demo";
-        t.year = 2026;
+        t.year = demoYear;
         t.track_num = i + 1;
-        t.library_id = 1;
+        t.library_id = demoLibraryId;
         auto ins = db.insertTrack(t);
         int64_t tid = 0;
         if (!ins) {
             if (ins.error().code == kanariv::utils::StatusCode::AlreadyExists) {
                 auto ex = db.findByFingerprint(t.fingerprint);
-                if (ex)
+                if (ex) {
                     tid = ex->id;
-                else {
+                } else {
                     std::cerr << "[engine_demo] duplicate but find failed\n";
                     continue;
                 }
@@ -108,28 +139,31 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath) {
                 std::cerr << "[engine_demo] insert failed: " << ins.error().message << "\n";
                 continue;
             }
-        } else
+        } else {
             tid = *ins;
-        auto eq = db.queueEnqueue(1, tid, -1);
-        if (!eq)
+        }
+        auto eq = db.queueEnqueue(defaultQueueId, tid, defaultPosition);
+        if (!eq) {
             std::cerr << "[engine_demo] enqueue tid=" << tid << " failed: " << eq.error().message
                       << "\n";
-        else
+        } else {
             std::cout << "[engine_demo] enqueued tid=" << tid << "\n";
+        }
     }
 }
 
 } // namespace
 
-static std::string parseDbPath(int argc, char** argv) {
+static auto parseDbPath(int argc, char** argv) -> std::string {
     std::string dbPath = "build/engine_demo.db";
-    if (argc > 1 && argv[1] && argv[1][0] != '\0')
+    if (argc > 1 && argv[1] != nullptr && argv[1][0] != '\0') {
         dbPath = argv[1];
+    }
     return dbPath;
 }
 
 // Ensures queue 1 has at least one track. Returns true if playable.
-static bool ensureQueuePopulated(std::shared_ptr<Database> dbShared) {
+static auto ensureQueuePopulated(std::shared_ptr<Database> dbShared) -> bool {
     auto q1 = dbShared->listQueueItems(1);
     int count = q1 ? static_cast<int>(q1->size()) : 0;
     std::cout << "[engine_demo] queue 1 has " << count << " item(s)\n";
@@ -146,24 +180,24 @@ static bool ensureQueuePopulated(std::shared_ptr<Database> dbShared) {
     return true;
 }
 
-static kanariv::types::EngineConfig createEngineConfig() {
+static auto createEngineConfig() -> kanariv::types::EngineConfig {
     kanariv::types::EngineConfig cfg;
-    cfg.pollMs = 10;
-    cfg.gaplessMs = 300;
+    cfg.pollMs = demoPollMs;
+    cfg.gaplessMs = demoGaplessMs;
     cfg.enableMonitorThread = true;
-    cfg.historyThresholdPct = 60;
-    cfg.historyThresholdSecs = 90;
+    cfg.historyThresholdPct = demoHistoryThresholdPct;
+    cfg.historyThresholdSecs = demoHistoryThresholdSecs;
     kanariv::types::EngineCallbacks cbs;
-    cbs.on_track_started = [](int64_t tid) {
+    cbs.on_track_started = [](int64_t tid) -> void {
         std::cout << "[engine_demo] callback onTrackStarted track " << tid << "\n";
     };
-    cbs.on_queue_changed = [](int64_t qid) {
+    cbs.on_queue_changed = [](int64_t qid) -> void {
         std::cout << "[engine_demo] callback onQueueChanged queue " << qid << "\n";
     };
-    cbs.on_track_ended = [](int64_t tid, double pct) {
+    cbs.on_track_ended = [](int64_t tid, double pct) -> void {
         std::cout << "[engine_demo] callback onTrackEnded track " << tid << " pct=" << pct << "\n";
     };
-    cbs.on_error = [](kanariv::utils::StatusCode r, std::string_view msg) {
+    cbs.on_error = [](kanariv::utils::StatusCode r, std::string_view msg) -> void {
         std::cout << "[engine_demo] callback onError " << static_cast<int>(r) << " " << msg << "\n";
     };
     cfg.callbacks = cbs;
@@ -171,26 +205,26 @@ static kanariv::types::EngineConfig createEngineConfig() {
 }
 
 static void pollEvents(kanariv::engine::Engine* engine) {
-    for (int i = 0; i < 20; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    for (int i = 0; i < pollAttempts; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollSleepMs));
         while (true) {
             auto ev = engine->pollEvent();
-            if (!ev)
+            if (!ev) {
                 break;
+            }
             std::cout << "[engine_demo] event type=" << static_cast<int>(ev->type) << " track "
                       << ev->track_id << " queue " << ev->queue_id << " pos=" << ev->position
                       << " dur=" << ev->duration << " msg='" << ev->msg << "'\n";
         }
-        if (i == 10) {
-            std::array<kanariv::types::EngineEvent, 64> buf;
+        if (i == drainCheckTick) {
+            std::array<kanariv::types::EngineEvent, eventBufferSize> buf;
             size_t n = 0;
-            (void)engine->drainEvents(buf.data(), 64, &n);
+            (void)engine->drainEvents(buf.data(), eventBufferSize, &n);
             if (n > 0) {
                 std::cout << "[engine_demo] drain got " << n << " events at tick " << i << "\n";
                 for (size_t k = 0; k < n; ++k) {
-                    std::cout << "  drain[" << k << "] type="
-                              << static_cast<int>(buf[k].type) << " track " << buf[k].track_id
-                              << "\n";
+                    std::cout << "  drain[" << k << "] type=" << static_cast<int>(buf[k].type) // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                              << " track " << buf[k].track_id << "\n"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 }
             }
         }
@@ -198,33 +232,34 @@ static void pollEvents(kanariv::engine::Engine* engine) {
 }
 
 static void drainAndReport(kanariv::engine::Engine* engine) {
-    std::array<kanariv::types::EngineEvent, 64> buf;
+    std::array<kanariv::types::EngineEvent, eventBufferSize> buf;
     size_t n = 0;
-    (void)engine->drainEvents(buf.data(), 64, &n);
+    (void)engine->drainEvents(buf.data(), eventBufferSize, &n);
     std::cout << "[engine_demo] final drain " << n << " events\n";
     for (size_t k = 0; k < n; ++k) {
-        std::cout << "  final[" << k << "] type=" << static_cast<int>(buf[k].type) << " track "
-                  << buf[k].track_id << " queue " << buf[k].queue_id << "\n";
+        std::cout << "  final[" << k << "] type=" << static_cast<int>(buf[k].type) << " track " // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                  << buf[k].track_id << " queue " << buf[k].queue_id << "\n"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     std::cout << "[engine_demo] current track " << engine->currentTrackId() << " state "
               << static_cast<int>(engine->state()) << " pos " << engine->position() << "\n";
 }
 
-int main(int argc, char** argv) {
+auto main(int argc, char** argv) -> int {
     std::string dbPath = parseDbPath(argc, argv);
 
     std::string used;
     auto dbRes = openDbWithFallback(dbPath, used);
     if (!dbRes) {
         std::cerr << "[engine_demo] open failed: " << dbRes.error().message << "\n";
-        return 1;
+        return exitCodeFailure;
     }
     // The caller owns the backend and attaches it to the Engine.
     auto dbShared = std::shared_ptr<Database>(std::move(dbRes.value()));
     std::cout << "[engine_demo] opening DB: " << used << "\n";
 
-    if (!ensureQueuePopulated(dbShared))
-        return 0;
+    if (!ensureQueuePopulated(dbShared)) {
+        return exitCodeSuccess;
+    }
 
     auto cfg = createEngineConfig();
 
@@ -232,16 +267,16 @@ int main(int argc, char** argv) {
     auto engineRes = Engine::create(cfg);
     if (!engineRes) {
         std::cerr << "[engine_demo] Engine::create failed: " << engineRes.error().message << "\n";
-        return 1;
+        return exitCodeFailure;
     }
     auto engine = std::move(engineRes.value());
     auto att = engine->attachDatabase(dbShared);
     if (!att) {
         std::cerr << "[engine_demo] attachDatabase failed: " << att.error().message << "\n";
-        return 1;
+        return exitCodeFailure;
     }
 
-    auto pr = engine->play(1);
+    auto pr = engine->play(defaultQueueId);
     if (!pr) {
         std::cerr << "[engine_demo] play failed: " << pr.error().message << " ("
                   << static_cast<int>(pr.error().code) << ")\n";
@@ -254,5 +289,5 @@ int main(int argc, char** argv) {
 
     engine->shutdown();
     std::cout << "[engine_demo] done\n";
-    return 0;
+    return exitCodeSuccess;
 }

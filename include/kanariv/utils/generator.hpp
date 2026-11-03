@@ -32,7 +32,7 @@ class Generator {
     /// @brief Coroutine promise. @ingroup kanariv_utils
     struct promise_type {
         std::optional<T> value_; ///< Most recently yielded value.
-        std::exception_ptr ex_; ///< Exception captured from the coroutine body.
+        std::exception_ptr ex_;  ///< Exception captured from the coroutine body.
 
         /** @brief Creates the owning Generator for this promise. */
         Generator get_return_object() {

@@ -6,9 +6,9 @@
  * @ingroup kanariv_app
  */
 
-#include <kanariv/ipc/result.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/ipc/result.hpp>
 #include <ostream>
 #include <set>
 #include <string>
@@ -30,7 +30,7 @@ class OutputFormatter {
     bool color_{false};
     int64_t highlightTrackId_{0};
     std::string highlightNeedle_;
-    std::set<std::string> columns_;  ///< If non-empty, only these track columns are printed.
+    std::set<std::string> columns_; ///< If non-empty, only these track columns are printed.
 
     /** @brief mm:ss rendering for durations. */
     static std::string formatTime(double secs);

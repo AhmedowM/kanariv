@@ -1,13 +1,5 @@
 ﻿#include <sqlite3.h>
 
-#include <kanariv/db/database.hpp>
-#include <kanariv/db/scan.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/media/decoder.hpp>
-#include <kanariv/media/scan.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/log.hpp>
-#include <kanariv/utils/result.hpp>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -16,6 +8,14 @@
 #include <expected>
 #include <filesystem>
 #include <functional>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/scan.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/scan.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
@@ -25,32 +25,37 @@
 
 namespace kanariv::db {
 
-std::expected<void, kanariv::utils::Error>
-scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
-            std::function<void(int64_t, int64_t, std::string_view)> progress,
-            kanariv::media::ScanMode mode) {
-    Database& db = dynamic_cast<Database&>(db_);
-    if (libraryId == 0)
+auto scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
+                 std::function<void(int64_t, int64_t, std::string_view)> progress,
+                 kanariv::media::ScanMode mode) -> std::expected<void, kanariv::utils::Error> {
+    auto& db = dynamic_cast<Database&>(db_);
+    if (libraryId == 0) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
+    }
     auto libs = db.listLibraries();
-    if (!libs)
+    if (!libs) {
         return std::unexpected{libs.error()};
+    }
     std::string libPath;
-    for (auto& l : *libs)
-        if (l.id == libraryId)
+    for (auto& l : *libs) {
+        if (l.id == libraryId) {
             libPath = l.path;
+        }
+    }
     if (libPath.empty()) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "library not found")};
     }
     std::filesystem::path root(libPath);
     std::error_code ec;
-    if (!std::filesystem::exists(root, ec))
+    if (!std::filesystem::exists(root, ec)) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "path not found")};
-    if (auto* lg = db.logger())
+    }
+    if (auto* lg = db.logger()) {
         lg->info("scan started root={} mode={}", libPath,
                  mode == kanariv::media::ScanMode::Sampled ? "sampled" : "full");
+    }
     int64_t scanned = 0;
     int64_t added = 0;
     int64_t updated = 0;
@@ -60,12 +65,14 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
     std::unique_lock<std::shared_mutex> batchLock;
     bool inTx = false;
     auto beginBatch = [&]() -> std::expected<void, kanariv::utils::Error> {
-        if (inTx)
+        if (inTx) {
             return {};
+        }
         batchLock = std::unique_lock<std::shared_mutex>(DatabaseAccess::mutex(db));
-        if (!DatabaseAccess::handleLocked(db))
+        if (!DatabaseAccess::handleLocked(db)) {
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
+        }
         char* err = nullptr;
         internal::SqliteErrGuard guard{err};
         int rc = sqlite3_exec(DatabaseAccess::handleLocked(db), "BEGIN IMMEDIATE", nullptr, nullptr,
@@ -80,8 +87,9 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
         return {};
     };
     auto commitBatch = [&]() -> std::expected<void, kanariv::utils::Error> {
-        if (!inTx)
+        if (!inTx) {
             return {};
+        }
         char* err = nullptr;
         internal::SqliteErrGuard guard{err};
         int rc = sqlite3_exec(DatabaseAccess::handleLocked(db), "COMMIT", nullptr, nullptr, &err);
@@ -98,9 +106,10 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
         batchPending = 0;
         return {};
     };
-    auto rollbackBatch = [&]() {
-        if (!inTx)
+    auto rollbackBatch = [&]() -> void {
+        if (!inTx) {
             return;
+        }
         sqlite3_exec(DatabaseAccess::handleLocked(db), "ROLLBACK", nullptr, nullptr, nullptr);
         batchLock.unlock();
         inTx = false;
@@ -110,15 +119,17 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
     for (auto trk : kanariv::media::scanTracks(root, mode)) {
         if (!inTx) {
             auto b = beginBatch();
-            if (!b)
+            if (!b) {
                 return std::unexpected{b.error()};
+            }
         }
         auto existingPath = DatabaseAccess::findByPathLocked(db, trk.path);
         if (existingPath && existingPath->size == trk.size && existingPath->mtime == trk.mtime) {
             scanned++;
             batchPending++;
-            if (progress)
+            if (progress) {
                 progress(scanned, 0, trk.path);
+            }
             if (batchPending >= batchSize) {
                 auto c = commitBatch();
                 if (!c) {
@@ -139,9 +150,10 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             bool hasMeta = false;
             auto meta = kanariv::media::extractMetadata(trk.path);
             if (!meta) {
-                if (auto* lg = db.logger())
+                if (auto* lg = db.logger()) {
                     lg->debug("scan metadata failed file={} err={}", trk.path,
                               meta.error().message);
+                }
             }
             if (meta) {
                 if (!meta->title.empty()) {
@@ -208,13 +220,15 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
                 upd.channels = 0;
                 upd.bitrate = 0;
             }
-            if (DatabaseAccess::updateTrackLocked(db, upd))
+            if (DatabaseAccess::updateTrackLocked(db, upd)) {
                 updated++;
-            else
+            } else {
                 failed++;
+            }
             if (existingPath && existingPath->id != byFp->id) {
-                if (existingPath->fingerprint == trk.fingerprint)
+                if (existingPath->fingerprint == trk.fingerprint) {
                     (void)DatabaseAccess::deleteTrackLocked(db, existingPath->id);
+                }
             }
         } else if (existingPath) {
             kanariv::types::Track upd = *existingPath;
@@ -229,9 +243,10 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             bool hasMeta = false;
             auto meta = kanariv::media::extractMetadata(trk.path);
             if (!meta) {
-                if (auto* lg = db.logger())
+                if (auto* lg = db.logger()) {
                     lg->debug("scan metadata failed file={} err={}", trk.path,
                               meta.error().message);
+                }
             }
             if (meta) {
                 if (!meta->title.empty()) {
@@ -302,21 +317,24 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             upd.play_count = keepPlay;
             upd.rating = keepRating;
             upd.date_added = keepAdded;
-            if (DatabaseAccess::updateTrackLocked(db, upd))
+            if (DatabaseAccess::updateTrackLocked(db, upd)) {
                 updated++;
-            else
+            } else {
                 failed++;
+            }
         } else {
             trk.library_id = libraryId;
-            if (DatabaseAccess::insertTrackLocked(db, trk))
+            if (DatabaseAccess::insertTrackLocked(db, trk)) {
                 added++;
-            else
+            } else {
                 failed++;
+            }
         }
         scanned++;
         batchPending++;
-        if (progress)
+        if (progress) {
             progress(scanned, 0, trk.path);
+        }
         if (batchPending >= batchSize) {
             auto c = commitBatch();
             if (!c) {
@@ -332,12 +350,13 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             return std::unexpected{c.error()};
         }
     }
-    if (auto* lg = db.logger())
+    if (auto* lg = db.logger()) {
         lg->info("scan finished root={} scanned={} added={} updated={} failed={}", libPath, scanned,
                  added, updated, failed);
+    }
     auto libs2 = db.listLibraries();
     if (libs2) {
-        for (auto& l : *libs2)
+        for (auto& l : *libs2) {
             if (l.id == libraryId) {
                 l.last_scanned = std::chrono::duration_cast<std::chrono::seconds>(
                                      std::chrono::system_clock::now().time_since_epoch())
@@ -354,15 +373,17 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
                         internal::SqliteErrGuard cGuard{cErr};
                         rc = sqlite3_exec(DatabaseAccess::handleLocked(db), "COMMIT", nullptr,
                                           nullptr, &cErr);
-                        if (rc != SQLITE_OK)
+                        if (rc != SQLITE_OK) {
                             sqlite3_exec(DatabaseAccess::handleLocked(db), "ROLLBACK", nullptr,
                                          nullptr, nullptr);
+                        }
                     } else {
                         (void)db.libraryUpdate(l);
                     }
                 }
                 break;
             }
+        }
     }
     return {};
 }

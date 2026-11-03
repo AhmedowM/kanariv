@@ -1,8 +1,8 @@
 #pragma once
 
-#include <kanariv/utils.hpp>
 #include <db/detail.hpp>
 #include <expected>
+#include <kanariv/utils.hpp>
 #include <string>
 #include <string_view>
 #include <utility>

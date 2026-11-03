@@ -1,13 +1,13 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
+#include <filesystem>
 #include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
-#include <cstdint>
-#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>

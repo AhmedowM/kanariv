@@ -1,10 +1,10 @@
 #pragma once
 
-#include <kanariv/contracts/database.hpp>
-#include <kanariv/utils.hpp>
 #include <chrono>
 #include <cstdint>
 #include <expected>
+#include <kanariv/contracts/database.hpp>
+#include <kanariv/utils.hpp>
 #include <memory>
 #include <vector>
 
@@ -42,7 +42,8 @@ uint64_t wallMs() noexcept;
  * @param secsThr Absolute seconds threshold; 0 defaults to 90 s.
  * @return true if `played/duration >= pct` or `played >= secs` and not already marked.
  */
-bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr, int secsThr) noexcept;
+bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr,
+                      int secsThr) noexcept;
 
 } // namespace kanariv::engine::detail
 

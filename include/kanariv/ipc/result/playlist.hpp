@@ -6,10 +6,10 @@
  * @ingroup kanariv_ipc
  */
 
-#include <kanariv/ipc/result/playback.hpp>
-#include <kanariv/types/record.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/ipc/result/playback.hpp>
+#include <kanariv/types/record.hpp>
 #include <string>
 #include <vector>
 

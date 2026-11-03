@@ -6,11 +6,11 @@
  */
 
 #include <app/format_internal.hpp>
+#include <cmath>
+#include <filesystem>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/record_json.hpp>
-#include <cmath>
-#include <filesystem>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -18,34 +18,42 @@
 
 namespace kanariv::app {
 
-std::string trackWho(const kanariv::ipc::Status& st) {
-    if (!st.artist.empty() && !st.title.empty())
+auto trackWho(const kanariv::ipc::Status& st) -> std::string {
+    if (!st.artist.empty() && !st.title.empty()) {
         return st.artist + " - " + st.title;
-    if (!st.artist.empty())
+    }
+    if (!st.artist.empty()) {
         return st.artist;
-    if (!st.title.empty())
+    }
+    if (!st.title.empty()) {
         return st.title;
+    }
     if (!st.path.empty()) {
         std::string fn = std::filesystem::path(st.path).filename().generic_string();
-        if (!fn.empty())
+        if (!fn.empty()) {
             return fn;
+        }
     }
     return "unknown track";
 }
 
-std::string addedLabel(const kanariv::types::Track& t) {
+auto addedLabel(const kanariv::types::Track& t) -> std::string {
     std::string fn = std::filesystem::path(t.path).filename().generic_string();
     std::string who;
-    if (!t.artist.empty() && !t.title.empty())
+    if (!t.artist.empty() && !t.title.empty()) {
         who = t.artist + " - " + t.title;
-    else
+    } else {
         who = t.artist + t.title;
-    if (!who.empty() && !fn.empty())
+    }
+    if (!who.empty() && !fn.empty()) {
         return who + ": " + fn;
-    if (!fn.empty())
+    }
+    if (!fn.empty()) {
         return fn;
-    if (!who.empty())
+    }
+    if (!who.empty()) {
         return who;
+    }
     return "track " + std::to_string(t.id);
 }
 
@@ -58,10 +66,11 @@ void writePlaylistText(std::ostream& os, const std::vector<kanariv::types::Track
             std::string title = t.title.empty() ? t.path : t.title;
             std::string artist = t.artist.empty() ? "" : t.artist;
             os << "#EXTINF:" << dur;
-            if (!artist.empty())
+            if (!artist.empty()) {
                 os << "," << artist << " - " << title;
-            else
+            } else {
                 os << "," << title;
+            }
             os << "\n";
             os << t.path << "\n";
         }
@@ -71,8 +80,9 @@ void writePlaylistText(std::ostream& os, const std::vector<kanariv::types::Track
         for (const auto& t : tracks) {
             os << "File" << i << "=" << t.path << "\n";
             std::string title = t.title.empty() ? t.path : t.title;
-            if (!t.artist.empty())
+            if (!t.artist.empty()) {
                 title = t.artist + " - " + title;
+            }
             os << "Title" << i << "=" << title << "\n";
             int dur = static_cast<int>(std::round(t.duration));
             os << "Length" << i << "=" << dur << "\n";
@@ -85,11 +95,11 @@ void writePlaylistText(std::ostream& os, const std::vector<kanariv::types::Track
 
 void writePlaylistJson(std::ostream& os, const std::vector<kanariv::types::Track>& tracks) {
     kanariv::utils::Json j;
-    j["format"] = "kanariv-playlist";
-    j["version"] = 1;
-    j["tracks"] = kanariv::utils::Json::array();
+    j["format"] = "kanariv-playlist"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["version"] = 1; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["tracks"] = kanariv::utils::Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (const auto& t : tracks) {
-        j["tracks"].push_back(kanariv::utils::trackToJson(t));
+        j["tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     os << j.dump(2) << "\n";
 }

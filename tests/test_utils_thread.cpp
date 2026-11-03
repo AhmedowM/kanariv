@@ -1,8 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
 #include <kanariv/utils/thread.hpp>
-#include <chrono>
 #include <stop_token>
 #include <thread>
 #include <vector>

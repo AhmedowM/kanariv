@@ -7,15 +7,15 @@
  */
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/types/wire.hpp>
 #include <kanariv/utils/error.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <expected>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -137,7 +137,8 @@ class IDatabase {
      * @brief Lists all queue containers.
      * @return Queue values, or a backend error.
      */
-    virtual std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error> listQueues() = 0;
+    virtual std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error>
+    listQueues() = 0;
     /**
      * @brief Returns the number of items in a queue.
      * @return Item count; a missing or empty queue returns zero.
@@ -168,7 +169,7 @@ class IDatabase {
      * @return The new queue identifier, or `InvalidArg`/a backend error.
      */
     virtual std::expected<int64_t, kanariv::utils::Error> createQueue(std::string_view name,
-                                                                     int64_t library_id = 1) = 0;
+                                                                      int64_t library_id = 1) = 0;
     /**
      * @brief Deletes a queue container.
      * @param qid Queue identifier; zero selects the default queue.
@@ -206,7 +207,7 @@ class IDatabase {
      * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> queueEnqueue(int64_t qid, int64_t tid,
-                                                                   int64_t pos = -1) = 0;
+                                                                    int64_t pos = -1) = 0;
     /**
      * @brief Removes the item at a queue position.
      * @param qid Queue identifier; zero selects the default queue.
@@ -265,7 +266,8 @@ class IDatabase {
      * @param cursor_position Zero-based cursor position.
      * @return Success, or a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> saveEngineCursor(int64_t cursor_position) = 0;
+    virtual std::expected<void, kanariv::utils::Error>
+    saveEngineCursor(int64_t cursor_position) = 0;
     /**
      * @brief Records a completed or partially completed track play.
      * @param track_id Track identifier.
@@ -326,9 +328,12 @@ class IDatabase {
     /**
      * @brief Returns library totals and optional top-N listening reports.
      * @param topTracks Number of top tracks by total plays; omitted or non-positive = totals only.
-     * @param topAlbums Number of top albums by total plays; omitted or non-positive = not requested.
-     * @param topGenres Number of top genres by total plays; omitted or non-positive = not requested.
-     * @param topArtists Number of top artists by total plays; omitted or non-positive = not requested.
+     * @param topAlbums Number of top albums by total plays; omitted or non-positive = not
+     * requested.
+     * @param topGenres Number of top genres by total plays; omitted or non-positive = not
+     * requested.
+     * @param topArtists Number of top artists by total plays; omitted or non-positive = not
+     * requested.
      * @details Multi-artist tracks are split so each individual artist is counted
      * separately in `top_artists`.
      */
@@ -369,7 +374,7 @@ class IDatabase {
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> bookmarkAdd(int64_t tid, int64_t pos,
-                                                                  std::string_view note = {}) = 0;
+                                                                   std::string_view note = {}) = 0;
     /**
      * @brief Removes a bookmark by identifier.
      * @param id Bookmark identifier.
@@ -414,7 +419,7 @@ class IDatabase {
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> playlistAddTrack(int64_t pid, int64_t tid,
-                                                                       int64_t pos = -1) = 0;
+                                                                        int64_t pos = -1) = 0;
     /**
      * @brief Removes a track from a playlist.
      * @param pid Playlist identifier.
@@ -422,7 +427,7 @@ class IDatabase {
      * @return Success, or `NotFound`/a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> playlistRemoveTrack(int64_t pid,
-                                                                          int64_t tid) = 0;
+                                                                           int64_t tid) = 0;
     /**
      * @brief Moves a playlist item between positions.
      * @param pid Playlist identifier.
@@ -431,7 +436,7 @@ class IDatabase {
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> playlistReorder(int64_t pid, int64_t from,
-                                                                      int64_t to) = 0;
+                                                                       int64_t to) = 0;
     /**
      * @brief Changes a playlist name.
      * @param id Playlist identifier.
@@ -439,7 +444,7 @@ class IDatabase {
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> renamePlaylist(int64_t id,
-                                                                     std::string_view newName) = 0;
+                                                                      std::string_view newName) = 0;
     /**
      * @brief Creates a playlist from an ordered list of track identifiers.
      * @param name Display name.

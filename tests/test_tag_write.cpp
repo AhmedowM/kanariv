@@ -1,11 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/db/database.hpp>
-#include <kanariv/media/decoder.hpp>
-#include <kanariv/utils/error.hpp>
 #include <common.hpp>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <kanariv/db/database.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/utils/error.hpp>
 #include <string>
 #include <system_error>
 #include <vector>

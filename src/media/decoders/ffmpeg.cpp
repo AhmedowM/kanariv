@@ -1,8 +1,4 @@
 ﻿#include <algorithm>
-#include <kanariv/media/decoder.hpp>
-#include <kanariv/media/reader.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
 #include <cerrno>
 #include <cmath>
 #include <cstddef>
@@ -11,6 +7,10 @@
 #include <cstring>
 #include <expected>
 #include <initializer_list>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <memory>
 #include <span>
 #include <string>
@@ -35,32 +35,39 @@ extern "C" {
 
 namespace kanariv::media {
 
+constexpr int64_t probesizeDefault = 1048576;
+constexpr int64_t maxAnalyzeDurationUs = 500000;
+constexpr int whenceMaskLowBits = 0x3;
+constexpr double bitsPerByte = 8.0;
+
 struct Decoder::Impl {
     Impl() = default;
     ~Impl();
 
-    [[nodiscard]] uint32_t sampleRate() const noexcept;
-    [[nodiscard]] uint32_t channels() const noexcept;
-    [[nodiscard]] uint64_t totalFrames() const noexcept;
+    [[nodiscard]] auto sampleRate() const noexcept -> uint32_t;
+    [[nodiscard]] auto channels() const noexcept -> uint32_t;
+    [[nodiscard]] auto totalFrames() const noexcept -> uint64_t;
 
-    std::size_t decode(std::span<float> out);
+    auto decode(std::span<float> out) -> std::size_t;
 
-    kanariv::utils::Expected<void> seek(double seconds);
+    auto seek(double seconds) -> kanariv::utils::Expected<void>;
 
-    bool init();
+    auto init() -> bool;
 
     void cleanup();
 
     struct PacketDeleter {
         void operator()(AVPacket* p) const noexcept {
-            if (p)
+            if (p != nullptr) {
                 av_packet_free(&p);
+            }
         }
     };
     struct FrameDeleter {
         void operator()(AVFrame* p) const noexcept {
-            if (p)
+            if (p != nullptr) {
                 av_frame_free(&p);
+            }
         }
     };
     using PacketPtr = std::unique_ptr<AVPacket, PacketDeleter>;
@@ -72,18 +79,19 @@ struct Decoder::Impl {
             av_channel_layout_uninit(&l);
         }
         LayoutGuard(const LayoutGuard&) = delete;
-        LayoutGuard& operator=(const LayoutGuard&) = delete;
+        auto operator=(const LayoutGuard&) -> LayoutGuard& = delete;
     };
 
-    int convertFrameBuffered(AVFrame* frame);
-    int drainResampler();
-    std::size_t serveSpill(std::span<float> out, std::size_t totalDecoded, std::size_t frames);
+    auto convertFrameBuffered(AVFrame* frame) -> int;
+    auto drainResampler() -> int;
+    auto serveSpill(std::span<float> out, std::size_t totalDecoded, std::size_t frames)
+        -> std::size_t;
 
-    static int readCallback(void* opaque, uint8_t* buf, int bufSize);
+    static auto readCallback(void* opaque, uint8_t* buf, int bufSize) -> int;
 
     // AVIO seek: AVSEEK_SIZE queries size, AVSEEK_FORCE stripped. The callback
     // is only installed when the reader reports seekability.
-    static int64_t seekCallback(void* opaque, int64_t offset, int whence);
+    static auto seekCallback(void* opaque, int64_t offset, int whence) -> int64_t;
 
     Reader* reader_{nullptr};
     AVFormatContext* fmt_{nullptr};
@@ -103,29 +111,30 @@ struct Decoder::Impl {
     std::size_t spillPos_{0};
 };
 
-kanariv::utils::Expected<kanariv::types::TrackMetadata> extractMetadata(std::string_view path) {
+auto extractMetadata(std::string_view path)
+    -> kanariv::utils::Expected<kanariv::types::TrackMetadata> {
     AVFormatContext* fmt = avformat_alloc_context();
-    if (!fmt) {
+    if (fmt == nullptr) {
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::NoMem,
-                                                        "avformat_alloc_context failed"));
+                                                         "avformat_alloc_context failed"));
     }
 
     if (avformat_open_input(&fmt, path.data(), nullptr, nullptr) < 0) {
         avformat_free_context(fmt);
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "avformat_open_input failed"));
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                                         "avformat_open_input failed"));
     }
 
     // Bound probing (P1-1): defaults (5 MB / unbounded-ish analysis) let a
     // single open buffer megabytes per file. 1 MB / 0.5 s covers headers,
     // Xing/Info tables and attached pictures for sane files.
-    fmt->probesize = 1048576;
-    fmt->max_analyze_duration = 500000;
+    fmt->probesize = probesizeDefault;
+    fmt->max_analyze_duration = maxAnalyzeDurationUs;
 
     if (avformat_find_stream_info(fmt, nullptr) < 0) {
         avformat_close_input(&fmt);
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
-                                                        "avformat_find_stream_info failed"));
+                                                         "avformat_find_stream_info failed"));
     }
 
     kanariv::types::TrackMetadata meta;
@@ -141,12 +150,14 @@ kanariv::utils::Expected<kanariv::types::TrackMetadata> extractMetadata(std::str
     auto getTag = [](AVDictionary* fmtMeta, AVDictionary* strMeta,
                      std::initializer_list<const char*> keys) -> std::string {
         for (auto* dict : {fmtMeta, strMeta}) {
-            if (!dict)
+            if (!dict) {
                 continue;
+            }
             for (const char* key : keys) {
                 AVDictionaryEntry* entry = av_dict_get(dict, key, nullptr, 0);
-                if (entry && entry->value && *entry->value)
+                if (entry && entry->value && *entry->value) {
                     return std::string(entry->value);
+                }
             }
         }
         return {};
@@ -182,7 +193,7 @@ kanariv::utils::Expected<kanariv::types::TrackMetadata> extractMetadata(std::str
 
     if (audioStreamIdx >= 0) {
         AVStream* stream = fmt->streams[audioStreamIdx];
-        if (stream->codecpar) {
+        if (stream->codecpar != nullptr) {
             meta.sample_rate = static_cast<int>(stream->codecpar->sample_rate);
             meta.channels = static_cast<int>(stream->codecpar->ch_layout.nb_channels);
             meta.bitrate = static_cast<int>(stream->codecpar->bit_rate);
@@ -198,36 +209,41 @@ kanariv::utils::Expected<kanariv::types::TrackMetadata> extractMetadata(std::str
     return meta;
 }
 
-uint32_t Decoder::Impl::sampleRate() const noexcept {
+auto Decoder::Impl::sampleRate() const noexcept -> uint32_t {
     return sampleRate_;
 }
 
-uint32_t Decoder::Impl::channels() const noexcept {
+auto Decoder::Impl::channels() const noexcept -> uint32_t {
     return channels_;
 }
 
-uint64_t Decoder::Impl::totalFrames() const noexcept {
+auto Decoder::Impl::totalFrames() const noexcept -> uint64_t {
     return totalFrames_;
 }
 
-std::size_t Decoder::Impl::decode(std::span<float> out) {
-    if (out.empty() || !fmt_ || !dec_ || !swr_ || channels_ == 0)
+auto Decoder::Impl::decode(std::span<float> out) -> std::size_t {
+    if (out.empty() || fmt_ == nullptr || dec_ == nullptr || swr_ == nullptr || channels_ == 0) {
         return 0;
+    }
 
     std::size_t frames = out.size() / channels_;
-    if (frames == 0)
+    if (frames == 0) {
         return 0;
+    }
 
     std::size_t totalDecoded = 0;
     bool eofReached = false;
     // Reusable scratch packet/frame (P-1). Lazily (re)allocated if init()
     // failed to pre-allocate or cleanup() released them.
-    if (!scratchPkt_)
+    if (!scratchPkt_) {
         scratchPkt_.reset(av_packet_alloc());
-    if (!scratchFrame_)
+    }
+    if (!scratchFrame_) {
         scratchFrame_.reset(av_frame_alloc());
-    if (!scratchPkt_ || !scratchFrame_)
+    }
+    if (!scratchPkt_ || !scratchFrame_) {
         return 0;
+    }
     AVPacket* pkt = scratchPkt_.get();
     AVFrame* frame = scratchFrame_.get();
     // Decode at most what `out` (plus the bounded spill_) can hold: each
@@ -235,8 +251,9 @@ std::size_t Decoder::Impl::decode(std::span<float> out) {
     // swr_convert always sees the full convertFrames window (P-7).
     while (totalDecoded < frames && !eofReached) {
         totalDecoded += serveSpill(out, totalDecoded, frames);
-        if (totalDecoded >= frames)
+        if (totalDecoded >= frames) {
             break;
+        }
         av_packet_unref(pkt);
 
         int ret = av_read_frame(fmt_, pkt);
@@ -247,15 +264,19 @@ std::size_t Decoder::Impl::decode(std::span<float> out) {
                 for (;;) {
                     av_frame_unref(frame);
                     ret = avcodec_receive_frame(dec_, frame);
-                    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+                    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                         break;
-                    if (ret < 0)
+                    }
+                    if (ret < 0) {
                         break;
-                    if (convertFrameBuffered(frame) < 0)
+                    }
+                    if (convertFrameBuffered(frame) < 0) {
                         break;
+                    }
                 }
-                if (drainResampler() < 0)
+                if (drainResampler() < 0) {
                     break;
+                }
                 totalDecoded += serveSpill(out, totalDecoded, frames);
             }
             eofReached = true;
@@ -269,63 +290,71 @@ std::size_t Decoder::Impl::decode(std::span<float> out) {
         ret = avcodec_send_packet(dec_, pkt);
         if (ret == AVERROR(EAGAIN)) {
             av_frame_unref(frame);
-            if (avcodec_receive_frame(dec_, frame) == 0)
+            if (avcodec_receive_frame(dec_, frame) == 0) {
                 (void)convertFrameBuffered(frame);
+            }
             continue;
         }
-        if (ret < 0)
+        if (ret < 0) {
             continue;
+        }
 
         av_frame_unref(frame);
         ret = avcodec_receive_frame(dec_, frame);
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             continue;
-        if (ret < 0)
+        }
+        if (ret < 0) {
             continue;
-        if (convertFrameBuffered(frame) < 0)
+        }
+        if (convertFrameBuffered(frame) < 0) {
             break;
+        }
     }
 
     pos_ += totalDecoded;
     return totalDecoded;
 }
 
-kanariv::utils::Expected<void> Decoder::Impl::seek(double seconds) {
-    if (seconds < 0.0 || !std::isfinite(seconds) || !fmt_ || !dec_ || audioStreamIdx_ < 0) {
+auto Decoder::Impl::seek(double seconds) -> kanariv::utils::Expected<void> {
+    if (seconds < 0.0 || !std::isfinite(seconds) || fmt_ == nullptr || dec_ == nullptr || audioStreamIdx_ < 0) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("bad seconds")});
+                                                     std::string_view("bad seconds")});
     }
-    if (reader_ && !reader_->seekable()) {
+    if (reader_ != nullptr && !reader_->seekable()) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
-                                                    std::string_view("source is not seekable")});
+                                                     std::string_view("source is not seekable")});
     }
     AVStream* stream = fmt_->streams[audioStreamIdx_];
-    if (!stream)
+    if (stream == nullptr) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
-                                                    std::string_view("no stream")});
+                                                     std::string_view("no stream")});
+    }
     // Use stream time_base for seeking - dec time_base is codec, not correct for container
     int64_t seekTarget = av_rescale_q(static_cast<int64_t>(seconds * AV_TIME_BASE),
-                                      AVRational{.num=1, .den=AV_TIME_BASE}, stream->time_base);
+                                      AVRational{.num = 1, .den = AV_TIME_BASE}, stream->time_base);
     // Adjust by stream start_time if present
-    if (stream->start_time != AV_NOPTS_VALUE)
+    if (stream->start_time != AV_NOPTS_VALUE) {
         seekTarget += stream->start_time;
-    else if (fmt_->start_time != AV_NOPTS_VALUE) {
+    } else if (fmt_->start_time != AV_NOPTS_VALUE) {
         // fmt start_time is in AV_TIME_BASE units, convert to stream units
-        seekTarget +=
-            av_rescale_q(fmt_->start_time, AVRational{.num=1, .den=AV_TIME_BASE}, stream->time_base);
+        seekTarget += av_rescale_q(fmt_->start_time, AVRational{.num = 1, .den = AV_TIME_BASE},
+                                   stream->time_base);
     }
     int ret = avformat_seek_file(fmt_, audioStreamIdx_, INT64_MIN, seekTarget, INT64_MAX, 0);
     if (ret < 0) {
         // Fallback to simple av_seek_frame
         ret = av_seek_frame(fmt_, audioStreamIdx_, seekTarget, AVSEEK_FLAG_BACKWARD);
-        if (ret < 0)
+        if (ret < 0) {
             return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Io,
-                                                        std::string_view("seek failed")});
+                                                         std::string_view("seek failed")});
+        }
     }
     avcodec_flush_buffers(dec_);
     // flush resampler as well
-    if (swr_)
+    if (swr_ != nullptr) {
         swr_init(swr_);
+    }
     // Drop converted-but-undelivered residue: positions before the seek
     // target must never surface after it.
     spill_.clear();
@@ -338,19 +367,22 @@ Decoder::Impl::~Impl() {
     cleanup();
 }
 
-int Decoder::Impl::convertFrameBuffered(AVFrame* frame) {
+auto Decoder::Impl::convertFrameBuffered(AVFrame* frame) -> int {
     uint32_t ch = channels_;
-    if (ch == 0 || !frame || frame->nb_samples <= 0)
+    if (ch == 0 || frame == nullptr || frame->nb_samples <= 0) {
         return 0;
+    }
     try {
-        if (convertBuf_.size() < convertFrames * ch)
+        if (convertBuf_.size() < convertFrames * ch) {
             convertBuf_.resize(convertFrames * ch);
+        }
         uint8_t* outPtrs[1] = {reinterpret_cast<uint8_t*>(convertBuf_.data())};
         int appended = 0;
         int n = swr_convert(swr_, outPtrs, static_cast<int>(convertFrames),
                             const_cast<const uint8_t**>(frame->extended_data), frame->nb_samples);
-        if (n < 0)
+        if (n < 0) {
             return n;
+        }
         if (n > 0) {
             spill_.insert(spill_.end(), convertBuf_.data(),
                           convertBuf_.data() + static_cast<std::size_t>(n) * ch);
@@ -363,13 +395,15 @@ int Decoder::Impl::convertFrameBuffered(AVFrame* frame) {
     }
 }
 
-int Decoder::Impl::drainResampler() {
+auto Decoder::Impl::drainResampler() -> int {
     uint32_t ch = channels_;
-    if (ch == 0)
+    if (ch == 0) {
         return 0;
+    }
     try {
-        if (convertBuf_.size() < convertFrames * ch)
+        if (convertBuf_.size() < convertFrames * ch) {
             convertBuf_.resize(convertFrames * ch);
+        }
         uint8_t* outPtrs[1] = {reinterpret_cast<uint8_t*>(convertBuf_.data())};
         // Pull out anything swr held back (oversize frame, filter delay) so
         // swr-internal storage stays bounded by one frame instead of growing
@@ -387,15 +421,17 @@ int Decoder::Impl::drainResampler() {
     }
 }
 
-std::size_t Decoder::Impl::serveSpill(std::span<float> out, std::size_t totalDecoded,
-                                      std::size_t frames) {
-    if (spillPos_ >= spill_.size() || channels_ == 0)
+auto Decoder::Impl::serveSpill(std::span<float> out, std::size_t totalDecoded, std::size_t frames)
+    -> std::size_t {
+    if (spillPos_ >= spill_.size() || channels_ == 0) {
         return 0;
+    }
     std::size_t availFrames = (spill_.size() - spillPos_) / channels_;
     std::size_t want = frames - totalDecoded;
     std::size_t n = std::min(availFrames, want);
-    if (n == 0)
+    if (n == 0) {
         return 0;
+    }
     std::memcpy(out.data() + totalDecoded * channels_, spill_.data() + spillPos_,
                 n * channels_ * sizeof(float));
     spillPos_ += n * channels_;
@@ -406,62 +442,68 @@ std::size_t Decoder::Impl::serveSpill(std::span<float> out, std::size_t totalDec
     return n;
 }
 
-int Decoder::Impl::readCallback(void* opaque, uint8_t* buf, int bufSize) {
+auto Decoder::Impl::readCallback(void* opaque, uint8_t* buf, int bufSize) -> int {
     auto* self = static_cast<Impl*>(opaque);
-    if (!self->reader_)
+    if (self->reader_ == nullptr) {
         return AVERROR(EIO);
+    }
     std::span<std::byte> dst(reinterpret_cast<std::byte*>(buf), bufSize);
     std::size_t n = self->reader_->read(dst);
     return n > 0 ? static_cast<int>(n) : AVERROR_EOF;
 }
 
-int64_t Decoder::Impl::seekCallback(void* opaque, int64_t offset, int whence) {
+auto Decoder::Impl::seekCallback(void* opaque, int64_t offset, int whence) -> int64_t {
     auto* self = static_cast<Impl*>(opaque);
-    if (!self->reader_)
+    if (self->reader_ == nullptr) {
         return AVERROR(EIO);
+    }
     // Handle AVSEEK_SIZE (0x10000) -- query file size without seeking
-    if (whence & AVSEEK_SIZE) {
+    if (whence & AVSEEK_SIZE) { // NOLINT(readability-implicit-bool-conversion)
         int64_t sz = self->reader_->size();
-        if (sz < 0)
+        if (sz < 0) {
             return AVERROR(EIO);
+        }
         return sz;
     }
     // Strip AVSEEK_FORCE flag (0x20000) if present
     int whenceMasked = whence & ~AVSEEK_FORCE;
     int w = SEEK_SET;
-    if (whenceMasked == SEEK_CUR)
+    if (whenceMasked == SEEK_CUR) {
         w = SEEK_CUR;
-    else if (whenceMasked == SEEK_END)
+    } else if (whenceMasked == SEEK_END) {
         w = SEEK_END;
-    else if (whenceMasked == SEEK_SET)
+    } else if (whenceMasked == SEEK_SET) {
         w = SEEK_SET;
-    else {
+    } else {
         // Unknown whence after masking -- treat low 2 bits
-        int low = whenceMasked & 0x3;
-        if (low == SEEK_CUR)
+        int low = whenceMasked & whenceMaskLowBits;
+        if (low == SEEK_CUR) {
             w = SEEK_CUR;
-        else if (low == SEEK_END)
+        } else if (low == SEEK_END) {
             w = SEEK_END;
-        else
+        } else {
             w = SEEK_SET;
+        }
     }
     auto result = self->reader_->seek(offset, w);
-    if (!result.has_value())
+    if (!result.has_value()) {
         return AVERROR(EIO);
+    }
     return self->reader_->tell();
 }
 
-bool Decoder::Impl::init() {
+auto Decoder::Impl::init() -> bool {
     fmt_ = avformat_alloc_context();
-    if (!fmt_)
+    if (fmt_ == nullptr) {
         return false;
+    }
 
     // Allocate AVIOContext with our callbacks -- use larger buffer for high-rate FLAC/WAV
     // probing
     constexpr size_t bufferSize = 8192;
-    const bool canSeek = reader_ && reader_->seekable();
-    uint8_t* avioBuffer = static_cast<uint8_t*>(av_malloc(bufferSize));
-    if (!avioBuffer) {
+    const bool canSeek = reader_ != nullptr && reader_->seekable();
+    auto* avioBuffer = static_cast<uint8_t*>(av_malloc(bufferSize));
+    if (avioBuffer == nullptr) {
         avformat_free_context(fmt_);
         fmt_ = nullptr;
         return false;
@@ -469,7 +511,7 @@ bool Decoder::Impl::init() {
 
     avio_ = avio_alloc_context(avioBuffer, static_cast<int>(bufferSize), 0, this, &readCallback,
                                nullptr, canSeek ? &seekCallback : nullptr);
-    if (!avio_) {
+    if (avio_ == nullptr) {
         av_free(avioBuffer);
         avformat_free_context(fmt_);
         fmt_ = nullptr;
@@ -495,8 +537,8 @@ bool Decoder::Impl::init() {
     }
 
     // Bound probing (P1-1): see extractMetadata above.
-    fmt_->probesize = 1048576;
-    fmt_->max_analyze_duration = 500000;
+    fmt_->probesize = probesizeDefault;
+    fmt_->max_analyze_duration = maxAnalyzeDurationUs;
 
     if (avformat_find_stream_info(fmt_, nullptr) < 0) {
         cleanup();
@@ -512,13 +554,13 @@ bool Decoder::Impl::init() {
 
     AVStream* stream = fmt_->streams[audioStreamIdx_];
     const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
-    if (!codec) {
+    if (codec == nullptr) {
         cleanup();
         return false;
     }
 
     dec_ = avcodec_alloc_context3(codec);
-    if (!dec_) {
+    if (dec_ == nullptr) {
         cleanup();
         return false;
     }
@@ -535,7 +577,7 @@ bool Decoder::Impl::init() {
 
     // Setup resampler to float interleaved -- preserve input channel layout exactly
     swr_ = swr_alloc();
-    if (!swr_) {
+    if (swr_ == nullptr) {
         cleanup();
         return false;
     }
@@ -578,10 +620,10 @@ bool Decoder::Impl::init() {
     } else if (stream->nb_frames > 0) {
         totalFrames_ = stream->nb_frames;
     } else if (stream->codecpar->bit_rate > 0 && fmt_->duration == AV_NOPTS_VALUE) {
-        int64_t sz = reader_ ? reader_->size() : -1;
+        int64_t sz = reader_ != nullptr ? reader_->size() : -1;
         if (sz > 0 && stream->codecpar->bit_rate > 0) {
             // fallback for CBR MP3 with no duration
-            double secs = (sz * 8.0) / stream->codecpar->bit_rate;
+            double secs = (sz * bitsPerByte) / stream->codecpar->bit_rate;
             totalFrames_ = static_cast<uint64_t>(secs * sampleRate_);
         } else {
             totalFrames_ = 0;
@@ -600,22 +642,22 @@ void Decoder::Impl::cleanup() {
     convertBuf_.clear();
     spill_.clear();
     spillPos_ = 0;
-    if (swr_) {
+    if (swr_ != nullptr) {
         swr_free(&swr_);
         swr_ = nullptr;
     }
-    if (dec_) {
+    if (dec_ != nullptr) {
         avcodec_free_context(&dec_);
         dec_ = nullptr;
     }
-    if (fmt_) {
+    if (fmt_ != nullptr) {
         // Prevent avformat_close_input from freeing our custom pb.
         // With AVFMT_FLAG_CUSTOM_IO, avformat_close_input does NOT free pb.
         fmt_->pb = nullptr;
         avformat_close_input(&fmt_);
         fmt_ = nullptr;
     }
-    if (avio_) {
+    if (avio_ != nullptr) {
         // avio_context_free also frees the buffer allocated via av_malloc
         avio_context_free(&avio_);
         avio_ = nullptr;
@@ -628,33 +670,34 @@ Decoder::~Decoder() = default;
 
 Decoder::Decoder(Decoder&&) noexcept = default;
 
-Decoder& Decoder::operator=(Decoder&&) noexcept = default;
+auto Decoder::operator=(Decoder&&) noexcept -> Decoder& = default;
 
-kanariv::utils::Expected<void> Decoder::init(Reader& reader) {
+auto Decoder::init(Reader& reader) -> kanariv::utils::Expected<void> {
     impl_->reader_ = &reader;
-    if (!impl_->init())
+    if (!impl_->init()) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
-                                                    std::string_view("FFmpeg init failed")});
+                                                     std::string_view("FFmpeg init failed")});
+    }
     return {};
 }
 
-uint32_t Decoder::sampleRate() const noexcept {
+auto Decoder::sampleRate() const noexcept -> uint32_t {
     return impl_->sampleRate();
 }
 
-uint32_t Decoder::channels() const noexcept {
+auto Decoder::channels() const noexcept -> uint32_t {
     return impl_->channels();
 }
 
-uint64_t Decoder::totalFrames() const noexcept {
+auto Decoder::totalFrames() const noexcept -> uint64_t {
     return impl_->totalFrames();
 }
 
-std::size_t Decoder::decode(std::span<float> out) {
+auto Decoder::decode(std::span<float> out) -> std::size_t {
     return impl_->decode(out);
 }
 
-kanariv::utils::Expected<void> Decoder::seek(double seconds) {
+auto Decoder::seek(double seconds) -> kanariv::utils::Expected<void> {
     return impl_->seek(seconds);
 }
 

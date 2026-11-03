@@ -1,5 +1,3 @@
-#include <kanariv/config.hpp>
-#include <kanariv/utils/result.hpp>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -7,6 +5,8 @@
 #include <filesystem>
 #include <format>
 #include <iostream>
+#include <kanariv/config.hpp>
+#include <kanariv/utils/result.hpp>
 #include <string>
 #include <utility>
 
@@ -23,7 +23,7 @@
 // report to a log file with pid + exception type instead, so a future abort
 // fails fast with evidence instead of hanging behind a dialog.
 namespace {
-FILE* g_abortLog() {
+auto g_abortLog() -> FILE* {
     static FILE* f = []() -> FILE* {
         FILE* fh = nullptr;
         auto p = std::filesystem::temp_directory_path() / "kanariv-abort.log";
@@ -52,7 +52,7 @@ void g_terminateDiag() {
 } // namespace
 #endif
 
-int main(int argc, char** argv) {
+auto main(int argc, char** argv) -> int {
 #if defined(_WIN32) && defined(_DEBUG)
     _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
     _CrtSetReportFile(_CRT_ERROR, g_abortLog());

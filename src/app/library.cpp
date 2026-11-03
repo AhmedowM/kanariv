@@ -8,15 +8,15 @@
 #include <app/app_impl.hpp>
 #include <app/detail.hpp>
 #include <app/format_internal.hpp>
-#include <kanariv/app/app.hpp>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/ipc/result.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cctype>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <format>
+#include <kanariv/app/app.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
 #include <optional>
 #include <string>
 #include <variant>
@@ -24,20 +24,20 @@
 
 namespace kanariv::app {
 
-AppResult App::libraryScan(std::optional<std::string> path, bool fullHash) {
-    kanariv::ipc::Command cmd{kanariv::ipc::LibraryScan{.path=path, .full_hash=fullHash}};
+auto App::libraryScan(std::optional<std::string> path, bool fullHash) -> AppResult {
+    kanariv::ipc::Command cmd{kanariv::ipc::LibraryScan{.path = path, .full_hash = fullHash}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
-AppResult App::librarySearch(const std::string& query, int limit) {
-    kanariv::ipc::Command cmd{kanariv::ipc::LibrarySearch{.query=query, .limit=limit}};
+auto App::librarySearch(const std::string& query, int limit) -> AppResult {
+    kanariv::ipc::Command cmd{kanariv::ipc::LibrarySearch{.query = query, .limit = limit}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
-BatchResult App::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbums,
-                              std::optional<int> topGenres, std::optional<int> topArtists,
-                              const std::vector<std::string>& queues,
-                              const std::vector<std::int64_t>& playlists) {
+auto App::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbums,
+                       std::optional<int> topGenres, std::optional<int> topArtists,
+                       const std::vector<std::string>& queues,
+                       const std::vector<std::int64_t>& playlists) -> BatchResult {
     BatchReport rep;
     kanariv::ipc::LibraryStats cmd{};
     cmd.top_tracks = topTracks;
@@ -45,24 +45,27 @@ BatchResult App::libraryStats(std::optional<int> topTracks, std::optional<int> t
     cmd.top_genres = topGenres;
     cmd.top_artists = topArtists;
     auto statsRes = impl_->sendRaw(kanariv::ipc::Command{std::move(cmd)});
-    if (!statsRes)
+    if (!statsRes) {
         return std::unexpected{statsRes.error()};
+    }
     rep.json = std::move(*statsRes);
     detail::renderInto(rep.out, *rep.json);
-    if (!queues.empty() || !playlists.empty())
+    if (!queues.empty() || !playlists.empty()) {
         rep.out += '\n';
+    }
     if (!queues.empty()) {
         kanariv::ipc::Command queueCmd{kanariv::ipc::QueueQueues{}};
         auto res = impl_->sendRaw(queueCmd);
-        if (!res)
+        if (!res) {
             return std::unexpected{res.error()};
+        }
         auto* qs = std::get_if<kanariv::ipc::Queues>(&*res);
-        if (!qs) {
+        if (qs == nullptr) {
             detail::renderInto(rep.out, *res);
             return rep;
         }
         bool all = false;
-        for (auto& q : queues) {
+        for (const auto& q : queues) {
             if (q == "all") {
                 all = true;
                 break;
@@ -71,7 +74,7 @@ BatchResult App::libraryStats(std::optional<int> topTracks, std::optional<int> t
         if (all) {
             detail::renderInto(rep.out, *res);
         } else {
-            for (auto& q : queues) {
+            for (const auto& q : queues) {
                 long long id = 0;
                 try {
                     id = std::stoll(q);
@@ -82,25 +85,28 @@ BatchResult App::libraryStats(std::optional<int> topTracks, std::optional<int> t
                 bool found = false;
                 for (auto& e : qs->entries) {
                     if (e.id == id) {
-                        if (!rep.out.empty())
+                        if (!rep.out.empty()) {
                             rep.out += '\n';
+                        }
                         rep.out += std::format("Queue {} '{}': {} tracks", e.id, e.name, e.tracks);
                         found = true;
                         break;
                     }
                 }
-                if (!found)
+                if (!found) {
                     return BatchReport::fail(std::format("library stats: no such queue: {}", id));
+                }
             }
         }
     }
     for (auto pid : playlists) {
         kanariv::ipc::Command listCmd{kanariv::ipc::PlaylistTracks{pid}};
         auto res = impl_->sendRaw(listCmd);
-        if (!res)
+        if (!res) {
             return std::unexpected{res.error()};
+        }
         auto* pd = std::get_if<kanariv::ipc::PlaylistData>(&*res);
-        if (!pd) {
+        if (pd == nullptr) {
             detail::renderInto(rep.out, *res);
             continue;
         }
@@ -119,22 +125,24 @@ BatchResult App::libraryStats(std::optional<int> topTracks, std::optional<int> t
                 }
             }
         }
-        if (name.empty())
+        if (name.empty()) {
             return BatchReport::fail(std::format("library stats: no such playlist: {}", pid));
-        if (!rep.out.empty())
+        }
+        if (!rep.out.empty()) {
             rep.out += '\n';
-        if (pd->tracks.size() == 1)
+        }
+        if (pd->tracks.size() == 1) {
             rep.out += std::format("Playlist '{}': 1 track", name);
-        else
+        } else {
             rep.out += std::format("Playlist '{}': {} tracks", name, pd->tracks.size());
+        }
     }
     return rep;
 }
 
-AppResult App::libraryList(const std::string& query, int limit, int offset,
-                           const std::string& sort, const std::string& order,
-                           const std::string& artist, const std::string& album,
-                           const std::string& genre, std::optional<std::int32_t> rating) {
+auto App::libraryList(const std::string& query, int limit, int offset, const std::string& sort,
+                      const std::string& order, const std::string& artist, const std::string& album,
+                      const std::string& genre, std::optional<std::int32_t> rating) -> AppResult {
     kanariv::ipc::LibraryList cmd{};
     cmd.query = query.empty() ? std::nullopt : std::optional<std::string>{query};
     cmd.limit = limit;
@@ -148,7 +156,7 @@ AppResult App::libraryList(const std::string& query, int limit, int offset,
     return impl_->confirm(impl_->sendRaw(kanariv::ipc::Command{std::move(cmd)}));
 }
 
-AppResult App::libraryFavorites(std::int32_t minRating, int limit) {
+auto App::libraryFavorites(std::int32_t minRating, int limit) -> AppResult {
     kanariv::ipc::LibraryList cmd{};
     cmd.limit = limit;
     cmd.rating = minRating;
@@ -156,8 +164,8 @@ AppResult App::libraryFavorites(std::int32_t minRating, int limit) {
     return impl_->confirm(impl_->sendRaw(c));
 }
 
-AppResult App::libraryMaintenance(const std::string& action, bool dryRun,
-                                  std::int64_t libraryId) {
+auto App::libraryMaintenance(const std::string& action, bool dryRun, std::int64_t libraryId)
+    -> AppResult {
     kanariv::ipc::LibraryMaintenance cmd{};
     cmd.action = action;
     cmd.dry_run = dryRun;
@@ -166,17 +174,17 @@ AppResult App::libraryMaintenance(const std::string& action, bool dryRun,
     return impl_->confirm(impl_->sendRaw(c));
 }
 
-AppResult App::libraryAdd(const std::string& path, bool recursive) {
-    kanariv::ipc::Command cmd{kanariv::ipc::LibraryAdd{.path=path, .recursive=recursive}};
+auto App::libraryAdd(const std::string& path, bool recursive) -> AppResult {
+    kanariv::ipc::Command cmd{kanariv::ipc::LibraryAdd{.path = path, .recursive = recursive}};
     return impl_->confirm(impl_->sendRaw(cmd), std::format("Added {} to library", path));
 }
 
-AppResult App::libraryRemove(const std::string& query) {
+auto App::libraryRemove(const std::string& query) -> AppResult {
     // Resolve a label first so the confirmation names it.
     std::string label;
     bool numeric = !query.empty();
     for (char c : query) {
-        if (!std::isdigit(static_cast<unsigned char>(c))) {
+        if (std::isdigit(static_cast<unsigned char>(c)) == 0) {
             numeric = false;
             break;
         }
@@ -191,46 +199,50 @@ AppResult App::libraryRemove(const std::string& query) {
         if (id != 0) {
             kanariv::ipc::Command cmd{kanariv::ipc::TagGet{.id = id}};
             if (auto res = impl_->sendRaw(cmd)) {
-                if (auto* st = std::get_if<kanariv::ipc::SingleTrack>(&*res))
+                if (auto* st = std::get_if<kanariv::ipc::SingleTrack>(&*res)) {
                     label = kanariv::app::addedLabel(st->track);
+                }
             }
         }
     }
     if (label.empty()) {
         std::string fn = std::filesystem::path(query).filename().generic_string();
-        if (!fn.empty())
+        if (!fn.empty()) {
             label = fn;
+        }
     }
     kanariv::ipc::Command cmd{kanariv::ipc::LibraryRemove{query}};
     auto res = impl_->sendRaw(cmd);
-    if (!res)
+    if (!res) {
         return std::unexpected{res.error()};
+    }
     std::string line = !label.empty() ? std::format("Removed from library {}", label)
                                       : std::format("Removed {} from library", query);
-    return Outcome{.result=std::move(*res), .line=std::move(line), .toStderr=false, .failed=false};
+    return Outcome{
+        .result = std::move(*res), .line = std::move(line), .toStderr = false, .failed = false};
 }
 
-AppResult App::trackRate(std::string idOrPath, std::int32_t rating) {
+auto App::trackRate(std::string idOrPath, std::int32_t rating) -> AppResult {
     int64_t id = 0;
-    if (!idOrPath.empty() &&
-        idOrPath.find_first_not_of("0123456789") == std::string::npos) {
+    if (!idOrPath.empty() && idOrPath.find_first_not_of("0123456789") == std::string::npos) {
         id = std::stoll(idOrPath);
     } else {
         // Resolve path to track id via TagGet{path}.
         kanariv::ipc::Command tgCmd{kanariv::ipc::TagGet{.path = idOrPath}};
         auto tgRes = impl_->sendRaw(tgCmd);
-        if (!tgRes)
+        if (!tgRes) {
             return std::unexpected{tgRes.error()};
-        if (auto* st = std::get_if<kanariv::ipc::SingleTrack>(&*tgRes))
+        }
+        if (auto* st = std::get_if<kanariv::ipc::SingleTrack>(&*tgRes)) {
             id = st->track.id;
-        else
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::NotFound,
-                "track not found for path '" + idOrPath + "'")};
+        } else {
+            return std::unexpected{
+                kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
+                                          "track not found for path '" + idOrPath + "'")};
+        }
     }
-    kanariv::ipc::Command cmd{kanariv::ipc::TrackRate{.track_id=id, .rating=rating}};
-    return impl_->confirm(impl_->sendRaw(cmd),
-                          std::format("Rated track {} as {}", id, rating));
+    kanariv::ipc::Command cmd{kanariv::ipc::TrackRate{.track_id = id, .rating = rating}};
+    return impl_->confirm(impl_->sendRaw(cmd), std::format("Rated track {} as {}", id, rating));
 }
 
 } // namespace kanariv::app

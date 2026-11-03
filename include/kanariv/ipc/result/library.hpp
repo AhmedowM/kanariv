@@ -6,9 +6,9 @@
  * @ingroup kanariv_ipc
  */
 
-#include <kanariv/types/record.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/types/record.hpp>
 #include <string>
 #include <vector>
 

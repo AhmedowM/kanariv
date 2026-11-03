@@ -49,31 +49,35 @@
 #include "config_detail.hpp"
 
 namespace kanariv::service::detail {
-std::filesystem::path pidPathForSocket(const std::filesystem::path& dbPath,
-                                       const std::string& /*socketPath*/) {
+auto pidPathForSocket(const std::filesystem::path& dbPath, const std::string& /*socketPath*/)
+    -> std::filesystem::path {
     auto r = kanariv::config::pidPathFor(dbPath);
-    if (r)
+    if (r) {
         return *r;
+    }
     auto pp = dbPath.parent_path();
-    if (pp.empty())
+    if (pp.empty()) {
         pp = std::filesystem::current_path();
+    }
     return pp / "kanariv.pid";
 }
 
-std::filesystem::path lockPathForSocket(const std::filesystem::path& dbPath,
-                                        const std::string& /*socketPath*/) {
+auto lockPathForSocket(const std::filesystem::path& dbPath, const std::string& /*socketPath*/)
+    -> std::filesystem::path {
     auto r = kanariv::config::lockPathFor(dbPath);
-    if (r)
+    if (r) {
         return *r;
+    }
     std::string hex = kanariv::config::detail_paths::hex8ForDb(dbPath);
     auto pidPath = pidPathForSocket(dbPath, "");
     return pidPath.parent_path() / ("kanariv-" + hex + ".lock");
 }
 
-std::string socketPathForDb(const std::filesystem::path& dbPath) {
+auto socketPathForDb(const std::filesystem::path& dbPath) -> std::string {
     auto r = kanariv::config::socketPathFor(dbPath);
-    if (r)
+    if (r) {
         return *r;
+    }
     // Fallback uses canonical hex8 encoding (consistent with primary socketPathFor)
     std::string hex = kanariv::config::detail_paths::hex8ForDb(dbPath);
 #ifdef _WIN32
@@ -88,14 +92,19 @@ std::string socketPathForDb(const std::filesystem::path& dbPath) {
 #endif
 }
 
-bool probeSocketAlive(const std::string& sp) {
+auto probeSocketAlive(const std::string& sp) -> bool {
 #ifdef _WIN32
-    if (sp.empty())
+    if (sp.empty()) {
         return false;
+    }
+    constexpr DWORD pipeErrorBusy = 231;      // ERROR_PIPE_BUSY
+    constexpr DWORD pipeErrorNotFound = 2;    // ERROR_FILE_NOT_FOUND
+    constexpr DWORD pipeErrorBrokenPipe = 109; // ERROR_BROKEN_PIPE
     std::wstring w;
     w.reserve(sp.size());
-    for (char c : sp)
+    for (char c : sp) {
         w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
+    }
     HANDLE h = ::CreateFileW(w.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0,
                              nullptr);
     if (h != INVALID_HANDLE_VALUE) {
@@ -103,15 +112,16 @@ bool probeSocketAlive(const std::string& sp) {
         return true;
     }
     DWORD err = ::GetLastError();
-    if (err == 231 /*ERROR_PIPE_BUSY*/) {
+    if (err == pipeErrorBusy) {
         // Pipe exists but all instances busy - treat as alive
         return true;
     }
-    if (err == 2 /*ERROR_FILE_NOT_FOUND*/ || err == 109 /*ERROR_BROKEN_PIPE*/) {
+    if (err == pipeErrorNotFound || err == pipeErrorBrokenPipe) {
         return false;
     }
     // For other errors, try WaitNamedPipe to confirm pipe exists
-    if (::WaitNamedPipeW(w.c_str(), 0)) {
+    constexpr DWORD waitNamedPipeTimeoutMs = 0;
+    if (::WaitNamedPipeW(w.c_str(), waitNamedPipeTimeoutMs) != 0) {
         return true;
     }
     return false;
@@ -134,7 +144,7 @@ bool probeSocketAlive(const std::string& sp) {
 #endif
 }
 
-bool tryAcquireLock(const std::filesystem::path& lockPath, std::intptr_t& outFd) {
+auto tryAcquireLock(const std::filesystem::path& lockPath, std::intptr_t& outFd) -> bool {
 #ifdef _WIN32
     std::error_code ec;
     auto parent = lockPath.parent_path();
@@ -143,8 +153,9 @@ bool tryAcquireLock(const std::filesystem::path& lockPath, std::intptr_t& outFd)
     }
     std::wstring wpath;
     wpath.reserve(lockPath.native().size());
-    for (wchar_t c : lockPath.native())
+    for (wchar_t c : lockPath.native()) {
         wpath.push_back(c);
+    }
 
     HANDLE h =
         ::CreateFileW(wpath.c_str(), GENERIC_READ | GENERIC_WRITE,
@@ -158,7 +169,7 @@ bool tryAcquireLock(const std::filesystem::path& lockPath, std::intptr_t& outFd)
     OVERLAPPED ov{};
     ov.Offset = 0;
     ov.OffsetHigh = 0;
-    if (!::LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ov)) {
+    if (::LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ov) == FALSE) {
         ::CloseHandle(h);
         outFd = -1;
         return false; // ERROR_LOCK_VIOLATION (33) or other
@@ -184,10 +195,11 @@ bool tryAcquireLock(const std::filesystem::path& lockPath, std::intptr_t& outFd)
 }
 
 void releaseLock(std::intptr_t fd) {
-    if (fd < 0)
+    if (fd < 0) {
         return;
+    }
 #ifdef _WIN32
-    HANDLE h = reinterpret_cast<HANDLE>(static_cast<intptr_t>(fd));
+    auto *h = reinterpret_cast<HANDLE>(static_cast<intptr_t>(fd));
     OVERLAPPED ov{};
     ov.Offset = 0;
     ov.OffsetHigh = 0;
@@ -199,48 +211,56 @@ void releaseLock(std::intptr_t fd) {
 #endif
 }
 
-bool checkPidAlive(int pid) {
-    if (pid <= 0)
+auto checkPidAlive(int pid) -> bool {
+    if (pid <= 0) {
         return false;
+    }
 #ifndef _WIN32
     return ::kill(pid, 0) == 0;
 #else
     HANDLE h = ::OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(pid));
-    if (!h)
+    if (h == nullptr) {
         return false;
+    }
     DWORD wait = ::WaitForSingleObject(h, 0);
     ::CloseHandle(h);
     return wait == WAIT_TIMEOUT;
 #endif
 }
 
-std::optional<int> readPidFile(const std::filesystem::path& pidPath) {
+auto readPidFile(const std::filesystem::path& pidPath) -> std::optional<int> {
     std::error_code ec;
-    if (!std::filesystem::exists(pidPath, ec))
+    if (!std::filesystem::exists(pidPath, ec)) {
         return std::nullopt;
+    }
     std::ifstream in(pidPath);
-    if (!in)
+    if (!in) {
         return std::nullopt;
+    }
     int pid = 0;
     in >> pid;
-    if (in.fail())
+    if (in.fail()) {
         return std::nullopt;
+    }
     return pid;
 }
 
-std::filesystem::path resolveConfigPath(const std::filesystem::path& configPath,
-                                        const std::filesystem::path& dbPath) {
-    if (!configPath.empty())
+auto resolveConfigPath(const std::filesystem::path& configPath, const std::filesystem::path& dbPath)
+    -> std::filesystem::path {
+    if (!configPath.empty()) {
         return configPath;
+    }
     if (!dbPath.empty()) {
         auto pp = dbPath.parent_path();
-        if (!pp.empty())
+        if (!pp.empty()) {
             return pp / "config.json";
+        }
     }
     std::error_code ec;
     auto tmp = std::filesystem::temp_directory_path(ec);
-    if (ec)
+    if (ec) {
         tmp = std::filesystem::path("/tmp");
+    }
     return tmp / "kanariv" / "config.json";
 }
 

@@ -10,8 +10,8 @@
  * documented per-field.
  */
 
-#include <kanariv/types/record.hpp>
 #include <cstdint>
+#include <kanariv/types/record.hpp>
 #include <optional>
 #include <string>
 
@@ -81,26 +81,26 @@ struct PlaybackStats {
  * disengaged optional means that criterion is not applied.
  */
 struct TrackQuery {
-    std::string artist;                  ///< Exact artist filter (empty = no filter).
-    std::string album;                   ///< Exact album filter.
-    std::string genre;                   ///< Exact genre filter.
-    std::optional<int32_t> year{};       ///< Exact year filter.
-    std::optional<int32_t> year_min{};   ///< Minimum year (inclusive).
-    std::optional<int32_t> year_max{};   ///< Maximum year (inclusive).
-    std::optional<int64_t> library_id{}; ///< Exact library filter.
-    std::optional<bool> dirty{};         ///< Dirty flag filter.
-    std::optional<int32_t> rating{};     ///< Exact user rating filter (0..5).
+    std::string artist;                      ///< Exact artist filter (empty = no filter).
+    std::string album;                       ///< Exact album filter.
+    std::string genre;                       ///< Exact genre filter.
+    std::optional<int32_t> year{};           ///< Exact year filter.
+    std::optional<int32_t> year_min{};       ///< Minimum year (inclusive).
+    std::optional<int32_t> year_max{};       ///< Maximum year (inclusive).
+    std::optional<int64_t> library_id{};     ///< Exact library filter.
+    std::optional<bool> dirty{};             ///< Dirty flag filter.
+    std::optional<int32_t> rating{};         ///< Exact user rating filter (0..5).
     std::optional<int64_t> play_count_min{}; ///< Minimum play count (inclusive).
     std::optional<int64_t> play_count_max{}; ///< Maximum play count (inclusive).
     std::optional<double> duration_min{};    ///< Minimum duration in seconds (inclusive).
     std::optional<double> duration_max{};    ///< Maximum duration in seconds (inclusive).
-    int limit{};                         ///< Max rows (0 = unlimited).
-    int offset{};                        ///< Row offset.
-    std::string search;                  ///< Substring search across title/artist/album/genre.
-    std::string sort;                    ///< Sort field: id, title, artist, album, year,
-                                          ///< rating, play_count, duration, date_added.
-                                          ///< Empty = default (id).
-    std::string order;                   ///< Sort direction: "asc" or "desc". Default: asc.
+    int limit{};                             ///< Max rows (0 = unlimited).
+    int offset{};                            ///< Row offset.
+    std::string search;                      ///< Substring search across title/artist/album/genre.
+    std::string sort;                        ///< Sort field: id, title, artist, album, year,
+                                             ///< rating, play_count, duration, date_added.
+                                             ///< Empty = default (id).
+    std::string order;                       ///< Sort direction: "asc" or "desc". Default: asc.
 };
 
 /**

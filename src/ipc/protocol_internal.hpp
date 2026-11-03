@@ -9,11 +9,11 @@
  * so downstream consumers never see them.
  */
 
+#include <expected>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
-#include <expected>
 #include <string>
 #include <string_view>
 

@@ -7,9 +7,9 @@
  * @defgroup kanariv_config kanariv configuration
  */
 
+#include <filesystem>
 #include <kanariv/config/runtime.hpp>
 #include <kanariv/fwd.hpp>
-#include <filesystem>
 #include <string>
 
 namespace kanariv::config {
@@ -28,7 +28,8 @@ namespace kanariv::config {
  * @return Named-pipe or Unix-socket path, or an error when the platform
  *         runtime directory cannot be determined.
  */
-KANARIV_API kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path& dbPath);
+KANARIV_API kanariv::utils::Expected<std::string>
+socketPathFor(const std::filesystem::path& dbPath);
 /**
  * @brief Derives the PID-file path for a database.
  * @param dbPath Database path used as the stable identity.
@@ -72,7 +73,8 @@ struct Config {
     bool autoResumeOnPlay{false};
     /** @brief When the active queue is cleared, also stop playback. Default: true. */
     bool clearStopsPlayback{true};
-    /** @brief Default repeat mode for newly created queues: "off", "one", or "all". Default: "off". */
+    /** @brief Default repeat mode for newly created queues: "off", "one", or "all". Default: "off".
+     */
     std::string repeatDefault{"off"};
     /** @brief When a track is added to an empty queue, auto-start playback. Default: false. */
     bool autostart{false};

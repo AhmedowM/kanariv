@@ -10,11 +10,11 @@
  * remains in `kanariv::engine`.
  */
 
+#include <cstdint>
+#include <functional>
 #include <kanariv/fwd.hpp>
 #include <kanariv/types/wire.hpp>
 #include <kanariv/utils/result.hpp>
-#include <cstdint>
-#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>

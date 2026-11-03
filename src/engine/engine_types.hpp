@@ -13,9 +13,9 @@
  * Internal header: lives in `src/`, not installed.
  */
 
-#include <kanariv/types/wire.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/types/wire.hpp>
 #include <vector>
 
 namespace kanariv::engine {
@@ -54,12 +54,12 @@ struct EngineState {
     int shuffleEnabled{0}; ///< Persisted shuffle flag (0/1).
     kanariv::types::RepeatMode repeatMode{
         kanariv::types::RepeatMode::Off}; ///< Persisted repeat mode.
-    int64_t cursorPos{0};                ///< Persisted cursor (QueueState::cursor).
-    int64_t currentTrackId{0};           ///< Last current track id.
-    float volume{1.0f};                  ///< Persisted volume [0,1].
-    int64_t activeQueueId{1};            ///< Persisted active queue id.
-    float preMuteVolume{0.5f};           ///< Restore level for unmute (0,1].
-    int64_t positionMs{0};               ///< Persisted position in the current track.
+    int64_t cursorPos{0};                 ///< Persisted cursor (QueueState::cursor).
+    int64_t currentTrackId{0};            ///< Last current track id.
+    float volume{1.0f};                   ///< Persisted volume [0,1].
+    int64_t activeQueueId{1};             ///< Persisted active queue id.
+    float preMuteVolume{0.5f};            ///< Restore level for unmute (0,1].
+    int64_t positionMs{0};                ///< Persisted position in the current track.
 };
 
 } // namespace kanariv::engine

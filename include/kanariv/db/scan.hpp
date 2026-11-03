@@ -12,12 +12,12 @@
  *   of the discovered tracks under the database mutex).
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/media/audio_ext.hpp>
-#include <kanariv/media/scan.hpp>
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <kanariv/fwd.hpp>
+#include <kanariv/media/audio_ext.hpp>
+#include <kanariv/media/scan.hpp>
 #include <string_view>
 
 namespace kanariv::db {

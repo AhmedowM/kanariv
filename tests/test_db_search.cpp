@@ -1,10 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
 #include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/search.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
-#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>

@@ -6,10 +6,10 @@
  * @ingroup kanariv_ipc
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/types/wire.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/wire.hpp>
 #include <optional>
 #include <string>
 #include <vector>

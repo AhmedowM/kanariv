@@ -2,15 +2,15 @@
 
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
+#include <db/database_access.hpp>
+#include <expected>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/smart.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/result.hpp>
-#include <cstdint>
-#include <db/database_access.hpp>
-#include <expected>
 #include <string>
 #include <string_view>
 #include <utility>

@@ -6,8 +6,8 @@
  * @ingroup kanariv_config
  */
 
-#include <kanariv/utils.hpp>
 #include <filesystem>
+#include <kanariv/utils.hpp>
 #include <string>
 
 namespace kanariv::config::detail {

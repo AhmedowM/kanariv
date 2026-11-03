@@ -1,6 +1,6 @@
+#include <iostream>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
-#include <iostream>
 
 int main() {
     kanariv::types::Track track;

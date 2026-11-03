@@ -64,13 +64,13 @@
  * @see kanariv::ipc::Result for result types
  */
 
+#include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <expected>
 #include <span>
 #include <string>
 #include <string_view>
@@ -154,7 +154,7 @@ std::expected<T, kanariv::utils::Error> fromJson(const Json& j) {
         return resultFromJson(j);
     } else {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Unsupported,
-                                                        "unsupported fromJson type")};
+                                                         "unsupported fromJson type")};
     }
 }
 
@@ -186,7 +186,8 @@ KANARIV_API std::string serializeRequest(const IpcRequest& req);
  * @param sv JSON string to parse.
  * @return IpcRequest, or error if parsing fails or required fields are missing.
  */
-KANARIV_API std::expected<IpcRequest, kanariv::utils::Error> deserializeRequest(std::string_view sv);
+KANARIV_API std::expected<IpcRequest, kanariv::utils::Error>
+deserializeRequest(std::string_view sv);
 
 /**
  * @brief Serialize an IpcReply to JSON string.
@@ -221,7 +222,8 @@ KANARIV_API std::vector<std::byte> frame(std::string_view json);
  * @param buf Buffer containing [4-byte BE len][json...].
  * @return JSON string payload, or error if frame is incomplete or invalid.
  */
-KANARIV_API std::expected<std::string, kanariv::utils::Error> deframe(std::span<const std::byte> buf);
+KANARIV_API std::expected<std::string, kanariv::utils::Error>
+deframe(std::span<const std::byte> buf);
 
 /**
  * @brief Serialize a Result to pretty-printed JSON string.

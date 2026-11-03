@@ -1,5 +1,4 @@
 #pragma once
-#include <kanariv/utils/error.hpp>
 #include <cerrno>
 #include <charconv>
 #include <chrono>
@@ -7,6 +6,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <expected>
+#include <kanariv/utils/error.hpp>
 #include <optional>
 #include <string>
 #include <string_view>

@@ -29,10 +29,10 @@
  * - NoMem: Allocation failure
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/types/record.hpp>
 #include <cstdint>
 #include <expected>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/record.hpp>
 #include <memory>
 
 namespace kanariv::player {

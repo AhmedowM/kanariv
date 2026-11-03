@@ -6,7 +6,7 @@ namespace kanariv::utils {
 
 Error::Error(StatusCode c, std::string_view msg) : code(c), message(msg) {}
 
-Error makeError(StatusCode c, std::string_view msg) {
+auto makeError(StatusCode c, std::string_view msg) -> Error {
     return Error{c, msg};
 }
 

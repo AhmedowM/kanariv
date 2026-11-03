@@ -7,18 +7,19 @@
  * (time/volume grammar, globs) stays in the shell; these take parsed values.
  */
 
+#include <algorithm>
 #include <app/app_impl.hpp>
 #include <app/format_internal.hpp>
-#include <kanariv/app/app.hpp>
-#include <kanariv/client/client.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/ipc/result.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/math.hpp>
 #include <chrono>
 #include <expected>
 #include <format>
+#include <kanariv/app/app.hpp>
+#include <kanariv/client/client.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/math.hpp>
 #include <string>
 #include <thread>
 #include <utility>
@@ -27,15 +28,19 @@
 
 namespace kanariv::app {
 
-std::string
-App::Impl::transportWho(const std::expected<kanariv::ipc::Result, kanariv::utils::Error>& res) {
-    if (auto* st = std::get_if<kanariv::ipc::Status>(&*res))
+constexpr double resumeToleranceSec = 0.5;
+constexpr int busyRetryMs = 50;
+
+auto App::Impl::transportWho(const std::expected<kanariv::ipc::Result, kanariv::utils::Error>& res)
+    -> std::string {
+    if (const auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
         return kanariv::app::trackWho(*st);
+    }
     return std::string{"unknown track"};
 }
 
 // Shared play flow (used by `play`, and by `resume` when stopped).
-AppResult App::play() {
+auto App::play() -> AppResult {
     // Prior state decides the wording (resumed vs fresh); one extra roundtrip.
     bool wasPaused = false;
     bool wasStopped = false;
@@ -54,8 +59,9 @@ AppResult App::play() {
     }
     kanariv::ipc::Command cmd{kanariv::ipc::Play{}};
     auto res = impl_->sendPlay(cmd);
-    if (!res)
+    if (!res) {
         return std::unexpected{res.error()};
+    }
     if (auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
         // Session restore: after a restart the persisted track/position is
         // reported while stopped. The daemon seeks its decoder before output
@@ -63,14 +69,15 @@ AppResult App::play() {
         // an explicit Seek then would only reset the ring a second time.
         bool restored = false;
         if (wasStopped && priorTrack != 0 && priorPos > 0.0 && st->track_id == priorTrack) {
-            restored = st->pos >= priorPos - 0.5 && st->pos <= priorPos + 0.5;
+            restored = st->pos >= priorPos - resumeToleranceSec && st->pos <= priorPos + resumeToleranceSec;
             if (!restored) {
                 if (auto seekRes =
                         impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::Seek{priorPos}})) {
                     if (auto fresh =
                             impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::StatusReq{}})) {
-                        if (std::holds_alternative<kanariv::ipc::Status>(*fresh))
+                        if (std::holds_alternative<kanariv::ipc::Status>(*fresh)) {
                             res = std::move(fresh);
+                        }
                     }
                     restored = true;
                 }
@@ -90,11 +97,12 @@ AppResult App::play() {
         .result = std::move(*res), .line = std::nullopt, .toStderr = false, .failed = false};
 }
 
-AppResult App::playFiles(const std::vector<std::string>& files, bool save) {
-    kanariv::ipc::Command cmd{kanariv::ipc::PlayFiles{.paths=files, .save=save}};
+auto App::playFiles(const std::vector<std::string>& files, bool save) -> AppResult {
+    kanariv::ipc::Command cmd{kanariv::ipc::PlayFiles{.paths = files, .save = save}};
     auto res = impl_->sendPlay(cmd);
-    if (!res)
+    if (!res) {
         return std::unexpected{res.error()};
+    }
     if (auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
         std::string who = kanariv::app::trackWho(*st);
         std::string line = save ? std::format("Playing {}", who)
@@ -106,28 +114,29 @@ AppResult App::playFiles(const std::vector<std::string>& files, bool save) {
         .result = std::move(*res), .line = std::nullopt, .toStderr = false, .failed = false};
 }
 
-AppResult App::pause() {
+auto App::pause() -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::Pause{}};
     auto res = impl_->sendRaw(cmd);
     if (!res) {
         const auto& e = res.error();
-        if (e.code == kanariv::utils::StatusCode::State && e.message == "not playing")
+        if (e.code == kanariv::utils::StatusCode::State && e.message == "not playing") {
             return Outcome::warn("pause: nothing playing");
+        }
         return std::unexpected{e};
     }
     if (auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
         std::string who = impl_->transportWho(res);
-        return Outcome{.result = std::move(*res),
-                       .line =
-                           std::format("Paused {} at {}", who, kanariv::utils::formatClock(st->pos)),
-                       .toStderr = false,
-                       .failed = false};
+        return Outcome{
+            .result = std::move(*res),
+            .line = std::format("Paused {} at {}", who, kanariv::utils::formatClock(st->pos)),
+            .toStderr = false,
+            .failed = false};
     }
     return Outcome{
         .result = std::move(*res), .line = std::nullopt, .toStderr = false, .failed = false};
 }
 
-AppResult App::resume() {
+auto App::resume() -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::Resume{}};
     auto res = impl_->sendRaw(cmd);
     if (!res) {
@@ -143,10 +152,12 @@ AppResult App::resume() {
                     playing = (st->state == kanariv::types::PlaybackState::Playing);
                 }
             }
-            if (probed && playing)
+            if (probed && playing) {
                 return Outcome::warn("resume: already playing");
-            if (!probed)
+            }
+            if (!probed) {
                 return std::unexpected{e};
+            }
             return play();
         }
         return std::unexpected{e};
@@ -165,11 +176,12 @@ AppResult App::resume() {
         .result = std::move(*res), .line = std::nullopt, .toStderr = false, .failed = false};
 }
 
-AppResult App::restart() {
+auto App::restart() -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::Restart{}};
     auto res = impl_->sendRaw(cmd);
-    if (!res)
+    if (!res) {
         return std::unexpected{res.error()};
+    }
     // Hoisted: read before Outcome moves *res (see resume()).
     std::string who = impl_->transportWho(res);
     return Outcome{.result = std::move(*res),
@@ -178,24 +190,25 @@ AppResult App::restart() {
                    .failed = false};
 }
 
-AppResult App::stop() {
+auto App::stop() -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::Stop{}};
     return impl_->confirm(impl_->sendRaw(cmd), "Stopped");
 }
 
-AppResult App::next() {
+auto App::next() -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::Next{}};
     auto res = impl_->sendRaw(cmd);
     if (!res && res.error().code == kanariv::utils::StatusCode::Busy) {
         // Transient queue-lock contention (racing gapless advance or a
         // sibling command): retry once after a beat before surfacing it.
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(busyRetryMs));
         res = impl_->sendRaw(cmd);
     }
     if (!res) {
         const auto& e = res.error();
-        if (e.code == kanariv::utils::StatusCode::Busy)
+        if (e.code == kanariv::utils::StatusCode::Busy) {
             return Outcome::fail("next: engine busy, retry");
+        }
         return std::unexpected{e};
     }
     // Hoisted: read before Outcome moves *res (see resume()).
@@ -206,20 +219,22 @@ AppResult App::next() {
                    .failed = false};
 }
 
-AppResult App::prev() {
+auto App::prev() -> AppResult {
     kanariv::ipc::Command cmd{kanariv::ipc::Prev{}};
     auto res = impl_->sendRaw(cmd);
     if (!res && res.error().code == kanariv::utils::StatusCode::Busy) {
         // Same transient contention as next(): retry once (see above).
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(busyRetryMs));
         res = impl_->sendRaw(cmd);
     }
     if (!res) {
         const auto& e = res.error();
-        if (e.code == kanariv::utils::StatusCode::Busy)
+        if (e.code == kanariv::utils::StatusCode::Busy) {
             return Outcome::fail("prev: engine busy, retry");
-        if (e.code == kanariv::utils::StatusCode::NotFound && e.message == "at start")
+        }
+        if (e.code == kanariv::utils::StatusCode::NotFound && e.message == "at start") {
             return Outcome::warn("prev: at queue start");
+        }
         return std::unexpected{e};
     }
     // Hoisted: read before Outcome moves *res (see resume()).
@@ -230,7 +245,7 @@ AppResult App::prev() {
                    .failed = false};
 }
 
-AppResult App::seek(double target, bool isRelative) {
+auto App::seek(double target, bool isRelative) -> AppResult {
     if (isRelative) {
         kanariv::client::Client client{impl_->config_.dbPath, impl_->config_.socketPath};
         auto sres = client.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
@@ -244,17 +259,16 @@ AppResult App::seek(double target, bool isRelative) {
         }
         if (hasPos) {
             target = pos + target;
-            if (target < 0)
-                target = 0;
+            target = std::max<double>(target, 0);
         } else {
-            if (target < 0)
-                target = 0;
+            target = std::max<double>(target, 0);
         }
     }
     kanariv::ipc::Command cmd{kanariv::ipc::Seek{target}};
     auto res = impl_->sendRaw(cmd);
-    if (!res)
+    if (!res) {
         return std::unexpected{res.error()};
+    }
     return Outcome{.result = std::move(*res),
                    .line = std::nullopt,
                    .toStderr = false,
@@ -262,7 +276,7 @@ AppResult App::seek(double target, bool isRelative) {
                    .quiet = true};
 }
 
-AppResult App::previewFile(const std::string& file) {
+auto App::previewFile(const std::string& file) -> AppResult {
     if (impl_->previewHost_) {
         return impl_->previewHost_(file);
     }

@@ -10,9 +10,9 @@
  * duration, artist, album, genre, search. Ops: =, >=, <=, >, <.
  */
 
+#include <expected>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
-#include <expected>
 #include <string_view>
 
 namespace kanariv::db {

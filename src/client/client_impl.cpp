@@ -1,14 +1,14 @@
 #include <algorithm>
+#include <chrono>
+#include <expected>
+#include <filesystem>
+#include <future>
 #include <kanariv/client/client.hpp>
 #include <kanariv/config.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
-#include <chrono>
-#include <expected>
-#include <filesystem>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <stop_token>
@@ -31,20 +31,20 @@ Client::Client(std::filesystem::path dbPath, std::string_view socketPath)
 
 Client::Client(const kanariv::config::Config& cfg) : config_{cfg.dbPath, cfg.socketPath} {}
 
-const Config& Client::config() const noexcept {
+auto Client::config() const noexcept -> const Config& {
     return config_;
 }
 
-std::filesystem::path Client::dbPath() const noexcept {
+auto Client::dbPath() const noexcept -> std::filesystem::path {
     return config_.dbPath;
 }
 
-bool Client::probe() const {
+auto Client::probe() const -> bool {
     return IpcClient::connect(config_.dbPath, config_.socketPath).has_value();
 }
 
-kanariv::utils::Expected<kanariv::ipc::Result> Client::send(const kanariv::ipc::Command& cmd,
-                                                          std::chrono::milliseconds timeout) {
+auto Client::send(const kanariv::ipc::Command& cmd, std::chrono::milliseconds timeout)
+    -> kanariv::utils::Expected<kanariv::ipc::Result> {
     // Use promise/future + jthread + stop_token for timeout handling.
     // This avoids C alarm and uses chrono::milliseconds + poll/select style wait.
     auto prom = std::make_shared<std::promise<kanariv::utils::Expected<kanariv::ipc::Result>>>();
@@ -54,7 +54,7 @@ kanariv::utils::Expected<kanariv::ipc::Result> Client::send(const kanariv::ipc::
 
     // RAII worker via make_unique per spec
     auto worker = std::make_unique<std::jthread>(
-        [prom, cmdCopy = std::move(cmdCopy), cfgCopy](std::stop_token st) mutable {
+        [prom, cmdCopy = std::move(cmdCopy), cfgCopy](std::stop_token st) mutable -> void {
             if (st.stop_requested()) {
                 try {
                     prom->set_value(std::unexpected{
@@ -101,16 +101,18 @@ kanariv::utils::Expected<kanariv::ipc::Result> Client::send(const kanariv::ipc::
         static std::mutex bgMtx;
         static std::vector<std::unique_ptr<std::jthread>> bg;
         {
-            std::lock_guard lk(bgMtx);
+            std::scoped_lock lk(bgMtx);
             // Reap completed workers: jthread that has finished is still joinable until joined,
             // but if it has been joined/detached elsewhere it becomes !joinable(). Also check
             // stop_token as best-effort to prune. This prevents unbounded growth.
-            bg.erase(std::remove_if(
-                         bg.begin(), bg.end(),
-                         [](const std::unique_ptr<std::jthread>& t) { return !t->joinable(); }),
+            bg.erase(std::remove_if(bg.begin(), bg.end(),
+                                    [](const std::unique_ptr<std::jthread>& t) -> bool {
+                                        return !t->joinable();
+                                    }),
                      bg.end());
             // Enforce bounded size (audit B6: limit to 8 background workers)
-            if (bg.size() >= 8) {
+            constexpr int maxBgWorkers = 8;
+            if (bg.size() >= maxBgWorkers) {
                 // Drop oldest without blocking join: detach (the worker was
                 // stop-requested above) instead of release(), so no thread
                 // object leaks; the thread itself runs out on its own.
@@ -120,12 +122,13 @@ kanariv::utils::Expected<kanariv::ipc::Result> Client::send(const kanariv::ipc::
             }
             bg.push_back(std::move(worker));
         }
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "timeout")};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "timeout")};
     }
 }
 
-kanariv::utils::Expected<kanariv::ipc::Result>
-Client::waitForStatus(std::chrono::milliseconds timeout) {
+auto Client::waitForStatus(std::chrono::milliseconds timeout)
+    -> kanariv::utils::Expected<kanariv::ipc::Result> {
     return send(kanariv::ipc::Command{kanariv::ipc::StatusWait{
         static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count())}});
 }

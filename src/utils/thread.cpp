@@ -1,8 +1,8 @@
-﻿#include <kanariv/utils/error.hpp>
+﻿#include <cstddef>
+#include <cstring>
+#include <kanariv/utils/error.hpp>
 #include <kanariv/utils/thread.hpp>
 #include <kanariv/windows_fwd.hpp>
-#include <cstddef>
-#include <cstring>
 #include <string>
 #include <string_view>
 
@@ -18,27 +18,29 @@ inline constexpr unsigned utf8CodePage = 65001;
 namespace kanariv::utils::detail {
 
 #ifdef _WIN32
-Expected<void> setNativeHandleName(void* nativeHandle, std::string_view name) noexcept {
+auto setNativeHandleName(void* nativeHandle, std::string_view name) noexcept -> Expected<void> {
     HMODULE k32 = GetModuleHandleA("kernel32.dll");
-    if (k32) {
+    if (k32 != nullptr) {
         using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
 #ifndef _MSC_VER
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-function-type"
 #endif
-        auto pSetDesc =
-            reinterpret_cast<SetThreadDescriptionFn>(GetProcAddress(k32, "SetThreadDescription")); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        auto pSetDesc = reinterpret_cast<SetThreadDescriptionFn>(GetProcAddress(
+            k32, "SetThreadDescription")); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 #ifndef _MSC_VER
 #pragma GCC diagnostic pop
 #endif
-        if (pSetDesc) {
+        if (pSetDesc != nullptr) {
             int wlen = MultiByteToWideChar(utf8CodePage, 0, name.data(),
                                            static_cast<int>(name.size()), nullptr, 0);
             if (wlen > 0) {
                 std::wstring wbuf(static_cast<std::size_t>(wlen), L'\0');
                 MultiByteToWideChar(utf8CodePage, 0, name.data(), static_cast<int>(name.size()),
                                     wbuf.data(), wlen);
-                HRESULT hr = pSetDesc(reinterpret_cast<HANDLE>(nativeHandle), wbuf.c_str()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+                HRESULT hr =
+                    pSetDesc(reinterpret_cast<HANDLE>(nativeHandle),
+                             wbuf.c_str()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
                 (void)hr;
                 return {};
             }
@@ -47,7 +49,7 @@ Expected<void> setNativeHandleName(void* nativeHandle, std::string_view name) no
     return {};
 }
 
-Expected<void> setCurrentThreadNameImpl(std::string_view name) noexcept {
+auto setCurrentThreadNameImpl(std::string_view name) noexcept -> Expected<void> {
     return setNativeHandleName(GetCurrentThread(), name);
 }
 #else
@@ -72,7 +74,7 @@ int setPthreadName(pthread_t th, std::string_view name) noexcept {
 
 namespace kanariv::utils {
 
-[[nodiscard]] Expected<void> setThreadName(std::string_view name) noexcept {
+[[nodiscard]] auto setThreadName(std::string_view name) noexcept -> Expected<void> {
     if (name.empty()) {
         return std::unexpected(Error{StatusCode::InvalidArg, std::string_view("empty name")});
     }
@@ -106,7 +108,8 @@ namespace kanariv::utils {
 #endif
 }
 
-[[nodiscard]] Expected<void> setThreadName(std::jthread& jt, std::string_view name) noexcept {
+[[nodiscard]] auto setThreadName(std::jthread& jt, std::string_view name) noexcept
+    -> Expected<void> {
     if (!jt.joinable()) {
         return std::unexpected(Error{StatusCode::State, std::string_view("thread not joinable")});
     }
@@ -114,7 +117,8 @@ namespace kanariv::utils {
         return std::unexpected(Error{StatusCode::InvalidArg, std::string_view("empty name")});
     }
 #ifdef _WIN32
-    HANDLE h = reinterpret_cast<HANDLE>(jt.native_handle()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    auto *h = reinterpret_cast<HANDLE>(
+        jt.native_handle()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     return detail::setNativeHandleName(h, name);
 #else
     pthread_t th = jt.native_handle();
@@ -142,7 +146,7 @@ namespace kanariv::utils {
 #endif
 }
 
-[[nodiscard]] Expected<void> setThreadName(std::thread& t, std::string_view name) noexcept {
+[[nodiscard]] auto setThreadName(std::thread& t, std::string_view name) noexcept -> Expected<void> {
     if (!t.joinable()) {
         return std::unexpected(Error{StatusCode::State, std::string_view("thread not joinable")});
     }
@@ -150,7 +154,8 @@ namespace kanariv::utils {
         return std::unexpected(Error{StatusCode::InvalidArg, std::string_view("empty name")});
     }
 #ifdef _WIN32
-    HANDLE h = reinterpret_cast<HANDLE>(t.native_handle()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    auto *h = reinterpret_cast<HANDLE>(
+        t.native_handle()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     return detail::setNativeHandleName(h, name);
 #else
 #if defined(__linux__) && !defined(__APPLE__)

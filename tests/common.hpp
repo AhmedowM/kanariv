@@ -1,11 +1,11 @@
 #pragma once
 #include <atomic>
-#include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <kanariv/utils/ring.hpp>
 #include <mutex>
 #include <string>
 #include <system_error>
@@ -53,7 +53,7 @@ inline bool noAudio() noexcept {
  * `auto ring = kanariv::test::makeDummyRing(48000, 2);`
  */
 inline kanariv::utils::SpscRing<float> makeDummyRing(uint32_t sampleRate = 48000,
-                                                    uint32_t channels = 2, size_t frames = 8192) {
+                                                     uint32_t channels = 2, size_t frames = 8192) {
     (void)sampleRate;
     return kanariv::utils::SpscRing<float>{frames, channels};
 }
@@ -65,10 +65,10 @@ inline kanariv::utils::SpscRing<float> makeDummyRing(uint32_t sampleRate = 48000
  * @details Usage: `KANARIV_SKIP_IF_NOAUDIO();` at top of a TEST_CASE that
  * would otherwise beep via `AudioOutput::create`. Expands to `SKIP(...)`.
  */
-#define KANARIV_SKIP_IF_NOAUDIO()                                                                   \
+#define KANARIV_SKIP_IF_NOAUDIO()                                                                  \
     do {                                                                                           \
-        if (kanariv::test::noAudio()) {                                                             \
-            SKIP("KANARIV_TEST_NOAUDIO=1 - audio device test skipped (no beep)");                   \
+        if (kanariv::test::noAudio()) {                                                            \
+            SKIP("KANARIV_TEST_NOAUDIO=1 - audio device test skipped (no beep)");                  \
         }                                                                                          \
     } while (0)
 

@@ -6,9 +6,9 @@
  * @ingroup kanariv_service
  */
 
+#include <expected>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils.hpp>
-#include <expected>
 
 namespace kanariv::engine {
 class Engine;

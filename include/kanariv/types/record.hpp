@@ -136,7 +136,6 @@ struct Track {
     std::array<uint8_t, 32> fingerprint{}; ///< BLAKE3-256 content fingerprint (UNIQUE).
     bool dirty{false};                     ///< True if metadata needs re-scan.
     SourceRef source{};                    ///< Durable source identity (path by default).
-
 };
 
 /**
@@ -171,7 +170,6 @@ struct Playlist {
     int64_t created{};       ///< Creation timestamp.
     int64_t modified{};      ///< Last modification timestamp.
     int64_t library_id{1};   ///< Owning library id.
-
 };
 
 /**
@@ -187,7 +185,6 @@ struct QueueItem {
     int64_t track_id{};  ///< Referenced track id (FK -> tracks.id).
     int64_t position{};  ///< Zero-based position within the queue (UNIQUE per queue_id).
     int64_t added{};     ///< Timestamp when enqueued.
-
 };
 
 /**
@@ -276,9 +273,9 @@ struct TrackMetadata {
  * artist gets credited with the full play_count.
  */
 struct TopEntity {
-    std::string name{};            ///< Entity name (artist / album / genre).
-    std::size_t track_count{0};    ///< Number of distinct tracks referencing it.
-    std::int64_t total_plays{0};   ///< Sum of play_count across those tracks.
+    std::string name{};          ///< Entity name (artist / album / genre).
+    std::size_t track_count{0};  ///< Number of distinct tracks referencing it.
+    std::int64_t total_plays{0}; ///< Sum of play_count across those tracks.
 };
 
 /**

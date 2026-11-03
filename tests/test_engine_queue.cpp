@@ -1,16 +1,16 @@
 #include <sqlite3.h>
 
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/db/database.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/engine/engine.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
 #include <common.hpp>
 #include <cstdint>
 #include <engine/shuffle.hpp>
 #include <filesystem>
+#include <kanariv/db/database.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <memory>
 #include <random>
 #include <set>
@@ -259,7 +259,8 @@ TEST_CASE("engine queue perm persistence blob cursor qid", "[engine_queue]") {
         eng->shutdown();
     }
     // reopen and verify persisted
-    auto e2Res = openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
+    auto e2Res =
+        openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
     REQUIRE(e2Res.has_value());
     auto eng2 = std::move(e2Res.value());
     // after reopen shuffle should still be on (state shuffleEnabled=1)
@@ -461,7 +462,8 @@ TEST_CASE("engine queue persists via cursor non-shuffle", "[engine_queue]") {
         sqlite3_close(ch);
     }
     auto e2Res = openEngineWithDatabase(
-        dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false, .allowSimulatedPlayback = true});
+        dbPath,
+        kanariv::types::EngineConfig{.enableMonitorThread = false, .allowSimulatedPlayback = true});
     REQUIRE(e2Res.has_value());
     auto eng2 = std::move(e2Res.value());
     // next should continue from cursor 2 -> third track

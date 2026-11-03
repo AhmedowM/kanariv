@@ -9,11 +9,11 @@
 
 #include "preview.hpp"
 
-#include <kanariv/player/player.hpp>
-#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <filesystem>
 #include <format>
+#include <kanariv/player/player.hpp>
+#include <kanariv/utils/error.hpp>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -21,7 +21,9 @@
 
 namespace kanariv::app::cli::detail {
 
-kanariv::app::AppResult runLocalPreview(const std::string& file) {
+constexpr int previewPollMs = 100;
+
+auto runLocalPreview(const std::string& file) -> kanariv::app::AppResult {
     std::filesystem::path p{file};
     std::error_code ec;
     if (!std::filesystem::exists(p, ec)) {
@@ -36,21 +38,22 @@ kanariv::app::AppResult runLocalPreview(const std::string& file) {
     auto& player = *playerRes.value();
     auto openRes = player.open(file);
     if (!openRes) {
-        return kanariv::app::Outcome::fail(std::format("preview: open failed ({}): {}",
-                                                      kanariv::utils::toString(openRes.error().code),
-                                                      openRes.error().message));
+        return kanariv::app::Outcome::fail(
+            std::format("preview: open failed ({}): {}",
+                        kanariv::utils::toString(openRes.error().code), openRes.error().message));
     }
     auto playRes = player.play();
     if (!playRes) {
-        return kanariv::app::Outcome::fail(std::format("preview: play failed ({}): {}",
-                                                      kanariv::utils::toString(playRes.error().code),
-                                                      playRes.error().message));
+        return kanariv::app::Outcome::fail(
+            std::format("preview: play failed ({}): {}",
+                        kanariv::utils::toString(playRes.error().code), playRes.error().message));
     }
     std::string done = std::format("preview playing {}\npreview done", file);
     while (player.state() == kanariv::player::State::Playing) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(previewPollMs));
     }
-    return kanariv::app::Outcome{.result=std::nullopt, .line=std::move(done), .toStderr=false, .failed=false};
+    return kanariv::app::Outcome{
+        .result = std::nullopt, .line = std::move(done), .toStderr = false, .failed = false};
 }
 
 } // namespace kanariv::app::cli::detail

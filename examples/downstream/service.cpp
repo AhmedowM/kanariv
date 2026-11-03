@@ -1,5 +1,5 @@
-#include <kanariv/service/service.hpp>
 #include <iostream>
+#include <kanariv/service/service.hpp>
 
 int main() {
     kanariv::service::ServiceConfig config;

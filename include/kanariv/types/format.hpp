@@ -18,8 +18,8 @@
  * The inverse mapping lives in `kanariv/types/parse.hpp`.
  */
 
-#include <kanariv/types/wire.hpp>
 #include <format>
+#include <kanariv/types/wire.hpp>
 #include <string_view>
 
 namespace kanariv::types {

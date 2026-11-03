@@ -1,17 +1,17 @@
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
+#include <common.hpp>
+#include <filesystem>
 #include <kanariv/contracts/database.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/types/engine.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/ipc/shm_status.hpp>
 #include <kanariv/service/service.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
-#include <chrono>
-#include <common.hpp>
-#include <filesystem>
 #include <stop_token>
 #include <string>
 #include <support/engine_test_helpers.hpp>
@@ -140,16 +140,16 @@ TEST_CASE("bookmark protocol roundtrip", "[ipc]") {
 TEST_CASE("history protocol roundtrip", "[ipc]") {
     Result res{History{{
         kanariv::types::HistoryEntry{.id = 1,
-                                    .track_id = 42,
-                                    .started_at = 1700000000000,
-                                    .completed_at = 1700000000240,
-                                    .position_ms = 240000,
-                                    .completion_pct = 100.0,
-                                    .queue_id = 1,
-                                    .title = "Song",
-                                    .artist = "Artist",
-                                    .path = "/music/song.mp3",
-                                    .duration = 240.0},
+                                     .track_id = 42,
+                                     .started_at = 1700000000000,
+                                     .completed_at = 1700000000240,
+                                     .position_ms = 240000,
+                                     .completion_pct = 100.0,
+                                     .queue_id = 1,
+                                     .title = "Song",
+                                     .artist = "Artist",
+                                     .path = "/music/song.mp3",
+                                     .duration = 240.0},
     }}};
     auto resJson = toJson(res);
     auto resBack = resultFromJson(resJson);
@@ -198,11 +198,11 @@ TEST_CASE("library stats detailed protocol roundtrip", "[ipc]") {
     track.duration = 240.0;
     Result res{
         kanariv::types::LibraryStats{.tracks = 100,
-                                    .queues = 5,
-                                    .playlists = 20,
-                                    .total_duration_ms = 36000000,
-                                    .total_play_time_ms = 7200000,
-                                    .top_tracks = std::vector<kanariv::types::Track>{track}}};
+                                     .queues = 5,
+                                     .playlists = 20,
+                                     .total_duration_ms = 36000000,
+                                     .total_play_time_ms = 7200000,
+                                     .top_tracks = std::vector<kanariv::types::Track>{track}}};
     auto resJson = toJson(res);
     REQUIRE(resJson["type"].snapshot().get<std::string>() == "LibraryStats");
     auto resBack = resultFromJson(resJson);
@@ -222,11 +222,11 @@ TEST_CASE("library stats detailed protocol roundtrip", "[ipc]") {
 
 TEST_CASE("library stats summary protocol roundtrip", "[ipc]") {
     Result res{kanariv::types::LibraryStats{.tracks = 100,
-                                           .queues = 5,
-                                           .playlists = 20,
-                                           .total_duration_ms = 36000000,
-                                           .total_play_time_ms = 7200000,
-                                           .top_tracks = std::nullopt}};
+                                            .queues = 5,
+                                            .playlists = 20,
+                                            .total_duration_ms = 36000000,
+                                            .total_play_time_ms = 7200000,
+                                            .top_tracks = std::nullopt}};
     auto resJson = toJson(res);
     REQUIRE(resJson["type"].snapshot().get<std::string>() == "LibraryStats");
     CHECK_FALSE(resJson.contains("top_tracks"));
@@ -244,7 +244,7 @@ TEST_CASE("library stats command roundtrip", "[ipc]") {
     CHECK(summary["type"].snapshot().get<std::string>() == "LibraryStats");
     CHECK_FALSE(summary.contains("top_tracks"));
 
-    auto detailed = toJson(Command{LibraryStats{.top_tracks=5}});
+    auto detailed = toJson(Command{LibraryStats{.top_tracks = 5}});
     REQUIRE(detailed.contains("top_tracks"));
     CHECK(detailed["top_tracks"].snapshot().get<int>() == 5);
     auto detailedBack = commandFromJson(detailed);
@@ -586,9 +586,8 @@ TEST_CASE("daemon library list rating filter and maintenance", "[ipc][cli]") {
         auto clientRes = IpcClient::connect(cfg.dbPath);
         REQUIRE(clientRes.has_value());
         auto client = std::move(clientRes.value());
-        auto repRes = client.send(LibraryMaintenance{.action = "report",
-                                                     .dry_run = true,
-                                                     .library_id = 1});
+        auto repRes =
+            client.send(LibraryMaintenance{.action = "report", .dry_run = true, .library_id = 1});
         REQUIRE(repRes.has_value());
         auto* rep = std::get_if<LibraryMaintenanceReport>(&*repRes);
         REQUIRE(rep != nullptr);
@@ -602,9 +601,8 @@ TEST_CASE("daemon library list rating filter and maintenance", "[ipc][cli]") {
         auto clientRes = IpcClient::connect(cfg.dbPath);
         REQUIRE(clientRes.has_value());
         auto client = std::move(clientRes.value());
-        auto repRes = client.send(LibraryMaintenance{.action = "prune",
-                                                     .dry_run = false,
-                                                     .library_id = 1});
+        auto repRes =
+            client.send(LibraryMaintenance{.action = "prune", .dry_run = false, .library_id = 1});
         REQUIRE(repRes.has_value());
         CHECK(std::holds_alternative<Empty>(*repRes));
     }

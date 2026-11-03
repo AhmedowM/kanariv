@@ -16,10 +16,10 @@
  * preserved (ordered backend).
  */
 
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/utils/error.hpp>
 #include <limits>
 #include <memory>
 #include <stdexcept>

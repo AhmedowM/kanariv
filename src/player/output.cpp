@@ -2,13 +2,13 @@
 #include <miniaudio.h>
 
 #include <atomic>
+#include <expected>
 #include <kanariv/player/output.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/math.hpp>
 #include <kanariv/utils/result.hpp>
 #include <kanariv/utils/ring.hpp>
-#include <expected>
 #include <memory>
 #include <span>
 #include <string>
@@ -18,6 +18,8 @@
 #include "ring_fill.hpp"
 
 namespace kanariv::player {
+
+constexpr int maxOutputChannels = 32;
 
 /// miniaudio playback device and mutable control flags, hidden from the header.
 struct AudioOutput::Impl {
@@ -32,7 +34,7 @@ struct AudioOutput::Impl {
                              ma_uint32 frameCount);
 };
 
-kanariv::types::DeviceList enumerateDevices() {
+auto enumerateDevices() -> kanariv::types::DeviceList {
     kanariv::types::DeviceList list;
     ma_context context;
     ma_context_config ctxConfig = ma_context_config_init();
@@ -48,13 +50,13 @@ kanariv::types::DeviceList enumerateDevices() {
 
     res = ma_context_get_devices(&context, &pPlaybackInfos, &playbackCount, &pCaptureInfos,
                                  &captureCount);
-    if (res == MA_SUCCESS && pPlaybackInfos && playbackCount > 0) {
+    if (res == MA_SUCCESS && pPlaybackInfos != nullptr && playbackCount > 0) {
         list.devices.reserve(playbackCount);
         for (ma_uint32 i = 0; i < playbackCount; ++i) {
             const auto& info = pPlaybackInfos[i];
             kanariv::types::DeviceInfo di;
             di.name = info.name;
-            di.isDefault = info.isDefault;
+            di.isDefault = info.isDefault != 0;
             // Use simple index-based ID for user-friendly CLI
             di.id = std::to_string(i);
             list.devices.push_back(std::move(di));
@@ -71,14 +73,15 @@ AudioOutput::~AudioOutput() {
     shutdown();
 }
 
-AudioOutput::Expected AudioOutput::create(const Config& cfg) {
+auto AudioOutput::create(const Config& cfg) -> AudioOutput::Expected {
     auto out = std::make_unique<AudioOutput>();
     if (!out->init(cfg)) {
         return std::unexpected(kanariv::utils::Error{
             kanariv::utils::StatusCode::Device, std::string_view("miniaudio device init failed")});
     }
-    if (cfg.logger)
+    if (cfg.logger != nullptr) {
         cfg.logger->debug("audio output opened rate={} channels={}", cfg.sampleRate, cfg.channels);
+    }
     return out;
 }
 
@@ -86,13 +89,14 @@ void AudioOutput::setVolume(float vol) {
     impl_->volume.store(kanariv::utils::clampVolume(vol), std::memory_order_relaxed);
 }
 
-float AudioOutput::volume() const noexcept {
+auto AudioOutput::volume() const noexcept -> float {
     return impl_->volume.load(std::memory_order_relaxed);
 }
 
 void AudioOutput::start() {
-    if (!impl_->initialized.load(std::memory_order_acquire))
+    if (!impl_->initialized.load(std::memory_order_acquire)) {
         return;
+    }
     bool expected = false;
     if (impl_->running.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
         ma_device_start(&impl_->device);
@@ -113,9 +117,10 @@ void AudioOutput::shutdown() noexcept {
     }
 }
 
-bool AudioOutput::init(const Config& cfg) {
-    if (cfg.channels == 0 || cfg.channels > 32 || cfg.sampleRate == 0)
+auto AudioOutput::init(const Config& cfg) -> bool {
+    if (cfg.channels == 0 || cfg.channels > maxOutputChannels || cfg.sampleRate == 0) {
         return false;
+    }
     impl_->cfg = cfg;
     float v = kanariv::utils::clampVolume(cfg.volume);
     impl_->volume.store(v, std::memory_order_relaxed);
@@ -143,10 +148,11 @@ void AudioOutput::Impl::dataCallback(ma_device* pDevice, void* pOutput, const vo
                                      ma_uint32 frameCount) {
     (void)pInput;
     auto* self = static_cast<Impl*>(pDevice->pUserData);
-    if (!self)
+    if (self == nullptr) {
         return;
+    }
 
-    float* output = static_cast<float*>(pOutput);
+    auto* output = static_cast<float*>(pOutput);
     ma_uint32 channels = pDevice->playback.channels;
     ma_uint32 totalSamples = frameCount * channels;
     float vol = self->volume.load(std::memory_order_relaxed);

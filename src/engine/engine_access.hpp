@@ -16,9 +16,9 @@
  * Internal header: lives in `src/`, not installed.
  */
 
-#include <kanariv/engine/engine.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/engine/engine.hpp>
 #include <vector>
 
 namespace kanariv::engine::detail {

@@ -10,12 +10,12 @@
 
 #include <array>
 #include <atomic>
-#include <kanariv/config.hpp>
-#include <kanariv/ipc/protocol.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <kanariv/config.hpp>
+#include <kanariv/ipc/protocol.hpp>
+#include <kanariv/utils/error.hpp>
 #include <memory>
 #include <span>
 #include <string>
@@ -47,7 +47,7 @@ struct IpcClient::Impl {
      * @param data Byte span to send (already framed with length prefix).
      * @return void on success, Error on send failure or not connected.
      */
-    kanariv::utils::Expected<void> rawSend(std::span<const std::byte> data);
+    auto rawSend(std::span<const std::byte> data) const -> kanariv::utils::Expected<void>;
 
     /**
      * @brief Receive a framed response.
@@ -55,28 +55,30 @@ struct IpcClient::Impl {
      * Enforces 16MB max frame size.
      * @return Payload bytes (without length header) on success, Error on failure.
      */
-    kanariv::utils::Expected<std::vector<std::byte>> rawRecv();
+    auto rawRecv() const -> kanariv::utils::Expected<std::vector<std::byte>>;
 };
 
 IpcClient::IpcClient() : impl_(std::make_unique<Impl>()) {}
 
-kanariv::utils::Expected<IpcClient> IpcClient::connect(const std::filesystem::path& dbPath,
-                                                      std::string_view socketPathOverride) {
+auto IpcClient::connect(const std::filesystem::path& dbPath, std::string_view socketPathOverride)
+    -> kanariv::utils::Expected<IpcClient> {
     kanariv::utils::Expected<std::string> sp;
     if (!socketPathOverride.empty()) {
         sp = std::string(socketPathOverride.data(), socketPathOverride.size());
     } else {
         sp = kanariv::config::socketPathFor(dbPath);
     }
-    if (!sp)
+    if (!sp) {
         return std::unexpected{sp.error()};
+    }
     std::string path = *sp;
 
 #ifdef _WIN32
     std::wstring w;
     w.reserve(path.size());
-    for (char c : path)
+    for (char c : path) {
         w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
+    }
     HANDLE h = ::CreateFileW(w.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0,
                              nullptr);
     if (h == INVALID_HANDLE_VALUE) {
@@ -86,7 +88,8 @@ kanariv::utils::Expected<IpcClient> IpcClient::connect(const std::filesystem::pa
             // momentarily taken (burst load or mid-teardown drain) -- NOT a
             // dead daemon. Wait briefly and try once more instead of
             // misreporting "daemon not running".
-            if (::WaitNamedPipeW(w.c_str(), 500)) {
+            constexpr DWORD waitNamedPipeTimeoutMs = 500;
+            if (::WaitNamedPipeW(w.c_str(), waitNamedPipeTimeoutMs) != 0) {
                 h = ::CreateFileW(w.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                                   OPEN_EXISTING, 0, nullptr);
                 err = (h == INVALID_HANDLE_VALUE) ? ::GetLastError() : ERROR_SUCCESS;
@@ -95,7 +98,7 @@ kanariv::utils::Expected<IpcClient> IpcClient::connect(const std::filesystem::pa
         if (h == INVALID_HANDLE_VALUE) {
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
-                                         "CreateFileW connect failed: " + std::to_string(err))};
+                                          "CreateFileW connect failed: " + std::to_string(err))};
         }
     }
     DWORD mode = PIPE_READMODE_BYTE;
@@ -116,7 +119,7 @@ kanariv::utils::Expected<IpcClient> IpcClient::connect(const std::filesystem::pa
     if (path.size() >= sizeof(addr.sun_path)) {
         ::close(fd);
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                        "socket path too long")};
+                                                         "socket path too long")};
     }
     std::memcpy(addr.sun_path, path.c_str(), path.size() + 1);
     if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
@@ -138,42 +141,50 @@ IpcClient::~IpcClient() {
 
 IpcClient::IpcClient(IpcClient&& other) noexcept = default;
 
-IpcClient& IpcClient::operator=(IpcClient&& other) noexcept = default;
+auto IpcClient::operator=(IpcClient&& other) noexcept -> IpcClient& = default;
 
-kanariv::utils::Expected<kanariv::ipc::Result> IpcClient::send(const kanariv::ipc::Command& cmd) {
-    if (!impl_)
+auto IpcClient::send(const kanariv::ipc::Command& cmd)
+    -> kanariv::utils::Expected<kanariv::ipc::Result> {
+    if (!impl_) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "not connected")};
+    }
     uint32_t id = impl_->nextId.fetch_add(1) + 1;
-    kanariv::ipc::IpcRequest req{.id=id, .cmd=cmd};
+    kanariv::ipc::IpcRequest req{.id = id, .cmd = cmd};
     std::string json = kanariv::ipc::serializeRequest(req);
     auto framed = kanariv::ipc::frame(json);
 
-    if (auto e = impl_->rawSend(framed); !e)
+    if (auto e = impl_->rawSend(framed); !e) {
         return std::unexpected{e.error()};
+    }
 
     auto raw = impl_->rawRecv();
-    if (!raw)
+    if (!raw) {
         return std::unexpected{raw.error()};
+    }
 
     // rawRecv already stripped the 4-byte BE header; construct string directly -- do not
     // call deframe
     std::string replyStr;
     replyStr.reserve(raw->size());
-    for (auto b : *raw)
+    for (auto b : *raw) {
         replyStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
+    }
 
     auto repExp = kanariv::ipc::deserializeReply(replyStr);
-    if (!repExp)
+    if (!repExp) {
         return std::unexpected{repExp.error()};
-    if (!repExp->result)
+    }
+    if (!repExp->result) {
         return std::unexpected{repExp->result.error()};
+    }
     return *(repExp->result);
 }
 
 void IpcClient::close() noexcept {
-    if (!impl_)
+    if (!impl_) {
         return;
+    }
 #ifdef _WIN32
     if (impl_->pipeHandle != -1) {
         ::CloseHandle(reinterpret_cast<HANDLE>(impl_->pipeHandle));
@@ -187,7 +198,8 @@ void IpcClient::close() noexcept {
 #endif
 }
 
-kanariv::utils::Expected<void> IpcClient::Impl::rawSend(std::span<const std::byte> data) {
+auto IpcClient::Impl::rawSend(std::span<const std::byte> data) const
+    -> kanariv::utils::Expected<void> {
 #ifdef _WIN32
     if (pipeHandle == -1) {
         return std::unexpected{
@@ -229,7 +241,7 @@ kanariv::utils::Expected<void> IpcClient::Impl::rawSend(std::span<const std::byt
 #endif
 }
 
-kanariv::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
+auto IpcClient::Impl::rawRecv() const -> kanariv::utils::Expected<std::vector<std::byte>> {
 #ifdef _WIN32
     if (pipeHandle == -1) {
         return std::unexpected{
@@ -247,16 +259,22 @@ kanariv::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
             return std::unexpected{kanariv::utils::makeError(
                 kanariv::utils::StatusCode::Io, "ReadFile hdr failed: " + std::to_string(err))};
         }
-        if (r == 0)
+        if (r == 0) {
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "pipe closed")};
+        }
         got += r;
     }
-    std::uint32_t len = (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
-                        (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
-                        (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
-                        static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-    if (len > 16 * 1024 * 1024) {
+    constexpr std::uint32_t frameLenShift3 = 24;
+    constexpr std::uint32_t frameLenShift2 = 16;
+    constexpr std::uint32_t frameLenShift1 = 8;
+    constexpr std::size_t maxFrameSizeBytes = 16 * 1024 * 1024;
+    constexpr std::uint32_t frameByteIndex3 = 3;
+    std::uint32_t len = (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << frameLenShift3) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << frameLenShift2) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << frameLenShift1) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        static_cast<std::uint32_t>(std::to_underlying(hdr[frameByteIndex3])); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (len > maxFrameSizeBytes) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
     }
@@ -272,9 +290,10 @@ kanariv::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
             return std::unexpected{kanariv::utils::makeError(
                 kanariv::utils::StatusCode::Io, "ReadFile payload failed: " + std::to_string(err))};
         }
-        if (r == 0)
+        if (r == 0) {
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "pipe closed")};
+        }
         got += r;
     }
     return payload;
@@ -299,11 +318,16 @@ kanariv::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "peer closed")};
         got += static_cast<std::size_t>(n);
     }
-    std::uint32_t len = (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
-                        (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
-                        (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
-                        static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-    if (len > 16 * 1024 * 1024) {
+    constexpr std::uint32_t frameLenShift3 = 24;
+    constexpr std::uint32_t frameLenShift2 = 16;
+    constexpr std::uint32_t frameLenShift1 = 8;
+    constexpr std::size_t maxFrameSizeBytes = 16 * 1024 * 1024;
+    constexpr std::uint32_t frameByteIndex3 = 3;
+    std::uint32_t len = (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << frameLenShift3) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << frameLenShift2) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << frameLenShift1) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        static_cast<std::uint32_t>(std::to_underlying(hdr[frameByteIndex3])); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (len > maxFrameSizeBytes) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
     }

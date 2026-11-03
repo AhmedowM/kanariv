@@ -10,11 +10,11 @@
  * so this header exposes only the public daemon surface.
  */
 
-#include <kanariv/config.hpp>
-#include <kanariv/fwd.hpp>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <kanariv/config.hpp>
+#include <kanariv/fwd.hpp>
 #include <memory>
 #include <stop_token>
 #include <string>
@@ -145,7 +145,8 @@ class KANARIV_API Service final {
      * @param db Shared database contract (must be non-null and open).
      * @return Success or Error InvalidArg if db is null or not open.
      */
-    kanariv::utils::Expected<void> attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db);
+    kanariv::utils::Expected<void>
+    attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db);
 
     /**
      * @brief Gracefully shut down the service.

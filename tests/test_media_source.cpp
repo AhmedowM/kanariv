@@ -1,10 +1,5 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/media/decoder.hpp>
-#include <kanariv/media/reader.hpp>
-#include <kanariv/media/source.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
 #include <common.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +7,11 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/media/source.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,7 +89,9 @@ TEST_CASE("PathSource opens a path repeatedly", "[media][source]") {
 }
 
 TEST_CASE("DescriptorSource rejects negative descriptor", "[media][source]") {
-    DescriptorSource source(FileDescriptor{.value=-1, .readable=true, .seekable=false, .closeOnDestroy=true}, "bad");
+    DescriptorSource source(
+        FileDescriptor{.value = -1, .readable = true, .seekable = false, .closeOnDestroy = true},
+        "bad");
     REQUIRE(source.kind() == SourceKind::descriptor);
     REQUIRE_FALSE(source.seekable());
     auto reader = source.open();
@@ -102,7 +104,9 @@ TEST_CASE("DescriptorSource rejects unreadable descriptor", "[media][source]") {
     const int fd = openReadOnly(path);
     REQUIRE(fd >= 0);
     // readable=false: open() must fail even though the underlying fd is valid.
-    DescriptorSource source(FileDescriptor{.value=fd, .readable=false, .seekable=true, .closeOnDestroy=true}, "unreadable");
+    DescriptorSource source(
+        FileDescriptor{.value = fd, .readable = false, .seekable = true, .closeOnDestroy = true},
+        "unreadable");
     auto reader = source.open();
     REQUIRE(!reader.has_value());
     REQUIRE(reader.error().code == StatusCode::InvalidArg);
@@ -116,7 +120,9 @@ TEST_CASE("DescriptorSource single-use transfers ownership", "[media][source]") 
     const int fd = openReadOnly(path);
     REQUIRE(fd >= 0);
 
-    DescriptorSource source(FileDescriptor{.value=fd, .readable=true, .seekable=true, .closeOnDestroy=true}, "owned fixture");
+    DescriptorSource source(
+        FileDescriptor{.value = fd, .readable = true, .seekable = true, .closeOnDestroy = true},
+        "owned fixture");
     REQUIRE(source.kind() == SourceKind::descriptor);
     REQUIRE(source.seekable());
     REQUIRE(source.displayName() == "owned fixture");
@@ -144,7 +150,9 @@ TEST_CASE("DescriptorSource non-seekable flags and read", "[media][source]") {
     const int fd = openReadOnly(path);
     REQUIRE(fd >= 0);
 
-    DescriptorSource source(FileDescriptor{.value=fd, .readable=true, .seekable=false, .closeOnDestroy=true}, "stream");
+    DescriptorSource source(
+        FileDescriptor{.value = fd, .readable = true, .seekable = false, .closeOnDestroy = true},
+        "stream");
     REQUIRE_FALSE(source.seekable());
 
     auto reader = source.open();
@@ -164,14 +172,19 @@ TEST_CASE("Borrowed descriptor not closed by source destructor", "[media][source
     REQUIRE(fd >= 0);
 
     // closeOnDestroy = false: caller retains ownership.
-    DescriptorSource source(FileDescriptor{.value=fd, .readable=true, .seekable=true, .closeOnDestroy=false}, "borrowed");
+    DescriptorSource source(
+        FileDescriptor{.value = fd, .readable = true, .seekable = true, .closeOnDestroy = false},
+        "borrowed");
     REQUIRE_FALSE(source.consumed());
     auto borrowedResult = source.open();
     REQUIRE(borrowedResult.has_value());
     REQUIRE(source.consumed());
     // Destructor of a borrowed-descriptor source must not close fd.
     {
-        DescriptorSource tmp(FileDescriptor{.value=fd, .readable=true, .seekable=true, .closeOnDestroy=false}, "borrowed tmp");
+        DescriptorSource tmp(
+            FileDescriptor{
+                .value = fd, .readable = true, .seekable = true, .closeOnDestroy = false},
+            "borrowed tmp");
     }
     // The fd remains valid for the caller to close.
     REQUIRE(closeRaw(fd) == 0);
@@ -182,7 +195,7 @@ TEST_CASE("DescriptorReader cached size and position", "[media][source]") {
     const int fd = openReadOnly(path);
     REQUIRE(fd >= 0);
 
-    FileDescriptor desc{.value=fd, .readable=true, .seekable=true, .closeOnDestroy=true};
+    FileDescriptor desc{.value = fd, .readable = true, .seekable = true, .closeOnDestroy = true};
     auto readerRes = DescriptorReader::open(desc);
     REQUIRE(readerRes.has_value());
     auto& reader = **readerRes;
@@ -200,7 +213,8 @@ TEST_CASE("DescriptorReader rejects out-of-range seek", "[media][source]") {
     const int fd = openReadOnly(path);
     REQUIRE(fd >= 0);
 
-    auto readerRes = DescriptorReader::open(FileDescriptor{.value=fd, .readable=true, .seekable=true, .closeOnDestroy=true});
+    auto readerRes = DescriptorReader::open(
+        FileDescriptor{.value = fd, .readable = true, .seekable = true, .closeOnDestroy = true});
     REQUIRE(readerRes.has_value());
     REQUIRE(!(*readerRes)->seek(-1, SEEK_SET).has_value());
     REQUIRE((*readerRes)->seek(-1, SEEK_SET).error().code == StatusCode::InvalidArg);

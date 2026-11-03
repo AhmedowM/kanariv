@@ -6,9 +6,9 @@
  * @ingroup kanariv_ipc
  */
 
-#include <kanariv/types/wire.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/types/wire.hpp>
 #include <string>
 
 namespace kanariv::ipc {

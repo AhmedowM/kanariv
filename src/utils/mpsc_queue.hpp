@@ -8,11 +8,11 @@
  * engine event queue and the database writer thread.
  */
 
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
 #include <condition_variable>
 #include <cstddef>
 #include <expected>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <mutex>
 #include <optional>
 #include <stop_token>

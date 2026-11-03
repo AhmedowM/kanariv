@@ -1,4 +1,4 @@
-Checks: '-*,clang-analyzer-*,modernize-*,bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,readability-*,-readability-identifier-length'
+Checks: '-*,clang-analyzer-*,modernize-*,bugprone-*,concurrency-*,cppcoreguidelines-*,performance-*,readability-*,-readability-identifier-length,-readability-trailing-comma'
 WarningsAsErrors: ''
 HeaderFilterRegex: '(src|include|cli/src)/.*'
 CheckOptions:

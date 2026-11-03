@@ -1,8 +1,3 @@
-#include <kanariv/config.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/json.hpp>
-#include <kanariv/utils/log.hpp>
-#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -13,6 +8,11 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <kanariv/config.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -23,71 +23,75 @@
 
 namespace kanariv::config::detail {
 
-std::filesystem::path defaultDbPath() {
+auto defaultDbPath() -> std::filesystem::path {
 #ifdef _WIN32
     const char* localApp = std::getenv("LOCALAPPDATA");
-    if (localApp && localApp[0] != '\0') {
+    if (localApp != nullptr && localApp[0] != '\0') {
         return std::filesystem::path(localApp) / "kanariv" / "library.db";
     }
 #endif
     const char* xdgData = std::getenv("XDG_DATA_HOME");
     std::filesystem::path base;
-    if (xdgData && xdgData[0] != '\0') {
+    if (xdgData != nullptr && xdgData[0] != '\0') {
         base = std::filesystem::path(xdgData) / "kanariv";
     } else {
         const char* home = std::getenv("HOME");
-        if (!home || home[0] == '\0')
+        if (home == nullptr || home[0] == '\0') {
             home = std::getenv("USERPROFILE");
-        if (home && home[0] != '\0') {
+        }
+        if (home != nullptr && home[0] != '\0') {
             base = std::filesystem::path(home) / ".local" / "share" / "kanariv";
         } else {
             std::error_code ec;
             base = std::filesystem::temp_directory_path(ec) / "kanariv";
-            if (ec)
+            if (ec) {
                 base = std::filesystem::path("/tmp/kanariv");
+            }
         }
     }
     return base / "library.db";
 }
 
-std::filesystem::path defaultConfigPath() {
+auto defaultConfigPath() -> std::filesystem::path {
 #ifdef _WIN32
     const char* localApp = std::getenv("LOCALAPPDATA");
-    if (localApp && localApp[0] != '\0') {
+    if (localApp != nullptr && localApp[0] != '\0') {
         return std::filesystem::path(localApp) / "kanariv" / "config.json";
     }
 #endif
     const char* xdgCfg = std::getenv("XDG_CONFIG_HOME");
     std::filesystem::path base;
-    if (xdgCfg && xdgCfg[0] != '\0') {
+    if (xdgCfg != nullptr && xdgCfg[0] != '\0') {
         base = std::filesystem::path(xdgCfg) / "kanariv";
     } else {
         const char* home = std::getenv("HOME");
-        if (!home || home[0] == '\0')
+        if (home == nullptr || home[0] == '\0') {
             home = std::getenv("USERPROFILE");
-        if (home && home[0] != '\0') {
+        }
+        if (home != nullptr && home[0] != '\0') {
             base = std::filesystem::path(home) / ".config" / "kanariv";
         } else {
             std::error_code ec;
             base = std::filesystem::temp_directory_path(ec) / "kanariv";
-            if (ec)
+            if (ec) {
                 base = std::filesystem::path("/tmp/kanariv");
+            }
         }
     }
     return base / "config.json";
 }
 
-std::filesystem::path legacyConfigPath() {
+auto legacyConfigPath() -> std::filesystem::path {
 #ifdef _WIN32
     const char* home = std::getenv("USERPROFILE");
-    if (home && home[0] != '\0') {
+    if (home != nullptr && home[0] != '\0') {
         return std::filesystem::path(home) / ".config" / "kanariv" / "config.json";
     }
 #endif
     return {};
 }
 
-kanariv::utils::Expected<std::string> readFileString(const std::filesystem::path& p) {
+auto readFileString(const std::filesystem::path& p) -> kanariv::utils::Expected<std::string> {
     std::ifstream in(p);
     if (!in) {
         return std::unexpected{
@@ -103,7 +107,7 @@ namespace kanariv::config {
 
 using kanariv::utils::Json;
 
-kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
+auto loadConfig(const std::filesystem::path& path) -> kanariv::utils::Expected<Config> {
     Config cfg{};
     cfg.dbPath = detail::defaultDbPath();
     cfg.configPath = path.empty() ? detail::defaultConfigPath() : path;
@@ -131,62 +135,69 @@ kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
     }
 
     auto fileRes = detail::readFileString(cfgFile);
-    if (!fileRes)
+    if (!fileRes) {
         return std::unexpected{fileRes.error()};
+    }
     std::string content = std::move(*fileRes);
     if (content.empty()) {
         return cfg;
     }
     try {
         const Json j = Json::parse(content);
-        if (j.contains("dbPath") && j["dbPath"].isString()) {
-            std::string s = j["dbPath"].get<std::string>();
-            if (!s.empty())
+        if (j.contains("dbPath") && j["dbPath"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            auto s = j["dbPath"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (!s.empty()) {
                 cfg.dbPath = std::filesystem::path(s);
+            }
         }
-        if (j.contains("configPath") && j["configPath"].isString()) {
+        if (j.contains("configPath") && j["configPath"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             // ignore - already set
         }
-        if (j.contains("device") && j["device"].isString()) {
-            cfg.device = j["device"].get<std::string>();
+        if (j.contains("device") && j["device"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.device = j["device"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
-        if (j.contains("logLevel") && j["logLevel"].isInteger()) {
-            cfg.logLevel = j["logLevel"].get<int>();
-        } else if (j.contains("logLevel") && j["logLevel"].isString()) {
+        if (j.contains("logLevel") && j["logLevel"].isInteger()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.logLevel = j["logLevel"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        } else if (j.contains("logLevel") && j["logLevel"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             // Tolerate hand-written names ("info"); canonical form is numeric.
-            if (auto lvl = kanariv::utils::parseLogLevelValue(j["logLevel"].get<std::string>()))
+            if (auto lvl = kanariv::utils::parseLogLevelValue(j["logLevel"].get<std::string>())) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 cfg.logLevel = std::to_underlying(*lvl);
+            }
         }
-        if (j.contains("socketPath") && j["socketPath"].isString()) {
-            std::string s = j["socketPath"].get<std::string>();
-            if (!s.empty())
+        if (j.contains("socketPath") && j["socketPath"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            auto s = j["socketPath"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (!s.empty()) {
                 cfg.socketPath = s;
+            }
         }
-        if (j.contains("autoResumeOnPlay") && j["autoResumeOnPlay"].isBoolean()) {
-            cfg.autoResumeOnPlay = j["autoResumeOnPlay"].get<bool>();
+        if (j.contains("autoResumeOnPlay") && j["autoResumeOnPlay"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.autoResumeOnPlay = j["autoResumeOnPlay"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
-        if (j.contains("clearStopsPlayback") && j["clearStopsPlayback"].isBoolean()) {
-            cfg.clearStopsPlayback = j["clearStopsPlayback"].get<bool>();
+        if (j.contains("clearStopsPlayback") && j["clearStopsPlayback"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.clearStopsPlayback = j["clearStopsPlayback"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
-        if (j.contains("repeatDefault") && j["repeatDefault"].isString()) {
-            std::string rd = j["repeatDefault"].get<std::string>();
-            if (rd == "off" || rd == "one" || rd == "all")
+        if (j.contains("repeatDefault") && j["repeatDefault"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            auto rd = j["repeatDefault"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (rd == "off" || rd == "one" || rd == "all") {
                 cfg.repeatDefault = rd;
+            }
         }
-        if (j.contains("autostart") && j["autostart"].isBoolean()) {
-            cfg.autostart = j["autostart"].get<bool>();
+        if (j.contains("autostart") && j["autostart"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.autostart = j["autostart"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
         // legacy keys: db_path, log_level
-        if (j.contains("db_path") && j["db_path"].isString()) {
-            std::string s = j["db_path"].get<std::string>();
-            if (!s.empty())
+        if (j.contains("db_path") && j["db_path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            auto s = j["db_path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (!s.empty()) {
                 cfg.dbPath = std::filesystem::path(s);
+            }
         }
-        if (j.contains("log_level") && j["log_level"].isInteger()) {
-            cfg.logLevel = j["log_level"].get<int>();
-        } else if (j.contains("log_level") && j["log_level"].isString()) {
-            if (auto lvl = kanariv::utils::parseLogLevelValue(j["log_level"].get<std::string>()))
+        if (j.contains("log_level") && j["log_level"].isInteger()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.logLevel = j["log_level"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        } else if (j.contains("log_level") && j["log_level"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (auto lvl = kanariv::utils::parseLogLevelValue(j["log_level"].get<std::string>())) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 cfg.logLevel = std::to_underlying(*lvl);
+            }
         }
     } catch (const std::exception& e) {
         return std::unexpected{
@@ -195,7 +206,7 @@ kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
     return cfg;
 }
 
-kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
+auto saveConfig(const Config& cfg) -> kanariv::utils::Expected<void> {
     try {
         std::filesystem::path dir = cfg.configPath.parent_path();
         if (!dir.empty()) {
@@ -203,15 +214,16 @@ kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
             std::filesystem::create_directories(dir, ec);
         }
         Json j;
-        j["dbPath"] = cfg.dbPath.generic_string();
-        j["device"] = cfg.device;
-        j["logLevel"] = cfg.logLevel;
-        j["autoResumeOnPlay"] = cfg.autoResumeOnPlay;
-        j["clearStopsPlayback"] = cfg.clearStopsPlayback;
-        j["repeatDefault"] = cfg.repeatDefault;
-        j["autostart"] = cfg.autostart;
-        if (!cfg.socketPath.empty())
-            j["socketPath"] = cfg.socketPath;
+        j["dbPath"] = cfg.dbPath.generic_string(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["device"] = cfg.device; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["logLevel"] = cfg.logLevel; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["autoResumeOnPlay"] = cfg.autoResumeOnPlay; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["clearStopsPlayback"] = cfg.clearStopsPlayback; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["repeatDefault"] = cfg.repeatDefault; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["autostart"] = cfg.autostart; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (!cfg.socketPath.empty()) {
+            j["socketPath"] = cfg.socketPath; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        }
         std::ofstream out(cfg.configPath);
         if (!out) {
             return std::unexpected{
@@ -229,41 +241,47 @@ kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
 
 namespace kanariv::config::detail_paths {
 
-std::string hex8ForDb(const std::filesystem::path& dbPath) {
+constexpr std::uint32_t hashMask32 = 0xFFFFFFFFu;
+constexpr int hashShift32 = 32;
+
+auto hex8ForDb(const std::filesystem::path& dbPath) -> std::string {
     std::string input = dbPath.generic_string();
-    if (input.empty())
+    if (input.empty()) {
         input = dbPath.string();
+    }
     const std::uint64_t raw = static_cast<std::uint64_t>(std::hash<std::string>{}(input));
-    std::uint32_t hv = static_cast<std::uint32_t>(raw & 0xFFFFFFFFu);
-    hv ^= static_cast<std::uint32_t>((raw >> 32) & 0xFFFFFFFFu);
+    auto hv = static_cast<std::uint32_t>(raw & hashMask32);
+    hv ^= static_cast<std::uint32_t>((raw >> hashShift32) & hashMask32);
     return std::format("{:08x}", hv);
 }
 
-std::filesystem::path baseDirForSocket() {
+auto baseDirForSocket() -> std::filesystem::path {
 #ifdef _WIN32
     const char* localApp = std::getenv("LOCALAPPDATA");
-    if (localApp && localApp[0] != '\0') {
+    if (localApp != nullptr && localApp[0] != '\0') {
         return std::filesystem::path(localApp) / "kanariv";
     }
 #endif
     const char* xdgRuntime = std::getenv("XDG_RUNTIME_DIR");
-    if (xdgRuntime && xdgRuntime[0] != '\0') {
+    if (xdgRuntime != nullptr && xdgRuntime[0] != '\0') {
         return std::filesystem::path(xdgRuntime) / "kanariv";
     }
     const char* xdgData = std::getenv("XDG_DATA_HOME");
-    if (xdgData && xdgData[0] != '\0') {
+    if (xdgData != nullptr && xdgData[0] != '\0') {
         return std::filesystem::path(xdgData) / "kanariv";
     }
     const char* home = std::getenv("HOME");
-    if (!home || home[0] == '\0')
+    if (home == nullptr || home[0] == '\0') {
         home = std::getenv("USERPROFILE");
-    if (home && home[0] != '\0') {
+    }
+    if (home != nullptr && home[0] != '\0') {
         return std::filesystem::path(home) / ".local" / "share" / "kanariv";
     }
     std::error_code ec;
     auto base = std::filesystem::temp_directory_path(ec) / "kanariv";
-    if (ec)
+    if (ec) {
         base = std::filesystem::path("/tmp/kanariv");
+    }
     return base;
 }
 
@@ -271,7 +289,7 @@ std::filesystem::path baseDirForSocket() {
 
 namespace kanariv::config {
 
-kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path& dbPath) {
+auto socketPathFor(const std::filesystem::path& dbPath) -> kanariv::utils::Expected<std::string> {
     try {
         std::string hex = detail_paths::hex8ForDb(dbPath);
 #ifdef _WIN32
@@ -288,7 +306,8 @@ kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path&
     }
 }
 
-kanariv::utils::Expected<std::filesystem::path> pidPathFor(const std::filesystem::path& dbPath) {
+auto pidPathFor(const std::filesystem::path& dbPath)
+    -> kanariv::utils::Expected<std::filesystem::path> {
     try {
         std::string hex = detail_paths::hex8ForDb(dbPath);
         auto base = detail_paths::baseDirForSocket();
@@ -301,7 +320,8 @@ kanariv::utils::Expected<std::filesystem::path> pidPathFor(const std::filesystem
     }
 }
 
-kanariv::utils::Expected<std::filesystem::path> lockPathFor(const std::filesystem::path& dbPath) {
+auto lockPathFor(const std::filesystem::path& dbPath)
+    -> kanariv::utils::Expected<std::filesystem::path> {
     try {
         std::string hex = detail_paths::hex8ForDb(dbPath);
         auto base = detail_paths::baseDirForSocket();
@@ -314,16 +334,19 @@ kanariv::utils::Expected<std::filesystem::path> lockPathFor(const std::filesyste
     }
 }
 
-kanariv::utils::Expected<std::filesystem::path> logPathFor(const std::filesystem::path& dbPath) {
+auto logPathFor(const std::filesystem::path& dbPath)
+    -> kanariv::utils::Expected<std::filesystem::path> {
     try {
         auto parent = dbPath.parent_path();
-        if (!parent.empty())
+        if (!parent.empty()) {
             return parent / "kanariv.log";
+        }
         std::error_code ec;
         auto tmp = std::filesystem::temp_directory_path(ec);
-        if (ec)
+        if (ec) {
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "logPathFor failed")};
+        }
         return tmp / "kanariv.log";
     } catch (const std::exception& e) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};

@@ -1,10 +1,10 @@
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstddef>
 #include <db/fts.hpp>
 #include <string>
 #include <string_view>
-#include <array>
 
 namespace kanariv::db::internal {
 
@@ -17,12 +17,12 @@ void stripFtsSpecialChars(std::string_view term, std::string& out);
 void replaceFtsOperators(std::string& upper, std::string& cleaned);
 
 // Collapses runs of spaces into a single space.
-std::string collapseWhitespace(const std::string& s);
+auto collapseWhitespace(const std::string& s) -> std::string;
 
 // Trims leading and trailing spaces.
-std::string trimSpaces(const std::string& s);
+auto trimSpaces(const std::string& s) -> std::string;
 
-std::string escapeLike(std::string_view term) {
+auto escapeLike(std::string_view term) -> std::string {
     std::string result;
     result.reserve(term.size() + 4);
     for (char c : term) {
@@ -34,16 +34,18 @@ std::string escapeLike(std::string_view term) {
     return result;
 }
 
-std::string sanitizeFtsTerm(std::string_view term) {
-    if (term.empty())
+auto sanitizeFtsTerm(std::string_view term) -> std::string {
+    if (term.empty()) {
         return {};
+    }
 
     std::string cleaned;
     cleaned.reserve(term.size());
     for (char c : term) {
         if (c == '\'' || c == '*' || c == ':' || c == '-' || c == '(' || c == ')' || c == '^' ||
-            c == '~')
+            c == '~') {
             continue;
+        }
         if (c == '"') {
             cleaned.push_back('"');
             cleaned.push_back('"');
@@ -54,14 +56,15 @@ std::string sanitizeFtsTerm(std::string_view term) {
 
     std::string upper = cleaned;
     std::transform(upper.begin(), upper.end(), upper.begin(),
-                   [](unsigned char c) { return std::toupper(c); });
+                   [](unsigned char c) -> int { return std::toupper(c); });
 
     replaceFtsOperators(upper, cleaned);
     cleaned = collapseWhitespace(cleaned);
     cleaned = trimSpaces(cleaned);
 
-    if (cleaned.empty())
+    if (cleaned.empty()) {
         return {};
+    }
 
     return cleaned;
 }
@@ -71,8 +74,9 @@ std::string sanitizeFtsTerm(std::string_view term) {
 void stripFtsSpecialChars(std::string_view term, std::string& out) {
     for (char c : term) {
         if (c == '\'' || c == '*' || c == ':' || c == '-' || c == '(' || c == ')' || c == '^' ||
-            c == '~')
+            c == '~') {
             continue;
+        }
         if (c == '"') {
             out.push_back('"');
             out.push_back('"');
@@ -85,8 +89,8 @@ void stripFtsSpecialChars(std::string_view term, std::string& out) {
 // Replaces FTS operator keywords (AND, OR, NOT, NEAR) with spaces in-place.
 // Handles both " OP " and trailing/leading "OP"/" OP" forms.
 void replaceFtsOperators(std::string& upper, std::string& cleaned) {
-    constexpr std::array<std::string_view, 4> opsWithSpaces = {{" AND ", " OR ", " NOT ",
-                                                                " NEAR "}};
+    constexpr std::array<std::string_view, 4> opsWithSpaces = {
+        {" AND ", " OR ", " NOT ", " NEAR "}};
     for (const auto& op : opsWithSpaces) {
         size_t pos = 0;
         while ((pos = upper.find(op, pos)) != std::string::npos) {
@@ -116,7 +120,7 @@ void replaceFtsOperators(std::string& upper, std::string& cleaned) {
 }
 
 // Collapses runs of spaces into a single space.
-std::string collapseWhitespace(const std::string& s) {
+auto collapseWhitespace(const std::string& s) -> std::string {
     std::string result;
     result.reserve(s.size());
     bool lastWasSpace = false;
@@ -135,15 +139,18 @@ std::string collapseWhitespace(const std::string& s) {
 }
 
 // Trims leading and trailing spaces.
-std::string trimSpaces(const std::string& s) {
+auto trimSpaces(const std::string& s) -> std::string {
     size_t start = 0;
-    while (start < s.size() && s[start] == ' ')
+    while (start < s.size() && s[start] == ' ') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         start++;
+    }
     size_t end = s.size();
-    while (end > start && s[end - 1] == ' ')
+    while (end > start && s[end - 1] == ' ') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         end--;
-    if (start >= end)
+    }
+    if (start >= end) {
         return {};
+    }
     return s.substr(start, end - start);
 }
 

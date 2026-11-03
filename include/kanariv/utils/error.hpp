@@ -6,9 +6,9 @@
  * @ingroup kanariv_utils
  */
 
+#include <format>
 #include <kanariv/fwd.hpp>
 #include <kanariv/utils/result.hpp>
-#include <format>
 #include <string>
 #include <string_view>
 

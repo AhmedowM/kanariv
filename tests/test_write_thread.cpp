@@ -2,11 +2,11 @@
 
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
+#include <expected>
 #include <kanariv/db/database.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
-#include <chrono>
-#include <expected>
 #include <string>
 #include <thread>
 

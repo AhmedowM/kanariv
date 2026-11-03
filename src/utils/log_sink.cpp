@@ -1,4 +1,4 @@
-#include <kanariv/utils/print.hpp>
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
@@ -6,6 +6,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <kanariv/utils/print.hpp>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -18,7 +19,7 @@ namespace kanariv::utils {
 
 namespace {
 
-std::string_view levelTag(LogLevel lvl) noexcept {
+auto levelTag(LogLevel lvl) noexcept -> std::string_view {
     switch (lvl) {
     case LogLevel::Trace:
         return "TRACE";
@@ -35,7 +36,7 @@ std::string_view levelTag(LogLevel lvl) noexcept {
     }
 }
 
-std::string formatLine(LogLevel lvl, std::string_view msg) {
+auto formatLine(LogLevel lvl, std::string_view msg) -> std::string {
     const auto now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
     // Low 24 bits distinguish the daemon's handful of threads; the full
     // 64-bit hash is visual noise in every line.
@@ -57,48 +58,49 @@ struct FileLogSink::Impl {
 
     void writeLine(LogLevel lvl, std::string_view msg);
     void rotate();
-    std::filesystem::path indexedPath(int i) const;
+    auto indexedPath(int i) const -> std::filesystem::path;
 };
 
 FileLogSink::FileLogSink() : impl_(std::make_unique<Impl>()) {}
 FileLogSink::~FileLogSink() = default;
 
-std::shared_ptr<FileLogSink> FileLogSink::open(const std::filesystem::path& path,
-                                               const FileSinkOptions& opts) {
+auto FileLogSink::open(const std::filesystem::path& path, const FileSinkOptions& opts)
+    -> std::shared_ptr<FileLogSink> {
     auto sink = std::shared_ptr<FileLogSink>(new FileLogSink());
     Impl& impl = *sink->impl_;
     impl.path = path;
     impl.opts = opts;
-    if (impl.opts.generations < 1)
-        impl.opts.generations = 1;
+    impl.opts.generations = std::max(impl.opts.generations, 1);
     impl.out.open(path, std::ios::out | std::ios::app);
-    if (!impl.out.is_open())
+    if (!impl.out.is_open()) {
         return nullptr;
+    }
     std::error_code ec;
     auto size = std::filesystem::file_size(path, ec);
     impl.currentBytes = ec ? 0 : static_cast<std::size_t>(size);
     impl.valid = true;
     if (impl.currentBytes > impl.opts.maxBytes) {
-        std::lock_guard<std::mutex> lk(impl.mutex);
+        std::scoped_lock lk(impl.mutex);
         impl.rotate();
     }
     return sink;
 }
 
-Logger::Callback FileLogSink::callback() {
+auto FileLogSink::callback() -> Logger::Callback {
     std::shared_ptr<FileLogSink> self = shared_from_this();
-    return [self](LogLevel lvl, std::string_view msg) { self->impl_->writeLine(lvl, msg); };
+    return [self](LogLevel lvl, std::string_view msg) -> void { self->impl_->writeLine(lvl, msg); };
 }
 
-bool FileLogSink::valid() const noexcept {
-    std::lock_guard<std::mutex> lk(impl_->mutex);
+auto FileLogSink::valid() const noexcept -> bool {
+    std::scoped_lock lk(impl_->mutex);
     return impl_->valid;
 }
 
 void FileLogSink::flush() {
-    std::lock_guard<std::mutex> lk(impl_->mutex);
-    if (impl_->valid)
+    std::scoped_lock lk(impl_->mutex);
+    if (impl_->valid) {
         impl_->out.flush();
+    }
 }
 
 void FileLogSink::Impl::writeLine(LogLevel lvl, std::string_view msg) {
@@ -108,20 +110,24 @@ void FileLogSink::Impl::writeLine(LogLevel lvl, std::string_view msg) {
     } catch (...) {
         return;
     }
-    std::lock_guard<std::mutex> lk(mutex);
-    if (!valid)
+    std::scoped_lock lk(mutex);
+    if (!valid) {
         return;
+    }
     try {
-        if (currentBytes + line.size() > opts.maxBytes)
+        if (currentBytes + line.size() > opts.maxBytes) {
             rotate();
-        if (!valid)
+        }
+        if (!valid) {
             return;
+        }
         out << line;
         out.flush();
-        if (!out)
+        if (!out) {
             valid = false;
-        else
+        } else {
             currentBytes += line.size();
+        }
     } catch (...) {
         valid = false;
     }
@@ -141,8 +147,9 @@ void FileLogSink::Impl::rotate() {
         const int gens = opts.generations;
         std::error_code ec;
         std::filesystem::remove(indexedPath(gens - 1), ec);
-        for (int i = gens - 2; i >= 0; --i)
+        for (int i = gens - 2; i >= 0; --i) {
             std::filesystem::rename(indexedPath(i), indexedPath(i + 1), ec);
+        }
         out.open(path, std::ios::out | std::ios::trunc);
         valid = out.is_open();
         currentBytes = 0;
@@ -151,9 +158,10 @@ void FileLogSink::Impl::rotate() {
     }
 }
 
-std::filesystem::path FileLogSink::Impl::indexedPath(int i) const {
-    if (i <= 0)
+auto FileLogSink::Impl::indexedPath(int i) const -> std::filesystem::path {
+    if (i <= 0) {
         return path;
+    }
     return std::filesystem::path(path.string() + "." + std::to_string(i));
 }
 

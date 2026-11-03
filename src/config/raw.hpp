@@ -9,10 +9,10 @@
  * `src/app/config.cpp` and `src/service/dispatch_config.cpp` only.
  */
 
+#include <filesystem>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/result.hpp>
-#include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -37,7 +37,7 @@ struct RawConfigValue {
  * @return Value string (JSON string, "null", or JSON dump) on success, Error on failure.
  */
 KANARIV_API kanariv::utils::Expected<std::string> configGetRaw(const std::filesystem::path& p,
-                                                             std::string_view key);
+                                                               std::string_view key);
 
 /**
  * @brief Set a raw config value in JSON file.
@@ -48,8 +48,8 @@ KANARIV_API kanariv::utils::Expected<std::string> configGetRaw(const std::filesy
  * @param value Value to write (JSON-parsed if valid JSON).
  * @return void on success, Error on failure.
  */
-KANARIV_API kanariv::utils::Expected<void> configSetRaw(const std::filesystem::path& p,
-                                                      std::string_view key, std::string_view value);
+KANARIV_API kanariv::utils::Expected<void>
+configSetRaw(const std::filesystem::path& p, std::string_view key, std::string_view value);
 
 /**
  * @brief List all config key-value pairs from JSON file.
@@ -67,7 +67,7 @@ configListRaw(const std::filesystem::path& p);
  * @return void on success, Error on failure (not found, corrupt, IO).
  */
 KANARIV_API kanariv::utils::Expected<void> configDeleteRaw(const std::filesystem::path& p,
-                                                         std::string_view key);
+                                                           std::string_view key);
 
 /**
  * @brief Reset entire config (delete config file).

@@ -1,11 +1,5 @@
 #include <sqlite3.h>
 
-#include <kanariv/db/database.hpp>
-#include <kanariv/db/json.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/json.hpp>
-#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <db/database_access.hpp>
@@ -17,6 +11,12 @@
 #include <fstream>
 #include <ios>
 #include <iterator>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/json.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/result.hpp>
 #include <mutex>
 #include <span>
 #include <string>
@@ -24,41 +24,77 @@
 
 namespace kanariv::db {
 
+constexpr int bindFingerprint = 1;
+constexpr int bindPath = 2;
+constexpr int bindSize = 3;
+constexpr int bindMtime = 4;
+constexpr int bindDuration = 5;
+constexpr int bindSampleRate = 6;
+constexpr int bindChannels = 7;
+constexpr int bindBitrate = 8;
+constexpr int bindTitle = 9;
+constexpr int bindArtist = 10;
+constexpr int bindAlbum = 11;
+constexpr int bindAlbumArtist = 12;
+constexpr int bindGenre = 13;
+constexpr int bindYear = 14;
+constexpr int bindTrackNum = 15;
+constexpr int bindDiscNum = 16;
+constexpr int bindCoverArtPath = 17;
+constexpr int bindRating = 18;
+constexpr int bindPlayCount = 19;
+constexpr int bindLastPlayed = 20;
+constexpr int bindDateAdded = 21;
+constexpr int bindLastScanned = 22;
+constexpr int bindDirty = 23;
+constexpr int bindLibraryId = 24;
+constexpr int bindSourceKind = 25;
+constexpr int bindSourceKey = 26;
+constexpr int bindSourceAvailable = 27;
+constexpr int bindSourceDisplayName = 28;
+constexpr int colDeletedAt = 29;
+constexpr int defaultVolumeId = 1;
+
 using kanariv::utils::Json;
 
-std::expected<void, kanariv::utils::Error> exportJson(contracts::IDatabase& db_,
-                                                     const std::filesystem::path& outPath) {
-    Database& db = dynamic_cast<Database&>(db_);
+auto exportJson(contracts::IDatabase& db_, const std::filesystem::path& outPath)
+    -> std::expected<void, kanariv::utils::Error> {
+    auto& db = dynamic_cast<Database&>(db_);
     auto tracks = db.listTracks(nullptr);
-    if (!tracks)
+    if (!tracks) {
         return std::unexpected{tracks.error()};
+    }
     Json root;
-    root["tracks"] = Json::array();
+    root["tracks"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (auto& t : *tracks) {
-        root["tracks"].push_back(kanariv::utils::trackToJson(t));
+        root["tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     std::ofstream f(outPath, std::ios::binary);
-    if (!f)
+    if (!f) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "cannot open output")};
+    }
     f << root.dump(2);
-    if (!f)
+    if (!f) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "write failed")};
+    }
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> importJson(contracts::IDatabase& db_,
-                                                     const std::filesystem::path& inPath) {
-    Database& db = dynamic_cast<Database&>(db_);
+auto importJson(contracts::IDatabase& db_, const std::filesystem::path& inPath)
+    -> std::expected<void, kanariv::utils::Error> {
+    auto& db = dynamic_cast<Database&>(db_);
     std::ifstream f(inPath, std::ios::binary);
-    if (!f)
+    if (!f) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "cannot open input")};
+    }
     std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    if (content.empty())
+    if (content.empty()) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, "empty file")};
+    }
     Json root;
     try {
         root = Json::parse(content);
@@ -66,22 +102,25 @@ std::expected<void, kanariv::utils::Error> importJson(contracts::IDatabase& db_,
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
-    if (!root.contains("tracks"))
+    if (!root.contains("tracks")) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, "missing tracks array")};
-    const Json tracks = root["tracks"];
+    }
+    const Json tracks = root["tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     if (!tracks.isArray()) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, "missing tracks array")};
     }
     std::unique_lock lk{DatabaseAccess::mutex(db)};
     sqlite3* h = DatabaseAccess::handleLocked(db);
-    if (!h)
+    if (h == nullptr) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
+    }
     auto txRes = DbTransaction::begin(h);
-    if (!txRes)
+    if (!txRes) {
         return std::unexpected{txRes.error()};
+    }
     DbTransaction tx = std::move(*txRes);
     bool corrupt = false;
     for (std::size_t ti = 0, tn = tracks.size(); ti < tn; ++ti) {
@@ -111,42 +150,44 @@ std::expected<void, kanariv::utils::Error> importJson(contracts::IDatabase& db_,
         }
         auto fpSpan = std::span<const std::byte>{
             reinterpret_cast<const std::byte*>(t.fingerprint.data()), t.fingerprint.size()};
-        stmt.bindBlob(1, fpSpan);
-        stmt.bindText(2, t.path);
-        stmt.bindInt(3, t.size);
-        stmt.bindInt(4, t.mtime);
-        stmt.bindDouble(5, t.duration);
-        stmt.bindInt(6, t.sample_rate);
-        stmt.bindInt(7, t.channels);
-        stmt.bindInt(8, t.bitrate);
-        stmt.bindText(9, t.title);
-        stmt.bindText(10, t.artist);
-        stmt.bindText(11, t.album);
-        stmt.bindText(12, t.album_artist);
-        stmt.bindText(13, t.genre);
-        stmt.bindInt(14, t.year);
-        stmt.bindInt(15, t.track_num);
-        stmt.bindInt(16, t.disc_num);
-        stmt.bindText(17, t.cover_art_path);
-        stmt.bindInt(18, t.rating);
-        stmt.bindInt(19, t.play_count);
-        stmt.bindInt(20, t.last_played);
-        if (t.date_added)
-            stmt.bindInt(21, t.date_added);
-        else
-            stmt.bindNull(21);
-        stmt.bindInt(22, t.last_scanned);
-        stmt.bindInt(23, t.dirty ? 1 : 0);
-        stmt.bindInt(24, t.library_id ? t.library_id : 1);
+        stmt.bindBlob(bindFingerprint, fpSpan);
+        stmt.bindText(bindPath, t.path);
+        stmt.bindInt(bindSize, t.size);
+        stmt.bindInt(bindMtime, t.mtime);
+        stmt.bindDouble(bindDuration, t.duration);
+        stmt.bindInt(bindSampleRate, t.sample_rate);
+        stmt.bindInt(bindChannels, t.channels);
+        stmt.bindInt(bindBitrate, t.bitrate);
+        stmt.bindText(bindTitle, t.title);
+        stmt.bindText(bindArtist, t.artist);
+        stmt.bindText(bindAlbum, t.album);
+        stmt.bindText(bindAlbumArtist, t.album_artist);
+        stmt.bindText(bindGenre, t.genre);
+        stmt.bindInt(bindYear, t.year);
+        stmt.bindInt(bindTrackNum, t.track_num);
+        stmt.bindInt(bindDiscNum, t.disc_num);
+        stmt.bindText(bindCoverArtPath, t.cover_art_path);
+        stmt.bindInt(bindRating, t.rating);
+        stmt.bindInt(bindPlayCount, t.play_count);
+        stmt.bindInt(bindLastPlayed, t.last_played);
+        if (t.date_added != 0) {
+            stmt.bindInt(bindDateAdded, t.date_added);
+        } else {
+            stmt.bindNull(bindDateAdded);
+        }
+        stmt.bindInt(bindLastScanned, t.last_scanned);
+        stmt.bindInt(bindDirty, t.dirty ? 1 : 0);
+        stmt.bindInt(bindLibraryId, t.library_id != 0 ? t.library_id : defaultVolumeId);
         const auto source = kanariv::types::normalizedSource(t);
-        stmt.bindInt(25, static_cast<int>(source.kind));
-        stmt.bindText(26, source.key);
-        stmt.bindInt(27, source.available ? 1 : 0);
-        stmt.bindText(28, source.display_name);
-        if (t.deleted_at)
-            stmt.bindInt(29, t.deleted_at);
-        else
-            stmt.bindNull(29);
+        stmt.bindInt(bindSourceKind, static_cast<int>(source.kind));
+        stmt.bindText(bindSourceKey, source.key);
+        stmt.bindInt(bindSourceAvailable, source.available ? 1 : 0);
+        stmt.bindText(bindSourceDisplayName, source.display_name);
+        if (t.deleted_at != 0) {
+            stmt.bindInt(colDeletedAt, t.deleted_at);
+        } else {
+            stmt.bindNull(colDeletedAt);
+        }
         int rc = stmt.stepDone();
         if (rc == SQLITE_CONSTRAINT) {
             SqliteStatement sel;
@@ -171,39 +212,40 @@ std::expected<void, kanariv::utils::Error> importJson(contracts::IDatabase& db_,
                     corrupt = true;
                     break;
                 }
-                upd.bindText(1, t.path);
-                upd.bindInt(2, t.size);
-                upd.bindInt(3, t.mtime);
-                upd.bindDouble(4, t.duration);
-                upd.bindInt(5, t.sample_rate);
-                upd.bindInt(6, t.channels);
-                upd.bindInt(7, t.bitrate);
-                upd.bindText(8, t.title);
-                upd.bindText(9, t.artist);
-                upd.bindText(10, t.album);
-                upd.bindText(11, t.album_artist);
-                upd.bindText(12, t.genre);
-                upd.bindInt(13, t.year);
-                upd.bindInt(14, t.track_num);
-                upd.bindInt(15, t.disc_num);
-                upd.bindText(16, t.cover_art_path);
-                upd.bindInt(17, t.rating);
-                upd.bindInt(18, t.play_count);
-                upd.bindInt(19, t.last_played);
-                upd.bindInt(20, t.date_added);
-                upd.bindInt(21, t.last_scanned);
-                upd.bindInt(22, t.dirty ? 1 : 0);
-                upd.bindInt(23, t.library_id ? t.library_id : 1);
+                upd.bindText(bindPath, t.path);
+                upd.bindInt(bindSize, t.size);
+                upd.bindInt(bindMtime, t.mtime);
+                upd.bindDouble(bindDuration, t.duration);
+                upd.bindInt(bindSampleRate, t.sample_rate);
+                upd.bindInt(bindChannels, t.channels);
+                upd.bindInt(bindBitrate, t.bitrate);
+                upd.bindText(bindTitle, t.title);
+                upd.bindText(bindArtist, t.artist);
+                upd.bindText(bindAlbum, t.album);
+                upd.bindText(bindAlbumArtist, t.album_artist);
+                upd.bindText(bindGenre, t.genre);
+                upd.bindInt(bindYear, t.year);
+                upd.bindInt(bindTrackNum, t.track_num);
+                upd.bindInt(bindDiscNum, t.disc_num);
+                upd.bindText(bindCoverArtPath, t.cover_art_path);
+                upd.bindInt(bindRating, t.rating);
+                upd.bindInt(bindPlayCount, t.play_count);
+                upd.bindInt(bindLastPlayed, t.last_played);
+                upd.bindInt(bindDateAdded, t.date_added);
+                upd.bindInt(bindLastScanned, t.last_scanned);
+                upd.bindInt(bindDirty, t.dirty ? 1 : 0);
+                upd.bindInt(bindLibraryId, t.library_id != 0 ? t.library_id : defaultVolumeId);
                 const auto updatedSource = kanariv::types::normalizedSource(t);
-                upd.bindInt(24, static_cast<int>(updatedSource.kind));
-                upd.bindText(25, updatedSource.key);
-                upd.bindInt(26, updatedSource.available ? 1 : 0);
-                upd.bindText(27, updatedSource.display_name);
-                if (t.deleted_at)
-                    upd.bindInt(28, t.deleted_at);
-                else
-                    upd.bindNull(28);
-                upd.bindInt(29, existing);
+                upd.bindInt(bindSourceKind, static_cast<int>(updatedSource.kind));
+                upd.bindText(bindSourceKey, updatedSource.key);
+                upd.bindInt(bindSourceAvailable, updatedSource.available ? 1 : 0);
+                upd.bindText(bindSourceDisplayName, updatedSource.display_name);
+                if (t.deleted_at != 0) {
+                    upd.bindInt(colDeletedAt, t.deleted_at);
+                } else {
+                    upd.bindNull(colDeletedAt);
+                }
+                upd.bindInt(bindFingerprint, existing);
                 (void)upd.stepDone();
             } else {
                 SqliteStatement sel2;
@@ -223,8 +265,9 @@ std::expected<void, kanariv::utils::Error> importJson(contracts::IDatabase& db_,
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, "import corrupt")};
     }
-    if (auto c = tx.commit(); !c)
+    if (auto c = tx.commit(); !c) {
         return std::unexpected{c.error()};
+    }
     return {};
 }
 

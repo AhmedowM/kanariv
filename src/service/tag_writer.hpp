@@ -9,9 +9,9 @@
  */
 #pragma once
 
+#include <filesystem>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
-#include <filesystem>
 
 namespace kanariv::contracts {
 // Defined in contracts/database.hpp (full Database API); reference params need only this.
@@ -34,7 +34,7 @@ bool canWriteFileTags(const std::filesystem::path& p);
  * TagLib open/save failures).
  */
 kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
-                                            const kanariv::types::Track& t);
+                                             const kanariv::types::Track& t);
 
 /**
  * @brief Re-registers a track row after its file was tag-edited.
@@ -45,7 +45,7 @@ kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
  * mtime, and audio technicals refresh from the new bytes. The id is stable:
  * lookup is path-keyed, never fingerprint-keyed (the fingerprint changed).
  */
-kanariv::utils::Expected<kanariv::types::Track> reregisterTrackRow(kanariv::contracts::IDatabase& db,
-                                                                 kanariv::types::Track t);
+kanariv::utils::Expected<kanariv::types::Track>
+reregisterTrackRow(kanariv::contracts::IDatabase& db, kanariv::types::Track t);
 
 } // namespace kanariv::service::detail

@@ -27,10 +27,10 @@
  * - NoMem: Allocation failure
  */
 
-#include <kanariv/fwd.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <kanariv/fwd.hpp>
 #include <memory>
 #include <span>
 #include <vector>
@@ -181,7 +181,8 @@ class KANARIV_API FileReader final : public Reader {
      * @par Thread safety
      * Thread-safe; construction uses no shared state.
      */
-    static kanariv::utils::Expected<std::unique_ptr<Reader>> open(const std::filesystem::path& path);
+    static kanariv::utils::Expected<std::unique_ptr<Reader>>
+    open(const std::filesystem::path& path);
 
     ~FileReader() override;
 
@@ -323,7 +324,7 @@ class KANARIV_API MemoryReader final : public Reader {
      * @return Expected containing unique_ptr<Reader> on success, Error if null data with len>0
      */
     static kanariv::utils::Expected<std::unique_ptr<Reader>> open(const std::byte* data,
-                                                                 std::size_t len);
+                                                                  std::size_t len);
 
     /** @brief Reads bytes from the current in-memory position. */
     std::size_t read(std::span<std::byte> dst) override;

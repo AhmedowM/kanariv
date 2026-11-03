@@ -6,12 +6,12 @@
  * @ingroup kanariv_db
  */
 
-#include <kanariv/db/database.hpp>
-#include <kanariv/types/record.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/db/database.hpp>
+#include <kanariv/types/record.hpp>
+#include <kanariv/utils/error.hpp>
 #include <string>
 #include <vector>
 
@@ -22,15 +22,16 @@ namespace kanariv::db {
  * @ingroup kanariv_db
  */
 struct LibraryMaintenanceReport {
-    std::size_t tracks_checked{}; ///< Live rows examined.
+    std::size_t tracks_checked{};                        ///< Live rows examined.
     std::vector<kanariv::types::Track> missing_tracks{}; ///< Rows whose paths no longer exist.
-    std::vector<std::vector<kanariv::types::Track>>
-        duplicate_groups{}; ///< Groups sharing a path.
+    std::vector<std::vector<kanariv::types::Track>> duplicate_groups{}; ///< Groups sharing a path.
 
     /**
      * @brief Returns the number of missing-file rows.
      */
-    std::size_t missingFiles() const noexcept { return missing_tracks.size(); }
+    std::size_t missingFiles() const noexcept {
+        return missing_tracks.size();
+    }
 
     /**
      * @brief Returns the number of redundant rows in duplicate groups.
@@ -73,7 +74,7 @@ libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report);
  * @ingroup kanariv_db
  */
 struct LibraryMaintenanceOptions {
-    bool dry_run{true}; ///< Report planned actions without changing the database.
+    bool dry_run{true};        ///< Report planned actions without changing the database.
     bool prune_missing{false}; ///< Delete rows reported as missing when not dry-running.
 };
 
@@ -90,6 +91,6 @@ struct LibraryMaintenanceOptions {
  */
 KANARIV_API std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
 libraryApplyMaintenance(Database& db, int64_t libraryId,
-                         const LibraryMaintenanceOptions& options = {});
+                        const LibraryMaintenanceOptions& options = {});
 
 } // namespace kanariv::db

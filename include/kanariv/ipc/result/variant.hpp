@@ -39,12 +39,11 @@ namespace kanariv::ipc {
  * The variant owns its active result payload; vectors and strings are copied
  * or moved with the normal `std::variant` value semantics.
  */
-using Result =
-    std::variant<Status, QueueTracks, Queues, QueueCreated, PlaylistLoaded, VolumeInfo,
-                 kanariv::types::LibraryStats, Tracks, SearchResults, Playlists, PlaylistData,
-                 PlaylistCreated, PlaylistImportReport, ScanReport, LibraryMaintenanceReport,
-                 ConfigValue, ConfigValues, SingleTrack, TrackInfo, History, Bookmarks, Empty,
-                 CliError, Devices>;
+using Result = std::variant<Status, QueueTracks, Queues, QueueCreated, PlaylistLoaded, VolumeInfo,
+                            kanariv::types::LibraryStats, Tracks, SearchResults, Playlists,
+                            PlaylistData, PlaylistCreated, PlaylistImportReport, ScanReport,
+                            LibraryMaintenanceReport, ConfigValue, ConfigValues, SingleTrack,
+                            TrackInfo, History, Bookmarks, Empty, CliError, Devices>;
 
 /**
  * @brief Expected type for results that can fail with a CLI error.
