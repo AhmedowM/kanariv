@@ -83,7 +83,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev graphviz patchelf libdbus-1-dev libglib2.0-bin
+          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev graphviz patchelf libdbus-1-dev libglib2.0-bin pkg-config
           ffmpeg -version || true
           cmake --version
           ninja --version
@@ -370,7 +370,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build nasm pkg-config zlib1g-dev make curl
+          sudo apt-get install -y ninja-build nasm pkg-config zlib1g-dev make curl libdbus-1-dev
           cmake --version
           ninja --version
 
