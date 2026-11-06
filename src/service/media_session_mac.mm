@@ -23,8 +23,12 @@ namespace kanariv::media_session {
  * - MPNowPlayingInfoCenter for now-playing metadata / playback state
  *   (lock screen, Control Center, Touch Bar). On macOS the playback state is
  *   conveyed via MPNowPlayingInfoPropertyPlaybackRate (1.0 = playing,
- *   0.0 = paused/stopped), not a separate state key.
+ *   0.0 = paused/stopped). MPMediaItemPropertyArtwork cannot be set on macOS
+ *   because MPMediaItemArtwork's initializer (initWithImage:) takes a UIImage,
+ *   which is iOS-only and unavailable on macOS. Artwork is therefore omitted
+ *   from now-playing info on macOS; all other features work.
  * - MPRemoteCommandCenter for media-key events (play/pause/next/prev/stop).
+ *   Gated by enableMediaKeys_.
  *
  * Compiled only on __APPLE__ with Objective-C++ (.mm).
  */
@@ -49,79 +53,80 @@ class MacImpl final : public Impl {
 
         __block MacImpl* self = this;
 
-        commandCenter.playCommand.enabled = YES;
-        [commandCenter.playCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull) {
-            (void)0;
-            if (self) {
-                auto cb = self->callbacks();
-                if (cb.onPlay)
-                    cb.onPlay();
-            }
-            return MPRemoteCommandHandlerStatusSuccess;
-        }];
+        if (enableMediaKeys_) {
+            commandCenter.playCommand.enabled = YES;
+            [commandCenter.playCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
+                MPRemoteCommandEvent* _Nonnull) {
+                if (self) {
+                    auto cb = self->callbacks();
+                    if (cb.onPlay)
+                        cb.onPlay();
+                }
+                return MPRemoteCommandHandlerStatusSuccess;
+            }];
 
-        commandCenter.pauseCommand.enabled = YES;
-        [commandCenter.pauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull) {
-            if (self) {
-                auto cb = self->callbacks();
-                if (cb.onPause)
-                    cb.onPause();
-            }
-            return MPRemoteCommandHandlerStatusSuccess;
-        }];
-
-        commandCenter.togglePlayPauseCommand.enabled = YES;
-        [commandCenter.togglePlayPauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull) {
-            if (self) {
-                std::lock_guard lock(self->mtx_);
-                bool playing =
-                    self->state_ == kanariv::types::PlaybackState::Playing;
-                auto cb = self->callbacks();
-                if (playing) {
+            commandCenter.pauseCommand.enabled = YES;
+            [commandCenter.pauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
+                MPRemoteCommandEvent* _Nonnull) {
+                if (self) {
+                    auto cb = self->callbacks();
                     if (cb.onPause)
                         cb.onPause();
-                } else if (cb.onPlay) {
-                    cb.onPlay();
                 }
-            }
-            return MPRemoteCommandHandlerStatusSuccess;
-        }];
+                return MPRemoteCommandHandlerStatusSuccess;
+            }];
 
-        commandCenter.nextTrackCommand.enabled = YES;
-        [commandCenter.nextTrackCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull) {
-            if (self) {
-                auto cb = self->callbacks();
-                if (cb.onNext)
-                    cb.onNext();
-            }
-            return MPRemoteCommandHandlerStatusSuccess;
-        }];
+            commandCenter.togglePlayPauseCommand.enabled = YES;
+            [commandCenter.togglePlayPauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
+                MPRemoteCommandEvent* _Nonnull) {
+                if (self) {
+                    std::lock_guard lock(self->mtx_);
+                    bool playing =
+                        self->state_ == kanariv::types::PlaybackState::Playing;
+                    auto cb = self->callbacks();
+                    if (playing) {
+                        if (cb.onPause)
+                            cb.onPause();
+                    } else if (cb.onPlay) {
+                        cb.onPlay();
+                    }
+                }
+                return MPRemoteCommandHandlerStatusSuccess;
+            }];
 
-        commandCenter.previousTrackCommand.enabled = YES;
-        [commandCenter.previousTrackCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull) {
-            if (self) {
-                auto cb = self->callbacks();
-                if (cb.onPrev)
-                    cb.onPrev();
-            }
-            return MPRemoteCommandHandlerStatusSuccess;
-        }];
+            commandCenter.nextTrackCommand.enabled = YES;
+            [commandCenter.nextTrackCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
+                MPRemoteCommandEvent* _Nonnull) {
+                if (self) {
+                    auto cb = self->callbacks();
+                    if (cb.onNext)
+                        cb.onNext();
+                }
+                return MPRemoteCommandHandlerStatusSuccess;
+            }];
 
-        commandCenter.stopCommand.enabled = YES;
-        [commandCenter.stopCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull) {
-            if (self) {
-                auto cb = self->callbacks();
-                if (cb.onStop)
-                    cb.onStop();
-            }
-            return MPRemoteCommandHandlerStatusSuccess;
-        }];
+            commandCenter.previousTrackCommand.enabled = YES;
+            [commandCenter.previousTrackCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
+                MPRemoteCommandEvent* _Nonnull) {
+                if (self) {
+                    auto cb = self->callbacks();
+                    if (cb.onPrev)
+                        cb.onPrev();
+                }
+                return MPRemoteCommandHandlerStatusSuccess;
+            }];
+
+            commandCenter.stopCommand.enabled = YES;
+            [commandCenter.stopCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
+                MPRemoteCommandEvent* _Nonnull) {
+                if (self) {
+                    auto cb = self->callbacks();
+                    if (cb.onStop)
+                        cb.onStop();
+                }
+                return MPRemoteCommandHandlerStatusSuccess;
+            }];
+        }
 
         active_ = true;
 
@@ -138,16 +143,20 @@ class MacImpl final : public Impl {
         MPRemoteCommandCenter* commandCenter =
             [MPRemoteCommandCenter sharedCommandCenter];
 
-        commandCenter.playCommand.enabled = NO;
-        commandCenter.pauseCommand.enabled = NO;
-        commandCenter.togglePlayPauseCommand.enabled = NO;
-        commandCenter.nextTrackCommand.enabled = NO;
-        commandCenter.previousTrackCommand.enabled = NO;
-        commandCenter.stopCommand.enabled = NO;
+        if (enableMediaKeys_) {
+            commandCenter.playCommand.enabled = NO;
+            commandCenter.pauseCommand.enabled = NO;
+            commandCenter.togglePlayPauseCommand.enabled = NO;
+            commandCenter.nextTrackCommand.enabled = NO;
+            commandCenter.previousTrackCommand.enabled = NO;
+            commandCenter.stopCommand.enabled = NO;
+        }
 
-        // Clear now-playing info.
-        [[MPNowPlayingInfoCenter defaultCenter]
-            setNowPlayingInfo:@{ }];
+        // Clear now-playing info (only if notifications were enabled).
+        if (enableNotifications_) {
+            [[MPNowPlayingInfoCenter defaultCenter]
+                setNowPlayingInfo:@{ }];
+        }
 
         active_ = false;
         return {};
@@ -199,6 +208,9 @@ class MacImpl final : public Impl {
 
   private:
     void publishNowPlayingInfo() {
+        if (!enableNotifications_)
+            return;
+
         MPNowPlayingInfoCenter* center = [MPNowPlayingInfoCenter defaultCenter];
 
         NSMutableDictionary<NSString *, id>* info =
@@ -237,17 +249,11 @@ class MacImpl final : public Impl {
         }
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(position_);
 
-        // Artwork
-        if (metadata_.artworkBase64 && !metadata_.artworkBase64->empty()) {
-            auto decoded = kanariv::utils::Base64::decode(*metadata_.artworkBase64);
-            if (decoded && !decoded->empty()) {
-                NSData* artworkData = [NSData dataWithBytes:decoded->data()
-                                                     length:decoded->size()];
-                MPMediaItemArtwork* artwork =
-                    [[MPMediaItemArtwork alloc] initWithData:artworkData];
-                info[MPMediaItemPropertyArtwork] = artwork;
-            }
-        }
+        // NOTE: MPMediaItemPropertyArtwork is intentionally omitted on macOS.
+        // MPMediaItemArtwork's initializer (initWithImage:) takes a UIImage,
+        // which is iOS-only and unavailable on macOS. There is no macOS SDK
+        // API to create MPMediaItemArtwork from raw image data. All other
+        // now-playing fields are still published.
 
         [center setNowPlayingInfo:info];
 
