@@ -78,12 +78,13 @@ class LinuxImpl final : public Impl {
 
         // Register the object path.
         static const DBusObjectPathVTable vtable = {
-            nullptr,                                      // unregister_function
-            nullptr,                                      // get_all_properties
-            reinterpret_cast<DBusMessageFunction>(
-                &LinuxImpl::handle_method_call),          // message_function
-            nullptr,                                      // dispose_function
-            nullptr, nullptr, nullptr, nullptr,           // dbus_internal_pad1-4
+            .unregister_function = nullptr,
+            .message_function = [](DBusConnection* conn, DBusMessage* msg, void* user_data)
+                -> DBusHandlerResult { return handle_method_call(conn, msg, user_data); },
+            .dbus_internal_pad1 = nullptr,
+            .dbus_internal_pad2 = nullptr,
+            .dbus_internal_pad3 = nullptr,
+            .dbus_internal_pad4 = nullptr,
         };
         if (!dbus_connection_register_object_path(conn_, "/org/mpris/MediaPlayer2",
                                                    &vtable, this)) {
