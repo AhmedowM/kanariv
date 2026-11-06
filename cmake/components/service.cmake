@@ -48,14 +48,13 @@ elseif(APPLE)
   target_link_libraries(service PRIVATE "-framework MediaPlayer" "-framework Foundation")
 elseif(UNIX)
   # Linux MPRIS backend needs libdbus-1 (library + include dirs).
-  # dbus-1.pc provides TWO include paths: /usr/include/dbus-1.0 (for
-  # dbus/dbus.h) and the arch-specific dir (e.g.
-  # /usr/lib/x86_64-linux-gnu/dbus-1.0/include) for dbus/dbus-arch-deps.h,
-  # which dbus/dbus.h #includes. find_path(dbus/dbus.h) alone fails because
-  # the header lives under the dbus-1.0 subdirectory.
+  # pkg-config is installed on all Linux CI jobs; dbus-1.pc returns both
+  # include paths needed: /usr/include/dbus-1.0 (for dbus/dbus.h) and the
+  # arch-specific dir (e.g. /usr/lib/x86_64-linux-gnu/dbus-1.0/include)
+  # for dbus/dbus-arch-deps.h, which dbus/dbus.h #includes.
   find_package(PkgConfig QUIET)
   if(PkgConfig_FOUND)
-    pkg_check_modules(KANARIV_DBUS QUIET dbus-1)
+    pkg_check_modules(KANARIV_DBUS dbus-1)
   endif()
   if(NOT KANARIV_DBUS_FOUND)
     find_library(KANARIV_DBUS_LIB dbus-1)
@@ -69,6 +68,9 @@ elseif(UNIX)
   if(KANARIV_DBUS_FOUND)
     target_link_libraries(service PRIVATE ${KANARIV_DBUS_LIBRARIES})
     target_include_directories(service SYSTEM PRIVATE ${KANARIV_DBUS_INCLUDE_DIRS})
+    # service_objects compiles the same sources; propagate include dirs so
+    # media_session_linux.cpp can find dbus/dbus.h at compile time.
+    target_include_directories(service_objects SYSTEM PRIVATE ${KANARIV_DBUS_INCLUDE_DIRS})
   else()
     message(WARNING
       "libdbus-1 not found: Linux MPRIS media-session backend will fail "
