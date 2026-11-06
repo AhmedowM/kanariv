@@ -4,7 +4,6 @@
 #import <MediaPlayer/MPRemoteCommandCenter.h>
 #import <MediaPlayer/MPRemoteCommand.h>
 #import <MediaPlayer/MPMediaItem.h>
-#import <objc/runtime.h>
 
 #include <kanariv/utils/base64.hpp>
 #include <kanariv/utils/error.hpp>
@@ -22,8 +21,10 @@ namespace kanariv::media_session {
  *
  * Uses:
  * - MPNowPlayingInfoCenter for now-playing metadata / playback state
- *   (lock screen, Control Center, Touch Bar)
- * - MPRemoteCommandCenter for media-key events (play/pause/next/prev/seek)
+ *   (lock screen, Control Center, Touch Bar). On macOS the playback state is
+ *   conveyed via MPNowPlayingInfoPropertyPlaybackRate (1.0 = playing,
+ *   0.0 = paused/stopped), not a separate state key.
+ * - MPRemoteCommandCenter for media-key events (play/pause/next/prev/stop).
  *
  * Compiled only on __APPLE__ with Objective-C++ (.mm).
  */
@@ -46,13 +47,12 @@ class MacImpl final : public Impl {
         MPRemoteCommandCenter* commandCenter =
             [MPRemoteCommandCenter sharedCommandCenter];
 
-        // Register command handlers. Each block captures `this` via a
-        // __block variable so it can read callbacks_ from the C++ object.
         __block MacImpl* self = this;
 
         commandCenter.playCommand.enabled = YES;
         [commandCenter.playCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull event) {
+            MPRemoteCommandEvent* _Nonnull) {
+            (void)0;
             if (self) {
                 auto cb = self->callbacks();
                 if (cb.onPlay)
@@ -63,7 +63,7 @@ class MacImpl final : public Impl {
 
         commandCenter.pauseCommand.enabled = YES;
         [commandCenter.pauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull event) {
+            MPRemoteCommandEvent* _Nonnull) {
             if (self) {
                 auto cb = self->callbacks();
                 if (cb.onPause)
@@ -74,7 +74,7 @@ class MacImpl final : public Impl {
 
         commandCenter.togglePlayPauseCommand.enabled = YES;
         [commandCenter.togglePlayPauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull event) {
+            MPRemoteCommandEvent* _Nonnull) {
             if (self) {
                 std::lock_guard lock(self->mtx_);
                 bool playing =
@@ -92,7 +92,7 @@ class MacImpl final : public Impl {
 
         commandCenter.nextTrackCommand.enabled = YES;
         [commandCenter.nextTrackCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull event) {
+            MPRemoteCommandEvent* _Nonnull) {
             if (self) {
                 auto cb = self->callbacks();
                 if (cb.onNext)
@@ -103,7 +103,7 @@ class MacImpl final : public Impl {
 
         commandCenter.previousTrackCommand.enabled = YES;
         [commandCenter.previousTrackCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull event) {
+            MPRemoteCommandEvent* _Nonnull) {
             if (self) {
                 auto cb = self->callbacks();
                 if (cb.onPrev)
@@ -114,29 +114,11 @@ class MacImpl final : public Impl {
 
         commandCenter.stopCommand.enabled = YES;
         [commandCenter.stopCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-            MPRemoteCommandEvent* _Nonnull event) {
+            MPRemoteCommandEvent* _Nonnull) {
             if (self) {
                 auto cb = self->callbacks();
                 if (cb.onStop)
                     cb.onStop();
-            }
-            return MPRemoteCommandHandlerStatusSuccess;
-        }];
-
-        // Change playback position (skip forward/backward by interval).
-        commandCenter.changePlaybackPositionCommand.enabled = YES;
-        [commandCenter.changePlaybackPositionCommand
-            addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-                MPRemoteCommandEvent* _Nonnull event) {
-            if (self) {
-                auto cb = self->callbacks();
-                if (cb.onSeek) {
-                    // MPChangePlaybackPositionCommandEvent carries the
-                    // requested offset in seconds.
-                    NSTimeInterval interval =
-                        [(MPChangePlaybackPositionCommandEvent*)event positionTime];
-                    cb.onSeek(interval);
-                }
             }
             return MPRemoteCommandHandlerStatusSuccess;
         }];
@@ -162,7 +144,6 @@ class MacImpl final : public Impl {
         commandCenter.nextTrackCommand.enabled = NO;
         commandCenter.previousTrackCommand.enabled = NO;
         commandCenter.stopCommand.enabled = NO;
-        commandCenter.changePlaybackPositionCommand.enabled = NO;
 
         // Clear now-playing info.
         [[MPNowPlayingInfoCenter defaultCenter]
@@ -205,7 +186,9 @@ class MacImpl final : public Impl {
     kanariv::utils::Expected<void> setVolume(float volume, bool muted) override {
         std::lock_guard lock(mtx_);
         volume_ = muted ? 0.0f : volume;
-        publishNowPlayingInfo();
+        // Volume is not exposed as an MPNowPlayingInfoCenter key on macOS;
+        // it is applied via the audio engine instead.
+        (void)volume_;
         return {};
     }
 
@@ -235,46 +218,24 @@ class MacImpl final : public Impl {
                 [NSString stringWithUTF8String:metadata_.album->c_str()];
         }
 
-        // Playback state
-        NSNumber* playbackState;
+        // Playback rate: 1.0 = playing, 0.0 = paused/stopped.
+        // This is how macOS MPNowPlayingInfoCenter conveys playback state.
+        double rate = 0.0;
         switch (state_) {
             case kanariv::types::PlaybackState::Playing:
-                playbackState = @(MPNowPlayingPlaybackStatePlaying);
-                break;
-            case kanariv::types::PlaybackState::Paused:
-                playbackState = @(MPNowPlayingPlaybackStatePaused);
+                rate = 1.0;
                 break;
             default:
-                playbackState = @(MPNowPlayingPlaybackStateStopped);
+                rate = 0.0;
                 break;
         }
-        info[MPNowPlayingInfoPropertyPlaybackState] = playbackState;
+        info[MPNowPlayingInfoPropertyPlaybackRate] = @(rate);
 
         // Position / duration (seconds)
         if (duration_ > 0.0) {
             info[MPMediaItemPropertyPlaybackDuration] = @(duration_);
         }
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(position_);
-
-        // Volume
-        info[MPNowPlayingInfoPropertyVolume] = @(volume_);
-
-        // Shuffle / repeat
-        info[MPNowPlayingInfoPropertyShuffleEnabled] = @(shuffle_);
-        switch (repeat_) {
-            case kanariv::types::RepeatMode::One:
-                info[MPNowPlayingInfoPropertyRepeatMode] =
-                    @(MPNowPlayingRepeatModeOne);
-                break;
-            case kanariv::types::RepeatMode::All:
-                info[MPNowPlayingInfoPropertyRepeatMode] =
-                    @(MPNowPlayingRepeatModeAll);
-                break;
-            default:
-                info[MPNowPlayingInfoPropertyRepeatMode] =
-                    @(MPNowPlayingRepeatModeDefault);
-                break;
-        }
 
         // Artwork
         if (metadata_.artworkBase64 && !metadata_.artworkBase64->empty()) {

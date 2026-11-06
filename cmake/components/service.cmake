@@ -48,7 +48,7 @@ elseif(APPLE)
   target_link_libraries(service PRIVATE "-framework MediaPlayer")
 elseif(UNIX)
   # Linux MPRIS backend needs libdbus-1 (library + include dirs).
-  find_path(KANARIV_DBUS_INCLUDE_DIR NAMES dbus/dbus.h PATH_SUFFIXES dbus-1.0)
+  find_path(KANARIV_DBUS_INCLUDE_DIR NAMES dbus/dbus.h)
   find_library(KANARIV_DBUS_LIB dbus-1)
   if(KANARIV_DBUS_INCLUDE_DIR AND KANARIV_DBUS_LIB)
     target_link_libraries(service PRIVATE ${KANARIV_DBUS_LIB})
