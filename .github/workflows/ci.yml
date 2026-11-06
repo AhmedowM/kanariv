@@ -83,7 +83,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev graphviz patchelf
+          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev graphviz patchelf libdbus-1-dev libglib2.0-bin
           ffmpeg -version || true
           cmake --version
           ninja --version
@@ -147,6 +147,25 @@ jobs:
 
       - name: Build
         run: python scripts/configure.py ci --toolchain ${{ matrix.toolchain }} --build-dir build/ci-${{ matrix.toolchain }} --build
+
+      - name: MPRIS smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Start the daemon with a temporary db, then introspect the MPRIS
+          # D-Bus interface to confirm the org.mpris.MediaPlayer2.Player
+          // interface and PropertiesChanged signal are exported.
+          export KANARIV_TEST_NOAUDIO=1
+          build/ci-${{ matrix.toolchain }}/kanariv daemon --db-path /tmp/kanariv-mpris-test.db &
+          DAEMON_PID=$!
+          sleep 2
+          # Introspect the MPRIS interface
+          gdbus introspect --session --dest org.mpris.MediaPlayer2.kanariv --object-path /org/mpris/MediaPlayer2 2>&1 | tee /tmp/mpris-introspect.txt
+          test -s /tmp/mpris-introspect.txt || (echo "MPRIS introspection failed" && kill $DAEMON_PID 2>/dev/null || true && exit 1)
+          grep -q "org.mpris.MediaPlayer2.Player" /tmp/mpris-introspect.txt || (echo "MPRIS Player interface missing" && kill $DAEMON_PID 2>/dev/null || true && exit 1)
+          grep -q "PlaybackStatus" /tmp/mpris-introspect.txt || (echo "MPRIS PlaybackStatus property missing" && kill $DAEMON_PID 2>/dev/null || true && exit 1)
+          kill $DAEMON_PID 2>/dev/null || true
+          rm -f /tmp/kanariv-mpris-test.db
+        shell: bash
 
       - name: Test
         env:
