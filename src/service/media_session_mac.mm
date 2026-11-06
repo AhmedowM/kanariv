@@ -2,6 +2,8 @@
 
 #import <MediaPlayer/MPNowPlayingInfoCenter.h>
 #import <MediaPlayer/MPRemoteCommandCenter.h>
+#import <MediaPlayer/MPRemoteCommand.h>
+#import <MediaPlayer/MPChangePlaybackPositionCommand.h>
 #import <MediaPlayer/MPMediaItem.h>
 #import <objc/runtime.h>
 
