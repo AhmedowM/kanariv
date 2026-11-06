@@ -82,7 +82,6 @@ class LinuxImpl final : public Impl {
             nullptr,                                      // get_all_properties
             &LinuxImpl::handle_method_call,               // message_function
             nullptr,                                      // dispose_function
-            nullptr, nullptr, nullptr, nullptr,           // dbus_internal_pad1-4
         };
         if (!dbus_connection_register_object_path(conn_, "/org/mpris/MediaPlayer2",
                                                    &vtable, this)) {
@@ -117,8 +116,11 @@ class LinuxImpl final : public Impl {
         }
 
         if (conn_) {
+            DBusError error;
+            dbus_error_init(&error);
             dbus_connection_unregister_object_path(conn_, "/org/mpris/MediaPlayer2");
             dbus_bus_release_name(conn_, "org.mpris.MediaPlayer2.kanariv", &error);
+            dbus_error_free(&error);
             dbus_connection_close(conn_);
             dbus_connection_unref(conn_);
             conn_ = nullptr;
@@ -631,11 +633,6 @@ template <>
 inline const char* LinuxImpl::dbusSignature<double>() { return "d"; }
 template <>
 inline int LinuxImpl::dbusType<double>() { return DBUS_TYPE_DOUBLE; }
-
-template <>
-inline const char* LinuxImpl::dbusSignature<dbus_bool_t>() { return "b"; }
-template <>
-inline int LinuxImpl::dbusType<dbus_bool_t>() { return DBUS_TYPE_BOOLEAN; }
 
 template <>
 inline const char* LinuxImpl::dbusSignature<dbus_int64_t>() { return "x"; }

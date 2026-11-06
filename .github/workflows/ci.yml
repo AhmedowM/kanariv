@@ -151,11 +151,11 @@ jobs:
       - name: MPRIS smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
-          # Start the daemon with a temporary db, then introspect the MPRIS
-          # D-Bus interface to confirm the org.mpris.MediaPlayer2.Player
-          # interface and PropertiesChanged signal are exported.
+          # Start the daemon, then introspect the MPRIS D-Bus interface to
+          # confirm the org.mpris.MediaPlayer2.Player interface and
+          # PlaybackStatus property are exported.
           export KANARIV_TEST_NOAUDIO=1
-          build/ci-${{ matrix.toolchain }}/kanariv daemon --db-path /tmp/kanariv-mpris-test.db &
+          build/ci-${{ matrix.toolchain }}/kanariv start --foreground &
           DAEMON_PID=$!
           sleep 2
           # Introspect the MPRIS interface
@@ -164,7 +164,6 @@ jobs:
           grep -q "org.mpris.MediaPlayer2.Player" /tmp/mpris-introspect.txt || (echo "MPRIS Player interface missing" && kill $DAEMON_PID 2>/dev/null || true && exit 1)
           grep -q "PlaybackStatus" /tmp/mpris-introspect.txt || (echo "MPRIS PlaybackStatus property missing" && kill $DAEMON_PID 2>/dev/null || true && exit 1)
           kill $DAEMON_PID 2>/dev/null || true
-          rm -f /tmp/kanariv-mpris-test.db
         shell: bash
 
       - name: macOS media-session smoke test
@@ -180,16 +179,14 @@ jobs:
             || (echo "MediaPlayer framework not linked into $LIB" && exit 1)
 
           BIN="build/ci-${{ matrix.toolchain }}/kanariv"
-          test -f "$BIN" || BIN="build/ci-${{ matrix.toolchain }}/kanariv.exe"
 
           export KANARIV_TEST_NOAUDIO=1
-          "$BIN" daemon --db-path /tmp/kanariv-mac-test.db &
+          "$BIN" start --foreground &
           DAEMON_PID=$!
           sleep 2
           kill -0 $DAEMON_PID 2>/dev/null \
             || (echo "daemon exited early" && exit 1)
           kill $DAEMON_PID 2>/dev/null || true
-          rm -f /tmp/kanariv-mac-test.db
         shell: bash
 
       - name: Test
