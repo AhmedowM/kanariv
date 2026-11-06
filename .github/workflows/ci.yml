@@ -170,14 +170,17 @@ jobs:
       - name: macOS media-session smoke test
         if: runner.os == 'macOS'
         run: |
-          # Verify the MediaPlayer framework is linked into the kanariv binary
-          # (the service component links it via the macOS media-session backend),
+          # Verify the MediaPlayer framework is linked into libservice.dylib
+          # (the macOS media-session backend links it via service.cmake),
           # then start the daemon briefly to confirm it does not crash with
           # media-session enabled (MPNowPlayingInfoCenter / MPRemoteCommandCenter).
+          LIB="build/ci-${{ matrix.toolchain }}/libservice.1.dylib"
+          test -f "$LIB" || LIB="build/ci-${{ matrix.toolchain }}/libservice.dylib"
+          otool -L "$LIB" | grep -q "MediaPlayer" \
+            || (echo "MediaPlayer framework not linked into $LIB" && exit 1)
+
           BIN="build/ci-${{ matrix.toolchain }}/kanariv"
           test -f "$BIN" || BIN="build/ci-${{ matrix.toolchain }}/kanariv.exe"
-          otool -L "$BIN" | grep -q "MediaPlayer" \
-            || (echo "MediaPlayer framework not linked into $BIN" && exit 1)
 
           export KANARIV_TEST_NOAUDIO=1
           "$BIN" daemon --db-path /tmp/kanariv-mac-test.db &

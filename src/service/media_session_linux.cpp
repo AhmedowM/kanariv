@@ -78,10 +78,11 @@ class LinuxImpl final : public Impl {
 
         // Register the object path.
         static const DBusObjectPathVTable vtable = {
-            nullptr, // unregister_function
-            nullptr, // get_all_properties
-            LinuxImpl::handle_method_call, // message_function
-            nullptr, // dispose_function
+            nullptr,                                      // unregister_function
+            nullptr,                                      // get_all_properties
+            &LinuxImpl::handle_method_call,               // message_function
+            nullptr,                                      // dispose_function
+            nullptr, nullptr, nullptr, nullptr,           // dbus_internal_pad1-4
         };
         if (!dbus_connection_register_object_path(conn_, "/org/mpris/MediaPlayer2",
                                                    &vtable, this)) {
@@ -117,7 +118,7 @@ class LinuxImpl final : public Impl {
 
         if (conn_) {
             dbus_connection_unregister_object_path(conn_, "/org/mpris/MediaPlayer2");
-            dbus_bus_release_name(conn_, "org.mpris.MediaPlayer2.kanariv");
+            dbus_bus_release_name(conn_, "org.mpris.MediaPlayer2.kanariv", &error);
             dbus_connection_close(conn_);
             dbus_connection_unref(conn_);
             conn_ = nullptr;
@@ -341,12 +342,12 @@ class LinuxImpl final : public Impl {
                             dbus_message_iter_abandon_container(&mdDict, &e2);
                         }
                     } else {
-                        dbus_message_iter_abandon_container(&e2);
-                        dbus_message_iter_abandon_container(&mdDict);
+                        dbus_message_iter_abandon_container(&e2, &mdDict);
+                        dbus_message_iter_abandon_container(&mdDict, &variant);
                     }
                 } else {
-                    dbus_message_iter_abandon_container(&e2);
-                    dbus_message_iter_abandon_container(&mdDict);
+                    dbus_message_iter_abandon_container(&e2, &mdDict);
+                    dbus_message_iter_abandon_container(&mdDict, &variant);
                 }
             }
         }
@@ -575,7 +576,7 @@ class LinuxImpl final : public Impl {
             dbus_connection_read_write(conn_, 100);
             DBusMessage* msg = nullptr;
             while ((msg = dbus_connection_pop_message(conn_)) != nullptr) {
-                if (!dbus_connection_dispatch(conn_, msg)) {
+                if (!dbus_connection_dispatch(conn_)) {
                     // No handler registered for this message; ignore.
                 }
                 dbus_message_unref(msg);
@@ -583,38 +584,12 @@ class LinuxImpl final : public Impl {
         }
     }
 
-    // ----- D-Bus type signature helpers for variant encoding -----
-
+    // ----- D-Bus type signature helpers (primary templates) -----
     template <typename T>
     static const char* dbusSignature() { return "?"; }
 
     template <typename T>
     static int dbusType() { return DBUS_TYPE_INVALID; }
-
-    template <>
-    static const char* dbusSignature<const char*>() { return "s"; }
-    template <>
-    static int dbusType<const char*>() { return DBUS_TYPE_STRING; }
-
-    template <>
-    static const char* dbusSignature<double>() { return "d"; }
-    template <>
-    static int dbusType<double>() { return DBUS_TYPE_DOUBLE; }
-
-    template <>
-    static const char* dbusSignature<dbus_bool_t>() { return "b"; }
-    template <>
-    static int dbusType<dbus_bool_t>() { return DBUS_TYPE_BOOLEAN; }
-
-    template <>
-    static const char* dbusSignature<dbus_int64_t>() { return "x"; }
-    template <>
-    static int dbusType<dbus_int64_t>() { return DBUS_TYPE_INT64; }
-
-    template <>
-    static const char* dbusSignature<dbus_uint32_t>() { return "u"; }
-    template <>
-    static int dbusType<dbus_uint32_t>() { return DBUS_TYPE_UINT32; }
 
     // ----- members -----
 
@@ -643,6 +618,34 @@ class LinuxImpl final : public Impl {
         "org.mpris.MediaPlayer2.Player";
     inline static constexpr const char* metadataKey_ = "Metadata";
 };
+
+// ----- D-Bus type signature helpers for variant encoding -----
+// Explicit specializations must be at namespace scope, not inside the class.
+
+template <>
+inline const char* LinuxImpl::dbusSignature<const char*>() { return "s"; }
+template <>
+inline int LinuxImpl::dbusType<const char*>() { return DBUS_TYPE_STRING; }
+
+template <>
+inline const char* LinuxImpl::dbusSignature<double>() { return "d"; }
+template <>
+inline int LinuxImpl::dbusType<double>() { return DBUS_TYPE_DOUBLE; }
+
+template <>
+inline const char* LinuxImpl::dbusSignature<dbus_bool_t>() { return "b"; }
+template <>
+inline int LinuxImpl::dbusType<dbus_bool_t>() { return DBUS_TYPE_BOOLEAN; }
+
+template <>
+inline const char* LinuxImpl::dbusSignature<dbus_int64_t>() { return "x"; }
+template <>
+inline int LinuxImpl::dbusType<dbus_int64_t>() { return DBUS_TYPE_INT64; }
+
+template <>
+inline const char* LinuxImpl::dbusSignature<dbus_uint32_t>() { return "u"; }
+template <>
+inline int LinuxImpl::dbusType<dbus_uint32_t>() { return DBUS_TYPE_UINT32; }
 
 MediaSession::ExpectedSession createLinux(std::string appName,
                                            std::string appIcon,
