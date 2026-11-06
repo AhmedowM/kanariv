@@ -216,7 +216,7 @@ auto Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd)
     }
     std::size_t n = 0;
     std::size_t seen = 0;
-    for (auto t : kanariv::media::scanTracks(root, mode)) {
+    for (const auto& t : kanariv::media::scanTracks(root, mode)) {
         ++seen;
         if (auto ex = db_->findByPath(t.path); ex && ex->size == t.size && ex->mtime == t.mtime) {
             continue;
@@ -514,8 +514,10 @@ auto Service::Impl::handle(const kanariv::ipc::LibraryRemove& cmd) const
     q.erase(q.find_last_not_of(" \t\r\n") + 1);
     // try numeric id
     bool isNum = !q.empty();
-    for (size_t i = (q[0] == '-' ? 1 : 0); i < q.size() && isNum; ++i) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-        if (std::isdigit(static_cast<unsigned char>(q[i])) == 0) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (size_t i = (q[0] == '-' ? 1 : 0); i < q.size() && isNum;
+         ++i) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (std::isdigit(static_cast<unsigned char>(q[i])) ==
+            0) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             isNum = false;
         }
     }
@@ -949,7 +951,7 @@ auto Service::Impl::handle(const kanariv::ipc::PlaylistExport& cmd) const
     std::vector<kanariv::types::Track> out;
     out.reserve(tracks->size());
     for (const auto& t : std::span<const kanariv::types::Track>(*tracks)) {
-        out.push_back(std::move(t));
+        out.push_back(t);
     }
     return Result{PlaylistData{.tracks = std::move(out), .format = cmd.format}};
 }
@@ -976,16 +978,25 @@ auto Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) const
                             std::istreambuf_iterator<char>());
         try {
             const kanariv::utils::Json j = kanariv::utils::Json::parse(content);
-            if (j.contains("tracks") && j["tracks"].isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                const kanariv::utils::Json tracks = j["tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (j.contains("tracks") &&
+                j["tracks"]
+                    .isArray()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                const kanariv::utils::Json tracks = j
+                    ["tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 for (std::size_t ti = 0, tn = tracks.size(); ti < tn; ++ti) {
                     auto trackExp = tracks.at(ti);
                     if (!trackExp) {
                         continue;
                     }
                     const kanariv::utils::Json track = std::move(*trackExp);
-                    if (track.contains("path") && track["path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                        lines.push_back(track["path"].get<std::string>()); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    if (track.contains("path") &&
+                        track["path"]
+                            .isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        lines.push_back(
+                            track["path"]
+                                .get<
+                                    std::
+                                        string>()); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                     }
                 }
             }
@@ -1005,7 +1016,9 @@ auto Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) const
             // trim
             line.erase(0, line.find_first_not_of(" \t\r\n"));
             line.erase(line.find_last_not_of(" \t\r\n") + 1);
-            if (line.empty() || line[0] == '#') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (line.empty() ||
+                line[0] ==
+                    '#') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 continue;
             }
             // Handle PLS format: File1=path, File2=path, etc.
@@ -1092,7 +1105,7 @@ auto Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) const
     auto tracksRes = db_->playlistGetTracks(*pidRes);
     if (tracksRes) {
         for (const auto& t : std::span<const kanariv::types::Track>(*tracksRes)) {
-            rep.tracks.push_back(std::move(t));
+            rep.tracks.push_back(t);
         }
     }
     return Result{std::move(rep)};

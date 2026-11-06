@@ -270,10 +270,15 @@ auto IpcClient::Impl::rawRecv() const -> kanariv::utils::Expected<std::vector<st
     constexpr std::uint32_t frameLenShift1 = 8;
     constexpr std::size_t maxFrameSizeBytes = 16 * 1024 * 1024;
     constexpr std::uint32_t frameByteIndex3 = 3;
-    std::uint32_t len = (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << frameLenShift3) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                        (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << frameLenShift2) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                        (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << frameLenShift1) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                        static_cast<std::uint32_t>(std::to_underlying(hdr[frameByteIndex3])); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    std::uint32_t len =
+        (static_cast<std::uint32_t>(std::to_underlying(hdr[0]))
+         << frameLenShift3) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        (static_cast<std::uint32_t>(std::to_underlying(hdr[1]))
+         << frameLenShift2) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        (static_cast<std::uint32_t>(std::to_underlying(hdr[2]))
+         << frameLenShift1) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        static_cast<std::uint32_t>(std::to_underlying(
+            hdr[frameByteIndex3])); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     if (len > maxFrameSizeBytes) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
@@ -323,10 +328,15 @@ auto IpcClient::Impl::rawRecv() const -> kanariv::utils::Expected<std::vector<st
     constexpr std::uint32_t frameLenShift1 = 8;
     constexpr std::size_t maxFrameSizeBytes = 16 * 1024 * 1024;
     constexpr std::uint32_t frameByteIndex3 = 3;
-    std::uint32_t len = (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << frameLenShift3) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                        (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << frameLenShift2) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                        (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << frameLenShift1) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                        static_cast<std::uint32_t>(std::to_underlying(hdr[frameByteIndex3])); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    std::uint32_t len =
+        (static_cast<std::uint32_t>(std::to_underlying(hdr[0]))
+         << frameLenShift3) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        (static_cast<std::uint32_t>(std::to_underlying(hdr[1]))
+         << frameLenShift2) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        (static_cast<std::uint32_t>(std::to_underlying(hdr[2]))
+         << frameLenShift1) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        static_cast<std::uint32_t>(std::to_underlying(
+            hdr[frameByteIndex3])); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     if (len > maxFrameSizeBytes) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};

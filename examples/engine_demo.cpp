@@ -64,9 +64,9 @@ auto findSample() -> std::string {
         }
     }
     for (const auto* c : {"tests/fixtures/sample.wav", "./tests/fixtures/sample.wav",
-                    "../tests/fixtures/sample.wav",
-                    "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav",
-                    "C:/Users/Secondary/Projects/kanariv/tests/fixtures/sample.wav"}) {
+                          "../tests/fixtures/sample.wav",
+                          "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav",
+                          "C:/Users/Secondary/Projects/kanariv/tests/fixtures/sample.wav"}) {
         if (std::filesystem::exists(c)) {
             return toAbs(c);
         }
@@ -108,7 +108,8 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath) {
     for (int i = 0; i < demoTracksCount; ++i) {
         kanariv::types::Track t;
         for (int b = 0; b < fingerprintSize; ++b) {
-            t.fingerprint.at(b) = static_cast<uint8_t>(fingerprintBaseByte + i * fingerprintSize + b);
+            t.fingerprint.at(b) =
+                static_cast<uint8_t>(fingerprintBaseByte + (i * fingerprintSize) + b);
         }
         t.path = samplePath;
         t.size = demoTrackSize;
@@ -163,7 +164,7 @@ static auto parseDbPath(int argc, char** argv) -> std::string {
 }
 
 // Ensures queue 1 has at least one track. Returns true if playable.
-static auto ensureQueuePopulated(std::shared_ptr<Database> dbShared) -> bool {
+static auto ensureQueuePopulated(const std::shared_ptr<Database>& dbShared) -> bool {
     auto q1 = dbShared->listQueueItems(1);
     int count = q1 ? static_cast<int>(q1->size()) : 0;
     std::cout << "[engine_demo] queue 1 has " << count << " item(s)\n";
@@ -200,7 +201,7 @@ static auto createEngineConfig() -> kanariv::types::EngineConfig {
     cbs.on_error = [](kanariv::utils::StatusCode r, std::string_view msg) -> void {
         std::cout << "[engine_demo] callback onError " << static_cast<int>(r) << " " << msg << "\n";
     };
-    cfg.callbacks = cbs;
+    cfg.callbacks = std::move(cbs);
     return cfg;
 }
 
@@ -223,8 +224,11 @@ static void pollEvents(kanariv::engine::Engine* engine) {
             if (n > 0) {
                 std::cout << "[engine_demo] drain got " << n << " events at tick " << i << "\n";
                 for (size_t k = 0; k < n; ++k) {
-                    std::cout << "  drain[" << k << "] type=" << static_cast<int>(buf[k].type) // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                              << " track " << buf[k].track_id << "\n"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    std::cout
+                        << "  drain[" << k
+                        << "] type="
+                        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-bounds-constant-array-index)
+                        << static_cast<int>(buf[k].type) << " track " << buf[k].track_id << "\n";
                 }
             }
         }
@@ -237,8 +241,12 @@ static void drainAndReport(kanariv::engine::Engine* engine) {
     (void)engine->drainEvents(buf.data(), eventBufferSize, &n);
     std::cout << "[engine_demo] final drain " << n << " events\n";
     for (size_t k = 0; k < n; ++k) {
-        std::cout << "  final[" << k << "] type=" << static_cast<int>(buf[k].type) << " track " // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                  << buf[k].track_id << " queue " << buf[k].queue_id << "\n"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        std::cout
+            << "  final[" << k
+            << "] type="
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-bounds-constant-array-index)
+            << static_cast<int>(buf[k].type) << " track " << buf[k].track_id << " queue "
+            << buf[k].queue_id << "\n";
     }
     std::cout << "[engine_demo] current track " << engine->currentTrackId() << " state "
               << static_cast<int>(engine->state()) << " pos " << engine->position() << "\n";

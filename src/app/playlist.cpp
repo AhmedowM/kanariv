@@ -115,7 +115,8 @@ auto App::playlistAdd(std::int64_t pid, const std::vector<std::string>& ids,
             continue;
         }
         std::string fn = std::filesystem::path(f).filename().generic_string();
-        kanariv::ipc::Command scmd{kanariv::ipc::LibrarySearch{.query = fn, .limit = playlistSearchLimit}};
+        kanariv::ipc::Command scmd{
+            kanariv::ipc::LibrarySearch{.query = fn, .limit = playlistSearchLimit}};
         auto sres = impl_->sendRaw(scmd);
         if (!sres) {
             detail::renderErrorInto(rep.err, sres.error());

@@ -65,9 +65,11 @@ auto exportJson(contracts::IDatabase& db_, const std::filesystem::path& outPath)
         return std::unexpected{tracks.error()};
     }
     Json root;
-    root["tracks"] = Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    root["tracks"] =
+        Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (auto& t : *tracks) {
-        root["tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        root["tracks"].push_back(kanariv::utils::trackToJson(
+            t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     std::ofstream f(outPath, std::ios::binary);
     if (!f) {
@@ -106,7 +108,8 @@ auto importJson(contracts::IDatabase& db_, const std::filesystem::path& inPath)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, "missing tracks array")};
     }
-    const Json tracks = root["tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    const Json tracks =
+        root["tracks"]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     if (!tracks.isArray()) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, "missing tracks array")};

@@ -62,7 +62,7 @@ auto App::tagEdit(std::string idOrPath, const std::string& field, const std::str
     return impl_->confirm(impl_->sendRaw(cmd), std::format("Updated {} for track {}", field, id));
 }
 
-auto App::tagGet(std::string idOrPath, bool cover) -> AppResult {
+auto App::tagGet(const std::string& idOrPath, bool cover) -> AppResult {
     kanariv::ipc::TagGet tg{.cover = cover};
     if (isNumericId(idOrPath)) {
         tg.id = std::stoll(idOrPath);
@@ -113,7 +113,8 @@ auto App::tagValue(std::string idOrPath, const std::string& field)
                 "tag get cover: no cover art for track " + std::to_string(id))};
         }
         kanariv::utils::Json j = kanariv::utils::Json::object();
-        j["cover"] = st->cover_data; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["cover"] =
+            st->cover_data; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         return TagValue{.value = st->cover_data, .json = j.dump()};
     }
 
@@ -153,9 +154,11 @@ auto App::tagValue(std::string idOrPath, const std::string& field)
     kanariv::utils::Json j = kanariv::utils::Json::object();
     if (numeric) {
         try {
-            j[field] = std::stoll(value); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            j[field] = std::stoll(
+                value); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         } catch (...) {
-            j[field] = value; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            j[field] =
+                value; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
     } else {
         j[field] = value; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)

@@ -168,8 +168,10 @@ auto App::queueAdd(const std::vector<std::string>& paths, const std::string& id,
         return rep;
     }
     if (hasId || search) {
-        kanariv::ipc::Command cmd{
-            kanariv::ipc::QueueAdd{.query = hasId ? id : paths[0], .search = search}}; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        kanariv::ipc::Command cmd{kanariv::ipc::QueueAdd{
+            .query = hasId ? id : paths[0],
+            .search =
+                search}}; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         auto res = impl_->sendRaw(cmd);
         if (!res) {
             return std::unexpected{res.error()};
@@ -257,7 +259,11 @@ auto App::queueRemove(const std::string& id, const std::string& pos,
         }
         if (auto* qt = std::get_if<kanariv::ipc::QueueTracks>(&*ps)) {
             for (std::size_t i = 0; i < qt->tracks.size(); ++i) {
-                all.push_back(RemTarget{.pos = i, .track = qt->tracks[i]}); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                all.push_back(RemTarget{
+                    .pos = i,
+                    .track =
+                        qt->tracks
+                            [i]}); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             }
         } else {
             BatchReport rep;
@@ -292,7 +298,8 @@ auto App::queueRemove(const std::string& id, const std::string& pos,
                                .err = std::format("queue remove: position out of range: {}", p),
                                .exitCode = 1};
         }
-        targets.push_back(all[static_cast<std::size_t>(p)]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        targets.push_back(all[static_cast<std::size_t>(
+            p)]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     } else if (hasId) {
         long long idv = 0;
         if (!parseNum(id, idv)) {
@@ -342,9 +349,13 @@ auto App::queueRemove(const std::string& id, const std::string& pos,
             std::string key = kanariv::app::pathKey(f);
             bool found = false;
             for (std::size_t i = 0; i < all.size(); ++i) {
-                if (!taken[i] && kanariv::app::pathKey(all[i].track.path) == key) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                    targets.push_back(all[i]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                    taken[i] = true; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (!taken[i] &&
+                    kanariv::app::pathKey(all[i].track.path) ==
+                        key) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    targets.push_back(
+                        all[i]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    taken[i] =
+                        true; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                     found = true;
                 }
             }

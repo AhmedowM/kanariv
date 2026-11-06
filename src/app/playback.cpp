@@ -69,7 +69,8 @@ auto App::play() -> AppResult {
         // an explicit Seek then would only reset the ring a second time.
         bool restored = false;
         if (wasStopped && priorTrack != 0 && priorPos > 0.0 && st->track_id == priorTrack) {
-            restored = st->pos >= priorPos - resumeToleranceSec && st->pos <= priorPos + resumeToleranceSec;
+            restored = st->pos >= priorPos - resumeToleranceSec &&
+                       st->pos <= priorPos + resumeToleranceSec;
             if (!restored) {
                 if (auto seekRes =
                         impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::Seek{priorPos}})) {

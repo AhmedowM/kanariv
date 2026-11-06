@@ -79,7 +79,8 @@ struct JsonSlots {
         if (byIndex) {
             return v.at(index);
         }
-        return v[std::string(key)]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        return v[std::string(
+            key)]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     static auto get(const Json::Impl& impl, std::string_view key, std::size_t index, bool byIndex)
         -> const nlohmann::ordered_json& {

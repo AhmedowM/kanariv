@@ -479,8 +479,8 @@ auto Database::queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids)
     internal::SqliteErrGuard guard{err};
     int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
-                                                         err != nullptr ? std::string(err) : "BEGIN failed")};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Busy, err != nullptr ? std::string(err) : "BEGIN failed")};
     }
     for (int64_t tid : tids) {
         auto r = kanariv::db::queueEnqueueLocked(impl_->db_.get(), qid, tid, -1);
@@ -494,8 +494,9 @@ auto Database::queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids)
     rc = sqlite3_exec(impl_->db_.get(), "COMMIT", nullptr, nullptr, &cErr);
     if (rc != SQLITE_OK) {
         sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, cErr != nullptr ? std::string(cErr) : "commit failed")};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                      cErr != nullptr ? std::string(cErr) : "commit failed")};
     }
     return {};
 }
@@ -519,8 +520,8 @@ auto Database::queueReplaceAll(int64_t qid, std::span<const int64_t> ids)
     internal::SqliteErrGuard guard{err};
     int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
-                                                         err != nullptr ? std::string(err) : "BEGIN failed")};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Busy, err != nullptr ? std::string(err) : "BEGIN failed")};
     }
     auto clr = kanariv::db::queueClearLocked(impl_->db_.get(), qid);
     if (!clr) {
@@ -539,8 +540,9 @@ auto Database::queueReplaceAll(int64_t qid, std::span<const int64_t> ids)
     rc = sqlite3_exec(impl_->db_.get(), "COMMIT", nullptr, nullptr, &cErr);
     if (rc != SQLITE_OK) {
         sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, cErr != nullptr ? std::string(cErr) : "commit failed")};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                      cErr != nullptr ? std::string(cErr) : "commit failed")};
     }
     return {};
 }
@@ -1399,8 +1401,8 @@ auto Database::createPlaylistFromTracks(std::string_view name, std::span<const i
     internal::SqliteErrGuard guard{err};
     int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
-                                                         err != nullptr ? std::string(err) : "BEGIN failed")};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Busy, err != nullptr ? std::string(err) : "BEGIN failed")};
     }
     auto pidRes = impl_->createPlaylistLocked(name);
     if (!pidRes) {
@@ -1420,8 +1422,9 @@ auto Database::createPlaylistFromTracks(std::string_view name, std::span<const i
     rc = sqlite3_exec(impl_->db_.get(), "COMMIT", nullptr, nullptr, &cErr);
     if (rc != SQLITE_OK) {
         sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, cErr != nullptr ? std::string(cErr) : "commit failed")};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                      cErr != nullptr ? std::string(cErr) : "commit failed")};
     }
     return pid;
 }
@@ -2438,9 +2441,17 @@ auto Database::libraryStats(std::optional<int> topTracks, std::optional<int> top
             auto limit = static_cast<std::size_t>(*topArtists);
             for (std::size_t i = 0; i < sorted.size() && i < limit; ++i) {
                 kanariv::types::TopEntity e;
-                e.name = sorted[i].first; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                e.track_count = sorted[i].second.first; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                e.total_plays = sorted[i].second.second; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.name =
+                    sorted[i]
+                        .first; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.track_count =
+                    sorted[i]
+                        .second
+                        .first; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                e.total_plays =
+                    sorted[i]
+                        .second
+                        .second; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 d.top_artists->push_back(std::move(e));
             }
         }

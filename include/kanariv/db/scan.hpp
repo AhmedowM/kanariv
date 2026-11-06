@@ -51,7 +51,7 @@ namespace kanariv::db {
  */
 KANARIV_API std::expected<void, kanariv::utils::Error>
 scanLibrary(contracts::IDatabase& db, int64_t libraryId,
-            std::function<void(int64_t, int64_t, std::string_view)> progress = {},
+            const std::function<void(int64_t, int64_t, std::string_view)>& progress = {},
             kanariv::media::ScanMode mode = kanariv::media::ScanMode::Sampled);
 
 } // namespace kanariv::db

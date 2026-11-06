@@ -68,7 +68,7 @@ auto searchFts(contracts::IDatabase& db_, std::string_view query, int limit)
     if (sanitized.empty()) {
         return std::vector<kanariv::types::Track>{};
     }
-    std::string ftsQ = sanitized;
+    const std::string& ftsQ = sanitized;
     std::shared_lock lock(DatabaseAccess::mutex(db));
     sqlite3* h = DatabaseAccess::handle(db);
     if (h == nullptr) {

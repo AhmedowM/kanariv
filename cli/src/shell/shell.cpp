@@ -645,7 +645,8 @@ void Shell::setupTrackCommands() {
     trackCmd = cli_->add_subcommand("track", "Track operations");
     trRate = trackCmd->add_subcommand("rate", "Rate a track (0-5)");
     trRate->add_option("id", trRateId, "Track id or file path")->required();
-    trRate->add_option("rating", trRateRating, "Rating (0-5)")->check(CLI::Range(detail::ratingRangeMin, detail::ratingRangeMax));
+    trRate->add_option("rating", trRateRating, "Rating (0-5)")
+        ->check(CLI::Range(detail::ratingRangeMin, detail::ratingRangeMax));
     trRate->add_flag("--json", trRateJson, "JSON output");
 }
 

@@ -100,9 +100,9 @@ constexpr std::size_t maxFrameSizeBytes = 16 * 1024 * 1024;
 constexpr int pipeConnectRetryMs = 50;
 constexpr int pipeRetrySleepMs = 5;
 constexpr DWORD pipeMaxInstances = 535;
-constexpr DWORD pipeError232 = 232;   // ERROR_PIPE_BUSY
-constexpr DWORD pipeError109 = 109;   // ERROR_BROKEN_PIPE
-constexpr DWORD pipeError233 = 233;   // ERROR_NO_DATA
+constexpr DWORD pipeError232 = 232; // ERROR_PIPE_BUSY
+constexpr DWORD pipeError109 = 109; // ERROR_BROKEN_PIPE
+constexpr DWORD pipeError233 = 233; // ERROR_NO_DATA
 constexpr int bitShift24 = 24;
 constexpr int bitShift16 = 16;
 constexpr int bitShift8 = 8;
@@ -123,10 +123,9 @@ struct IpcServer::Impl {
 
     auto listen(const std::filesystem::path& dbPath, std::string_view socketPathOverride)
         -> kanariv::utils::Expected<void>;
-    void run(std::stop_token st,
-             std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
-                 const kanariv::ipc::Command&)>
-                 dispatch);
+    void run(const std::stop_token& st,
+             const std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
+                 const kanariv::ipc::Command&)>& dispatch);
     void retireClient();
     void shutdown();
 
@@ -160,7 +159,7 @@ void IpcServer::run(std::stop_token st,
                     std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
                         const kanariv::ipc::Command&)>
                         dispatch) {
-    impl_->run(st, std::move(dispatch));
+    impl_->run(std::move(st), std::move(dispatch));
 }
 
 void IpcServer::retireClient() {
@@ -188,7 +187,7 @@ auto IpcServer::Impl::listen(const std::filesystem::path& dbPath,
 
 #ifdef _WIN32
     // Atomic take-over: whoever exchanges non-null owns the close.
-    auto *prev = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
+    auto* prev = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
         -1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
     if (prev != nullptr && prev != invalidHandleValue) {
         ::CloseHandle(prev);
@@ -200,8 +199,9 @@ auto IpcServer::Impl::listen(const std::filesystem::path& dbPath,
         w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
     }
     PipeDacl dacl;
-    HANDLE h = ::CreateNamedPipeW(w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait,
-                                  pipeUnlimited, pipeInBufferSize, pipeOutBufferSize, 0, dacl.attributes());
+    HANDLE h =
+        ::CreateNamedPipeW(w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait, pipeUnlimited,
+                           pipeInBufferSize, pipeOutBufferSize, 0, dacl.attributes());
     if (h == invalidHandleValue) {
         DWORD err = ::GetLastError();
         return std::unexpected{kanariv::utils::makeError(
@@ -262,20 +262,20 @@ auto IpcServer::Impl::listen(const std::filesystem::path& dbPath,
 #endif
 }
 
-void IpcServer::Impl::run(std::stop_token st,
-                          std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
-                              const kanariv::ipc::Command&)>
-                              dispatch) {
+void IpcServer::Impl::run(
+    const std::stop_token& st,
+    const std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
+        const kanariv::ipc::Command&)>& dispatch) {
     if (running_.exchange(true)) {
         return;
     }
     stopSource_ = std::stop_source{};
-    acceptThread_ = std::jthread([this, st, dispatch](std::stop_token jt) -> void {
+    acceptThread_ = std::jthread([this, st, dispatch](const std::stop_token& jt) -> void {
         (void)jt;
         while (!st.stop_requested() && !stopSource_.get_token().stop_requested() &&
                running_.load()) {
 #ifdef _WIN32
-            auto *listenH = reinterpret_cast<HANDLE>(
+            auto* listenH = reinterpret_cast<HANDLE>(
                 pipeHandle_
                     .load()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
             if (pipeHandle_.load() == -1) {
@@ -290,9 +290,9 @@ void IpcServer::Impl::run(std::stop_token st,
                         w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
                     }
                     PipeDacl dacl;
-                    HANDLE h =
-                        ::CreateNamedPipeW(w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait,
-                                           pipeUnlimited, pipeInBufferSize, pipeOutBufferSize, 0, dacl.attributes());
+                    HANDLE h = ::CreateNamedPipeW(
+                        w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait, pipeUnlimited,
+                        pipeInBufferSize, pipeOutBufferSize, 0, dacl.attributes());
                     if (h != invalidHandleValue) {
                         pipeHandle_.store(reinterpret_cast<std::intptr_t>(
                             h)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
@@ -317,12 +317,13 @@ void IpcServer::Impl::run(std::stop_token st,
                     // (or a broken-pipe variant) forever. Retrying the same
                     // handle spins without ever accepting, leaving a live but
                     // deaf daemon (D-10). Reset the instance so it is reusable.
-                    if (err == pipeError232 /*ERROR_NO_DATA*/ || err == pipeError109 /*ERROR_BROKEN_PIPE*/ ||
+                    if (err == pipeError232 /*ERROR_NO_DATA*/ ||
+                        err == pipeError109 /*ERROR_BROKEN_PIPE*/ ||
                         err == pipeError233 /*ERROR_PIPE_NOT_CONNECTED*/) {
                         if (!::DisconnectNamedPipe(listenH)) {
                             // Reset failed: drop the instance; the top of the
                             // loop rebuilds a fresh listening one.
-                            auto *stale = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
+                            auto* stale = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
                                 -1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
                             if (stale != nullptr && stale != invalidHandleValue) {
                                 ::CloseHandle(stale);
@@ -338,7 +339,7 @@ void IpcServer::Impl::run(std::stop_token st,
             // concurrently -- whoever exchanges non-null owns the handle, so
             // a close here can never double-close. (Only this loop creates
             // instances, so a non-null take is always the connected one.)
-            auto *clientHandle = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
+            auto* clientHandle = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
                 -1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
             if (!clientHandle || clientHandle == invalidHandleValue) {
                 // Lost the race with shutdown; loop back to the stop check.
@@ -352,9 +353,9 @@ void IpcServer::Impl::run(std::stop_token st,
                     w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
                 }
                 PipeDacl nextDacl;
-                HANDLE next =
-                    ::CreateNamedPipeW(w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait,
-                                       pipeUnlimited, pipeInBufferSize, pipeOutBufferSize, 0, nextDacl.attributes());
+                HANDLE next = ::CreateNamedPipeW(
+                    w.c_str(), pipeAccessDuplex, pipeTypeByte | pipeWait, pipeUnlimited,
+                    pipeInBufferSize, pipeOutBufferSize, 0, nextDacl.attributes());
                 if (next != invalidHandleValue) {
                     pipeHandle_.store(reinterpret_cast<std::intptr_t>(
                         next)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
@@ -365,83 +366,87 @@ void IpcServer::Impl::run(std::stop_token st,
             {
                 std::scoped_lock lk(clientsMtx_);
                 clients_.emplace_back();
-                clients_.back().thread =
-                    std::jthread([this, clientHandle, dispatch](std::stop_token ct) -> void {
-                        (void)ct;
-                        // Self-retire on every exit path (including
-                        // exceptions): the slot is swept by the accept loop.
-                        struct RetireGuard {
-                            Impl* self;
-                            explicit RetireGuard(Impl* s) : self(s) {}
-                            RetireGuard(const RetireGuard&) = delete;
-                            auto operator=(const RetireGuard&) -> RetireGuard& = delete;
-                            RetireGuard(RetireGuard&&) = delete;
-                            auto operator=(RetireGuard&&) -> RetireGuard& = delete;
-                            ~RetireGuard() {
-                                self->retireClient();
-                            }
-                        } retire{this};
-                        try {
-                            std::array<std::byte, 4> hdr{};
-                            DWORD r = 0;
-                            BOOL ok = ::ReadFile(clientHandle, hdr.data(), 4, &r, nullptr);
-                            if (ok == 0 || r != 4) {
-                                ::CloseHandle(clientHandle);
-                                return;
-                            }
-                            std::uint32_t len =
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << bitShift24) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << bitShift16) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << bitShift8) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                                static_cast<std::uint32_t>(std::to_underlying(hdr[frameByteIndex3])); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                            if (len > maxFrameSizeBytes) {
-                                ::CloseHandle(clientHandle);
-                                return;
-                            }
-                            std::vector<std::byte> payload(len);
-                            if (len > 0) {
-                                DWORD rr = 0;
-                                ok = ::ReadFile(clientHandle, payload.data(), len, &rr, nullptr);
-                                if (ok == 0 || rr != len) {
-                                    ::CloseHandle(clientHandle);
-                                    return;
-                                }
-                            }
-                            std::string reqStr;
-                            reqStr.reserve(payload.size());
-                            for (auto b : payload) {
-                                reqStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
-                            }
-                            auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
-                            kanariv::ipc::IpcReply reply;
-                            if (!reqExp) {
-                                reply.id = 0;
-                                reply.result = std::unexpected{reqExp.error()};
-                            } else {
-                                reply.id = reqExp->id;
-                                auto resExp = dispatch(reqExp->cmd);
-                                if (!resExp) {
-                                    reply.result = std::unexpected{resExp.error()};
-                                } else {
-                                    reply.result = *resExp;
-                                }
-                            }
-                            std::string repJson = kanariv::ipc::serializeReply(reply);
-                            auto framed = kanariv::ipc::frame(repJson);
-                            DWORD w2 = 0;
-                            BOOL okW = ::WriteFile(clientHandle, framed.data(),
-                                                   static_cast<DWORD>(framed.size()), &w2, nullptr);
-                            if (!okW) {
-                                ::CloseHandle(clientHandle);
-                                return;
-                            }
-                            ::FlushFileBuffers(clientHandle);
-                            ::DisconnectNamedPipe(clientHandle);
-                            ::CloseHandle(clientHandle);
-                        } catch (...) {
-                            ::CloseHandle(clientHandle);
+                clients_.back().thread = std::jthread([this, clientHandle, dispatch](
+                                                          const std::stop_token& ct) -> void {
+                    (void)ct;
+                    // Self-retire on every exit path (including
+                    // exceptions): the slot is swept by the accept loop.
+                    struct RetireGuard {
+                        Impl* self;
+                        explicit RetireGuard(Impl* s) : self(s) {}
+                        RetireGuard(const RetireGuard&) = delete;
+                        auto operator=(const RetireGuard&) -> RetireGuard& = delete;
+                        RetireGuard(RetireGuard&&) = delete;
+                        auto operator=(RetireGuard&&) -> RetireGuard& = delete;
+                        ~RetireGuard() {
+                            self->retireClient();
                         }
-                    });
+                    } retire{this};
+                    try {
+                        std::array<std::byte, 4> hdr{};
+                        DWORD r = 0;
+                        BOOL ok = ::ReadFile(clientHandle, hdr.data(), 4, &r, nullptr);
+                        if (ok == 0 || r != 4) {
+                            ::CloseHandle(clientHandle);
+                            return;
+                        }
+                        std::uint32_t len =
+                            (static_cast<std::uint32_t>(std::to_underlying(hdr[0]))
+                             << bitShift24) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                            (static_cast<std::uint32_t>(std::to_underlying(hdr[1]))
+                             << bitShift16) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                            (static_cast<std::uint32_t>(std::to_underlying(hdr[2]))
+                             << bitShift8) | // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                            static_cast<std::uint32_t>(std::to_underlying(
+                                hdr[frameByteIndex3])); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        if (len > maxFrameSizeBytes) {
+                            ::CloseHandle(clientHandle);
+                            return;
+                        }
+                        std::vector<std::byte> payload(len);
+                        if (len > 0) {
+                            DWORD rr = 0;
+                            ok = ::ReadFile(clientHandle, payload.data(), len, &rr, nullptr);
+                            if (ok == 0 || rr != len) {
+                                ::CloseHandle(clientHandle);
+                                return;
+                            }
+                        }
+                        std::string reqStr;
+                        reqStr.reserve(payload.size());
+                        for (auto b : payload) {
+                            reqStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
+                        }
+                        auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
+                        kanariv::ipc::IpcReply reply;
+                        if (!reqExp) {
+                            reply.id = 0;
+                            reply.result = std::unexpected{reqExp.error()};
+                        } else {
+                            reply.id = reqExp->id;
+                            auto resExp = dispatch(reqExp->cmd);
+                            if (!resExp) {
+                                reply.result = std::unexpected{resExp.error()};
+                            } else {
+                                reply.result = *resExp;
+                            }
+                        }
+                        std::string repJson = kanariv::ipc::serializeReply(reply);
+                        auto framed = kanariv::ipc::frame(repJson);
+                        DWORD w2 = 0;
+                        BOOL okW = ::WriteFile(clientHandle, framed.data(),
+                                               static_cast<DWORD>(framed.size()), &w2, nullptr);
+                        if (!okW) {
+                            ::CloseHandle(clientHandle);
+                            return;
+                        }
+                        ::FlushFileBuffers(clientHandle);
+                        ::DisconnectNamedPipe(clientHandle);
+                        ::CloseHandle(clientHandle);
+                    } catch (...) {
+                        ::CloseHandle(clientHandle);
+                    }
+                });
                 // Reap exited connections: the list holds live threads only.
                 std::erase_if(clients_, [](const ClientSlot& s) -> bool { return s.done; });
             }
@@ -626,7 +631,7 @@ void IpcServer::Impl::shutdown() {
     }
     // Take-over (see listen()): if the accept loop is mid-handshake it owns
     // its handle; anything left here is ours to close.
-    auto *cur = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
+    auto* cur = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
         -1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
     if (cur != nullptr && cur != invalidHandleValue) {
         ::CloseHandle(cur);
@@ -648,7 +653,7 @@ void IpcServer::Impl::shutdown() {
 #ifdef _WIN32
     // Post-join drain: the accept loop may have stored a fresh listen
     // instance after our pre-join take. Exchange is idempotent.
-    auto *leftover = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
+    auto* leftover = reinterpret_cast<HANDLE>(pipeHandle_.exchange(
         -1)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast,performance-no-int-to-ptr)
     if (leftover != nullptr && leftover != invalidHandleValue) {
         ::CloseHandle(leftover);

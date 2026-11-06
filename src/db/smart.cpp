@@ -83,23 +83,28 @@ auto parseDouble(std::string_view s, double& out) -> bool {
 // Reads the leading operator from s and advances past it. Returns the op
 // string ("=", ">=", "<=", ">", "<") or nullopt when no operator is present.
 auto readOp(std::string_view& s) -> std::optional<std::string_view> {
-    if (s.size() >= 2 && s[0] == '>' && s[1] == '=') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (s.size() >= 2 && s[0] == '>' &&
+        s[1] == '=') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         s.remove_prefix(2);
         return ">=";
     }
-    if (s.size() >= 2 && s[0] == '<' && s[1] == '=') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (s.size() >= 2 && s[0] == '<' &&
+        s[1] == '=') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         s.remove_prefix(2);
         return "<=";
     }
-    if (s.size() >= 1 && s[0] == '=') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (s.size() >= 1 &&
+        s[0] == '=') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         s.remove_prefix(1);
         return "=";
     }
-    if (s.size() >= 1 && s[0] == '>') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (s.size() >= 1 &&
+        s[0] == '>') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         s.remove_prefix(1);
         return ">";
     }
-    if (s.size() >= 1 && s[0] == '<') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (s.size() >= 1 &&
+        s[0] == '<') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         s.remove_prefix(1);
         return "<";
     }
@@ -231,7 +236,8 @@ auto parseSmartQuery(std::string_view q)
         // Locate the first operator character to split field from value.
         std::size_t opPos = pred.size();
         for (std::size_t i = 0; i < pred.size(); ++i) {
-            char c = pred[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            char c =
+                pred[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             if (c == '=' || c == '>' || c == '<') {
                 opPos = i;
                 break;

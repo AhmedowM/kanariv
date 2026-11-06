@@ -158,14 +158,15 @@ auto App::Impl::spawnDaemon(const kanariv::config::Config& cfg)
         std::wstring cfgW = cfg.configPath.wstring();
         wCmd += L" --config \"";
         wCmd += cfgW;
-        wCmd += L"\"";
+        wCmd += L'\"';
     }
     // CreateProcessW requires mutable, null-terminated buffer
     std::vector<wchar_t> buf(wCmd.size() + 1, L'\0');
     for (size_t i = 0; i < wCmd.size(); ++i) {
         buf[i] = wCmd[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
-    buf[wCmd.size()] = L'\0'; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    buf[wCmd.size()] =
+        L'\0'; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};

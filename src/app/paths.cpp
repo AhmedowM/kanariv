@@ -28,10 +28,17 @@ auto wildcardMatch(std::string_view pat, std::string_view name) -> bool {
         return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     };
     while (nx < name.size()) {
-        if (px < pat.size() && (pat[px] == '?' || lower(pat[px]) == lower(name[nx]))) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (px < pat.size() &&
+            (pat[px] == '?' ||
+             lower(pat[px]) ==
+                 lower(
+                     name[nx]))) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             ++px;
             ++nx;
-        } else if (px < pat.size() && pat[px] == '*') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        } else if (
+            px < pat.size() &&
+            pat[px] ==
+                '*') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             star = px++;
             ss = nx;
         } else if (star != std::string_view::npos) {
@@ -41,7 +48,9 @@ auto wildcardMatch(std::string_view pat, std::string_view name) -> bool {
             return false;
         }
     }
-    while (px < pat.size() && pat[px] == '*') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    while (px < pat.size() &&
+           pat[px] ==
+               '*') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         ++px;
     }
     return px == pat.size();

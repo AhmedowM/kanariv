@@ -141,11 +141,15 @@ auto collapseWhitespace(const std::string& s) -> std::string {
 // Trims leading and trailing spaces.
 auto trimSpaces(const std::string& s) -> std::string {
     size_t start = 0;
-    while (start < s.size() && s[start] == ' ') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    while (start < s.size() &&
+           s[start] ==
+               ' ') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         start++;
     }
     size_t end = s.size();
-    while (end > start && s[end - 1] == ' ') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    while (end > start &&
+           s[end - 1] ==
+               ' ') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         end--;
     }
     if (start >= end) {

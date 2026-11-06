@@ -125,7 +125,7 @@ auto loadConfig(const std::filesystem::path& path) -> kanariv::utils::Expected<C
             std::error_code legacyEc;
             if (std::filesystem::exists(legacy, legacyEc)) {
                 cfg.configPath = legacy;
-                cfgFile = legacy;
+                cfgFile = std::move(legacy);
             }
         }
     }
@@ -144,58 +144,129 @@ auto loadConfig(const std::filesystem::path& path) -> kanariv::utils::Expected<C
     }
     try {
         const Json j = Json::parse(content);
-        if (j.contains("dbPath") && j["dbPath"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            auto s = j["dbPath"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("dbPath") &&
+            j["dbPath"]
+                .isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            auto s =
+                j["dbPath"]
+                    .get<
+                        std::
+                            string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             if (!s.empty()) {
                 cfg.dbPath = std::filesystem::path(s);
             }
         }
-        if (j.contains("configPath") && j["configPath"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("configPath") &&
+            j["configPath"]
+                .isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             // ignore - already set
         }
-        if (j.contains("device") && j["device"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            cfg.device = j["device"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("device") &&
+            j["device"]
+                .isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.device =
+                j["device"]
+                    .get<
+                        std::
+                            string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
-        if (j.contains("logLevel") && j["logLevel"].isInteger()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            cfg.logLevel = j["logLevel"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-        } else if (j.contains("logLevel") && j["logLevel"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("logLevel") &&
+            j["logLevel"]
+                .isInteger()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.logLevel =
+                j["logLevel"]
+                    .get<
+                        int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        } else if (
+            j.contains("logLevel") &&
+            j["logLevel"]
+                .isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             // Tolerate hand-written names ("info"); canonical form is numeric.
-            if (auto lvl = kanariv::utils::parseLogLevelValue(j["logLevel"].get<std::string>())) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (auto lvl = kanariv::utils::parseLogLevelValue(
+                    j["logLevel"]
+                        .get<
+                            std::
+                                string>())) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 cfg.logLevel = std::to_underlying(*lvl);
             }
         }
-        if (j.contains("socketPath") && j["socketPath"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            auto s = j["socketPath"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("socketPath") &&
+            j["socketPath"]
+                .isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            auto s =
+                j["socketPath"]
+                    .get<
+                        std::
+                            string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             if (!s.empty()) {
                 cfg.socketPath = s;
             }
         }
-        if (j.contains("autoResumeOnPlay") && j["autoResumeOnPlay"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            cfg.autoResumeOnPlay = j["autoResumeOnPlay"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("autoResumeOnPlay") &&
+            j["autoResumeOnPlay"]
+                .isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.autoResumeOnPlay =
+                j["autoResumeOnPlay"]
+                    .get<
+                        bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
-        if (j.contains("clearStopsPlayback") && j["clearStopsPlayback"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            cfg.clearStopsPlayback = j["clearStopsPlayback"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("clearStopsPlayback") &&
+            j["clearStopsPlayback"]
+                .isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.clearStopsPlayback =
+                j["clearStopsPlayback"]
+                    .get<
+                        bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
-        if (j.contains("repeatDefault") && j["repeatDefault"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            auto rd = j["repeatDefault"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("repeatDefault") &&
+            j["repeatDefault"]
+                .isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            auto rd =
+                j["repeatDefault"]
+                    .get<
+                        std::
+                            string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             if (rd == "off" || rd == "one" || rd == "all") {
                 cfg.repeatDefault = rd;
             }
         }
-        if (j.contains("autostart") && j["autostart"].isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            cfg.autostart = j["autostart"].get<bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("autostart") &&
+            j["autostart"]
+                .isBoolean()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.autostart =
+                j["autostart"]
+                    .get<
+                        bool>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
         // legacy keys: db_path, log_level
-        if (j.contains("db_path") && j["db_path"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            auto s = j["db_path"].get<std::string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("db_path") &&
+            j["db_path"]
+                .isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            auto s =
+                j["db_path"]
+                    .get<
+                        std::
+                            string>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             if (!s.empty()) {
                 cfg.dbPath = std::filesystem::path(s);
             }
         }
-        if (j.contains("log_level") && j["log_level"].isInteger()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            cfg.logLevel = j["log_level"].get<int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-        } else if (j.contains("log_level") && j["log_level"].isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-            if (auto lvl = kanariv::utils::parseLogLevelValue(j["log_level"].get<std::string>())) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (j.contains("log_level") &&
+            j["log_level"]
+                .isInteger()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            cfg.logLevel =
+                j["log_level"]
+                    .get<
+                        int>(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        } else if (
+            j.contains("log_level") &&
+            j["log_level"]
+                .isString()) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (auto lvl = kanariv::utils::parseLogLevelValue(
+                    j["log_level"]
+                        .get<
+                            std::
+                                string>())) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 cfg.logLevel = std::to_underlying(*lvl);
             }
         }
@@ -214,15 +285,24 @@ auto saveConfig(const Config& cfg) -> kanariv::utils::Expected<void> {
             std::filesystem::create_directories(dir, ec);
         }
         Json j;
-        j["dbPath"] = cfg.dbPath.generic_string(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-        j["device"] = cfg.device; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-        j["logLevel"] = cfg.logLevel; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-        j["autoResumeOnPlay"] = cfg.autoResumeOnPlay; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-        j["clearStopsPlayback"] = cfg.clearStopsPlayback; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-        j["repeatDefault"] = cfg.repeatDefault; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-        j["autostart"] = cfg.autostart; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["dbPath"] =
+            cfg.dbPath
+                .generic_string(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["device"] =
+            cfg.device; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["logLevel"] =
+            cfg.logLevel; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["autoResumeOnPlay"] =
+            cfg.autoResumeOnPlay; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["clearStopsPlayback"] =
+            cfg.clearStopsPlayback; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["repeatDefault"] =
+            cfg.repeatDefault; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["autostart"] =
+            cfg.autostart; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         if (!cfg.socketPath.empty()) {
-            j["socketPath"] = cfg.socketPath; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            j["socketPath"] =
+                cfg.socketPath; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
         std::ofstream out(cfg.configPath);
         if (!out) {

@@ -26,7 +26,7 @@
 namespace kanariv::db {
 
 auto scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
-                 std::function<void(int64_t, int64_t, std::string_view)> progress,
+                 const std::function<void(int64_t, int64_t, std::string_view)>& progress,
                  kanariv::media::ScanMode mode) -> std::expected<void, kanariv::utils::Error> {
     auto& db = dynamic_cast<Database&>(db_);
     if (libraryId == 0) {

@@ -160,14 +160,20 @@ auto Service::Impl::handle(const kanariv::ipc::QueueList& ql) const
             std::vector<char> seen(tracks.size(), 0);
             for (int64_t p : perm) {
                 if (p >= 0 && static_cast<std::size_t>(p) < tracks.size() &&
-                    seen[static_cast<std::size_t>(p)] == 0) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                    ordered.push_back(tracks[static_cast<std::size_t>(p)]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                    seen[static_cast<std::size_t>(p)] = 1; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    seen[static_cast<std::size_t>(p)] ==
+                        0) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    ordered.push_back(tracks[static_cast<std::size_t>(
+                        p)]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    seen[static_cast<std::size_t>(p)] =
+                        1; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 }
             }
             for (std::size_t i = 0; i < tracks.size(); ++i) {
-                if (seen[i] == 0) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                    ordered.push_back(tracks[i]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (seen[i] ==
+                    0) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    ordered.push_back(
+                        tracks
+                            [i]); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 }
             }
             tracks = std::move(ordered);
@@ -422,9 +428,12 @@ static auto parseIdOrIndex(const std::string& idOrIndex)
                                                          "invalid idOrIndex: empty")};
     }
     bool allDigit = true;
-    std::size_t off = (s[0] == '-' ? 1 : 0); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    std::size_t off =
+        (s[0] == '-' ? 1
+                     : 0); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (std::size_t i = off; i < s.size(); ++i) {
-        if (std::isdigit(static_cast<unsigned char>(s[i])) == 0) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        if (std::isdigit(static_cast<unsigned char>(s[i])) ==
+            0) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             allDigit = false;
             break;
         }
@@ -482,9 +491,13 @@ static auto addTrackByIdOrPath(kanariv::contracts::IDatabase& db, const std::str
         s.erase(s.find_last_not_of(" \t\n\r") + 1);
         if (!s.empty()) {
             bool isNum = true;
-            std::size_t off = (s[0] == '-' ? 1 : 0); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            std::size_t off =
+                (s[0] == '-'
+                     ? 1
+                     : 0); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             for (std::size_t i = off; i < s.size(); ++i) {
-                if (std::isdigit(static_cast<unsigned char>(s[i])) == 0) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (std::isdigit(static_cast<unsigned char>(s[i])) ==
+                    0) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                     isNum = false;
                     break;
                 }
@@ -616,7 +629,8 @@ auto Service::Impl::handle(const kanariv::ipc::QueueMove& qm)
     for (auto& it : *items) {
         ids.push_back(it.track_id);
     }
-    int64_t mv = ids[qm.from]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    int64_t mv =
+        ids[qm.from]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     ids.erase(ids.begin() + static_cast<std::ptrdiff_t>(qm.from));
     ids.insert(ids.begin() + static_cast<std::ptrdiff_t>(qm.to), mv);
     // Transactional clear+enqueue: single BEGIN IMMEDIATE/COMMIT so concurrent

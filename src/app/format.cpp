@@ -95,11 +95,14 @@ void writePlaylistText(std::ostream& os, const std::vector<kanariv::types::Track
 
 void writePlaylistJson(std::ostream& os, const std::vector<kanariv::types::Track>& tracks) {
     kanariv::utils::Json j;
-    j["format"] = "kanariv-playlist"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-    j["version"] = 1; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-    j["tracks"] = kanariv::utils::Json::array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["format"] =
+        "kanariv-playlist"; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["version"] = 1;       // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j["tracks"] = kanariv::utils::Json::
+        array(); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (const auto& t : tracks) {
-        j["tracks"].push_back(kanariv::utils::trackToJson(t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        j["tracks"].push_back(kanariv::utils::trackToJson(
+            t)); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
     os << j.dump(2) << "\n";
 }

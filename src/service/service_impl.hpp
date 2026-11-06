@@ -37,7 +37,7 @@ struct Service::Impl {
          std::string socketPath, std::intptr_t lockFd,
          std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName);
 
-    kanariv::utils::Expected<void> run(std::stop_token st);
+    kanariv::utils::Expected<void> run(const std::stop_token& st);
     void shutdown();
     void updateShmStatus() const;
     std::expected<kanariv::ipc::Result, kanariv::utils::Error> statusResult();

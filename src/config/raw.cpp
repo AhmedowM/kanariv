@@ -40,7 +40,8 @@ auto configGetRaw(const std::filesystem::path& p, std::string_view key)
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                              "key not found: " + k)};
         }
-        const Json v = j[k]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        const Json v =
+            j[k]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         if (v.isString()) {
             return v.get<std::string>();
         }
@@ -92,9 +93,9 @@ auto configSetRaw(const std::filesystem::path& p, std::string_view key, std::str
         parsedAsJson = true;
     }
     if (!parsedAsJson) {
-        v = std::string(value);
+        v = value;
     }
-    j[k] = std::move(v); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    j[k] = v; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     try {
         auto parent = p.parent_path();
         if (!parent.empty()) {

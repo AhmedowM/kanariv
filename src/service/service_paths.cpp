@@ -97,8 +97,8 @@ auto probeSocketAlive(const std::string& sp) -> bool {
     if (sp.empty()) {
         return false;
     }
-    constexpr DWORD pipeErrorBusy = 231;      // ERROR_PIPE_BUSY
-    constexpr DWORD pipeErrorNotFound = 2;    // ERROR_FILE_NOT_FOUND
+    constexpr DWORD pipeErrorBusy = 231;       // ERROR_PIPE_BUSY
+    constexpr DWORD pipeErrorNotFound = 2;     // ERROR_FILE_NOT_FOUND
     constexpr DWORD pipeErrorBrokenPipe = 109; // ERROR_BROKEN_PIPE
     std::wstring w;
     w.reserve(sp.size());
@@ -169,7 +169,8 @@ auto tryAcquireLock(const std::filesystem::path& lockPath, std::intptr_t& outFd)
     OVERLAPPED ov{};
     ov.Offset = 0;
     ov.OffsetHigh = 0;
-    if (::LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ov) == FALSE) {
+    if (::LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ov) ==
+        FALSE) {
         ::CloseHandle(h);
         outFd = -1;
         return false; // ERROR_LOCK_VIOLATION (33) or other
@@ -199,7 +200,7 @@ void releaseLock(std::intptr_t fd) {
         return;
     }
 #ifdef _WIN32
-    auto *h = reinterpret_cast<HANDLE>(static_cast<intptr_t>(fd));
+    auto* h = reinterpret_cast<HANDLE>(static_cast<intptr_t>(fd));
     OVERLAPPED ov{};
     ov.Offset = 0;
     ov.OffsetHigh = 0;

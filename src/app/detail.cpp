@@ -116,7 +116,8 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
                 kanariv::println(os, "Shuffle: {} Repeat: {}", v.shuffle ? "on" : "off",
                                  kanariv::types::toString(v.repeat));
                 if (!v.artist.empty() && !v.title.empty()) {
-                    kanariv::println(os, "Track: {} - {} [id: {}]", truncateField(v.artist, defaultMaxLen),
+                    kanariv::println(os, "Track: {} - {} [id: {}]",
+                                     truncateField(v.artist, defaultMaxLen),
                                      truncateField(v.title, defaultMaxLen), v.track_id);
                 } else if (!v.artist.empty() || !v.title.empty()) {
                     kanariv::println(os, "Track: {} [id: {}]",
@@ -142,10 +143,11 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                  "Title", "Dur");
                 for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                    const auto& t = tracksSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    const auto& t = tracksSpan
+                        [i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                     kanariv::println(os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
-                                     truncateField(t.artist, defaultMaxLen), truncateField(t.title, defaultMaxLen),
-                                     formatTime(t.duration));
+                                     truncateField(t.artist, defaultMaxLen),
+                                     truncateField(t.title, defaultMaxLen), formatTime(t.duration));
                 }
             },
             [&os](const kanariv::ipc::Queues& v) -> void {
@@ -153,10 +155,13 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:>8} {:>6} {:>4}", "#", "ID", "Name",
                                  "Tracks", "Active", "Temp");
                 for (std::size_t i = 0; i < v.entries.size(); ++i) {
-                    const auto& q = v.entries[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                    kanariv::println(os, "{:3} {:6}  {:<40} {:>8} {:>6} {:>4}", i, q.id,
-                                     truncateField(q.name.empty() ? "(unnamed)" : q.name, defaultMaxLen),
-                                     q.tracks, q.active ? "*" : "", q.temp ? "yes" : "");
+                    const auto& q =
+                        v.entries
+                            [i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    kanariv::println(
+                        os, "{:3} {:6}  {:<40} {:>8} {:>6} {:>4}", i, q.id,
+                        truncateField(q.name.empty() ? "(unnamed)" : q.name, defaultMaxLen),
+                        q.tracks, q.active ? "*" : "", q.temp ? "yes" : "");
                 }
             },
             [&os](const kanariv::ipc::PlaylistData& v) -> void {
@@ -165,10 +170,11 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                  "Title", "Dur");
                 for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                    const auto& t = tracksSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    const auto& t = tracksSpan
+                        [i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                     kanariv::println(os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
-                                     truncateField(t.artist, defaultMaxLen), truncateField(t.title, defaultMaxLen),
-                                     formatTime(t.duration));
+                                     truncateField(t.artist, defaultMaxLen),
+                                     truncateField(t.title, defaultMaxLen), formatTime(t.duration));
                 }
             },
             [&os](const kanariv::types::LibraryStats& v) -> void {
@@ -190,9 +196,11 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
                     kanariv::println(os, "  {:>3} {:>6}  {:<40} {:<40} {:>8} {:>10}", "#", "ID",
                                      "Artist", "Title", "Dur", "Plays");
                     for (std::size_t i = 0; i < v.top_tracks->size(); ++i) {
-                        const auto& t = (*v.top_tracks)[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        const auto& t = (*v.top_tracks)
+                            [i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                         kanariv::println(os, "  {:3} {:6}  {:<40} {:<40} {:>8} {:>10}", i + 1, t.id,
-                                         truncateField(t.artist, defaultMaxLen), truncateField(t.title, defaultMaxLen),
+                                         truncateField(t.artist, defaultMaxLen),
+                                         truncateField(t.title, defaultMaxLen),
                                          formatTime(t.duration), t.play_count);
                     }
                 }

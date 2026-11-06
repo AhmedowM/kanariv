@@ -19,13 +19,15 @@
 #include <kanariv/utils/error.hpp>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
 namespace kanariv::app {
 
 auto App::libraryScan(std::optional<std::string> path, bool fullHash) -> AppResult {
-    kanariv::ipc::Command cmd{kanariv::ipc::LibraryScan{.path = path, .full_hash = fullHash}};
+    kanariv::ipc::Command cmd{
+        kanariv::ipc::LibraryScan{.path = std::move(path), .full_hash = fullHash}};
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 

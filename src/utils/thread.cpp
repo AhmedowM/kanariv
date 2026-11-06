@@ -117,7 +117,7 @@ namespace kanariv::utils {
         return std::unexpected(Error{StatusCode::InvalidArg, std::string_view("empty name")});
     }
 #ifdef _WIN32
-    auto *h = reinterpret_cast<HANDLE>(
+    auto* h = reinterpret_cast<HANDLE>(
         jt.native_handle()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     return detail::setNativeHandleName(h, name);
 #else
@@ -154,7 +154,7 @@ namespace kanariv::utils {
         return std::unexpected(Error{StatusCode::InvalidArg, std::string_view("empty name")});
     }
 #ifdef _WIN32
-    auto *h = reinterpret_cast<HANDLE>(
+    auto* h = reinterpret_cast<HANDLE>(
         t.native_handle()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     return detail::setNativeHandleName(h, name);
 #else

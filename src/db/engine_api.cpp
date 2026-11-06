@@ -127,9 +127,9 @@ static auto tryPrepareEngineState(sqlite3* handle, bool& hasActiveQueue) -> sqli
 static void readEngineStateMainColumns(sqlite3_stmt* raw, kanariv::types::EngineState& state,
                                        bool hasActiveQueue);
 static void readOptionalFloatColumn(sqlite3* handle, const char* sql,
-                                    std::function<void(float)> setter);
+                                    const std::function<void(float)>& setter);
 static void readOptionalInt64Column(sqlite3* handle, const char* sql,
-                                    std::function<void(int64_t)> setter);
+                                    const std::function<void(int64_t)>& setter);
 static void validateActiveQueue(sqlite3* handle, kanariv::types::EngineState& state);
 
 auto Database::loadEngineState()
@@ -201,7 +201,8 @@ static auto tryPrepareEngineState(sqlite3* handle, bool& hasActiveQueue) -> sqli
 static void readEngineStateMainColumns(sqlite3_stmt* raw, kanariv::types::EngineState& state,
                                        bool hasActiveQueue) {
     state.shuffle_enabled = sqlite3_column_int(raw, colShuffleEnabled);
-    state.repeat_mode = static_cast<kanariv::types::RepeatMode>(sqlite3_column_int(raw, colRepeatMode));
+    state.repeat_mode =
+        static_cast<kanariv::types::RepeatMode>(sqlite3_column_int(raw, colRepeatMode));
     state.cursor_pos = sqlite3_column_int64(raw, colCursorPos);
     state.current_track_id = sqlite3_column_int64(raw, colCurrentTrackId);
     state.volume = static_cast<float>(sqlite3_column_double(raw, colVolume));
@@ -216,7 +217,8 @@ static void readEngineStateMainColumns(sqlite3_stmt* raw, kanariv::types::Engine
     }
     const auto* blob = static_cast<const std::byte*>(sqlite3_column_blob(raw, colShufflePerm));
     const int blobBytes = sqlite3_column_bytes(raw, colShufflePerm);
-    if (blob != nullptr && blobBytes >= static_cast<int>(sizeof(int64_t)) && state.shuffle_enabled != 0) {
+    if (blob != nullptr && blobBytes >= static_cast<int>(sizeof(int64_t)) &&
+        state.shuffle_enabled != 0) {
         const size_t count = static_cast<size_t>(blobBytes) / sizeof(int64_t);
         state.shuffle_perm.resize(count);
         std::memcpy(state.shuffle_perm.data(), blob, count * sizeof(int64_t));
@@ -225,7 +227,7 @@ static void readEngineStateMainColumns(sqlite3_stmt* raw, kanariv::types::Engine
 
 // Reads one optional float column; applies it only when in [0, 1].
 static void readOptionalFloatColumn(sqlite3* handle, const char* sql,
-                                    std::function<void(float)> setter) {
+                                    const std::function<void(float)>& setter) {
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(handle, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return;
@@ -241,7 +243,7 @@ static void readOptionalFloatColumn(sqlite3* handle, const char* sql,
 
 // Reads one optional int64 column; applies it only when present.
 static void readOptionalInt64Column(sqlite3* handle, const char* sql,
-                                    std::function<void(int64_t)> setter) {
+                                    const std::function<void(int64_t)>& setter) {
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(handle, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return;
@@ -315,7 +317,9 @@ auto Database::saveEngineState(const kanariv::types::EngineState& state)
     sqlite3_bind_int64(raw, bindCurrentTrackId, state.current_track_id);
     sqlite3_bind_double(raw, bindVolume, static_cast<double>(state.volume));
     if (hasNewColumns) {
-        sqlite3_bind_int64(raw, bindActiveQueueId, state.active_queue_id > 0 ? state.active_queue_id : defaultActiveQueueId);
+        sqlite3_bind_int64(raw, bindActiveQueueId,
+                           state.active_queue_id > 0 ? state.active_queue_id
+                                                     : defaultActiveQueueId);
         sqlite3_bind_int64(raw, bindPositionMs, state.position_ms >= 0 ? state.position_ms : 0);
     }
     if (sqlite3_step(raw) != SQLITE_DONE) {

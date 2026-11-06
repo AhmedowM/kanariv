@@ -99,13 +99,13 @@ struct QueueState {
 struct EngineState {
     int shuffleEnabled{0}; ///< Persisted shuffle flag (0/1).
     kanariv::types::RepeatMode repeatMode{
-        kanariv::types::RepeatMode::Off}; ///< Persisted repeat mode.
-    int64_t cursorPos{0};                 ///< Persisted cursor (QueueState::cursor).
-    int64_t currentTrackId{0};            ///< Last current track id.
-    float volume{1.0f};                   ///< Persisted volume [0,1].
-    int64_t activeQueueId{1};             ///< Persisted active queue id.
-    float preMuteVolume{defaultPreMuteVolume};            ///< Restore level for unmute (0,1].
-    int64_t positionMs{0};                ///< Persisted position in the current track.
+        kanariv::types::RepeatMode::Off};      ///< Persisted repeat mode.
+    int64_t cursorPos{0};                      ///< Persisted cursor (QueueState::cursor).
+    int64_t currentTrackId{0};                 ///< Last current track id.
+    float volume{1.0f};                        ///< Persisted volume [0,1].
+    int64_t activeQueueId{1};                  ///< Persisted active queue id.
+    float preMuteVolume{defaultPreMuteVolume}; ///< Restore level for unmute (0,1].
+    int64_t positionMs{0};                     ///< Persisted position in the current track.
 };
 
 struct Engine::Impl {
@@ -583,7 +583,9 @@ auto Engine::Impl::playTrack(int64_t trackId) -> Engine::ExpectedVoid {
         }
         bool found = false;
         for (size_t i = 0; i < queue_.perm.size(); ++i) {
-            if (queue_.perm[i] == static_cast<int64_t>(*idx)) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            if (queue_.perm[i] ==
+                static_cast<int64_t>(
+                    *idx)) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 cursor = i;
                 found = true;
                 break;
@@ -989,7 +991,9 @@ auto Engine::Impl::setRepeat(kanariv::types::RepeatMode m) -> Engine::ExpectedVo
 
 auto Engine::Impl::activeQueueId() const noexcept -> int64_t {
     std::scoped_lock lk(queueMutex_);
-    return queue_.queue_id != 0 ? queue_.queue_id : state_.activeQueueId != 0 ? state_.activeQueueId : 1;
+    return queue_.queue_id != 0        ? queue_.queue_id
+           : state_.activeQueueId != 0 ? state_.activeQueueId
+                                       : 1;
 }
 
 auto Engine::Impl::switchQueue(int64_t qid) -> Engine::ExpectedVoid {
@@ -1220,8 +1224,10 @@ auto Engine::Impl::drainAll() -> std::vector<kanariv::types::EngineEvent> {
 Engine::Impl::Impl(const kanariv::types::EngineConfig& cfg) : cfg_(cfg), state_{}, queue_{} {
     cfg_.pollMs = cfg.pollMs != 0 ? cfg.pollMs : defaultPollMs;
     cfg_.gaplessMs = cfg.gaplessMs != 0 ? cfg.gaplessMs : defaultGaplessMs;
-    cfg_.historyThresholdPct = cfg.historyThresholdPct != 0 ? cfg.historyThresholdPct : defaultHistoryThresholdPct;
-    cfg_.historyThresholdSecs = cfg.historyThresholdSecs != 0 ? cfg.historyThresholdSecs : defaultHistoryThresholdSecs;
+    cfg_.historyThresholdPct =
+        cfg.historyThresholdPct != 0 ? cfg.historyThresholdPct : defaultHistoryThresholdPct;
+    cfg_.historyThresholdSecs =
+        cfg.historyThresholdSecs != 0 ? cfg.historyThresholdSecs : defaultHistoryThresholdSecs;
     state_.volume = 1.0f;
     volume_.store(1.0f, std::memory_order_relaxed);
     state_.repeatMode = kanariv::types::RepeatMode::Off;
@@ -1240,11 +1246,12 @@ Engine::Impl::Impl(const kanariv::types::EngineConfig& cfg) : cfg_(cfg), state_{
 auto Engine::Impl::init() -> std::optional<kanariv::utils::Error> {
     // start decode thread
     decodeRun_.store(true, std::memory_order_release);
-    decodeThread_ = std::jthread([this](std::stop_token st) -> void { decodeLoop(st); });
+    decodeThread_ = std::jthread([this](std::stop_token st) -> void { decodeLoop(std::move(st)); });
     // start monitor thread if enabled
     if (cfg_.enableMonitorThread) {
         monRun_.store(true, std::memory_order_release);
-        monitorThread_ = std::jthread([this](std::stop_token st) -> void { monitorLoop(st); });
+        monitorThread_ =
+            std::jthread([this](std::stop_token st) -> void { monitorLoop(std::move(st)); });
     }
     return std::nullopt;
 }
@@ -1270,8 +1277,7 @@ auto Engine::Impl::queueBusy(std::string_view op, std::string_view msg) const
     if (cfg_.logger != nullptr) {
         cfg_.logger->debug("queue busy op={}", op);
     }
-    return std::unexpected{
-        kanariv::utils::makeError(kanariv::utils::StatusCode::Busy, std::string(msg))};
+    return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy, msg)};
 }
 
 auto Engine::Impl::currentPositionLocked() const noexcept -> double {
@@ -1410,7 +1416,8 @@ auto Engine::Impl::setShuffleLocked(bool on) -> std::expected<void, kanariv::uti
         }
         queue_.perm.resize(cnt);
         for (size_t i = 0; i < cnt; ++i) {
-            queue_.perm[i] = static_cast<int64_t>(i); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+            queue_.perm[i] = static_cast<int64_t>(
+                i); // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         }
         {
             std::mt19937 rng{std::random_device{}()};
@@ -1464,7 +1471,9 @@ auto Engine::Impl::queueNextLocked(kanariv::types::Track& out)
                 if (queue_.cursor > 0 && queue_.cursor <= queue_.perm.size()) {
                     idx = queue_.cursor - 1;
                 }
-                int64_t pos = queue_.perm[idx]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                int64_t pos =
+                    queue_.perm
+                        [idx]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 auto tr = fetchTrackByPosLocked(queue_.queue_id, pos);
                 if (!tr) {
                     return std::unexpected(tr.error());
@@ -1481,7 +1490,10 @@ auto Engine::Impl::queueNextLocked(kanariv::types::Track& out)
                 (void)persistCursorLocked();
             }
         }
-        int64_t pos = queue_.perm[queue_.cursor]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+        int64_t pos =
+            queue_.perm
+                [queue_
+                     .cursor]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         queue_.cursor++;
         (void)persistCursorLocked();
         auto tr = fetchTrackByPosLocked(queue_.queue_id, pos);
@@ -1577,7 +1589,10 @@ auto Engine::Impl::queuePrevLocked(kanariv::types::Track& out)
             queue_.cursor = queue_.perm.size() - 1;
         }
     }
-    int64_t pos = queue_.perm[queue_.cursor]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    int64_t pos =
+        queue_.perm
+            [queue_
+                 .cursor]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     queue_.cursor++;
     (void)persistCursorLocked();
     auto tr = fetchTrackByPosLocked(queue_.queue_id, pos);
@@ -1663,7 +1678,8 @@ auto Engine::Impl::doPlayTrack(kanariv::types::Track& t, double startSec)
                 if (ch == 0) {
                     ch = defaultChannels;
                 }
-                ring_ = std::make_unique<kanariv::utils::SpscRing<float>>(ringBufferFramesPerChannel * ch, ch);
+                ring_ = std::make_unique<kanariv::utils::SpscRing<float>>(
+                    ringBufferFramesPerChannel * ch, ch);
                 kanariv::player::AudioOutput::Config cfg;
                 cfg.sampleRate = sr;
                 cfg.channels = ch;
@@ -1843,7 +1859,8 @@ void Engine::Impl::doHistoryMark() {
     const double played =
         static_cast<double>(accumulatedPlaybackMs_.load(std::memory_order_acquire)) / 1000.0;
     int pct = cfg_.historyThresholdPct != 0 ? cfg_.historyThresholdPct : defaultHistoryThresholdPct;
-    int secs = cfg_.historyThresholdSecs != 0 ? cfg_.historyThresholdSecs : defaultHistoryThresholdSecs;
+    int secs =
+        cfg_.historyThresholdSecs != 0 ? cfg_.historyThresholdSecs : defaultHistoryThresholdSecs;
     if (!detail::shouldMarkPlayed(dur, played, false, pct, secs)) {
         return;
     }
@@ -1940,7 +1957,8 @@ void Engine::Impl::monitorLoop(std::stop_token st) {
             kanariv::types::PlaybackState::Playing) {
             poll = customPoll ? cfgPoll : defaultPollIntervalMs;
         } else {
-            poll = customPoll ? (cfgPoll > defaultIdlePollMs ? cfgPoll : defaultIdlePollMs) : defaultIdlePollMs;
+            poll = customPoll ? (cfgPoll > defaultIdlePollMs ? cfgPoll : defaultIdlePollMs)
+                              : defaultIdlePollMs;
         }
         lk.lock();
         monCv_.wait_for(lk, std::chrono::milliseconds(poll), [&st, this] -> bool {
@@ -1978,10 +1996,11 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             std::unique_lock<std::mutex> lk(decodeMtx_);
             // Idle backoff (C-1): woken immediately by decodeCv_ on
             // play/seek/resume, so the longer timeout costs no latency.
-            decodeCv_.wait_for(lk, std::chrono::milliseconds(monitorIdleWaitMs), [&st, this] -> bool {
-                return st.stop_requested() || playbackState_.load(std::memory_order_acquire) ==
-                                                  kanariv::types::PlaybackState::Playing;
-            });
+            decodeCv_.wait_for(
+                lk, std::chrono::milliseconds(monitorIdleWaitMs), [&st, this] -> bool {
+                    return st.stop_requested() || playbackState_.load(std::memory_order_acquire) ==
+                                                      kanariv::types::PlaybackState::Playing;
+                });
             continue;
         }
         if (avail == 0) {

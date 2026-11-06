@@ -269,14 +269,14 @@ Service::Impl::Impl(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts
       lockFd_(lockFd), shmWriter_(std::move(shmWriter)), shmName_(std::move(shmName)) {}
 
 auto Service::run(std::stop_token st) -> kanariv::utils::Expected<void> {
-    return impl_->run(st);
+    return impl_->run(std::move(st));
 }
 
 auto Service::running() const noexcept -> bool {
     return impl_->running_.load(std::memory_order_acquire);
 }
 
-auto Service::Impl::run(std::stop_token st) -> kanariv::utils::Expected<void> {
+auto Service::Impl::run(const std::stop_token& st) -> kanariv::utils::Expected<void> {
     if (running_.exchange(true)) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "already running")};

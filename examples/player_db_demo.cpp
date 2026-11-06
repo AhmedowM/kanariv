@@ -63,9 +63,9 @@ auto findSample() -> std::string {
         }
     }
     for (const auto* c : {"tests/fixtures/sample.wav", "./tests/fixtures/sample.wav",
-                    "../tests/fixtures/sample.wav",
-                    "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav",
-                    "C:/Users/Secondary/Projects/kanariv/tests/fixtures/sample.wav"}) {
+                          "../tests/fixtures/sample.wav",
+                          "C:/Users/Secondary/Projects/kanariv-cpp/tests/fixtures/sample.wav",
+                          "C:/Users/Secondary/Projects/kanariv/tests/fixtures/sample.wav"}) {
         if (std::filesystem::exists(c)) {
             return toAbs(c);
         }
@@ -274,7 +274,7 @@ auto main(int argc, char** argv) -> int {
             ++errors;
             continue;
         }
-        kanariv::types::Track track = tr.value();
+        const kanariv::types::Track& track = tr.value();
         std::cout << "[demo] queue pos " << qi.position << " -> track " << track.id << "\n";
         if (playTrackViaPlayer(track)) {
             ++played;

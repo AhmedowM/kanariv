@@ -113,7 +113,8 @@ auto highlightAll(const std::string& text, std::string_view needle, bool color) 
         for (std::size_t i = pos; i + needle.size() <= text.size(); ++i) {
             bool match = true;
             for (std::size_t k = 0; k < needle.size(); ++k) {
-                if (lower(text[i + k]) != lower(needle[k])) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                if (lower(text[i + k]) != lower(needle[k])) {
                     match = false;
                     break;
                 }
@@ -196,7 +197,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                  "Title", "Dur");
                 for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                    const auto& t = tracksSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    const auto& t = tracksSpan[i];
                     bool mark = (highlightTrackId_ != 0 && t.id == highlightTrackId_);
                     std::string line = std::format(
                         "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id, truncateField(t.artist, 40),
@@ -212,7 +214,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:>8} {:>6} {:>4}", "#", "ID", "Name",
                                  "Tracks", "Active", "Temp");
                 for (std::size_t i = 0; i < v.entries.size(); ++i) {
-                    const auto& q = v.entries[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    const auto& q = v.entries[i];
                     kanariv::println(os, "{:3} {:6}  {:<40} {:>8} {:>6} {:>4}", i, q.id,
                                      truncateField(q.name.empty() ? "(unnamed)" : q.name, 40),
                                      q.tracks, q.active ? "*" : "", q.temp ? "yes" : "");
@@ -248,7 +251,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                         kanariv::println(os, "  {:>3} {:>6}  {:<40} {:<40} {:>8} {:>10}", "#", "ID",
                                          "Artist", "Title", "Dur", "Plays");
                         for (std::size_t i = 0; i < v.top_tracks->size(); ++i) {
-                            const auto& t = (*v.top_tracks)[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                            // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                            const auto& t = (*v.top_tracks)[i];
                             kanariv::println(
                                 os, "  {:3} {:6}  {:<40} {:<40} {:>8} {:>10}", i + 1, t.id,
                                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
@@ -262,7 +266,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                     kanariv::println(os, "  {:>3} {:<40} {:>10} {:>10}", "#", "Album", "Tracks",
                                      "Plays");
                     for (std::size_t i = 0; i < v.top_albums->size(); ++i) {
-                        const auto& e = (*v.top_albums)[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        const auto& e = (*v.top_albums)[i];
                         kanariv::println(
                             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                             os, "  {:3} {:<40} {:>10} {:>10}", i + 1, truncateField(e.name, 40),
@@ -274,7 +279,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                     kanariv::println(os, "  {:>3} {:<20} {:>10} {:>10}", "#", "Genre", "Tracks",
                                      "Plays");
                     for (std::size_t i = 0; i < v.top_genres->size(); ++i) {
-                        const auto& e = (*v.top_genres)[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        const auto& e = (*v.top_genres)[i];
                         kanariv::println(
                             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                             os, "  {:3} {:<20} {:>10} {:>10}", i + 1, truncateField(e.name, 20),
@@ -286,9 +292,10 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                     kanariv::println(os, "  {:>3} {:<40} {:>10} {:>10}", "#", "Artist", "Tracks",
                                      "Plays");
                     for (std::size_t i = 0; i < v.top_artists->size(); ++i) {
-                        const auto& e = (*v.top_artists)[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        const auto& e = (*v.top_artists)[i];
                         kanariv::println(
-                            // NOLINT(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                             os, "  {:3} {:<40} {:>10} {:>10}", i + 1, truncateField(e.name, 40),
                             e.track_count, e.total_plays);
                     }
@@ -301,7 +308,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                     kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                      "Title", "Dur");
                     for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                        const auto& t = tracksSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        const auto& t = tracksSpan[i];
                         kanariv::println(
                             os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
                             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
@@ -351,7 +359,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                     kanariv::println(os, "");
                     // Rows
                     for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                        const auto& t = tracksSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                        const auto& t = tracksSpan[i];
                         kanariv::print(os, "{:3}", i);
                         if (hasId) {
                             kanariv::print(os, " {:6}", t.id);
@@ -399,7 +408,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "{:>3} {:>6}  {:<30} {:<25} {:<20} {:<12} {:<25}", "#", "ID",
                                  "Title", "Artist", "Album", "Genre", "File");
                 for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                    const auto& t = tracksSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    const auto& t = tracksSpan[i];
                     std::string fn = std::filesystem::path(t.path).filename().generic_string();
                     kanariv::println(
                         os, "{:3} {:6}  {:<30} {:<25} {:<20} {:<12} {:<25}", i, t.id,
@@ -434,7 +444,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                  "Title", "Dur");
                 for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                    const auto& t = tracksSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    const auto& t = tracksSpan[i];
                     kanariv::println(
                         os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
                         // NOLINT(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
@@ -452,7 +463,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                         kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40}", "#", "ID", "Artist",
                                          "Title");
                         for (std::size_t i = 0; i < v.missing_tracks.size(); ++i) {
-                            const auto& t = v.missing_tracks[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                            // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                            const auto& t = v.missing_tracks[i];
                             kanariv::println(
                                 os, "{:3} {:6}  {:<40} {:<40}", i, t.id,
                                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
@@ -471,7 +483,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "Playlists ({}):", playlistSpan.size());
                 kanariv::println(os, "{:>3} {:>6}  {:<40}", "#", "ID", "Name");
                 for (std::size_t i = 0; i < playlistSpan.size(); ++i) {
-                    const auto& p = playlistSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    const auto& p = playlistSpan[i];
                     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                     kanariv::println(os, "{:3} {:6}  {:<40}", i, p.id, truncateField(p.name, 40));
                 }
@@ -492,7 +505,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                  "Title", "Dur");
                 for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                    const auto& t = tracksSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    const auto& t = tracksSpan[i];
                     kanariv::println(
                         os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
                         // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
@@ -529,7 +543,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "{:>3}  {:<20}  {:<40} {:<40} {:>10} {:>8}", "#", "Date",
                                  "Artist", "Title", "Pos", "Dur");
                 for (std::size_t i = 0; i < entriesSpan.size(); ++i) {
-                    const auto& e = entriesSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    const auto& e = entriesSpan[i];
                     // Convert started_at (milliseconds since epoch) to human readable
                     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                     auto t = static_cast<std::time_t>(e.started_at / 1000);
@@ -540,7 +555,7 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                     localtime_r(&t, &tm);
 #endif
                     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-                    std::array<char, 32> timeBuf;
+                    std::array<char, 32> timeBuf{};
                     std::strftime(timeBuf.data(), timeBuf.size(), "%Y-%m-%d %H:%M", &tm);
                     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                     std::string posStr = formatTime(e.position_ms / 1000.0);
@@ -568,7 +583,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "Devices ({}):", devicesSpan.size());
                 kanariv::println(os, "{:>3}  {:<20}  {:<40}  {}", "#", "ID", "Name", "Default");
                 for (std::size_t i = 0; i < devicesSpan.size(); ++i) {
-                    const auto& d = devicesSpan[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    const auto& d = devicesSpan[i];
                     kanariv::println(
                         os, "{:3}  {:<20}  {:<40}  {}", i,
                         // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)

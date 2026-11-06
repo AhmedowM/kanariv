@@ -112,7 +112,7 @@ auto SqliteStatement::columnText(int idx) const -> std::string {
     }
     const unsigned char* txt = sqlite3_column_text(stmt_, idx);
     return txt != nullptr ? std::string(reinterpret_cast<const char*>(txt))
-               : std::string{}; // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+                          : std::string{}; // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 }
 
 void SqliteStatement::reset() {

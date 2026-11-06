@@ -153,7 +153,7 @@ auto Player::Impl::init(const PlayerOptions& opts) -> bool {
     state_.store(State::Stopped, std::memory_order_relaxed);
 
     // Start decode thread
-    decodeThread_ = std::jthread([this](std::stop_token st) -> void { decodeLoop(st); });
+    decodeThread_ = std::jthread([this](std::stop_token st) -> void { decodeLoop(std::move(st)); });
 
     return true;
 }

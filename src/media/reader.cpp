@@ -1,5 +1,3 @@
-#include <stdio.h>
-
 #include <algorithm>
 #include <cerrno>
 #include <cstddef>

@@ -54,7 +54,7 @@ auto Client::send(const kanariv::ipc::Command& cmd, std::chrono::milliseconds ti
 
     // RAII worker via make_unique per spec
     auto worker = std::make_unique<std::jthread>(
-        [prom, cmdCopy = std::move(cmdCopy), cfgCopy](std::stop_token st) mutable -> void {
+        [prom, cmdCopy = std::move(cmdCopy), cfgCopy](const std::stop_token& st) mutable -> void {
             if (st.stop_requested()) {
                 try {
                     prom->set_value(std::unexpected{

@@ -315,8 +315,10 @@ auto Service::Impl::handle(const kanariv::ipc::DeviceTest& cmd)
             }
             for (std::size_t f = 0; f < framesToWrite; ++f) {
                 const auto sample = static_cast<float>(testAmplitude * std::sin(phase));
-                frameBuf[0] = sample; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-                frameBuf[1] = sample; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                frameBuf[0] =
+                    sample; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                frameBuf[1] =
+                    sample; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 ring.write(frameBuf.data(), 1);
                 phase += phaseStep;
                 if (phase > twoPi) {
@@ -327,8 +329,8 @@ auto Service::Impl::handle(const kanariv::ipc::DeviceTest& cmd)
         }
 
         // Wait for the tone to finish playing through the device.
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(static_cast<int>(durationSec * msToSecDivisor) + toneFinishBufferMs));
+        std::this_thread::sleep_for(std::chrono::milliseconds(
+            static_cast<int>(durationSec * msToSecDivisor) + toneFinishBufferMs));
         (*out)->stop();
         (*out)->shutdown();
     }

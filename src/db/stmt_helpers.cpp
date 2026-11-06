@@ -50,7 +50,8 @@ void fillTrackFromStmt(sqlite3_stmt* stmt, kanariv::types::Track& t) {
     t.id = sqlite3_column_int64(stmt, colId);
     t.fingerprint.fill(0);
     if (sqlite3_column_bytes(stmt, colFingerprint) == fingerprintSize) {
-        std::memcpy(t.fingerprint.data(), sqlite3_column_blob(stmt, colFingerprint), fingerprintSize);
+        std::memcpy(t.fingerprint.data(), sqlite3_column_blob(stmt, colFingerprint),
+                    fingerprintSize);
     }
     t.path = columnText(stmt, colPath);
     t.deleted_at = sqlite3_column_int64(stmt, colDeletedAt);
@@ -76,7 +77,8 @@ void fillTrackFromStmt(sqlite3_stmt* stmt, kanariv::types::Track& t) {
     t.last_scanned = sqlite3_column_int64(stmt, colLastScanned);
     t.dirty = sqlite3_column_int(stmt, colDirty) != 0;
     t.library_id = static_cast<int>(sqlite3_column_int(stmt, colLibraryId));
-    t.source.kind = static_cast<kanariv::types::SourceKind>(sqlite3_column_int(stmt, colSourceKind));
+    t.source.kind =
+        static_cast<kanariv::types::SourceKind>(sqlite3_column_int(stmt, colSourceKind));
     t.source.key = columnText(stmt, colSourceKey);
     t.source.available = sqlite3_column_int(stmt, colSourceAvailable) != 0;
     t.source.display_name = columnText(stmt, colSourceDisplayName);

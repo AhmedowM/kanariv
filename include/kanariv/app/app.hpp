@@ -452,7 +452,7 @@ class KANARIV_API App {
      * @return Outcome data; result carries SingleTrack with cover_mime/cover_data
      *   populated when cover=true and cover art is available.
      */
-    AppResult tagGet(std::string idOrPath, bool cover = false);
+    AppResult tagGet(const std::string& idOrPath, bool cover = false);
 
     /**
      * @brief Reads one tag field as human text plus single-key JSON.

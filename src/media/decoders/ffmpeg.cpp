@@ -317,7 +317,8 @@ auto Decoder::Impl::decode(std::span<float> out) -> std::size_t {
 }
 
 auto Decoder::Impl::seek(double seconds) -> kanariv::utils::Expected<void> {
-    if (seconds < 0.0 || !std::isfinite(seconds) || fmt_ == nullptr || dec_ == nullptr || audioStreamIdx_ < 0) {
+    if (seconds < 0.0 || !std::isfinite(seconds) || fmt_ == nullptr || dec_ == nullptr ||
+        audioStreamIdx_ < 0) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
                                                      std::string_view("bad seconds")});
     }

@@ -75,7 +75,8 @@ void WriterThread::open(sqlite3* db) {
         return;
     }
     impl_->db_ = db;
-    impl_->thread_ = std::jthread{[p = impl_.get()](std::stop_token st) -> void { p->worker(st); }};
+    impl_->thread_ =
+        std::jthread{[p = impl_.get()](std::stop_token st) -> void { p->worker(std::move(st)); }};
 }
 
 void WriterThread::close() {
