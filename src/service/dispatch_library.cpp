@@ -78,8 +78,6 @@ using kanariv::ipc::TagEdit;
 using kanariv::ipc::TagGet;
 using kanariv::ipc::TrackRate;
 
-namespace {
-
 // Extract embedded cover art (APIC / FLAC picture / etc.) from an audio file
 // using TagLib. Returns {raw_bytes, mime_type} or nullopt when no embedded
 // picture is found or the file cannot be read.
@@ -146,9 +144,6 @@ extractEmbeddedCoverArt(const std::filesystem::path& path, kanariv::utils::Logge
         logger->debug("cover art: no cover art found in file {}", path.generic_string());
     return std::nullopt;
 }
-
-} // namespace
-
 
 namespace detail {
 double durationFromDecoder(const std::filesystem::path& path) noexcept;

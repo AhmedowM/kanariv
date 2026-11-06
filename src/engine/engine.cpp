@@ -1022,6 +1022,15 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs)
             if (ring_)
                 ring_->reset();
             pausePos_ = 0;
+            // Notify listeners (e.g. the OS media-session bridge) that the
+            // track ended naturally so now-playing UI can switch to Stopped.
+            kanariv::types::EngineEvent ev;
+            ev.type = kanariv::types::EngineEventType::TrackEnded;
+            ev.track_id = currentTrack_.id;
+            ev.queue_id = queue_.queue_id;
+            ev.position = duration_;
+            ev.duration = duration_;
+            pushEvent(ev);
             return {};
         }
     }
@@ -1833,7 +1842,16 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             frames = decoder_->decode(chunk);
         }
         if (frames == 0) {
-            // EOF reached - wait a bit, let monitor handle next (gapless) or stop
+            // EOF reached. The monitor's gapless autoNext should already have
+            // advanced or stopped the track. As a safety net, trigger it
+            // directly if state is still Playing so natural track end always
+            // transitions SMTC instead of leaving PlaybackStatus stuck on
+            // Playing. Guard on state to avoid double-handling once stopped.
+            if (playbackState_.load(std::memory_order_acquire) ==
+                kanariv::types::PlaybackState::Playing) {
+                auto nr = autoNext();
+                (void)nr;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(25));
             continue;
         }

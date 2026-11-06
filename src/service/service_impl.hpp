@@ -10,6 +10,11 @@
  */
 
 #include <atomic>
+#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
 #include <kanariv/engine/engine.hpp>
 #include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
@@ -18,17 +23,20 @@
 #include <kanariv/service/service.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
-#include <condition_variable>
-#include <cstdint>
-#include <expected>
-#include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <service/ipc_server.hpp>
+#include <service/media_session.hpp>
 #include <stop_token>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace kanariv::service {
+
+std::optional<std::pair<std::vector<std::byte>, std::string>>
+extractEmbeddedCoverArt(const std::filesystem::path& path, kanariv::utils::Logger* logger);
 
 struct Service::Impl {
     Impl(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts::IDatabase> db,
@@ -43,6 +51,9 @@ struct Service::Impl {
     std::expected<kanariv::ipc::Result, kanariv::utils::Error> statusResult();
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     dispatch(const kanariv::ipc::Command& cmd);
+
+    /** Push current engine state to the OS media session. */
+    void syncMediaSession();
 
     /// Visitor routing each Command alternative to its handle() overload.
     struct DispatchVisitor {
@@ -169,6 +180,7 @@ struct Service::Impl {
     std::intptr_t lockFd_{-1};
     std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter_;
     std::string shmName_;
+    std::unique_ptr<kanariv::media_session::MediaSession> mediaSession_;
     std::atomic<bool> running_{false};
     std::atomic<bool> shutdownRequested_{false};
 

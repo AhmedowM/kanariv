@@ -45,6 +45,13 @@ if(KANARIV_BUILD_SHARED)
   if(UNIX AND NOT APPLE AND NOT ANDROID)
     target_link_libraries(combined PRIVATE rt)
   endif()
+  if(WIN32)
+    # service_objects pulls in media_session_win.cpp, which calls
+    # CreateRandomAccessStreamOnFile (shcore.lib) and WinRT/COM APIs
+    # (runtimeobject.lib, ole32.lib). Link the same Windows libs the
+    # service component uses so these symbols resolve in the combined DLL.
+    target_link_libraries(combined PRIVATE user32 ole32 shcore runtimeobject)
+  endif()
   if(KANARIV_ENABLE_SANITIZERS)
     kanariv_apply_sanitizers(combined)
   endif()

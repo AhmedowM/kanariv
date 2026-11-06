@@ -16,10 +16,49 @@ set(KANARIV_SERVICE_SOURCES
   src/service/dispatch_library.cpp
   src/service/dispatch_config.cpp
   src/service/tag_writer.cpp
+  src/service/media_session.cpp
 )
+
+# OS media-session backends: one platform file compiles per target.
+if(WIN32)
+  list(APPEND KANARIV_SERVICE_SOURCES src/service/media_session_win.cpp)
+elseif(APPLE)
+  list(APPEND KANARIV_SERVICE_SOURCES src/service/media_session_mac.mm)
+elseif(ANDROID)
+  # Android media_session lives under a separate /android/ path (TBD).
+elseif(UNIX)
+  list(APPEND KANARIV_SERVICE_SOURCES src/service/media_session_linux.cpp)
+endif()
+
 kanariv_add_component(service SOURCES ${KANARIV_SERVICE_SOURCES} MODULE_SOURCES ${KANARIV_SERVICE_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::utils Threads::Threads INCLUDES vendor PRIVATE_DEPS kanariv::engine kanariv::db kanariv::media kanariv::player)
 target_link_libraries(service PRIVATE tag)
+if(WIN32)
+  # runtimeobject.lib provides RoGetActivationFactory / WindowsCreateString etc.
+  find_library(KANARIV_RUNTIMEOBJECT_LIB runtimeobject
+    PATHS "C:/Program Files (x86)/Windows Kits/10/Lib"
+    PATH_SUFFIXES "10.0.26100.0/um/x64"
+    NO_DEFAULT_PATH)
+  if(KANARIV_RUNTIMEOBJECT_LIB)
+    set(_K_WIN_LIBS user32 ole32 shcore ${KANARIV_RUNTIMEOBJECT_LIB})
+  else()
+    set(_K_WIN_LIBS user32 ole32 shcore runtimeobject)
+  endif()
+  target_link_libraries(service PRIVATE ${_K_WIN_LIBS})
+endif()
 target_include_directories(service SYSTEM PRIVATE ${KANARIV_TAGLIB_BUILD_INCLUDES})
+
+if(WIN32)
+  file(GLOB _KANARIV_CPPWINRT_INCLUDE_DIRS
+    "C:/Program Files (x86)/Windows Kits/10/Include/*/cppwinrt")
+  if(_KANARIV_CPPWINRT_INCLUDE_DIRS)
+    list(SORT _KANARIV_CPPWINRT_INCLUDE_DIRS)
+    list(GET _KANARIV_CPPWINRT_INCLUDE_DIRS -1 _KANARIV_CPPWINRT_INCLUDE_DIR)
+    target_include_directories(service SYSTEM PRIVATE
+      ${_KANARIV_CPPWINRT_INCLUDE_DIR})
+    target_include_directories(service_objects SYSTEM PRIVATE
+      ${_KANARIV_CPPWINRT_INCLUDE_DIR})
+  endif()
+endif()
 
 # Propagate TagLib include dirs to the object library so it can compile
 # service's .cpp files against TagLib headers. The object library is not a
@@ -47,5 +86,8 @@ if(KANARIV_BUILD_SHARED)
   if(KANARIV_BUILD_STATIC)
     _kanariv_service_link_rt(service_shared)
     target_link_libraries(service_shared PRIVATE tag)
+  endif()
+  if(WIN32)
+    target_link_libraries(service_shared PRIVATE ${_K_WIN_LIBS})
   endif()
 endif()

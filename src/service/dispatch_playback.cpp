@@ -40,6 +40,7 @@ Service::Impl::handle(const kanariv::ipc::Play&) {
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();
+    syncMediaSession();
     return statusResult();
 }
 
@@ -49,6 +50,7 @@ Service::Impl::handle(const kanariv::ipc::Pause&) {
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();
+    syncMediaSession();
     return statusResult();
 }
 
@@ -58,6 +60,7 @@ Service::Impl::handle(const kanariv::ipc::Resume&) {
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();
+    syncMediaSession();
     return statusResult();
 }
 
@@ -72,6 +75,7 @@ Service::Impl::handle(const kanariv::ipc::Restart&) {
         if (!pr)
             return std::unexpected{pr.error()};
         updateShmStatus();
+    syncMediaSession();
         return statusResult();
     }
     // ensure playing
@@ -79,6 +83,7 @@ Service::Impl::handle(const kanariv::ipc::Restart&) {
         (void)engine_->resume();
     }
     updateShmStatus();
+    syncMediaSession();
     return statusResult();
 }
 
@@ -88,6 +93,7 @@ Service::Impl::handle(const kanariv::ipc::Stop&) {
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();
+    syncMediaSession();
     return statusResult();
 }
 
@@ -97,6 +103,7 @@ Service::Impl::handle(const kanariv::ipc::Next&) {
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();
+    syncMediaSession();
     return statusResult();
 }
 
@@ -106,6 +113,7 @@ Service::Impl::handle(const kanariv::ipc::Prev&) {
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();
+    syncMediaSession();
     return statusResult();
 }
 
@@ -119,6 +127,7 @@ Service::Impl::handle(const kanariv::ipc::Seek& s) {
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();
+    syncMediaSession();
     return statusResult();
 }
 
@@ -212,6 +221,7 @@ Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
             return std::unexpected{r.error()};
     }
     updateShmStatus();
+    syncMediaSession();
     kanariv::ipc::VolumeInfo vi{engine_->volume(), engine_->volume() == 0.0f};
     return Result{vi};
 }

@@ -6,6 +6,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <kanariv/config.hpp>
 #include <kanariv/contracts/database.hpp>
 #include <kanariv/ipc/command.hpp>
@@ -15,20 +22,15 @@
 #include <kanariv/service/service.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
+#include <kanariv/utils/base64.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/result.hpp>
 #include <kanariv/version.hpp>
-#include <chrono>
-#include <cstddef>
-#include <cstdint>
-#include <expected>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <service/ipc_server.hpp>
+#include <span>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -255,7 +257,77 @@ Service::Impl::Impl(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts
                     std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName)
     : config_(cfg), db_(std::move(db)), engine_(std::move(eng)), server_(std::move(srv)),
       logger_(std::move(logger)), pidPath_(std::move(pidPath)), socketPath_(std::move(socketPath)),
-      lockFd_(lockFd), shmWriter_(std::move(shmWriter)), shmName_(std::move(shmName)) {}
+      lockFd_(lockFd), shmWriter_(std::move(shmWriter)), shmName_(std::move(shmName)) {
+    // Create the OS media-session backend (internal, daemon-only). A missing
+    // backend is not fatal: the daemon runs fine without OS integration.
+    auto msRes = kanariv::media_session::MediaSession::create("kanariv", "", true, true);
+    if (!msRes) {
+        if (logger_)
+            logger_->debug("media session unavailable: {}", msRes.error().message);
+    } else {
+        mediaSession_ = std::move(*msRes);
+        mediaSession_->setLogger(logger_.get());
+        mediaSession_->setCallbacks({
+            .onPlay =
+                [this] {
+                    (void)engine_->play(engine_->activeQueueId());
+                    syncMediaSession();
+                },
+            .onPause =
+                [this] {
+                    (void)engine_->pause();
+                    syncMediaSession();
+                },
+            .onStop =
+                [this] {
+                    (void)engine_->stop();
+                    syncMediaSession();
+                },
+            .onNext =
+                [this] {
+                    (void)engine_->next();
+                    syncMediaSession();
+                },
+            .onPrev =
+                [this] {
+                    (void)engine_->prev();
+                    syncMediaSession();
+                },
+            .onSeek =
+                [this](double delta) {
+                    auto cur = engine_->position();
+                    (void)engine_->seek(cur + delta);
+                    syncMediaSession();
+                },
+            .onSeekTo =
+                [this](double position) {
+                    (void)engine_->seek(position);
+                    syncMediaSession();
+                },
+            .onRepeat =
+                [this](kanariv::types::RepeatMode repeat) {
+                    (void)engine_->setRepeat(repeat);
+                    syncMediaSession();
+                },
+            .onShuffle =
+                [this](bool shuffle) {
+                    (void)engine_->setShuffle(shuffle);
+                    syncMediaSession();
+                },
+        });
+        // Engine track events (natural end / auto-advance) must refresh the
+        // OS now-playing UI, which syncMediaSession() only does on explicit
+        // user commands. Wire these up after media-session setup so natural
+        // track end transitions SMTC to Stopped instead of staying on Playing.
+        (void)engine_->setCallbacks({
+            .on_track_started = [this](int64_t) -> void { syncMediaSession(); },
+            .on_track_ended = [this](int64_t, double) -> void { syncMediaSession(); },
+        });
+        // Activate the OS media session so media keys and now-playing UI work.
+        if (auto e = mediaSession_->activate(); !e && logger_)
+            logger_->debug("media session activate: {}", e.error().message);
+    }
+}
 
 kanariv::utils::Expected<void> Service::run(std::stop_token st) {
     return impl_->run(st);
@@ -334,6 +406,9 @@ void Service::Impl::shutdown() {
         }
     } catch (...) {
     }
+    // Tear down OS media session.
+    if (mediaSession_)
+        (void)mediaSession_->deactivate();
     // shm handle will be cleaned up via RAII
 }
 
@@ -425,6 +500,97 @@ std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::status
     status_seq_.fetch_add(1, std::memory_order_release);
     status_cv_.notify_all();
     return kanariv::ipc::Result{*st};
+}
+
+void Service::Impl::syncMediaSession() {
+    if (!mediaSession_ || !mediaSession_->active())
+        return;
+
+    try {
+        if (logger_)
+            logger_->debug("media session sync started track={}", engine_->currentTrackId());
+
+        int64_t track_id = engine_->currentTrackId();
+        std::string title, artist;
+        std::optional<std::string> album, artworkPath, artworkBase64;
+        std::string artworkMime;
+        double duration = 0.0;
+
+        if (track_id != 0) {
+            if (auto tr = db_->getTrack(track_id); tr) {
+                title = tr->title;
+                artist = tr->artist;
+                album = tr->album;
+                artworkPath = tr->cover_art_path;
+                duration = tr->duration;
+
+                if (artworkPath) {
+                    std::ifstream ifs(*artworkPath, std::ios::binary);
+                    if (ifs) {
+                        std::string content((std::istreambuf_iterator<char>(ifs)),
+                                            std::istreambuf_iterator<char>());
+                        if (!content.empty()) {
+                            std::vector<std::byte> bytes;
+                            bytes.reserve(content.size());
+                            for (char value : content)
+                                bytes.push_back(static_cast<std::byte>(value));
+                            artworkBase64 = kanariv::utils::Base64::encode(
+                                std::span<const std::byte>(bytes.data(), bytes.size()));
+                            artworkMime = kanariv::utils::Base64::mimeTypeFromPath(*artworkPath);
+                            if (logger_)
+                                logger_->debug(
+                                    "media session artwork encoded from cover file bytes={}",
+                                    bytes.size());
+                        }
+                    }
+                }
+
+                if (!artworkBase64 && !tr->path.empty()) {
+                    if (auto embedded = extractEmbeddedCoverArt(tr->path, logger_.get())) {
+                        artworkBase64 = kanariv::utils::Base64::encode(std::span<const std::byte>(
+                            embedded->first.data(), embedded->first.size()));
+                        artworkMime = embedded->second;
+                        if (logger_)
+                            logger_->debug("media session artwork encoded from embedded bytes={}",
+                                           embedded->first.size());
+                    }
+                }
+            }
+        }
+
+        // Best-effort: a failed OS update must never break playback dispatch.
+        if (logger_)
+            logger_->debug("media session sending metadata artwork={}", artworkBase64.has_value());
+        if (auto e = mediaSession_->setMetadata(
+                kanariv::media_session::Metadata{.title = title,
+                                                 .artist = artist,
+                                                 .album = album,
+                                                 .artworkPath = artworkPath,
+                                                 .artworkBase64 = artworkBase64,
+                                                 .artworkMime = artworkMime,
+                                                 .trackId = track_id});
+            !e && logger_)
+            logger_->warn("media session setMetadata failed: {}", e.error().message);
+
+        if (auto e =
+                mediaSession_->setPlaybackState(engine_->state(), engine_->position(), duration);
+            !e && logger_)
+            logger_->warn("media session setPlaybackState failed: {}", e.error().message);
+
+        if (auto e = mediaSession_->setPlaybackMode(engine_->shuffle(), engine_->repeat());
+            !e && logger_)
+            logger_->warn("media session setPlaybackMode failed: {}", e.error().message);
+
+        if (auto e = mediaSession_->setVolume(engine_->volume(), engine_->volume() == 0.0f);
+            !e && logger_)
+            logger_->warn("media session setVolume failed: {}", e.error().message);
+    } catch (const std::exception& error) {
+        if (logger_)
+            logger_->error("media session sync failed: {}", error.what());
+    } catch (...) {
+        if (logger_)
+            logger_->error("media session sync failed with unknown exception");
+    }
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
