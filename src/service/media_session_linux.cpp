@@ -80,8 +80,10 @@ class LinuxImpl final : public Impl {
         static const DBusObjectPathVTable vtable = {
             nullptr,                                      // unregister_function
             nullptr,                                      // get_all_properties
-            &LinuxImpl::handle_method_call,               // message_function
+            reinterpret_cast<DBusMessageFunction>(
+                &LinuxImpl::handle_method_call),          // message_function
             nullptr,                                      // dispose_function
+            nullptr, nullptr, nullptr, nullptr,           // dbus_internal_pad1-4
         };
         if (!dbus_connection_register_object_path(conn_, "/org/mpris/MediaPlayer2",
                                                    &vtable, this)) {
