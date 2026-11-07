@@ -151,6 +151,11 @@ jobs:
       - name: MPRIS smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
+          # Start a session D-Bus so the MPRIS backend can register on it
+          # (CI containers do not run a session bus by default).
+          eval "$(dbus-launch)"
+          export DBUS_SESSION_BUS_ADDRESS
+
           # Start the daemon, then introspect the MPRIS D-Bus interface to
           # confirm the org.mpris.MediaPlayer2.Player interface and
           # PlaybackStatus property are exported.
@@ -160,10 +165,11 @@ jobs:
           sleep 2
           # Introspect the MPRIS interface
           gdbus introspect --session --dest org.mpris.MediaPlayer2.kanariv --object-path /org/mpris/MediaPlayer2 2>&1 | tee /tmp/mpris-introspect.txt
-          test -s /tmp/mpris-introspect.txt || (echo "MPRIS introspection failed" && kill $DAEMON_PID 2>/dev/null || true && exit 1)
-          grep -q "org.mpris.MediaPlayer2.Player" /tmp/mpris-introspect.txt || (echo "MPRIS Player interface missing" && kill $DAEMON_PID 2>/dev/null || true && exit 1)
-          grep -q "PlaybackStatus" /tmp/mpris-introspect.txt || (echo "MPRIS PlaybackStatus property missing" && kill $DAEMON_PID 2>/dev/null || true && exit 1)
+          test -s /tmp/mpris-introspect.txt || (echo "MPRIS introspection failed" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
+          grep -q "org.mpris.MediaPlayer2.Player" /tmp/mpris-introspect.txt || (echo "MPRIS Player interface missing" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
+          grep -q "PlaybackStatus" /tmp/mpris-introspect.txt || (echo "MPRIS PlaybackStatus property missing" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
           kill $DAEMON_PID 2>/dev/null || true
+          kill $DBUS_SESSION_BUS_PID 2>/dev/null || true
         shell: bash
 
       - name: macOS media-session smoke test
