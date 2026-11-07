@@ -465,6 +465,49 @@ class LinuxImpl final : public Impl {
         if (!iface || !method)
             return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
+        // Introspection: advertise the MPRIS interfaces so tools like
+        // gdbus introspect can discover them.
+        if (std::strcmp(iface, "org.freedesktop.DBus.Introspectable") == 0 &&
+            std::strcmp(method, "Introspect") == 0) {
+            static const char* xml = R"xml(
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+  <interface name="org.freedesktop.DBus.Introspectable"/>
+  <interface name="org.mpris.MediaPlayer2">
+    <method name="Raise"/>
+    <method name="Quit"/>
+  </interface>
+  <interface name="org.mpris.MediaPlayer2.Player">
+    <method name="Play"/>
+    <method name="Pause"/>
+    <method name="PlayPause"/>
+    <method name="Next"/>
+    <method name="Previous"/>
+    <method name="Stop"/>
+    <method name="Seek">
+      <arg name="offset" type="x" direction="in"/>
+    </method>
+    <method name="SetPosition">
+      <arg name="trackid" type="o" direction="in"/>
+      <arg name="position" type="x" direction="in"/>
+    </method>
+    <method name="OpenUri">
+      <arg name="uri" type="s" direction="in"/>
+    </method>
+    <property name="PlaybackStatus" type="s" access="read"/>
+    <property name="LoopStatus" type="s" access="read"/>
+    <property name="Rate" type="d" access="read"/>
+    <property name="Shuffle" type="b" access="read"/>
+    <property name="Volume" type="d" access="read"/>
+    <property name="Metadata" type="a{sv}" access="read"/>
+    <property name="Position" type="x" access="read"/>
+  </interface>
+</node>
+)xml";
+            return sendStringReply(connection, message, xml);
+        }
+
         Callbacks cb;
         {
             std::lock_guard lock(mtx_);
@@ -570,6 +613,23 @@ class LinuxImpl final : public Impl {
             return DBUS_HANDLER_RESULT_NEED_MEMORY;
         bool ok = dbus_connection_send(connection, err, nullptr);
         dbus_message_unref(err);
+        return ok ? DBUS_HANDLER_RESULT_HANDLED
+                  : DBUS_HANDLER_RESULT_NEED_MEMORY;
+    }
+
+    static DBusHandlerResult sendStringReply(DBusConnection* connection,
+                                              DBusMessage* message,
+                                              const char* value) {
+        DBusMessage* reply = dbus_message_new_method_return(message);
+        if (!reply)
+            return DBUS_HANDLER_RESULT_NEED_MEMORY;
+        if (!dbus_message_append_args(reply, DBUS_TYPE_STRING, &value,
+                                      DBUS_TYPE_INVALID)) {
+            dbus_message_unref(reply);
+            return DBUS_HANDLER_RESULT_NEED_MEMORY;
+        }
+        bool ok = dbus_connection_send(connection, reply, nullptr);
+        dbus_message_unref(reply);
         return ok ? DBUS_HANDLER_RESULT_HANDLED
                   : DBUS_HANDLER_RESULT_NEED_MEMORY;
     }
