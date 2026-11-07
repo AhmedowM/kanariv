@@ -302,7 +302,7 @@ class LinuxImpl final : public Impl {
             return false;
         if (!dbus_message_iter_append_basic(&variant, dbusType<T>(), &value))
             return false;
-        if (!dbus_message_iter_close_container(&variant, &entry))
+        if (!dbus_message_iter_close_container(&entry, &variant))
             return false;
         if (!dbus_message_iter_close_container(&dict, &entry))
             return false;
@@ -342,19 +342,19 @@ class LinuxImpl final : public Impl {
                             &e2, DBUS_TYPE_VARIANT, "o", &v2)) {
                         if (dbus_message_iter_append_basic(
                                 &v2, DBUS_TYPE_OBJECT_PATH, &trackIdPath)) {
-                            dbus_message_iter_close_container(&v2, &e2);
+                            dbus_message_iter_close_container(&e2, &v2);
                             dbus_message_iter_close_container(&mdDict, &e2);
                         } else {
-                            dbus_message_iter_abandon_container(&v2, &e2);
+                            dbus_message_iter_abandon_container(&e2, &v2);
                             dbus_message_iter_abandon_container(&mdDict, &e2);
                         }
                     } else {
-                        dbus_message_iter_abandon_container(&e2, &mdDict);
-                        dbus_message_iter_abandon_container(&mdDict, &variant);
+                        dbus_message_iter_abandon_container(&variant, &mdDict);
+                        dbus_message_iter_abandon_container(&e2, &variant);
                     }
                 } else {
-                    dbus_message_iter_abandon_container(&e2, &mdDict);
-                    dbus_message_iter_abandon_container(&mdDict, &variant);
+                    dbus_message_iter_abandon_container(&variant, &mdDict);
+                    dbus_message_iter_abandon_container(&e2, &variant);
                 }
             }
         }
@@ -370,7 +370,7 @@ class LinuxImpl final : public Impl {
                 dbus_message_iter_open_container(&e2, DBUS_TYPE_VARIANT, "s", &v2);
                 dbus_message_iter_append_basic(&v2, DBUS_TYPE_STRING,
                                                metadata_.title.c_str());
-                dbus_message_iter_close_container(&v2, &e2);
+                dbus_message_iter_close_container(&e2, &v2);
                 dbus_message_iter_close_container(&mdDict, &e2);
             }
         }
@@ -388,8 +388,8 @@ class LinuxImpl final : public Impl {
                 dbus_message_iter_open_container(&v2, DBUS_TYPE_ARRAY, "s", &arr);
                 const char* artist = metadata_.artist.c_str();
                 dbus_message_iter_append_basic(&arr, DBUS_TYPE_STRING, &artist);
-                dbus_message_iter_close_container(&arr, &v2);
-                dbus_message_iter_close_container(&v2, &e2);
+                dbus_message_iter_close_container(&v2, &arr);
+                dbus_message_iter_close_container(&e2, &v2);
                 dbus_message_iter_close_container(&mdDict, &e2);
             }
         }
@@ -405,7 +405,7 @@ class LinuxImpl final : public Impl {
                 dbus_message_iter_open_container(&e2, DBUS_TYPE_VARIANT, "s", &v2);
                 dbus_message_iter_append_basic(&v2, DBUS_TYPE_STRING,
                                                metadata_.album->c_str());
-                dbus_message_iter_close_container(&v2, &e2);
+                dbus_message_iter_close_container(&e2, &v2);
                 dbus_message_iter_close_container(&mdDict, &e2);
             }
         }
@@ -422,7 +422,7 @@ class LinuxImpl final : public Impl {
                 std::string artUrl = "file://" + *metadata_.artworkPath;
                 dbus_message_iter_append_basic(&v2, DBUS_TYPE_STRING,
                                                artUrl.c_str());
-                dbus_message_iter_close_container(&v2, &e2);
+                dbus_message_iter_close_container(&e2, &v2);
                 dbus_message_iter_close_container(&mdDict, &e2);
             }
         }
@@ -438,7 +438,7 @@ class LinuxImpl final : public Impl {
                 dbus_message_iter_open_container(&e2, DBUS_TYPE_VARIANT, "u", &v2);
                 dbus_uint32_t trackNum = static_cast<dbus_uint32_t>(metadata_.trackId);
                 dbus_message_iter_append_basic(&v2, DBUS_TYPE_UINT32, &trackNum);
-                dbus_message_iter_close_container(&v2, &e2);
+                dbus_message_iter_close_container(&e2, &v2);
                 dbus_message_iter_close_container(&mdDict, &e2);
             }
         }
