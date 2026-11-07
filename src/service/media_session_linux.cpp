@@ -124,7 +124,9 @@ class LinuxImpl final : public Impl {
             dbus_connection_unregister_object_path(conn_, "/org/mpris/MediaPlayer2");
             dbus_bus_release_name(conn_, "org.mpris.MediaPlayer2.kanariv", &error);
             dbus_error_free(&error);
-            dbus_connection_close(conn_);
+            // Do NOT dbus_connection_close() here: conn_ is a shared
+            // connection from dbus_bus_get(), and closing shared
+            // connections is forbidden by libdbus.
             dbus_connection_unref(conn_);
             conn_ = nullptr;
         }
