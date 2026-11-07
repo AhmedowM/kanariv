@@ -339,7 +339,7 @@ class LinuxImpl final : public Impl {
                 if (dbus_message_iter_append_basic(&e2, DBUS_TYPE_STRING, &k)) {
                     DBusMessageIter v2;
                     if (dbus_message_iter_open_container(
-                            &v2, DBUS_TYPE_VARIANT, "o", &v2)) {
+                            &e2, DBUS_TYPE_VARIANT, "o", &v2)) {
                         if (dbus_message_iter_append_basic(
                                 &v2, DBUS_TYPE_OBJECT_PATH, &trackIdPath)) {
                             dbus_message_iter_close_container(&v2, &e2);
@@ -367,7 +367,7 @@ class LinuxImpl final : public Impl {
                 const char* k = "xesam:title";
                 dbus_message_iter_append_basic(&e2, DBUS_TYPE_STRING, &k);
                 DBusMessageIter v2;
-                dbus_message_iter_open_container(&v2, DBUS_TYPE_VARIANT, "s", &v2);
+                dbus_message_iter_open_container(&e2, DBUS_TYPE_VARIANT, "s", &v2);
                 dbus_message_iter_append_basic(&v2, DBUS_TYPE_STRING,
                                                metadata_.title.c_str());
                 dbus_message_iter_close_container(&v2, &e2);
@@ -383,9 +383,9 @@ class LinuxImpl final : public Impl {
                 const char* k = "xesam:artist";
                 dbus_message_iter_append_basic(&e2, DBUS_TYPE_STRING, &k);
                 DBusMessageIter v2;
-                dbus_message_iter_open_container(&v2, DBUS_TYPE_VARIANT, "as", &v2);
+                dbus_message_iter_open_container(&e2, DBUS_TYPE_VARIANT, "as", &v2);
                 DBusMessageIter arr;
-                dbus_message_iter_open_container(&arr, DBUS_TYPE_ARRAY, "s", &arr);
+                dbus_message_iter_open_container(&v2, DBUS_TYPE_ARRAY, "s", &arr);
                 const char* artist = metadata_.artist.c_str();
                 dbus_message_iter_append_basic(&arr, DBUS_TYPE_STRING, &artist);
                 dbus_message_iter_close_container(&arr, &v2);
@@ -402,7 +402,7 @@ class LinuxImpl final : public Impl {
                 const char* k = "xesam:album";
                 dbus_message_iter_append_basic(&e2, DBUS_TYPE_STRING, &k);
                 DBusMessageIter v2;
-                dbus_message_iter_open_container(&v2, DBUS_TYPE_VARIANT, "s", &v2);
+                dbus_message_iter_open_container(&e2, DBUS_TYPE_VARIANT, "s", &v2);
                 dbus_message_iter_append_basic(&v2, DBUS_TYPE_STRING,
                                                metadata_.album->c_str());
                 dbus_message_iter_close_container(&v2, &e2);
@@ -418,7 +418,7 @@ class LinuxImpl final : public Impl {
                 const char* k = "mpris:artUrl";
                 dbus_message_iter_append_basic(&e2, DBUS_TYPE_STRING, &k);
                 DBusMessageIter v2;
-                dbus_message_iter_open_container(&v2, DBUS_TYPE_VARIANT, "s", &v2);
+                dbus_message_iter_open_container(&e2, DBUS_TYPE_VARIANT, "s", &v2);
                 std::string artUrl = "file://" + *metadata_.artworkPath;
                 dbus_message_iter_append_basic(&v2, DBUS_TYPE_STRING,
                                                artUrl.c_str());
@@ -435,7 +435,7 @@ class LinuxImpl final : public Impl {
                 const char* k = "xesam:trackNumber";
                 dbus_message_iter_append_basic(&e2, DBUS_TYPE_STRING, &k);
                 DBusMessageIter v2;
-                dbus_message_iter_open_container(&v2, DBUS_TYPE_VARIANT, "u", &v2);
+                dbus_message_iter_open_container(&e2, DBUS_TYPE_VARIANT, "u", &v2);
                 dbus_uint32_t trackNum = static_cast<dbus_uint32_t>(metadata_.trackId);
                 dbus_message_iter_append_basic(&v2, DBUS_TYPE_UINT32, &trackNum);
                 dbus_message_iter_close_container(&v2, &e2);
