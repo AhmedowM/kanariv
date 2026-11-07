@@ -83,7 +83,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev graphviz patchelf
+          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev graphviz patchelf libdbus-1-dev libglib2.0-bin pkg-config dbus-x11
           ffmpeg -version || true
           cmake --version
           ninja --version
@@ -147,6 +147,53 @@ jobs:
 
       - name: Build
         run: python scripts/configure.py ci --toolchain ${{ matrix.toolchain }} --build-dir build/ci-${{ matrix.toolchain }} --build
+
+      - name: MPRIS smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Start a session D-Bus so the MPRIS backend can register on it
+          # (CI containers do not run a session bus by default).
+          eval "$(dbus-launch)"
+          export DBUS_SESSION_BUS_ADDRESS
+
+          # Start the daemon, then introspect the MPRIS D-Bus interface to
+          # confirm the org.mpris.MediaPlayer2.Player interface and
+          # PlaybackStatus property are exported.
+          export KANARIV_TEST_NOAUDIO=1
+          build/ci-${{ matrix.toolchain }}/kanariv start --foreground &
+          DAEMON_PID=$!
+          sleep 2
+          # Introspect the MPRIS interface
+          gdbus introspect --session --dest org.mpris.MediaPlayer2.kanariv --object-path /org/mpris/MediaPlayer2 2>&1 | tee /tmp/mpris-introspect.txt
+          test -s /tmp/mpris-introspect.txt || (echo "MPRIS introspection failed" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
+          grep -q "org.mpris.MediaPlayer2.Player" /tmp/mpris-introspect.txt || (echo "MPRIS Player interface missing" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
+          grep -q "PlaybackStatus" /tmp/mpris-introspect.txt || (echo "MPRIS PlaybackStatus property missing" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
+          kill $DAEMON_PID 2>/dev/null || true
+          kill $DBUS_SESSION_BUS_PID 2>/dev/null || true
+        shell: bash
+
+      - name: macOS media-session smoke test
+        if: runner.os == 'macOS'
+        run: |
+          # Verify the MediaPlayer framework is linked into libservice.dylib
+          # (the macOS media-session backend links it via service.cmake),
+          # then start the daemon briefly to confirm it does not crash with
+          # media-session enabled (MPNowPlayingInfoCenter / MPRemoteCommandCenter).
+          LIB="build/ci-${{ matrix.toolchain }}/libservice.1.dylib"
+          test -f "$LIB" || LIB="build/ci-${{ matrix.toolchain }}/libservice.dylib"
+          otool -L "$LIB" | grep -q "MediaPlayer" \
+            || (echo "MediaPlayer framework not linked into $LIB" && exit 1)
+
+          BIN="build/ci-${{ matrix.toolchain }}/kanariv"
+
+          export KANARIV_TEST_NOAUDIO=1
+          "$BIN" start --foreground &
+          DAEMON_PID=$!
+          sleep 2
+          kill -0 $DAEMON_PID 2>/dev/null \
+            || (echo "daemon exited early" && exit 1)
+          kill $DAEMON_PID 2>/dev/null || true
+        shell: bash
 
       - name: Test
         env:
@@ -329,7 +376,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build nasm pkg-config zlib1g-dev make curl
+          sudo apt-get install -y ninja-build nasm pkg-config zlib1g-dev make curl libdbus-1-dev
           cmake --version
           ninja --version
 
@@ -534,7 +581,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev patchelf
+          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev patchelf pkg-config libdbus-1-dev
           ffmpeg -version || true
           cmake --version
           ninja --version
@@ -585,7 +632,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev graphviz patchelf
+          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev graphviz patchelf pkg-config libdbus-1-dev
           cmake --version
           ninja --version
 
@@ -668,7 +715,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev patchelf
+          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev patchelf pkg-config libdbus-1-dev
           cmake --version
           ninja --version
 
