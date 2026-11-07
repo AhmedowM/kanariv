@@ -578,16 +578,10 @@ class LinuxImpl final : public Impl {
         while (!stopRequested_.load(std::memory_order_acquire)) {
             if (!conn_)
                 break;
-            // Non-blocking dispatch with a short timeout so we can check the
-            // stop flag regularly.
+            // Wait for incoming data, then dispatch any pending messages to
+            // registered handlers (handle_method_call via the vtable).
             dbus_connection_read_write(conn_, 100);
-            DBusMessage* msg = nullptr;
-            while ((msg = dbus_connection_pop_message(conn_)) != nullptr) {
-                if (!dbus_connection_dispatch(conn_)) {
-                    // No handler registered for this message; ignore.
-                }
-                dbus_message_unref(msg);
-            }
+            dbus_connection_dispatch(conn_);
         }
     }
 
