@@ -53,9 +53,11 @@ if(KANARIV_BUILD_SHARED)
     target_link_libraries(combined PRIVATE user32 ole32 shcore runtimeobject)
   elseif(APPLE)
     # service_objects pulls in media_session_mac.mm, which uses MediaPlayer
-    # and Foundation classes directly. Link the same frameworks the service
-    # component uses so these symbols resolve in the combined DLL.
-    target_link_libraries(combined PRIVATE "-framework MediaPlayer" "-framework Foundation")
+    # and Foundation classes directly, plus AppKit for NSImage (artwork).
+    # Link the same frameworks the service component uses so these symbols
+    # resolve in the combined DLL.
+    target_link_libraries(combined PRIVATE "-framework MediaPlayer"
+      "-framework Foundation" "-framework AppKit")
   elseif(UNIX)
     if(KANARIV_DBUS_FOUND)
       target_link_libraries(combined PRIVATE ${KANARIV_DBUS_LIBRARIES})
