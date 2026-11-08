@@ -81,7 +81,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev rpm nsis || echo "Some packages unavailable, continuing"
+          sudo apt-get install -y ninja-build ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev rpm nsis pkg-config libdbus-1-dev || echo "Some packages unavailable, continuing"
           ffmpeg -version || true
           cmake --version
           ninja --version
