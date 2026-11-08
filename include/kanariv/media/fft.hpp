@@ -38,7 +38,7 @@ namespace kanariv::media::fft {
  */
 class KANARIV_API FftPlan {
 public:
-    FftPlan() noexcept = default;
+    FftPlan() noexcept;
     FftPlan(FftPlan&& other) noexcept;
     FftPlan& operator=(FftPlan&& other) noexcept;
     ~FftPlan();

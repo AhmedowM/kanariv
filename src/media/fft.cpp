@@ -83,6 +83,8 @@ struct FftPlan::Impl {
     bool r2c{false};
 };
 
+FftPlan::FftPlan() noexcept = default;
+
 FftPlan::FftPlan(FftPlan&& other) noexcept
     : impl_(std::move(other.impl_)) {}
 
