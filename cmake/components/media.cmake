@@ -6,6 +6,7 @@ set(KANARIV_MEDIA_MODULE_SOURCES
   modules/kanariv/media/decoder.cppm
   modules/kanariv/media/audio_ext.cppm
   modules/kanariv/media/scan.cppm
+  modules/kanariv/media/fft.cppm
 )
 set(KANARIV_MEDIA_SOURCES
   src/media/reader.cpp
@@ -14,6 +15,7 @@ set(KANARIV_MEDIA_SOURCES
   src/media/decoders/ffmpeg.cpp
   src/media/scan.cpp
   src/media/fingerprint.cpp
+  src/media/fft.cpp
 )
 kanariv_add_component(media SOURCES ${KANARIV_MEDIA_SOURCES} MODULE_SOURCES ${KANARIV_MEDIA_MODULE_SOURCES} DEPS kanariv::utils kanariv::types)
 ca_set_module_warnings(media)

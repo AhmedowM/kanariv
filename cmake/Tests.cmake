@@ -97,6 +97,8 @@ if(KANARIV_ENABLE_TESTS)
   # real MediaPlayer/AppKit objects and reads the published now-playing info,
   # playback state and remote-command modes back. Verifies behaviour rather
   # than just linkage (the .mm only compiles on macOS).
+  kanariv_add_catch_test(test_fft tests/test_fft.cpp LIBS kanariv::media kanariv::utils)
+
   if(APPLE)
     kanariv_add_catch_test(test_media_session_mac tests/test_media_session_mac.mm
       LIBS kanariv::service kanariv::utils

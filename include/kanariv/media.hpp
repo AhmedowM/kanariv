@@ -16,5 +16,6 @@
 
 #include <kanariv/media/audio_ext.hpp>
 #include <kanariv/media/decoder.hpp>
+#include <kanariv/media/fft.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/media/scan.hpp>
