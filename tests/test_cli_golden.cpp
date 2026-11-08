@@ -149,6 +149,56 @@ std::vector<std::string> withCfg(const std::string& tag, std::initializer_list<s
     return withCfg(tag, std::vector<std::string>(rest));
 }
 
+/**
+ * @brief Stops a CLI-spawned daemon, then removes its temp directory.
+ * @details Ordering is load-bearing. `shutdown` resolves the daemon socket
+ * from the config's `dbPath`, so the config must still name this test's
+ * database when the guard runs. Deleting the directory/config first makes the
+ * CLI synthesize a default config (real user database + default socket); the
+ * test's daemon is then never stopped and its pid/lock/socket leak, while a
+ * developer's own daemon may be stopped by mistake. The config is therefore
+ * rewritten defensively before shutdown, and the directory is only removed
+ * once the daemon is gone (Windows keeps its db/log handles open otherwise).
+ *
+ * @tparam RunFn Callable taking `std::vector<std::string>` and returning a
+ * result with an `exitCode` member (the test's `run` lambda).
+ */
+template <class RunFn> struct DaemonGuard {
+    RunFn* runFn;
+    std::filesystem::path dir;
+
+    ~DaemonGuard() {
+        namespace fs = std::filesystem;
+        try {
+            std::error_code ec;
+            fs::create_directories(dir, ec);
+            // A failing test may have replaced or removed the config (e.g. the
+            // config-import section); always restore a hermetic one first.
+            {
+                std::ofstream f(dir / "config.json", std::ios::binary | std::ios::trunc);
+                if (f)
+                    f << "{\"dbPath\": \"" << dir.generic_string() << "/library.db\"}";
+            }
+            // shutdown is synchronous and idempotent. Retry only to absorb a
+            // transient IPC failure while the daemon is still settling.
+            for (int i = 0; i < 3; ++i) {
+                auto r = (*runFn)({"shutdown"});
+                if (r.exitCode == 0 || contains(r.err, "daemon not running"))
+                    break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        } catch (...) {
+        }
+        std::error_code ec;
+        for (int i = 0; i < 40; ++i) {
+            fs::remove_all(dir, ec);
+            if (!fs::exists(dir, ec))
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+};
+
 } // namespace
 
 TEST_CASE("cli help surfaces groups", "[cli]") {
@@ -302,17 +352,10 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
         a.insert(a.begin(), {"--config", cfgS});
         return runCli(a);
     };
-    // Best-effort shutdown on any path: a REQUIRE failure must not leak a
-    // daemon (on Windows a live daemon locks kanariv.exe for the next build).
-    struct DaemonGuard {
-        decltype(run)* runFn;
-        ~DaemonGuard() {
-            try {
-                (*runFn)({"shutdown"});
-            } catch (...) {
-            }
-        }
-    } guard{&run};
+    // Stop the daemon before the directory is removed on any path: a REQUIRE
+    // failure must not leak a daemon (on Windows a live daemon locks
+    // kanariv.exe for the next build) or leave pid/lock files behind.
+    DaemonGuard<decltype(run)> guard{&run, dir};
     auto start = run({"start"});
     // Bounded retry: daemon spawn can transiently fail on a loaded box
     // (AV scan/lock/scheduler); start converges (already-running succeeds),
@@ -696,7 +739,6 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     auto localGet = run({"config", "get", "cli_golden_key"});
     REQUIRE(localGet.exitCode == 0);
     REQUIRE(contains(localGet.out, "hello"));
-    fs::remove_all(dir, ec);
 }
 
 TEST_CASE("cli tag edit writes file", "[cli]") {
@@ -712,15 +754,7 @@ TEST_CASE("cli tag edit writes file", "[cli]") {
         a.insert(a.begin(), {"--config", cfgS});
         return runCli(a);
     };
-    struct DaemonGuard {
-        decltype(run)* runFn;
-        ~DaemonGuard() {
-            try {
-                (*runFn)({"shutdown"});
-            } catch (...) {
-            }
-        }
-    } guard{&run};
+    DaemonGuard<decltype(run)> guard{&run, dir};
 #ifdef TEST_DATA_DIR
     fs::path src = fs::path(std::string(TEST_DATA_DIR)) / "sample.mp3";
 #else
@@ -762,7 +796,6 @@ TEST_CASE("cli tag edit writes file", "[cli]") {
     auto get2 = run({"tag", "get", "1", "title"});
     REQUIRE(get2.exitCode == 0);
     REQUIRE(contains(get2.out, "Golden Title"));
-    fs::remove_all(dir, ec);
 }
 
 TEST_CASE("cli playback one-liners", "[cli]") {
@@ -779,21 +812,9 @@ TEST_CASE("cli playback one-liners", "[cli]") {
         a.insert(a.begin(), {"--config", cfgS});
         return runCli(a);
     };
-    // Same best-effort shutdown guard as the lifecycle test above.
-    struct PlaybackGuard {
-        decltype(run)* runFn;
-        ~PlaybackGuard() {
-            try {
-                (*runFn)({"shutdown"});
-            } catch (...) {
-            }
-        }
-    } playGuard{&run};
-    auto EpicFail = [&](const char* what) {
-        std::error_code ec;
-        fs::remove_all(dir, ec);
-        FAIL(what);
-    };
+    // Same stop-then-delete guard as the lifecycle test above.
+    DaemonGuard<decltype(run)> playGuard{&run, dir};
+    auto EpicFail = [&](const char* what) { FAIL(what); };
     // stop is idempotent server-side (already-stopped still succeeds), so a
     // single retry covers a transient IPC cancel under full-suite load.
     auto runStop = [&](const char* what) {
@@ -821,9 +842,6 @@ TEST_CASE("cli playback one-liners", "[cli]") {
         EpicFail("daemon never came up");
     auto dev = run({"device", "list", "--json"});
     if (!contains(dev.out, "\"devices\"") || contains(dev.out, "\"devices\": []")) {
-        run({"shutdown"});
-        std::error_code ec;
-        fs::remove_all(dir, ec);
         SKIP("no audio device for playback one-liners");
     }
     // Deterministic fixtures: the sub-second sample files can naturally end
@@ -987,6 +1005,4 @@ TEST_CASE("cli playback one-liners", "[cli]") {
     REQUIRE(qltemp.exitCode == 0);
     REQUIRE(contains(qltemp.out, "temp: toneA.wav"));
     REQUIRE(run({"shutdown"}).exitCode == 0);
-    std::error_code ec;
-    fs::remove_all(dir, ec);
 }

@@ -162,14 +162,10 @@ bool log_trace_filter() {
 bool log_sink_rotation() {
     namespace fs = std::filesystem;
     std::error_code ec;
-    auto dir = fs::temp_directory_path(ec) / "kanariv-logtest";
-    if (ec)
-        return false;
-    fs::remove_all(dir, ec);
-    fs::create_directories(dir, ec);
-    if (ec)
-        return false;
-    kanariv::test_helpers::registerTempPath(dir);
+    // Unique per process/run: a fixed name raced concurrent runs and could
+    // inherit leftovers from an aborted one. The helper also registers the
+    // directory for atexit cleanup.
+    auto dir = kanariv::test_helpers::tempDirPath("kanariv-logtest");
     FileSinkOptions opts;
     opts.maxBytes = 128;
     opts.generations = 3;
@@ -198,19 +194,16 @@ bool log_sink_rotation() {
     if (content.find("line number") == std::string::npos)
         return false;
     in.close();
-    fs::remove_all(dir, ec);
+    // Left for the registered atexit cleanup: the sink still holds the log
+    // file open here, so removing now would fail on Windows.
     return true;
 }
 
 bool log_sink_open_failure() {
     // Directories are not log files: open fails gracefully, no crash.
-    std::error_code ec;
-    auto dir = std::filesystem::temp_directory_path(ec) / "kanariv-logtest-dir";
-    if (ec)
-        return false;
-    std::filesystem::create_directories(dir, ec);
-    kanariv::test_helpers::registerTempPath(dir);
+    auto dir = kanariv::test_helpers::tempDirPath("kanariv-logtest-dir");
     auto sink = FileLogSink::open(dir);
+    std::error_code ec;
     std::filesystem::remove_all(dir, ec);
     return sink == nullptr;
 }

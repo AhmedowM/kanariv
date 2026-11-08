@@ -43,15 +43,10 @@ class ScopedEnv {
     bool had_{false};
 };
 
+// Unique per process/run (and registered for atexit cleanup). Fixed names were
+// reused across runs, so a leftover directory from a crashed run could collide.
 std::filesystem::path freshTempDir(const char* name) {
-    std::error_code ec;
-    auto dir = std::filesystem::temp_directory_path(ec) / name;
-    REQUIRE(!ec);
-    std::filesystem::remove_all(dir, ec);
-    std::filesystem::create_directories(dir, ec);
-    REQUIRE(!ec);
-    kanariv::test_helpers::registerTempPath(dir);
-    return dir;
+    return kanariv::test_helpers::tempDirPath(name);
 }
 
 } // namespace

@@ -1,9 +1,9 @@
 #include <array>
-#include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
+#include <common.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -17,13 +17,11 @@ using namespace kanariv::utils;
 using kanariv::media::FileReader;
 using kanariv::media::MemoryReader;
 
-// Helper to create a temp file with RIFF header
+// Helper to create a temp file with RIFF header. Uses the shared helper so the
+// directory is unique per process/call and registered for atexit cleanup;
+// a fixed shared directory leaked artifacts (and collided under parallel ctest).
 static std::filesystem::path makeTempFile(const std::string& name, std::vector<std::byte> data) {
-    // Use test-specific subdir to avoid parallel test race on shared directory
-    static std::atomic<int> testId{0};
-    auto dir = std::filesystem::temp_directory_path() / "kanariv_reader_tests" /
-               std::to_string(testId.fetch_add(1));
-    std::filesystem::create_directories(dir);
+    auto dir = kanariv::test_helpers::tempDirPath("reader");
     auto p = dir / name;
     std::ofstream out(p, std::ios::binary);
     out.write(reinterpret_cast<const char*>(data.data()),
