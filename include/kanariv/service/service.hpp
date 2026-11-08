@@ -148,6 +148,22 @@ class KANARIV_API Service final {
     kanariv::utils::Expected<void> attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db);
 
     /**
+     * @brief Access the audio engine instance.
+     * @return Reference to the Engine.
+     * @details Exposed for host integrations (e.g. Android foreground service)
+     * that need direct engine access without going through IPC.
+     */
+    kanariv::engine::Engine& engine() noexcept;
+
+    /**
+     * @brief Access the database instance.
+     * @return Reference to the Database.
+     * @details Exposed for host integrations (e.g. Android foreground service)
+     * that need direct database access without going through IPC.
+     */
+    kanariv::contracts::IDatabase& db() noexcept;
+
+    /**
      * @brief Gracefully shut down the service.
      * @ingroup kanariv_service
      *
@@ -158,18 +174,6 @@ class KANARIV_API Service final {
     void shutdown();
 
   private:
-    /**
-     * @brief Access the database instance.
-     * @return Reference to the Database.
-     */
-    kanariv::contracts::IDatabase& db() noexcept;
-
-    /**
-     * @brief Access the audio engine instance.
-     * @return Reference to the Engine.
-     */
-    kanariv::engine::Engine& engine() noexcept;
-
     /**
      * @brief Access the IPC server instance.
      * @return Reference to the IpcServer.

@@ -15,6 +15,11 @@ cmake_install.cmake
 CTestTestfile.cmake
 CPack*.cmake
 _deps/
+.gradle/
+# Android build artifacts
+android/app/.cxx/
+android/app/build/
+android/local.properties
 
 # IDE / OS
 .vscode/*

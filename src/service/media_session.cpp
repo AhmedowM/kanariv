@@ -83,7 +83,6 @@ bool MediaSession::active() const noexcept {
 MediaSession::ExpectedSession createWindows(std::string, std::string, bool, bool);
 MediaSession::ExpectedSession createMacOS(std::string, std::string, bool, bool);
 MediaSession::ExpectedSession createLinux(std::string, std::string, bool, bool);
-MediaSession::ExpectedSession createAndroid(std::string, std::string, bool, bool);
 
 namespace {
 
@@ -147,8 +146,10 @@ MediaSession::ExpectedSession MediaSession::create(std::string appName,
     return createMacOS(std::move(appName), std::move(appIcon),
                        enableNotifications, enableMediaKeys);
 #elif defined(__ANDROID__)
-    return createAndroid(std::move(appName), std::move(appIcon),
-                         enableNotifications, enableMediaKeys);
+    // Android media-session backend lives under /android/ and is built
+    // separately; fall through to the stub on the core build.
+    return createNone(std::move(appName), std::move(appIcon),
+                      enableNotifications, enableMediaKeys);
 #elif defined(__linux__)
     return createLinux(std::move(appName), std::move(appIcon),
                        enableNotifications, enableMediaKeys);

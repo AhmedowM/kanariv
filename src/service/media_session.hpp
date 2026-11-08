@@ -123,9 +123,9 @@ class MediaSession {
      * @brief Wrap an already-created backend implementation.
      * Used by platform factory functions.
      */
-    static std::unique_ptr<MediaSession> wrap(std::unique_ptr<Impl> impl) noexcept;
+    KANARIV_API static std::unique_ptr<MediaSession> wrap(std::unique_ptr<Impl> impl) noexcept;
 
-    ~MediaSession();
+    KANARIV_API ~MediaSession();
     MediaSession(const MediaSession&) = delete;
     MediaSession& operator=(const MediaSession&) = delete;
     MediaSession(MediaSession&&) = delete;

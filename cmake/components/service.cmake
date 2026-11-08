@@ -25,7 +25,9 @@ if(WIN32)
 elseif(APPLE)
   list(APPEND KANARIV_SERVICE_SOURCES src/service/media_session_mac.mm)
 elseif(ANDROID)
-  # Android media_session lives under a separate /android/ path (TBD).
+  # Android media-session and JNI bridge live under /android/ and are built
+  # separately for Android targets; they are not part of the core service
+  # component.
 elseif(UNIX)
   list(APPEND KANARIV_SERVICE_SOURCES src/service/media_session_linux.cpp)
 endif()
