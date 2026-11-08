@@ -145,7 +145,7 @@ TEST_CASE("macOS media session publishes now-playing info and modes",
         REQUIRE(session.deactivate().has_value());
         CHECK_FALSE(session.active());
         NSDictionary<NSString*, id>* cleared = [center nowPlayingInfo];
-        CHECK(cleared == nil || cleared.count == 0);
+        CHECK((cleared == nil || cleared.count == 0));
         CHECK_FALSE(commands.playCommand.isEnabled);
         CHECK_FALSE(commands.changeRepeatModeCommand.isEnabled);
 
