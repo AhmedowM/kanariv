@@ -281,7 +281,7 @@ class MacImpl final : public Impl {
                         kanariv::types::RepeatMode repeat =
                             kanariv::types::RepeatMode::Off;
                         switch (repeatEvent.repeatType) {
-                            case MPRepeatTypeTrack:
+                            case MPRepeatTypeOne:
                                 repeat = kanariv::types::RepeatMode::One;
                                 break;
                             case MPRepeatTypeAll:
@@ -321,7 +321,7 @@ class MacImpl final : public Impl {
         MPRepeatType repeatType = MPRepeatTypeOff;
         switch (repeat_) {
             case kanariv::types::RepeatMode::One:
-                repeatType = MPRepeatTypeTrack;
+                repeatType = MPRepeatTypeOne;
                 break;
             case kanariv::types::RepeatMode::All:
                 repeatType = MPRepeatTypeAll;
