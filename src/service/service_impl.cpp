@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <engine/engine_access.hpp>
+#include <exception>
 #include <expected>
 #include <filesystem>
 #include <fstream>
@@ -627,7 +628,24 @@ Service::Impl::dispatch(const kanariv::ipc::Command& cmd) {
         } catch (...) {
         }
     }
-    return std::visit(DispatchVisitor{this}, cmd);
+    // A handler that throws (e.g. a filesystem call on a path outside the
+    // ANSI code page) must surface as an error reply, not escape into the
+    // connection thread -- which used to close the pipe and leave the client
+    // with a bare `ReadFile hdr failed: 109` (ERROR_BROKEN_PIPE).
+    try {
+        return std::visit(DispatchVisitor{this}, cmd);
+    } catch (const std::exception& e) {
+        if (logger_)
+            logger_->error("dispatch failed: {}", e.what());
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Internal,
+            std::string("dispatch failed: ") + e.what())};
+    } catch (...) {
+        if (logger_)
+            logger_->error("dispatch failed with unknown exception");
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Internal, "dispatch failed with unknown exception")};
+    }
 }
 
 } // namespace kanariv::service

@@ -31,6 +31,7 @@
 #include <thread>
 #include <utility>
 #include <utils/mpsc_queue.hpp>
+#include <utils/path_utf8.hpp>
 #include <vector>
 
 namespace kanariv::engine {
@@ -1469,7 +1470,10 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
     // unplayable track is an error, never silent timer playback
     bool opened = false;
     if (!path.empty()) {
-        auto rRes = kanariv::media::FileReader::open(path);
+        // Track paths are stored UTF-8; decode them as UTF-8 rather than the
+        // Windows ANSI code page so non-ASCII filenames resolve.
+        auto rRes = kanariv::media::FileReader::open(
+            kanariv::utils::detail::pathFromUtf8(path));
         if (rRes) {
             reader_ = std::move(rRes.value());
             auto dRes = kanariv::media::Decoder::open(*reader_, cfg_.logger);
@@ -1567,6 +1571,12 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
     hasCurrent_.store(true, std::memory_order_release);
     markedPlayed_.store(false, std::memory_order_release);
     gaplessArmed_.store(false, std::memory_order_release);
+    // Start each track with a fresh accounting window. Without this the time
+    // accumulated on the previous track carried over, so the next track was
+    // marked played immediately on entry (and the skip/history window was
+    // wrong). resumeAfterTagWrite() saves and restores the counters around
+    // doPlayTrack(), so a tag write mid-track still keeps its progress.
+    resetPlaybackAccounting();
     startedMs_ = (int64_t)detail::wallMs();
     state_.currentTrackId = t.id;
     state_.cursorPos = (int64_t)queue_.cursor;

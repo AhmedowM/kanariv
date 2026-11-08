@@ -14,6 +14,7 @@
 #include <media/fingerprint.hpp>
 #include <system_error>
 #include <utility>
+#include <utils/path_utf8.hpp>
 
 namespace kanariv::media {
 
@@ -27,7 +28,10 @@ kanariv::utils::Generator<kanariv::types::Track> scanTracks(const std::filesyste
          it != std::filesystem::recursive_directory_iterator(); ++it) {
         if (it->is_regular_file(ec) && kanariv::media::hasAudioExt(it->path())) {
             kanariv::types::Track t;
-            t.path = it->path().generic_string();
+            // UTF-8, not generic_string(): the latter throws on Windows for
+            // characters outside the ANSI code page, which aborted the whole
+            // scan at the first such file (and surfaced as a broken pipe).
+            t.path = kanariv::utils::detail::pathToUtf8(it->path());
             std::error_code e2;
             auto sz = it->file_size(e2);
             if (!e2)

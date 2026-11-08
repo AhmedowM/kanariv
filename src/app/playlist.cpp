@@ -26,6 +26,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <utils/path_utf8.hpp>
 #include <variant>
 #include <vector>
 
@@ -108,7 +109,8 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
             hardFail = true;
             continue;
         }
-        std::string fn = std::filesystem::path(f).filename().generic_string();
+        std::string fn = kanariv::utils::detail::pathToUtf8(
+            kanariv::utils::detail::pathFromUtf8(f).filename());
         kanariv::ipc::Command scmd{kanariv::ipc::LibrarySearch{.query = fn, .limit = 50}};
         auto sres = impl_->sendRaw(scmd);
         if (!sres) {

@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <expected>
 #include <filesystem>
 #include <functional>
@@ -384,6 +385,28 @@ void IpcServer::Impl::run(std::stop_token st,
                             ::FlushFileBuffers(clientHandle);
                             ::DisconnectNamedPipe(clientHandle);
                             ::CloseHandle(clientHandle);
+                        } catch (const std::exception& e) {
+                            // Last-resort fallback: a thrown handler used to
+                            // just close the pipe, so the client could only
+                            // report `ReadFile hdr failed: 109`
+                            // (ERROR_BROKEN_PIPE). Try to answer with the
+                            // cause first.
+                            try {
+                                kanariv::ipc::IpcReply errReply;
+                                errReply.id = 0;
+                                errReply.result = std::unexpected{kanariv::utils::makeError(
+                                    kanariv::utils::StatusCode::Internal,
+                                    std::string("server error: ") + e.what())};
+                                std::string errJson = kanariv::ipc::serializeReply(errReply);
+                                auto errFrame = kanariv::ipc::frame(errJson);
+                                DWORD w3 = 0;
+                                (void)::WriteFile(clientHandle, errFrame.data(),
+                                                 static_cast<DWORD>(errFrame.size()), &w3, nullptr);
+                                (void)::FlushFileBuffers(clientHandle);
+                                (void)::DisconnectNamedPipe(clientHandle);
+                            } catch (...) {
+                            }
+                            ::CloseHandle(clientHandle);
                         } catch (...) {
                             ::CloseHandle(clientHandle);
                         }
@@ -502,6 +525,34 @@ void IpcServer::Impl::run(std::stop_token st,
                         if (!sendAll(framed)) {
                             ::close(cfd);
                             return;
+                        }
+                        ::close(cfd);
+                    } catch (const std::exception& e) {
+                        // Answer with the cause instead of silently closing
+                        // (matches the Windows branch above).
+                        try {
+                            kanariv::ipc::IpcReply errReply;
+                            errReply.id = 0;
+                            errReply.result = std::unexpected{kanariv::utils::makeError(
+                                kanariv::utils::StatusCode::Internal,
+                                std::string("server error: ") + e.what())};
+                            std::string errJson = kanariv::ipc::serializeReply(errReply);
+                            auto errFrame = kanariv::ipc::frame(errJson);
+                            std::size_t sent = 0;
+                            while (sent < errFrame.size()) {
+                                ::ssize_t n = ::send(cfd,
+                                                     reinterpret_cast<const char*>(
+                                                         errFrame.data()) +
+                                                         sent,
+                                                     errFrame.size() - sent, 0);
+                                if (n <= 0) {
+                                    if (n < 0 && errno == EINTR)
+                                        continue;
+                                    break;
+                                }
+                                sent += static_cast<std::size_t>(n);
+                            }
+                        } catch (...) {
                         }
                         ::close(cfd);
                     } catch (...) {

@@ -14,6 +14,7 @@
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <utils/path_utf8.hpp>
 #include <vector>
 
 namespace kanariv::app {
@@ -26,7 +27,8 @@ std::string trackWho(const kanariv::ipc::Status& st) {
     if (!st.title.empty())
         return st.title;
     if (!st.path.empty()) {
-        std::string fn = std::filesystem::path(st.path).filename().generic_string();
+        std::string fn = kanariv::utils::detail::pathToUtf8(
+            kanariv::utils::detail::pathFromUtf8(st.path).filename());
         if (!fn.empty())
             return fn;
     }
@@ -34,7 +36,8 @@ std::string trackWho(const kanariv::ipc::Status& st) {
 }
 
 std::string addedLabel(const kanariv::types::Track& t) {
-    std::string fn = std::filesystem::path(t.path).filename().generic_string();
+    std::string fn = kanariv::utils::detail::pathToUtf8(
+        kanariv::utils::detail::pathFromUtf8(t.path).filename());
     std::string who;
     if (!t.artist.empty() && !t.title.empty())
         who = t.artist + " - " + t.title;

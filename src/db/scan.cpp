@@ -22,6 +22,7 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <utils/path_utf8.hpp>
 
 namespace kanariv::db {
 
@@ -43,7 +44,7 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "library not found")};
     }
-    std::filesystem::path root(libPath);
+    std::filesystem::path root = kanariv::utils::detail::pathFromUtf8(libPath);
     std::error_code ec;
     if (!std::filesystem::exists(root, ec))
         return std::unexpected{
@@ -304,14 +305,20 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             upd.date_added = keepAdded;
             if (DatabaseAccess::updateTrackLocked(db, upd))
                 updated++;
-            else
+            else {
                 failed++;
+                if (auto* lg = db.logger())
+                    lg->warn("scan update failed file={}", trk.path);
+            }
         } else {
             trk.library_id = libraryId;
             if (DatabaseAccess::insertTrackLocked(db, trk))
                 added++;
-            else
+            else {
                 failed++;
+                if (auto* lg = db.logger())
+                    lg->warn("scan insert failed file={}", trk.path);
+            }
         }
         scanned++;
         batchPending++;

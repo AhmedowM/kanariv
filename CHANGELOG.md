@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.local/share/kanariv` (`kanariv.db`, `kanariv.log`).
 
 ### Added
+- OS media-session integration: Windows System Media Transport Controls
+  (SMTC), Linux MPRIS v2.2 over D-Bus, and macOS Now Playing / remote
+  commands. Publishes metadata, artwork, playback state, volume,
+  repeat/shuffle and position, and handles play/pause/stop/next/previous/seek
+  from the system UI (`f46fa28`, `47a3fe1`, `7b73788`)
 - `library stats --top-tracks/--top-albums/--top-genres/--top-artists`
   listening reports with multi-artist splitting (`0192df0`)
 - `library list --sort <field> --order <asc|desc>` sorting on library
@@ -167,6 +172,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helper (`d8e4b48`)
 
 ### Fixed
+- Playback history is now accounted per track: `next`/`prev` reset the
+  accumulated-playback window, so a following track is no longer marked
+  played on entry; the 60%-or-90s threshold applies to each track.
+- `library stats --top-albums/--top-genres/--top-artists` now select the
+  detailed text renderer; previously only `--top-tracks` did and the other
+  reports printed the one-line summary.
+- Windows path handling is UTF-8 end to end: scanning, storing, probing and
+  playing files whose names contain characters outside the ANSI code page
+  (e.g. `İ`) no longer aborts the scan with `Io ReadFile hdr failed: 109`
+  (ERROR_BROKEN_PIPE). A failing file is named in the daemon log, handler
+  exceptions become error replies instead of a silent connection close, and
+  `library scan` allows up to 30 minutes for large directories.
 - Android NDK: removed local-cache from setup-ndk to resolve missing NDK
   tools (`7d49970`)
 - CI Windows: dropped MinGW from ci.yml, moved to compilers.yml/modules.yml

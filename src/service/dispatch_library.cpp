@@ -36,6 +36,7 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <utils/path_utf8.hpp>
 #include <vector>
 
 #include <fileref.h>
@@ -83,14 +84,24 @@ using kanariv::ipc::TrackRate;
 // picture is found or the file cannot be read.
 std::optional<std::pair<std::vector<std::byte>, std::string>>
 extractEmbeddedCoverArt(const std::filesystem::path& path, kanariv::utils::Logger* logger) {
-    TagLib::FileRef file(path.generic_string().c_str());
+    // TagLib's FileRef takes a C-string in the local filesystem encoding, so
+    // it cannot open names outside the ANSI code page. Use the UTF-8 form
+    // (works for ASCII names, best effort otherwise) and never let the
+    // conversion throw out of cover-art extraction.
+    std::string pathStr;
+    try {
+        pathStr = kanariv::utils::detail::pathToUtf8(path);
+    } catch (...) {
+        return std::nullopt;
+    }
+    TagLib::FileRef file(pathStr.c_str());
     if (!file.file()) {
         if (logger)
-            logger->debug("cover art: cannot open file {}", path.generic_string());
+            logger->debug("cover art: cannot open file {}", pathStr);
         return std::nullopt;
     }
     if (logger)
-        logger->debug("cover art: file opened: {}", path.generic_string());
+        logger->debug("cover art: file opened: {}", pathStr);
 
     // Helper: copy a TagLib ByteVector into a vector<byte>.
     auto copyBytes = [](const TagLib::ByteVector& bv) {
@@ -141,7 +152,8 @@ extractEmbeddedCoverArt(const std::filesystem::path& path, kanariv::utils::Logge
     }
 
     if (logger)
-        logger->debug("cover art: no cover art found in file {}", path.generic_string());
+        logger->debug("cover art: no cover art found in file {}",
+                      kanariv::utils::detail::pathToUtf8(path));
     return std::nullopt;
 }
 
@@ -153,7 +165,8 @@ std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
     std::filesystem::path root;
     if (cmd.path)
-        root = std::filesystem::path(*cmd.path);
+        // Command paths travel as UTF-8 (see src/utils/path_utf8.hpp).
+        root = kanariv::utils::detail::pathFromUtf8(*cmd.path);
     else {
         auto pp = config_.dbPath.parent_path();
         if (pp.empty())
@@ -165,13 +178,16 @@ Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
     // transaction
     if (auto libs = db_->listLibraries(); libs) {
         for (auto& l : *libs) {
-            if (std::filesystem::path(l.path) == root) {
+            if (kanariv::utils::detail::pathFromUtf8(l.path) == root) {
                 std::size_t before = 0;
                 if (auto st = db_->getStats())
                     before = static_cast<std::size_t>(st->num_tracks);
                 auto sr = kanariv::db::scanLibrary(*db_, l.id, {}, mode);
-                if (!sr)
+                if (!sr) {
+                    if (logger_)
+                        logger_->error("scan failed root={} err={}", l.path, sr.error().message);
                     return std::unexpected{sr.error()};
+                }
                 std::size_t after = before;
                 if (auto st = db_->getStats())
                     after = static_cast<std::size_t>(st->num_tracks);
@@ -184,21 +200,41 @@ Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
     // are skipped, so rescans (including cross-mode ones) do not duplicate
     // untouched files. This is the path every first scan takes (no library
     // row matches yet), so it reports its own summary like scanLibrary does.
+    const std::string rootStr = kanariv::utils::detail::pathToUtf8(root);
     if (logger_)
-        logger_->info("scan started root={} mode={} (direct)", root.generic_string(),
+        logger_->info("scan started root={} mode={} (direct)", rootStr,
                       cmd.full_hash ? "full" : "sampled");
     std::size_t n = 0;
     std::size_t seen = 0;
-    for (auto t : kanariv::media::scanTracks(root, mode)) {
-        ++seen;
-        if (auto ex = db_->findByPath(t.path); ex && ex->size == t.size && ex->mtime == t.mtime)
-            continue;
-        auto r = db_->insertTrack(t);
-        if (r)
-            ++n;
+    std::string lastFile;
+    try {
+        for (auto t : kanariv::media::scanTracks(root, mode)) {
+            ++seen;
+            lastFile = t.path;
+            if (auto ex = db_->findByPath(t.path); ex && ex->size == t.size && ex->mtime == t.mtime)
+                continue;
+            auto r = db_->insertTrack(t);
+            if (r) {
+                ++n;
+            } else if (logger_) {
+                // Report the file, not just a count: a single unreadable or
+                // duplicate row should be traceable from the daemon log.
+                logger_->warn("scan insert failed file={} err={}: {}", t.path,
+                              kanariv::utils::toString(r.error().code), r.error().message);
+            }
+        }
+    } catch (const std::exception& e) {
+        // Without this the exception escaped into the IPC thread, which
+        // closed the pipe and left the client with only
+        // `ReadFile hdr failed: 109` (ERROR_BROKEN_PIPE).
+        if (logger_)
+            logger_->error("scan aborted after file={} err={}", lastFile, e.what());
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Io,
+            "scan aborted at '" + (lastFile.empty() ? rootStr : lastFile) + "': " + e.what())};
     }
     if (logger_)
-        logger_->info("scan finished root={} scanned={} added={}", root.generic_string(), seen, n);
+        logger_->info("scan finished root={} scanned={} added={}", rootStr, seen, n);
     return Result{kanariv::ipc::ScanReport{n}};
 }
 
@@ -336,7 +372,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryAdd& cmd) {
     if (cmd.path.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                         "library add: missing path")};
-    std::filesystem::path p(cmd.path);
+    std::filesystem::path p = kanariv::utils::detail::pathFromUtf8(cmd.path);
     std::error_code ec;
     bool exists = std::filesystem::exists(p, ec);
     if (ec || !exists)
@@ -346,12 +382,13 @@ Service::Impl::handle(const kanariv::ipc::LibraryAdd& cmd) {
         [&](const std::filesystem::path& fp) -> std::expected<void, kanariv::utils::Error> {
         if (!kanariv::media::hasAudioExt(fp))
             return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::Unsupported, "unsupported file type: " + fp.string())};
+                kanariv::utils::StatusCode::Unsupported,
+                "unsupported file type: " + kanariv::utils::detail::pathToUtf8(fp))};
         auto fpRes = kanariv::media::internal::computeFingerprint(fp);
         if (!fpRes)
             return std::unexpected{fpRes.error()};
         kanariv::types::Track t;
-        t.path = fp.generic_string();
+        t.path = kanariv::utils::detail::pathToUtf8(fp);
         t.fingerprint = *fpRes;
         t.duration = detail::durationFromDecoder(fp);
         std::error_code ec2;
@@ -576,7 +613,9 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                      "tag write not supported for this format: " +
-                                         std::filesystem::path(t.path).extension().string())};
+                                         kanariv::utils::detail::pathToUtf8(
+                                             kanariv::utils::detail::pathFromUtf8(t.path)
+                                                 .extension()))};
     }
     // A loaded (playing or paused) track holds the file open through the
     // decoder: suspend to release the handles, write + re-register, reopen.
@@ -840,7 +879,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistExport& cmd) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) {
-    std::filesystem::path path{cmd.path};
+    std::filesystem::path path = kanariv::utils::detail::pathFromUtf8(cmd.path);
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
@@ -958,7 +997,8 @@ Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "no matching tracks found in library")};
     }
-    std::string name = cmd.name.value_or(path.stem().string());
+    std::string name =
+        cmd.name.value_or(kanariv::utils::detail::pathToUtf8(path.stem()));
     auto pidRes = db_->createPlaylistFromTracks(name, trackIds);
     if (!pidRes)
         return std::unexpected{pidRes.error()};

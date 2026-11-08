@@ -156,7 +156,12 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
                 }
             },
             [&os](const kanariv::types::LibraryStats& v) {
-                if (!v.top_tracks) {
+                // Any requested Top-N report makes this a detailed view; the
+                // daemon leaves the optionals engaged even when the report is
+                // empty, so test presence rather than emptiness.
+                const bool detailed =
+                    v.top_tracks || v.top_albums || v.top_genres || v.top_artists;
+                if (!detailed) {
                     kanariv::println(os, "Tracks: {} Queues: {} Playlists: {}", v.tracks, v.queues,
                                     v.playlists);
                     return;
@@ -169,7 +174,7 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
                 double totalPlaySec = v.total_play_time_ms / 1000.0;
                 kanariv::println(os, "  Total Duration:  {}", formatTime(totalDurSec));
                 kanariv::println(os, "  Total Play Time: {}", formatTime(totalPlaySec));
-                if (!v.top_tracks->empty()) {
+                if (v.top_tracks && !v.top_tracks->empty()) {
                     kanariv::println(os, "\n  Most Played Tracks:");
                     kanariv::println(os, "  {:>3} {:>6}  {:<40} {:<40} {:>8} {:>10}", "#", "ID",
                                     "Artist", "Title", "Dur", "Plays");
@@ -178,6 +183,36 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
                         kanariv::println(os, "  {:3} {:6}  {:<40} {:<40} {:>8} {:>10}", i + 1, t.id,
                                         truncateField(t.artist, 40), truncateField(t.title, 40),
                                         formatTime(t.duration), t.play_count);
+                    }
+                }
+                if (v.top_albums && !v.top_albums->empty()) {
+                    kanariv::println(os, "\n  Top Albums by Plays:");
+                    kanariv::println(os, "  {:>3} {:<40} {:>10} {:>10}", "#", "Album", "Tracks",
+                                    "Plays");
+                    for (std::size_t i = 0; i < v.top_albums->size(); ++i) {
+                        const auto& e = (*v.top_albums)[i];
+                        kanariv::println(os, "  {:3} {:<40} {:>10} {:>10}", i + 1,
+                                        truncateField(e.name, 40), e.track_count, e.total_plays);
+                    }
+                }
+                if (v.top_genres && !v.top_genres->empty()) {
+                    kanariv::println(os, "\n  Top Genres by Plays:");
+                    kanariv::println(os, "  {:>3} {:<20} {:>10} {:>10}", "#", "Genre", "Tracks",
+                                    "Plays");
+                    for (std::size_t i = 0; i < v.top_genres->size(); ++i) {
+                        const auto& e = (*v.top_genres)[i];
+                        kanariv::println(os, "  {:3} {:<20} {:>10} {:>10}", i + 1,
+                                        truncateField(e.name, 20), e.track_count, e.total_plays);
+                    }
+                }
+                if (v.top_artists && !v.top_artists->empty()) {
+                    kanariv::println(os, "\n  Top Artists by Plays:");
+                    kanariv::println(os, "  {:>3} {:<40} {:>10} {:>10}", "#", "Artist", "Tracks",
+                                    "Plays");
+                    for (std::size_t i = 0; i < v.top_artists->size(); ++i) {
+                        const auto& e = (*v.top_artists)[i];
+                        kanariv::println(os, "  {:3} {:<40} {:>10} {:>10}", i + 1,
+                                        truncateField(e.name, 40), e.track_count, e.total_plays);
                     }
                 }
             },

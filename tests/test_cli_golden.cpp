@@ -459,6 +459,17 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     auto stMp = run({"library", "stats", "--top-tracks", "0"});
     REQUIRE(stMp.exitCode == 0);
     REQUIRE(contains(stMp.out, "Library Stats (Detailed):"));
+    // Every Top-N report must select the detailed renderer, even when only a
+    // non-track report is requested (these used to print the one-line summary).
+    auto stAlb = run({"library", "stats", "--top-albums", "5"});
+    REQUIRE(stAlb.exitCode == 0);
+    REQUIRE(contains(stAlb.out, "Library Stats (Detailed):"));
+    auto stGen = run({"library", "stats", "--top-genres", "5"});
+    REQUIRE(stGen.exitCode == 0);
+    REQUIRE(contains(stGen.out, "Library Stats (Detailed):"));
+    auto stArt = run({"library", "stats", "--top-artists", "5"});
+    REQUIRE(stArt.exitCode == 0);
+    REQUIRE(contains(stArt.out, "Library Stats (Detailed):"));
     auto stQ = run({"library", "stats", "--queue", "all"});
     REQUIRE(stQ.exitCode == 0);
     REQUIRE(contains(stQ.out, "Queues ("));

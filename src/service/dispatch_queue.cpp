@@ -23,6 +23,7 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <utils/path_utf8.hpp>
 #include <vector>
 
 #include "service_impl.hpp"
@@ -39,7 +40,7 @@ ensureLibraryTrack(kanariv::contracts::IDatabase& db, const std::filesystem::pat
     if (!fpRes)
         return std::unexpected{fpRes.error()};
     kanariv::types::Track t;
-    t.path = p.generic_string();
+    t.path = kanariv::utils::detail::pathToUtf8(p);
     t.fingerprint = *fpRes;
     t.duration = durationFromDecoder(p);
     std::error_code ec2;
@@ -227,12 +228,14 @@ Service::Impl::handle(const kanariv::ipc::PlayFiles& cmd) {
     std::vector<int64_t> ids;
     ids.reserve(cmd.paths.size());
     for (auto& ps : cmd.paths) {
-        auto trRes = detail::ensureLibraryTrack(*db_, std::filesystem::path(ps));
+        auto trRes = detail::ensureLibraryTrack(
+            *db_, kanariv::utils::detail::pathFromUtf8(ps));
         if (!trRes)
             return std::unexpected{trRes.error()};
         ids.push_back(trRes->id);
     }
-    std::string first = std::filesystem::path(cmd.paths.front()).filename().generic_string();
+    std::string first = kanariv::utils::detail::pathToUtf8(
+        kanariv::utils::detail::pathFromUtf8(cmd.paths.front()).filename());
     auto qid = db_->createQueue("temp: " + first);
     if (!qid)
         return std::unexpected{qid.error()};

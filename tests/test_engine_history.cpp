@@ -184,3 +184,81 @@ TEST_CASE("history insert increments play_count and last_played", "[engine_histo
         std::filesystem::remove(dbPath + "-shm", ec);
     }
 }
+
+TEST_CASE("next() starts with fresh playback accounting", "[engine_history]") {
+    KANARIV_SKIP_IF_NOAUDIO();
+    std::string dbPath = tempDbPath("eng_hist_next").string();
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+
+    auto addTrack = [&](const char* path, uint8_t seed) -> int64_t {
+        kanariv::types::Track t;
+        t.path = path;
+        t.duration = 10.0;
+        for (int b = 0; b < 32; ++b)
+            t.fingerprint[b] = static_cast<uint8_t>(seed + b);
+        auto ins = db->insertTrack(t);
+        REQUIRE(ins.has_value());
+        return *ins;
+    };
+    const int64_t a = addTrack("hist_next_a.wav", 0x10);
+    const int64_t b = addTrack("hist_next_b.wav", 0x90);
+    REQUIRE(db->queueEnqueue(1, a, -1).has_value());
+    REQUIRE(db->queueEnqueue(1, b, -1).has_value());
+
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = true;
+    cfg.pollMs = 10;
+    cfg.historyThresholdPct = 60; // 60% of the 10 s track = 6 s
+    cfg.historyThresholdSecs = 2; // ...or 2 s of listened playback
+    cfg.gaplessMs = 300;
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+
+    auto playCount = [&](int64_t id) -> int64_t {
+        sqlite3* h = nullptr;
+        if (sqlite3_open_v2(dbPath.c_str(), &h, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK)
+            return -1;
+        sqlite3_stmt* st = nullptr;
+        int64_t pc = -1;
+        if (sqlite3_prepare_v2(h, "SELECT play_count FROM tracks WHERE id=?", -1, &st, nullptr) ==
+            SQLITE_OK) {
+            sqlite3_bind_int64(st, 1, id);
+            if (sqlite3_step(st) == SQLITE_ROW)
+                pc = sqlite3_column_int64(st, 0);
+        }
+        sqlite3_finalize(st);
+        sqlite3_close(h);
+        return pc;
+    };
+
+    REQUIRE(eng->play(1).has_value());
+    // Track A counts once 2 s of playback have accumulated.
+    busyWaitUntil([&] { return playCount(a) >= 1; }, std::chrono::milliseconds(4000),
+                  std::chrono::milliseconds(50));
+    REQUIRE(playCount(a) >= 1);
+
+    // Moving on must start a fresh accounting window. Before the fix the
+    // accumulated time from A carried over, so B was marked played on the
+    // first monitor tick right after entry.
+    REQUIRE(eng->next().has_value());
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    REQUIRE(playCount(b) == 0);
+
+    // B still earns its own full listen window.
+    busyWaitUntil([&] { return playCount(b) >= 1; }, std::chrono::milliseconds(5000),
+                  std::chrono::milliseconds(50));
+    REQUIRE(playCount(b) >= 1);
+
+    eng.reset();
+    {
+        std::error_code ec;
+        std::filesystem::remove(dbPath, ec);
+        std::filesystem::remove(dbPath + "-wal", ec);
+        std::filesystem::remove(dbPath + "-shm", ec);
+    }
+}
