@@ -20,6 +20,8 @@ _deps/
 android/app/.cxx/
 android/app/build/
 android/local.properties
+android/hs_err_pid*.log
+android/replay_pid*.log
 
 # IDE / OS
 .vscode/*

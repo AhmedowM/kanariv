@@ -5,9 +5,11 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.media.AudioManager;
 import android.media.session.MediaSession;
 import android.media.session.MediaSessionManager;
@@ -38,6 +40,7 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
     private boolean mAudioFocused = false;
     private Handler mCallbackHandler;
     private HandlerThread mCallbackThread;
+    private NotificationActionReceiver mNotificationReceiver;
 
     @Override
     public void onCreate() {
@@ -51,6 +54,7 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         createMediaSession();
         createNotificationChannel();
+        registerNotificationReceiver();
 
         KanarivBridge.setCallbackInstance(new KanarivBridge() {
             @Override
@@ -92,6 +96,7 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
     @Override
     public void onDestroy() {
         Log.d(TAG, "service onDestroy");
+        unregisterNotificationReceiver();
         stopDaemon();
         releaseMediaSession();
         if (mCallbackThread != null) {
@@ -252,6 +257,60 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
         }
     }
 
+    // ---- Notification action receiver --------------------------------------
+
+    private void registerNotificationReceiver() {
+        mNotificationReceiver = new NotificationActionReceiver();
+        IntentFilter filter = new IntentFilter();
+        filter.addAction("com.kanariv.app.action.PREV");
+        filter.addAction("com.kanariv.app.action.PAUSE");
+        filter.addAction("com.kanariv.app.action.NEXT");
+        filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
+        registerReceiver(mNotificationReceiver, filter, Context.RECEIVER_EXPORTED);
+    }
+
+    private void unregisterNotificationReceiver() {
+        if (mNotificationReceiver != null) {
+            try {
+                unregisterReceiver(mNotificationReceiver);
+            } catch (IllegalArgumentException e) {
+                // already unregistered
+            }
+            mNotificationReceiver = null;
+        }
+    }
+
+    /**
+     * BroadcastReceiver for notification action buttons (Previous/Pause/Next).
+     * Forwards to KanarivBridge which issues commands to the native daemon.
+     */
+    public static class NotificationActionReceiver extends BroadcastReceiver {
+        private static final String TAG = "NotificationActionReceiver";
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null) {
+                return;
+            }
+            String action = intent.getAction();
+            Log.d(TAG, "notification action: " + action);
+            switch (action) {
+                case "com.kanariv.app.action.PREV":
+                    KanarivBridge.prev();
+                    break;
+                case "com.kanariv.app.action.PAUSE":
+                    KanarivBridge.pause();
+                    break;
+                case "com.kanariv.app.action.NEXT":
+                    KanarivBridge.next();
+                    break;
+                default:
+                    Log.d(TAG, "unhandled notification action: " + action);
+                    break;
+            }
+        }
+    }
+
     @Override
     public void onAudioFocusChange(int focusChange) {
         switch (focusChange) {
@@ -298,7 +357,12 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
         PendingIntent contentPendingIntent = PendingIntent.getActivity(this, 0, playIntent,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
+        Notification.MediaStyle style = new Notification.MediaStyle()
+                .setMediaSession(mMediaSession != null ? mMediaSession.getSessionToken() : null)
+                .setShowActionsInCompactView(0, 1, 2);
+
         Notification.Builder builder = new Notification.Builder(this, CHANNEL_ID)
+                .setStyle(style)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle("Kanariv")
                 .setContentText("No track")

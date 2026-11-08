@@ -6,6 +6,7 @@
 #include <kanariv/engine/engine.hpp>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/audio_ext.hpp>
+#include <media/fingerprint.hpp>
 #include <kanariv/service/host.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/types/engine.hpp>
@@ -303,10 +304,21 @@ static jboolean nativeLibraryAdd(JNIEnv* env, jclass, jstring path) noexcept {
         return JNI_FALSE;
     }
 
-    LOGD("nativeLibraryAdd: file valid, extracting metadata");
+    LOGD("nativeLibraryAdd: file valid, computing fingerprint");
+
+    // Compute BLAKE3 fingerprint (required: tracks.fingerprint is NOT NULL UNIQUE).
+    auto fp = kanariv::media::internal::computeFingerprint(p);
+    if (!fp) {
+        LOGE("nativeLibraryAdd: fingerprint computation failed: %s",
+             fp.error().message.c_str());
+        return JNI_FALSE;
+    }
 
     kanariv::types::Track t;
     t.path = pathStr;
+    t.fingerprint = *fp;
+
+    LOGD("nativeLibraryAdd: fingerprint computed (%zu bytes)", t.fingerprint.size());
 
     if (auto meta = kanariv::media::extractMetadata(pathStr); meta) {
         t.title = std::move(meta->title);
@@ -343,10 +355,10 @@ static jboolean nativeLibraryAdd(JNIEnv* env, jclass, jstring path) noexcept {
     if (!ins) {
         LOGE("nativeLibraryAdd: insertTrack failed: %s", ins.error().message.c_str());
         if (ins.error().code == kanariv::utils::StatusCode::AlreadyExists) {
-            auto existing = g_host->service().db().findByPath(t.path);
+            auto existing = g_host->service().db().findByFingerprint(t.fingerprint);
             if (existing) {
                 int64_t trackId = existing->id;
-                LOGD("nativeLibraryAdd: track already exists, trackId=%ld", trackId);
+                LOGD("nativeLibraryAdd: track already exists (fingerprint match), trackId=%ld", trackId);
                 int64_t qid = g_host->service().engine().activeQueueId();
                 auto enq = g_host->service().db().queueEnqueue(qid, trackId, true);
                 if (!enq) {
