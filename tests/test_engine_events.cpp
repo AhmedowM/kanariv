@@ -176,6 +176,49 @@ TEST_CASE("Engine callbacks dispatched outside lock", "[engine_events]") {
     }
 }
 
+TEST_CASE("Engine callbacks dispatch when event queue is full", "[engine_events]") {
+    KANARIV_SKIP_IF_NOAUDIO();
+    std::string dbPath = tempDbPath("eng_ev_full").string();
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    kanariv::types::Track t;
+    t.path = "ev_full.wav";
+    t.duration = 1.0;
+    for (int b = 0; b < 32; ++b)
+        t.fingerprint[b] = (uint8_t)(0xa0 + b);
+    auto ins = db->insertTrack(t);
+    REQUIRE(ins.has_value());
+    REQUIRE(db->queueEnqueue(1, *ins, -1).has_value());
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = false;
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->play(1).has_value());
+    // Saturate the 64-slot diagnostic queue the way the daemon does: nothing
+    // drains it, so Progress samples fill it during playback.
+    for (int i = 0; i < 100; ++i)
+        REQUIRE(eng->setShuffle(true).has_value());
+    // The next push must fail, but the callback still has to be dispatched.
+    std::atomic<int> changes{0};
+    REQUIRE(eng->setCallbacks(kanariv::types::EngineCallbacks{
+                                  .on_queue_changed =
+                                      [&](int64_t) { changes.fetch_add(1); }})
+                .has_value());
+    REQUIRE(eng->setShuffle(true).has_value());
+    REQUIRE(changes.load() == 1);
+    eng.reset();
+    {
+        std::error_code ec;
+        std::filesystem::remove(dbPath, ec);
+        std::filesystem::remove(dbPath + "-wal", ec);
+        std::filesystem::remove(dbPath + "-shm", ec);
+    }
+}
+
 TEST_CASE("Engine drainEvents null checks", "[engine_events]") {
     kanariv::types::EngineConfig cfg;
     cfg.allowSimulatedPlayback = true;

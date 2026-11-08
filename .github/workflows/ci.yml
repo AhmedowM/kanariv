@@ -168,6 +168,13 @@ jobs:
           test -s /tmp/mpris-introspect.txt || (echo "MPRIS introspection failed" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
           grep -q "org.mpris.MediaPlayer2.Player" /tmp/mpris-introspect.txt || (echo "MPRIS Player interface missing" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
           grep -q "PlaybackStatus" /tmp/mpris-introspect.txt || (echo "MPRIS PlaybackStatus property missing" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
+          # Writable volume + Seeked signal are part of the parity work: the
+          # backend maps MPRIS Volume to engine volume and emits Seeked after
+          # Seek/SetPosition. Query the raw introspection XML so the checks do
+          # not depend on gdbus' pretty-printer formatting.
+          gdbus introspect --xml --session --dest org.mpris.MediaPlayer2.kanariv --object-path /org/mpris/MediaPlayer2 > /tmp/mpris-introspect.xml 2>&1 || true
+          grep -q 'name="Volume" type="d" access="readwrite"' /tmp/mpris-introspect.xml || (echo "MPRIS Volume is not writable" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
+          grep -q 'name="Seeked"' /tmp/mpris-introspect.xml || (echo "MPRIS Seeked signal missing" && kill $DAEMON_PID 2>/dev/null || true && kill $DBUS_SESSION_BUS_PID 2>/dev/null || true && exit 1)
           kill $DAEMON_PID 2>/dev/null || true
           kill $DBUS_SESSION_BUS_PID 2>/dev/null || true
         shell: bash
@@ -183,6 +190,9 @@ jobs:
           test -f "$LIB" || LIB="build/ci-${{ matrix.toolchain }}/libservice.dylib"
           otool -L "$LIB" | grep -q "MediaPlayer" \
             || (echo "MediaPlayer framework not linked into $LIB" && exit 1)
+          # AppKit provides NSImage, used to build MPMediaItemArtwork.
+          otool -L "$LIB" | grep -q "AppKit" \
+            || (echo "AppKit framework not linked into $LIB" && exit 1)
 
           BIN="build/ci-${{ matrix.toolchain }}/kanariv"
 

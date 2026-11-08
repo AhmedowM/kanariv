@@ -97,6 +97,7 @@ class WinImpl final : public Impl {
             state_ = state;
             position_ = position;
             duration_ = duration;
+            positionStamp_ = std::chrono::steady_clock::now();
         }
         requestUpdate();
         return {};
@@ -117,11 +118,8 @@ class WinImpl final : public Impl {
         logger_ = logger;
     }
 
-    kanariv::utils::Expected<void> setVolume(float volume,
-                                              bool muted) override {
-        std::lock_guard lock(mtx_);
-        volume_ = volume;
-        muted_ = muted;
+    kanariv::utils::Expected<void> setVolume(float, bool) override {
+        // SMTC has no per-application volume; the OS mixer controls volume.
         return {};
     }
 
@@ -132,6 +130,11 @@ class WinImpl final : public Impl {
 
   private:
     static constexpr UINT WM_UPDATE_SMTC = WM_APP + 1;
+    static constexpr UINT_PTR kTimelineTimer = 1;
+    // Microsoft recommends refreshing the SMTC timeline about every 5
+    // seconds while playing so the seek bar (and PositionChangeRequested)
+    // stays in sync with the real playback position.
+    static constexpr UINT kTimelineIntervalMs = 5'000;
 
     static LRESULT CALLBACK wndProc(HWND hwnd, UINT message, WPARAM wParam,
                                     LPARAM lParam) {
@@ -152,6 +155,12 @@ class WinImpl final : public Impl {
             case WM_UPDATE_SMTC:
                 self->publishToSmtc();
                 return 0;
+            case WM_TIMER:
+                if (wParam == kTimelineTimer) {
+                    self->updateTimeline();
+                    return 0;
+                }
+                return DefWindowProcW(hwnd, message, wParam, lParam);
             case WM_HOTKEY:
                 self->handleHotkey(static_cast<int>(wParam));
                 return 0;
@@ -213,6 +222,9 @@ class WinImpl final : public Impl {
                     logger_->warn("SMTC initialization failed: {}", error.what());
             }
 
+            if (smtc_)
+                SetTimer(hwnd, kTimelineTimer, kTimelineIntervalMs, nullptr);
+
             MSG message{};
             while (!stopRequested_.load(std::memory_order_acquire)) {
                 const BOOL result = GetMessageW(&message, nullptr, 0, 0);
@@ -221,6 +233,8 @@ class WinImpl final : public Impl {
                 TranslateMessage(&message);
                 DispatchMessageW(&message);
             }
+
+            KillTimer(hwnd, kTimelineTimer);
 
             if (enableMediaKeys_) {
                 UnregisterHotKey(hwnd, 1);
@@ -380,6 +394,7 @@ class WinImpl final : public Impl {
         bool shuffle;
         double position;
         double duration;
+        std::chrono::steady_clock::time_point stamp;
         {
             std::lock_guard lock(mtx_);
             metadata = metadata_;
@@ -388,6 +403,7 @@ class WinImpl final : public Impl {
             shuffle = shuffle_;
             position = position_;
             duration = duration_;
+            stamp = positionStamp_;
         }
 
         switch (state) {
@@ -415,18 +431,16 @@ class WinImpl final : public Impl {
         }
         smtc_.ShuffleEnabled(shuffle);
 
-        const auto toTimeSpan = [](double seconds) {
-            return winrt::Windows::Foundation::TimeSpan{
-                static_cast<int64_t>((seconds > 0.0 ? seconds : 0.0) *
-                                     10'000'000.0)};
-        };
-        SystemMediaTransportControlsTimelineProperties timeline;
-        timeline.StartTime(winrt::Windows::Foundation::TimeSpan{0});
-        timeline.MinSeekTime(winrt::Windows::Foundation::TimeSpan{0});
-        timeline.Position(toTimeSpan(position));
-        timeline.EndTime(toTimeSpan(duration));
-        timeline.MaxSeekTime(toTimeSpan(duration));
-        smtc_.UpdateTimelineProperties(timeline);
+        publishTimeline(state, position, duration, stamp);
+
+        // The display updater drives the media flyout / lock screen
+        // notification. When notifications are disabled the timeline and
+        // transport buttons still work, but no media card is published.
+        if (!enableNotifications_) {
+            if (logger_)
+                logger_->debug("SMTC notifications disabled; skipping metadata");
+            return;
+        }
 
         auto updater = smtc_.DisplayUpdater();
         updater.ClearAll();
@@ -469,6 +483,62 @@ class WinImpl final : public Impl {
         updater.Update();
         if (logger_)
             logger_->debug("SMTC metadata update complete");
+    }
+
+    static winrt::Windows::Foundation::TimeSpan toTimeSpan(double seconds) {
+        return winrt::Windows::Foundation::TimeSpan{
+            static_cast<int64_t>((seconds > 0.0 ? seconds : 0.0) * 10'000'000.0)};
+    }
+
+    // The daemon only pushes a position when playback state changes, so the
+    // timeline has to extrapolate from the last update while playing.
+    static double effectivePosition(kanariv::types::PlaybackState state,
+                                    double position, double duration,
+                                    std::chrono::steady_clock::time_point stamp) {
+        if (state == kanariv::types::PlaybackState::Playing) {
+            const double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - stamp).count();
+            position += elapsed;
+            if (duration > 0.0 && position > duration)
+                position = duration;
+        }
+        return position > 0.0 ? position : 0.0;
+    }
+
+    void publishTimeline(kanariv::types::PlaybackState state, double position,
+                         double duration,
+                         std::chrono::steady_clock::time_point stamp) {
+        if (!smtc_)
+            return;
+
+        const double current = effectivePosition(state, position, duration, stamp);
+        SystemMediaTransportControlsTimelineProperties timeline;
+        timeline.StartTime(winrt::Windows::Foundation::TimeSpan{0});
+        // Microsoft: PositionChangeRequested is only raised when both
+        // MinSeekTime and MaxSeekTime are set.
+        timeline.MinSeekTime(winrt::Windows::Foundation::TimeSpan{0});
+        timeline.Position(toTimeSpan(current));
+        timeline.EndTime(toTimeSpan(duration));
+        timeline.MaxSeekTime(toTimeSpan(duration));
+        smtc_.UpdateTimelineProperties(timeline);
+    }
+
+    // Called every kTimelineIntervalMs from the message-loop WM_TIMER so the
+    // system seek bar tracks the real position (and keeps PositionChangeRequested
+    // enabled) without waiting for the next daemon state sync.
+    void updateTimeline() {
+        kanariv::types::PlaybackState state;
+        double position = 0.0;
+        double duration = 0.0;
+        std::chrono::steady_clock::time_point stamp;
+        {
+            std::lock_guard lock(mtx_);
+            state = state_;
+            position = position_;
+            duration = duration_;
+            stamp = positionStamp_;
+        }
+        publishTimeline(state, position, duration, stamp);
     }
 
     void onRepeatModeChangeRequested(
@@ -585,7 +655,7 @@ class WinImpl final : public Impl {
 
     [[maybe_unused]] std::string appName_;
     [[maybe_unused]] std::string appIcon_;
-    [[maybe_unused]] bool enableNotifications_{true};
+    bool enableNotifications_{true};
     bool enableMediaKeys_{true};
 
     mutable std::mutex mtx_;
@@ -604,10 +674,11 @@ class WinImpl final : public Impl {
     kanariv::types::PlaybackState state_{};
     double position_{0.0};
     double duration_{0.0};
+    // Timestamp of the last position pushed by the daemon, used to
+    // extrapolate the timeline while playing.
+    std::chrono::steady_clock::time_point positionStamp_{};
     bool shuffle_{false};
     kanariv::types::RepeatMode repeat_{kanariv::types::RepeatMode::Off};
-    float volume_{1.0f};
-    bool muted_{false};
     kanariv::utils::Logger* logger_{nullptr};
     std::filesystem::path artworkFile_;
     std::string artworkKey_;

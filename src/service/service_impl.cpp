@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <engine/engine_access.hpp>
 #include <expected>
 #include <filesystem>
 #include <fstream>
@@ -46,6 +47,8 @@
 #include "service_status.hpp"
 
 namespace kanariv::service {
+
+using kanariv::engine::detail::ServiceAccess;
 
 Service::~Service() {
     shutdown();
@@ -314,6 +317,21 @@ Service::Impl::Impl(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts
                     (void)engine_->setShuffle(shuffle);
                     syncMediaSession();
                 },
+            .onVolume =
+                [this](float volume, bool muted) {
+                    const float current = engine_->volume();
+                    if (muted || volume <= 0.0f) {
+                        // Remember the pre-mute level so a later unmute (from
+                        // the OS mixer) can restore it, mirroring VolumeSet.
+                        if (current > 0.0f)
+                            (void)ServiceAccess::setPreMuteVolume(*engine_, current);
+                        (void)engine_->setVolume(0.0f);
+                    } else {
+                        (void)ServiceAccess::setPreMuteVolume(*engine_, volume);
+                        (void)engine_->setVolume(volume);
+                    }
+                    syncMediaSession();
+                },
         });
         // Engine track events (natural end / auto-advance) must refresh the
         // OS now-playing UI, which syncMediaSession() only does on explicit
@@ -561,16 +579,21 @@ void Service::Impl::syncMediaSession() {
         // Best-effort: a failed OS update must never break playback dispatch.
         if (logger_)
             logger_->debug("media session sending metadata artwork={}", artworkBase64.has_value());
-        if (auto e = mediaSession_->setMetadata(
-                kanariv::media_session::Metadata{.title = title,
-                                                 .artist = artist,
-                                                 .album = album,
-                                                 .artworkPath = artworkPath,
-                                                 .artworkBase64 = artworkBase64,
-                                                 .artworkMime = artworkMime,
-                                                 .trackId = track_id});
-            !e && logger_)
-            logger_->warn("media session setMetadata failed: {}", e.error().message);
+        // When playback stops at the end of the queue the engine reports track
+        // id 0. Keep the last now-playing item so the OS card shows the track
+        // that just finished with a Stopped/play state instead of blanking.
+        if (track_id != 0) {
+            if (auto e = mediaSession_->setMetadata(
+                    kanariv::media_session::Metadata{.title = title,
+                                                     .artist = artist,
+                                                     .album = album,
+                                                     .artworkPath = artworkPath,
+                                                     .artworkBase64 = artworkBase64,
+                                                     .artworkMime = artworkMime,
+                                                     .trackId = track_id});
+                !e && logger_)
+                logger_->warn("media session setMetadata failed: {}", e.error().message);
+        }
 
         if (auto e =
                 mediaSession_->setPlaybackState(engine_->state(), engine_->position(), duration);

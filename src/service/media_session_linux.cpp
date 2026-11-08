@@ -1,5 +1,6 @@
 #include <service/media_session.hpp>
 
+#include <kanariv/utils/base64.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 
@@ -7,9 +8,14 @@
 
 #include <atomic>
 #include <cctype>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -262,6 +268,9 @@ class LinuxImpl final : public Impl {
             dispatchThread_.join();
 
         std::lock_guard lock(mtx_);
+        // Embedded artwork is materialized into a temp file so MPRIS clients
+        // can fetch it over file://; remove it with the backend.
+        removeArtworkFileLocked();
         if (!conn_)
             return {};
 
@@ -298,6 +307,7 @@ class LinuxImpl final : public Impl {
         state_ = state;
         position_ = position;
         duration_ = duration;
+        positionStamp_ = std::chrono::steady_clock::now();
         publishChangedLocked();
         return {};
     }
@@ -385,14 +395,135 @@ class LinuxImpl final : public Impl {
                left.trackId == right.trackId;
     }
 
-    StateSnapshot snapshotLocked() const {
+    // The daemon only pushes a position when playback state changes, so
+    // MPRIS Get/GetAll("Position") has to extrapolate while playing.
+    double effectivePositionLocked() const {
+        double position = position_;
+        if (state_ == kanariv::types::PlaybackState::Playing) {
+            const double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - positionStamp_).count();
+            position += elapsed;
+            if (duration_ > 0.0 && position > duration_)
+                position = duration_;
+        }
+        return position > 0.0 ? position : 0.0;
+    }
+
+    StateSnapshot snapshotLocked() {
+        materializeArtworkLocked();
         return StateSnapshot{.state = state_,
-                             .position = position_,
+                             .position = effectivePositionLocked(),
                              .duration = duration_,
                              .metadata = metadata_,
                              .shuffle = shuffle_,
                              .repeat = repeat_,
                              .volume = volume_};
+    }
+
+    static std::string artworkExtension(const std::string& mime) {
+        if (mime == "image/jpeg" || mime == "image/jpg")
+            return ".jpg";
+        if (mime == "image/png")
+            return ".png";
+        if (mime == "image/webp")
+            return ".webp";
+        if (mime == "image/gif")
+            return ".gif";
+        if (mime == "image/bmp")
+            return ".bmp";
+        return ".img";
+    }
+
+    // MPRIS mpris:artUrl is a URI, and the common clients only handle
+    // file:// (or http://) URIs. Embedded cover art therefore has to be
+    // written to a temporary file before it can be advertised. The file is
+    // keyed by the artwork bytes so repeated syncs do not rewrite it.
+    void materializeArtworkLocked() {
+        if (metadata_.artworkPath && !metadata_.artworkPath->empty()) {
+            // A real on-disk cover wins over any embedded copy. The one
+            // exception is a previously materialized temp file that has been
+            // removed (e.g. across deactivate/reactivate): regenerate it from
+            // the embedded bytes instead of publishing a dead URI.
+            const bool staleTemp =
+                !artworkFilePath_.empty() &&
+                artworkFilePath_.string() == *metadata_.artworkPath &&
+                !std::filesystem::exists(artworkFilePath_) &&
+                metadata_.artworkBase64 && !metadata_.artworkBase64->empty();
+            if (!staleTemp) {
+                removeArtworkFileLocked();
+                return;
+            }
+        }
+
+        const auto& base64 = metadata_.artworkBase64;
+        if (!base64 || base64->empty()) {
+            removeArtworkFileLocked();
+            return;
+        }
+
+        if (*base64 == artworkKey_ && !artworkFilePath_.empty() &&
+            std::filesystem::exists(artworkFilePath_)) {
+            metadata_.artworkPath = artworkFilePath_.string();
+            return;
+        }
+
+        const auto decoded = kanariv::utils::Base64::decode(*base64);
+        if (!decoded || decoded->empty()) {
+            removeArtworkFileLocked();
+            return;
+        }
+
+        std::error_code error;
+        const auto directory = std::filesystem::temp_directory_path(error);
+        if (error) {
+            removeArtworkFileLocked();
+            return;
+        }
+
+        const std::string name =
+            "kanariv-mpris-" + std::to_string(std::hash<std::string>{}(*base64)) +
+            artworkExtension(metadata_.artworkMime);
+        const auto path = directory / name;
+
+        // Drop the previous temp file only when the new artwork lives at a
+        // different path; removing the path we are about to (re)write would
+        // delete the fresh file when the cached copy had vanished. Clearing
+        // artworkPath too means a failed write publishes no artwork at all
+        // instead of a URI pointing at a file we just deleted.
+        if (!artworkFilePath_.empty() && artworkFilePath_ != path) {
+            std::error_code removeError;
+            std::filesystem::remove(artworkFilePath_, removeError);
+        }
+        artworkFilePath_.clear();
+        artworkKey_.clear();
+        metadata_.artworkPath.reset();
+
+        {
+            std::ofstream output(path, std::ios::binary | std::ios::trunc);
+            if (!output)
+                return;
+            output.write(reinterpret_cast<const char*>(decoded->data()),
+                         static_cast<std::streamsize>(decoded->size()));
+            if (!output)
+                return;
+        }
+
+        artworkKey_ = *base64;
+        artworkFilePath_ = path;
+        metadata_.artworkPath = artworkFilePath_.string();
+    }
+
+    void removeArtworkFileLocked() {
+        if (artworkFilePath_.empty())
+            return;
+        std::error_code error;
+        std::filesystem::remove(artworkFilePath_, error);
+        // The temp file may still be the published mpris:artUrl; drop that
+        // reference so clients are never handed a URI to a removed file.
+        if (metadata_.artworkPath && *metadata_.artworkPath == artworkFilePath_.string())
+            metadata_.artworkPath.reset();
+        artworkFilePath_.clear();
+        artworkKey_.clear();
     }
 
     // Copies the callback list so it can be invoked without holding mtx_.
@@ -622,9 +753,11 @@ class LinuxImpl final : public Impl {
             return false;
         if (!appendStringProperty(dict, "DesktopEntry", "kanariv"))
             return false;
-        if (!appendBoolProperty(dict, "CanQuit", true))
+        // The daemon is not a desktop application: it cannot raise a window
+        // and quitting it would only drop the MPRIS name, not stop playback.
+        if (!appendBoolProperty(dict, "CanQuit", false))
             return false;
-        if (!appendBoolProperty(dict, "CanRaise", true))
+        if (!appendBoolProperty(dict, "CanRaise", false))
             return false;
         if (!appendBoolProperty(dict, "HasTrackList", false))
             return false;
@@ -671,7 +804,7 @@ class LinuxImpl final : public Impl {
         if (std::strcmp(name, "DesktopEntry") == 0)
             return appendVariantString(parent, "kanariv");
         if (std::strcmp(name, "CanQuit") == 0 || std::strcmp(name, "CanRaise") == 0)
-            return appendVariantBool(parent, true);
+            return appendVariantBool(parent, false);
         if (std::strcmp(name, "HasTrackList") == 0)
             return appendVariantBool(parent, false);
         if (std::strcmp(name, "SupportedUriSchemes") == 0 ||
@@ -848,8 +981,19 @@ class LinuxImpl final : public Impl {
             if (dbus_message_iter_init(message, &iter) &&
                 dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_INT64) {
                 dbus_message_iter_get_basic(&iter, &offsetUs);
-                if (cb.onSeek)
+                if (cb.onSeek) {
                     cb.onSeek(static_cast<double>(offsetUs) / 1'000'000.0);
+                    // The callback synchronously seeks and syncs the engine,
+                    // so position_ now holds the post-seek position. MPRIS
+                    // requires a Seeked signal whenever the position changes
+                    // discontinuously.
+                    double position = 0.0;
+                    {
+                        std::lock_guard lock(mtx_);
+                        position = position_;
+                    }
+                    emitSeeked(connection, position);
+                }
             }
             return sendReply(connection, message);
         }
@@ -873,8 +1017,17 @@ class LinuxImpl final : public Impl {
             }
             const std::string currentTrackPath = trackPath(currentTrack);
             // Ignore calls for a stale track id, as required by the MPRIS spec.
-            if (trackIdPath && currentTrack > 0 && currentTrackPath == trackIdPath && cb.onSeekTo) {
-                cb.onSeekTo(static_cast<double>(positionUs) / 1'000'000.0);
+            if (trackIdPath && currentTrack > 0 && currentTrackPath == trackIdPath &&
+                cb.onSeekTo) {
+                const double requested =
+                    static_cast<double>(positionUs > 0 ? positionUs : 0) / 1'000'000.0;
+                cb.onSeekTo(requested);
+                double position = requested;
+                {
+                    std::lock_guard lock(mtx_);
+                    position = position_;
+                }
+                emitSeeked(connection, position);
             }
             return sendReply(connection, message);
         }
@@ -891,13 +1044,11 @@ class LinuxImpl final : public Impl {
     DBusHandlerResult handleMediaPlayerMethod(DBusConnection* connection, DBusMessage* message,
                                               const char* method) {
         if (std::strcmp(method, "Raise") == 0)
-            return sendReply(connection, message);
-        if (std::strcmp(method, "Quit") == 0) {
-            const Callbacks cb = copyCallbacks();
-            if (cb.onStop)
-                cb.onStop();
-            return sendReply(connection, message);
-        }
+            return sendError(connection, message, DBUS_ERROR_NOT_SUPPORTED,
+                             "Raise is not supported");
+        if (std::strcmp(method, "Quit") == 0)
+            return sendError(connection, message, DBUS_ERROR_NOT_SUPPORTED,
+                             "Quit is not supported");
         return sendError(connection, message, DBUS_ERROR_UNKNOWN_METHOD,
                          "Unknown MediaPlayer2 method");
     }
@@ -1121,7 +1272,35 @@ class LinuxImpl final : public Impl {
             return sendReply(connection, message);
         }
 
-        if (std::strcmp(property, "Volume") == 0 || std::strcmp(property, "Rate") == 0 ||
+        if (std::strcmp(property, "Volume") == 0) {
+            if (dbus_message_iter_get_arg_type(&variant) != DBUS_TYPE_DOUBLE) {
+                return sendError(connection, message, DBUS_ERROR_INVALID_ARGS,
+                                 "Volume expects a double");
+            }
+            double value = 0.0;
+            dbus_message_iter_get_basic(&variant, &value);
+            if (!std::isfinite(value)) {
+                return sendError(connection, message, DBUS_ERROR_INVALID_ARGS,
+                                 "Invalid Volume value");
+            }
+            if (value < 0.0)
+                value = 0.0;
+            if (value > 1.0)
+                value = 1.0;
+            const float volume = static_cast<float>(value);
+
+            const Callbacks cb = copyCallbacks();
+            if (cb.onVolume) {
+                cb.onVolume(volume, volume == 0.0f);
+            } else {
+                std::lock_guard lock(mtx_);
+                volume_ = volume;
+                publishChangedLocked();
+            }
+            return sendReply(connection, message);
+        }
+
+        if (std::strcmp(property, "Rate") == 0 ||
             std::strcmp(property, "PlaybackStatus") == 0 ||
             std::strcmp(property, "Metadata") == 0 || std::strcmp(property, "Position") == 0 ||
             std::strcmp(property, "MinimumRate") == 0 ||
@@ -1134,6 +1313,20 @@ class LinuxImpl final : public Impl {
         }
 
         return sendError(connection, message, DBUS_ERROR_UNKNOWN_PROPERTY, "Unknown property");
+    }
+
+    static void emitSeeked(DBusConnection* connection, double positionSeconds) {
+        DBusMessage* signal =
+            dbus_message_new_signal(kObjectPath, kPlayerInterface, "Seeked");
+        if (!signal)
+            return;
+        dbus_int64_t positionUs = static_cast<dbus_int64_t>(
+            (positionSeconds > 0.0 ? positionSeconds : 0.0) * 1'000'000.0);
+        const bool ok = dbus_message_append_args(
+            signal, DBUS_TYPE_INT64, &positionUs, DBUS_TYPE_INVALID);
+        if (ok)
+            dbus_connection_send(connection, signal, nullptr);
+        dbus_message_unref(signal);
     }
 
     static DBusHandlerResult sendReply(DBusConnection* connection, DBusMessage* message) {
@@ -1249,7 +1442,7 @@ class LinuxImpl final : public Impl {
     <property name="Rate" type="d" access="read"/>
     <property name="Shuffle" type="b" access="readwrite"/>
     <property name="Metadata" type="a{sv}" access="read"/>
-    <property name="Volume" type="d" access="read"/>
+    <property name="Volume" type="d" access="readwrite"/>
     <property name="Position" type="x" access="read"/>
     <property name="MinimumRate" type="d" access="read"/>
     <property name="MaximumRate" type="d" access="read"/>
@@ -1278,6 +1471,7 @@ class LinuxImpl final : public Impl {
     kanariv::types::PlaybackState state_{kanariv::types::PlaybackState::Stopped};
     double position_{0.0};
     double duration_{0.0};
+    std::chrono::steady_clock::time_point positionStamp_{};
     Metadata metadata_{};
     bool shuffle_{false};
     kanariv::types::RepeatMode repeat_{kanariv::types::RepeatMode::Off};
@@ -1286,6 +1480,11 @@ class LinuxImpl final : public Impl {
 
     StateSnapshot lastPublished_{};
     bool hasPublished_{false};
+
+    // Cached temp file for embedded (base64) cover art, published as
+    // mpris:artUrl. Removed on artwork change and on deactivate().
+    std::filesystem::path artworkFilePath_;
+    std::string artworkKey_;
 };
 
 MediaSession::ExpectedSession createLinux(std::string appName, std::string appIcon,

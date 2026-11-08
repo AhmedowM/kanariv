@@ -1,8 +1,13 @@
 #import <service/media_session.hpp>
 
+#import <AppKit/AppKit.h>
+// MediaPlayer on macOS uses the same headers as iOS but folds every remote
+// command event class into MPRemoteCommandEvent.h and MPMediaItemArtwork into
+// MPMediaItem.h (there are no per-event headers on macOS).
 #import <MediaPlayer/MPNowPlayingInfoCenter.h>
 #import <MediaPlayer/MPRemoteCommandCenter.h>
 #import <MediaPlayer/MPRemoteCommand.h>
+#import <MediaPlayer/MPRemoteCommandEvent.h>
 #import <MediaPlayer/MPMediaItem.h>
 
 #include <kanariv/utils/base64.hpp>
@@ -12,6 +17,8 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace kanariv::media_session {
 
@@ -22,12 +29,14 @@ namespace kanariv::media_session {
  * Uses:
  * - MPNowPlayingInfoCenter for now-playing metadata / playback state
  *   (lock screen, Control Center, Touch Bar). On macOS the playback state is
- *   conveyed via MPNowPlayingInfoPropertyPlaybackRate (1.0 = playing,
- *   0.0 = paused/stopped). MPMediaItemPropertyArtwork cannot be set on macOS
- *   because MPMediaItemArtwork's initializer (initWithImage:) takes a UIImage,
- *   which is iOS-only and unavailable on macOS. Artwork is therefore omitted
- *   from now-playing info on macOS; all other features work.
- * - MPRemoteCommandCenter for media-key events (play/pause/next/prev/stop).
+ *   published both via MPNowPlayingInfoPropertyPlaybackRate (1.0 = playing,
+ *   0.0 = paused/stopped) and MPNowPlayingInfoCenter.playbackState, which is
+ *   the documented macOS-only way to tell the system whether the app is
+ *   playing. Artwork is supplied through MPMediaItemArtwork's
+ *   initWithBoundsSize:requestHandler: initializer (macOS 10.12.2+) with an
+ *   NSImage, so embedded/base64 cover art works on macOS as well.
+ * - MPRemoteCommandCenter for media-key events (play/pause/next/prev/stop),
+ *   absolute and relative seeking, and repeat/shuffle mode requests.
  *   Gated by enableMediaKeys_.
  *
  * Compiled only on __APPLE__ with Objective-C++ (.mm).
@@ -48,87 +57,13 @@ class MacImpl final : public Impl {
         if (active_)
             return {};
 
-        MPRemoteCommandCenter* commandCenter =
-            [MPRemoteCommandCenter sharedCommandCenter];
-
-        __block MacImpl* self = this;
-
         if (enableMediaKeys_) {
-            commandCenter.playCommand.enabled = YES;
-            [commandCenter.playCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-                MPRemoteCommandEvent* _Nonnull) {
-                if (self) {
-                    auto cb = self->callbacks();
-                    if (cb.onPlay)
-                        cb.onPlay();
-                }
-                return MPRemoteCommandHandlerStatusSuccess;
-            }];
-
-            commandCenter.pauseCommand.enabled = YES;
-            [commandCenter.pauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-                MPRemoteCommandEvent* _Nonnull) {
-                if (self) {
-                    auto cb = self->callbacks();
-                    if (cb.onPause)
-                        cb.onPause();
-                }
-                return MPRemoteCommandHandlerStatusSuccess;
-            }];
-
-            commandCenter.togglePlayPauseCommand.enabled = YES;
-            [commandCenter.togglePlayPauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-                MPRemoteCommandEvent* _Nonnull) {
-                if (self) {
-                    std::lock_guard lock(self->mtx_);
-                    bool playing =
-                        self->state_ == kanariv::types::PlaybackState::Playing;
-                    auto cb = self->callbacks();
-                    if (playing) {
-                        if (cb.onPause)
-                            cb.onPause();
-                    } else if (cb.onPlay) {
-                        cb.onPlay();
-                    }
-                }
-                return MPRemoteCommandHandlerStatusSuccess;
-            }];
-
-            commandCenter.nextTrackCommand.enabled = YES;
-            [commandCenter.nextTrackCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-                MPRemoteCommandEvent* _Nonnull) {
-                if (self) {
-                    auto cb = self->callbacks();
-                    if (cb.onNext)
-                        cb.onNext();
-                }
-                return MPRemoteCommandHandlerStatusSuccess;
-            }];
-
-            commandCenter.previousTrackCommand.enabled = YES;
-            [commandCenter.previousTrackCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-                MPRemoteCommandEvent* _Nonnull) {
-                if (self) {
-                    auto cb = self->callbacks();
-                    if (cb.onPrev)
-                        cb.onPrev();
-                }
-                return MPRemoteCommandHandlerStatusSuccess;
-            }];
-
-            commandCenter.stopCommand.enabled = YES;
-            [commandCenter.stopCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(
-                MPRemoteCommandEvent* _Nonnull) {
-                if (self) {
-                    auto cb = self->callbacks();
-                    if (cb.onStop)
-                        cb.onStop();
-                }
-                return MPRemoteCommandHandlerStatusSuccess;
-            }];
+            installCommandHandlers();
+            active_ = true;
+            publishPlaybackModesLocked();
+        } else {
+            active_ = true;
         }
-
-        active_ = true;
 
         if (logger_)
             logger_->debug("macOS media-session backend activated");
@@ -136,29 +71,32 @@ class MacImpl final : public Impl {
     }
 
     kanariv::utils::Expected<void> deactivate() override {
-        std::lock_guard lock(mtx_);
-        if (!active_)
-            return {};
-
-        MPRemoteCommandCenter* commandCenter =
-            [MPRemoteCommandCenter sharedCommandCenter];
-
-        if (enableMediaKeys_) {
-            commandCenter.playCommand.enabled = NO;
-            commandCenter.pauseCommand.enabled = NO;
-            commandCenter.togglePlayPauseCommand.enabled = NO;
-            commandCenter.nextTrackCommand.enabled = NO;
-            commandCenter.previousTrackCommand.enabled = NO;
-            commandCenter.stopCommand.enabled = NO;
+        std::vector<CommandBinding> bindings;
+        {
+            std::lock_guard lock(mtx_);
+            if (!active_)
+                return {};
+            bindings.swap(commandBindings_);
+            active_ = false;
         }
 
-        // Clear now-playing info (only if notifications were enabled).
-        if (enableNotifications_) {
-            [[MPNowPlayingInfoCenter defaultCenter]
-                setNowPlayingInfo:@{ }];
+        // Remove handlers outside the lock: command removal must never run
+        // while a callback that re-enters this object could be blocked.
+        for (auto& [command, token] : bindings) {
+            command.enabled = NO;
+            [command removeTarget:token];
+            [token release];
         }
 
-        active_ = false;
+        @autoreleasepool {
+            if (enableNotifications_) {
+                MPNowPlayingInfoCenter* center =
+                    [MPNowPlayingInfoCenter defaultCenter];
+                center.playbackState = MPNowPlayingPlaybackStateStopped;
+                [center setNowPlayingInfo:@{}];
+            }
+        }
+
         return {};
     }
 
@@ -184,6 +122,7 @@ class MacImpl final : public Impl {
         std::lock_guard lock(mtx_);
         shuffle_ = shuffle;
         repeat_ = repeat;
+        publishPlaybackModesLocked();
         publishNowPlayingInfo();
         return {};
     }
@@ -193,11 +132,11 @@ class MacImpl final : public Impl {
     }
 
     kanariv::utils::Expected<void> setVolume(float volume, bool muted) override {
-        std::lock_guard lock(mtx_);
-        volume_ = muted ? 0.0f : volume;
-        // Volume is not exposed as an MPNowPlayingInfoCenter key on macOS;
-        // it is applied via the audio engine instead.
-        (void)volume_;
+        // macOS exposes no per-application volume Property in
+        // MPNowPlayingInfoCenter, so volume has to be applied by the audio
+        // engine; there is nothing to publish here.
+        (void)volume;
+        (void)muted;
         return {};
     }
 
@@ -207,67 +146,290 @@ class MacImpl final : public Impl {
     }
 
   private:
+    using CommandBinding = std::pair<MPRemoteCommand*, id>;
+
+    // Copies the callback list so it can be invoked without holding mtx_.
+    // Invoking a callback while holding the mutex would deadlock, because the
+    // callback synchronously calls back into setPlaybackState()/setPlaybackMode().
+    Callbacks copyCallbacks() const {
+        std::lock_guard lock(mtx_);
+        return callbacks_;
+    }
+
+    void bindCommand(MPRemoteCommand* command,
+                     MPRemoteCommandHandlerStatus (^handler)(MPRemoteCommandEvent*)) {
+        id token = [command addTargetWithHandler:handler];
+        if (!token)
+            return;
+        // MRR: the returned token must outlive the autorelease pool so that
+        // deactivate() can pass it to removeTarget:. The command itself is a
+        // shared singleton and is owned by MPRemoteCommandCenter.
+        [token retain];
+        commandBindings_.emplace_back(command, token);
+    }
+
+    void installCommandHandlers() {
+        MPRemoteCommandCenter* commandCenter =
+            [MPRemoteCommandCenter sharedCommandCenter];
+        MacImpl* self = this;
+
+        commandCenter.playCommand.enabled = YES;
+        bindCommand(commandCenter.playCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull) {
+                        auto cb = self->copyCallbacks();
+                        if (cb.onPlay)
+                            cb.onPlay();
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+
+        commandCenter.pauseCommand.enabled = YES;
+        bindCommand(commandCenter.pauseCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull) {
+                        auto cb = self->copyCallbacks();
+                        if (cb.onPause)
+                            cb.onPause();
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+
+        commandCenter.togglePlayPauseCommand.enabled = YES;
+        bindCommand(commandCenter.togglePlayPauseCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull) {
+                        bool playing = false;
+                        {
+                            std::lock_guard lock(self->mtx_);
+                            playing =
+                                self->state_ == kanariv::types::PlaybackState::Playing;
+                        }
+                        auto cb = self->copyCallbacks();
+                        if (playing) {
+                            if (cb.onPause)
+                                cb.onPause();
+                        } else if (cb.onPlay) {
+                            cb.onPlay();
+                        }
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+
+        commandCenter.nextTrackCommand.enabled = YES;
+        bindCommand(commandCenter.nextTrackCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull) {
+                        auto cb = self->copyCallbacks();
+                        if (cb.onNext)
+                            cb.onNext();
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+
+        commandCenter.previousTrackCommand.enabled = YES;
+        bindCommand(commandCenter.previousTrackCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull) {
+                        auto cb = self->copyCallbacks();
+                        if (cb.onPrev)
+                            cb.onPrev();
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+
+        commandCenter.stopCommand.enabled = YES;
+        bindCommand(commandCenter.stopCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull) {
+                        auto cb = self->copyCallbacks();
+                        if (cb.onStop)
+                            cb.onStop();
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+
+        // Absolute seek (scrubbing the Now Playing timeline).
+        commandCenter.changePlaybackPositionCommand.enabled = YES;
+        bindCommand(commandCenter.changePlaybackPositionCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull event) {
+                        auto* positionEvent =
+                            (MPChangePlaybackPositionCommandEvent*)event;
+                        auto cb = self->copyCallbacks();
+                        if (cb.onSeekTo)
+                            cb.onSeekTo(positionEvent.positionTime);
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+
+        // Relative seek (skip forward/backward buttons, headset controls).
+        commandCenter.skipForwardCommand.enabled = YES;
+        commandCenter.skipForwardCommand.preferredIntervals = @[ @15.0 ];
+        bindCommand(commandCenter.skipForwardCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull event) {
+                        auto* skipEvent = (MPSkipIntervalCommandEvent*)event;
+                        auto cb = self->copyCallbacks();
+                        if (cb.onSeek)
+                            cb.onSeek(skipEvent.interval);
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+
+        commandCenter.skipBackwardCommand.enabled = YES;
+        commandCenter.skipBackwardCommand.preferredIntervals = @[ @15.0 ];
+        bindCommand(commandCenter.skipBackwardCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull event) {
+                        auto* skipEvent = (MPSkipIntervalCommandEvent*)event;
+                        auto cb = self->copyCallbacks();
+                        if (cb.onSeek)
+                            cb.onSeek(-skipEvent.interval);
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+
+        // Repeat / shuffle requests from Control Center or media keys.
+        commandCenter.changeRepeatModeCommand.enabled = YES;
+        bindCommand(commandCenter.changeRepeatModeCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull event) {
+                        auto* repeatEvent =
+                            (MPChangeRepeatModeCommandEvent*)event;
+                        kanariv::types::RepeatMode repeat =
+                            kanariv::types::RepeatMode::Off;
+                        switch (repeatEvent.repeatType) {
+                            case MPRepeatTypeTrack:
+                                repeat = kanariv::types::RepeatMode::One;
+                                break;
+                            case MPRepeatTypeAll:
+                                repeat = kanariv::types::RepeatMode::All;
+                                break;
+                            default:
+                                repeat = kanariv::types::RepeatMode::Off;
+                                break;
+                        }
+                        auto cb = self->copyCallbacks();
+                        if (cb.onRepeat)
+                            cb.onRepeat(repeat);
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+
+        commandCenter.changeShuffleModeCommand.enabled = YES;
+        bindCommand(commandCenter.changeShuffleModeCommand,
+                    ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* _Nonnull event) {
+                        auto* shuffleEvent =
+                            (MPChangeShuffleModeCommandEvent*)event;
+                        const bool shuffle =
+                            shuffleEvent.shuffleType != MPShuffleTypeOff;
+                        auto cb = self->copyCallbacks();
+                        if (cb.onShuffle)
+                            cb.onShuffle(shuffle);
+                        return MPRemoteCommandHandlerStatusSuccess;
+                    });
+    }
+
+    void publishPlaybackModesLocked() {
+        if (!active_ || !enableMediaKeys_)
+            return;
+
+        MPRemoteCommandCenter* commandCenter =
+            [MPRemoteCommandCenter sharedCommandCenter];
+
+        MPRepeatType repeatType = MPRepeatTypeOff;
+        switch (repeat_) {
+            case kanariv::types::RepeatMode::One:
+                repeatType = MPRepeatTypeTrack;
+                break;
+            case kanariv::types::RepeatMode::All:
+                repeatType = MPRepeatTypeAll;
+                break;
+            default:
+                repeatType = MPRepeatTypeOff;
+                break;
+        }
+        commandCenter.changeRepeatModeCommand.currentRepeatType = repeatType;
+        commandCenter.changeShuffleModeCommand.currentShuffleType =
+            shuffle_ ? MPShuffleTypeItems : MPShuffleTypeOff;
+    }
+
     void publishNowPlayingInfo() {
         if (!enableNotifications_)
             return;
 
-        MPNowPlayingInfoCenter* center = [MPNowPlayingInfoCenter defaultCenter];
+        @autoreleasepool {
+            MPNowPlayingInfoCenter* center = [MPNowPlayingInfoCenter defaultCenter];
 
-        NSMutableDictionary<NSString *, id>* info =
-            [NSMutableDictionary dictionary];
+            NSMutableDictionary<NSString*, id>* info =
+                [NSMutableDictionary dictionary];
 
-        // Title / artist / album
-        if (!metadata_.title.empty()) {
-            info[MPMediaItemPropertyTitle] =
-                [NSString stringWithUTF8String:metadata_.title.c_str()];
+            // Title / artist / album
+            if (!metadata_.title.empty()) {
+                info[MPMediaItemPropertyTitle] =
+                    [NSString stringWithUTF8String:metadata_.title.c_str()];
+            }
+            if (!metadata_.artist.empty()) {
+                info[MPMediaItemPropertyArtist] =
+                    [NSString stringWithUTF8String:metadata_.artist.c_str()];
+            }
+            if (metadata_.album) {
+                info[MPMediaItemPropertyAlbumTitle] =
+                    [NSString stringWithUTF8String:metadata_.album->c_str()];
+            }
+
+            double rate = 0.0;
+            switch (state_) {
+                case kanariv::types::PlaybackState::Playing:
+                    rate = 1.0;
+                    center.playbackState = MPNowPlayingPlaybackStatePlaying;
+                    break;
+                case kanariv::types::PlaybackState::Paused:
+                    rate = 0.0;
+                    center.playbackState = MPNowPlayingPlaybackStatePaused;
+                    break;
+                default:
+                    rate = 0.0;
+                    center.playbackState = MPNowPlayingPlaybackStateStopped;
+                    break;
+            }
+            info[MPNowPlayingInfoPropertyPlaybackRate] = @(rate);
+
+            // Position / duration (seconds). The system extrapolates the
+            // elapsed time from the playback rate between updates.
+            if (duration_ > 0.0)
+                info[MPMediaItemPropertyPlaybackDuration] = @(duration_);
+            info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(position_);
+
+            // Artwork: prefer embedded bytes, fall back to a local file. Both
+            // are supported on macOS via MPMediaItemArtwork's blocks-based
+            // initializer, which takes an NSImage.
+            NSData* artworkData = nil;
+            if (metadata_.artworkBase64 && !metadata_.artworkBase64->empty()) {
+                auto decoded =
+                    kanariv::utils::Base64::decode(*metadata_.artworkBase64);
+                if (decoded && !decoded->empty()) {
+                    artworkData = [NSData dataWithBytes:decoded->data()
+                                                length:decoded->size()];
+                }
+            } else if (metadata_.artworkPath && !metadata_.artworkPath->empty()) {
+                NSString* path = [NSString stringWithUTF8String:
+                                               metadata_.artworkPath->c_str()];
+                artworkData = [NSData dataWithContentsOfFile:path];
+            }
+
+            if (artworkData) {
+                NSImage* image = [[NSImage alloc] initWithData:artworkData];
+                if (image) {
+                    MPMediaItemArtwork* artwork = [[MPMediaItemArtwork alloc]
+                        initWithBoundsSize:image.size
+                            requestHandler:^NSImage*(CGSize) {
+                                return image;
+                            }];
+                    if (artwork) {
+                        info[MPMediaItemPropertyArtwork] = artwork;
+                        [artwork release];
+                    }
+                    [image release];
+                }
+            }
+
+            [center setNowPlayingInfo:info];
+
+            if (logger_)
+                logger_->debug("macOS now-playing info updated");
         }
-        if (!metadata_.artist.empty()) {
-            info[MPMediaItemPropertyArtist] =
-                [NSString stringWithUTF8String:metadata_.artist.c_str()];
-        }
-        if (metadata_.album) {
-            info[MPMediaItemPropertyAlbumTitle] =
-                [NSString stringWithUTF8String:metadata_.album->c_str()];
-        }
-
-        // Playback rate: 1.0 = playing, 0.0 = paused/stopped.
-        // This is how macOS MPNowPlayingInfoCenter conveys playback state.
-        double rate = 0.0;
-        switch (state_) {
-            case kanariv::types::PlaybackState::Playing:
-                rate = 1.0;
-                break;
-            default:
-                rate = 0.0;
-                break;
-        }
-        info[MPNowPlayingInfoPropertyPlaybackRate] = @(rate);
-
-        // Position / duration (seconds)
-        if (duration_ > 0.0) {
-            info[MPMediaItemPropertyPlaybackDuration] = @(duration_);
-        }
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(position_);
-
-        // NOTE: MPMediaItemPropertyArtwork is intentionally omitted on macOS.
-        // MPMediaItemArtwork's initializer (initWithImage:) takes a UIImage,
-        // which is iOS-only and unavailable on macOS. There is no macOS SDK
-        // API to create MPMediaItemArtwork from raw image data. All other
-        // now-playing fields are still published.
-
-        [center setNowPlayingInfo:info];
-
-        if (logger_)
-            logger_->debug("macOS now-playing info updated");
     }
 
-    std::string appName_;
-    std::string appIcon_;
+    [[maybe_unused]] std::string appName_;
+    [[maybe_unused]] std::string appIcon_;
     bool enableNotifications_{true};
     bool enableMediaKeys_{true};
 
     mutable std::mutex mtx_;
     bool active_{false};
+    std::vector<CommandBinding> commandBindings_;
 
     kanariv::types::PlaybackState state_{
         kanariv::types::PlaybackState::Stopped};
@@ -276,7 +438,6 @@ class MacImpl final : public Impl {
     Metadata metadata_{};
     bool shuffle_{false};
     kanariv::types::RepeatMode repeat_{kanariv::types::RepeatMode::Off};
-    float volume_{1.0f};
     kanariv::utils::Logger* logger_{nullptr};
 };
 

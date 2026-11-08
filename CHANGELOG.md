@@ -210,6 +210,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   self-contained to run, and the dev archive carries the libraries a
   `find_package(caudio)` consumer needs to link, mirroring the Windows
   `.dll`→runtime / `.lib`→dev split
+- OS media-session updates no longer go stale after ~30 s of playback: the
+  engine's bounded diagnostic event queue is never drained by the daemon, so
+  it filled with `Progress` samples and `pushEvent()` then skipped callback
+  dispatch entirely. Natural track ends and auto-advance never reached
+  SMTC/MPRIS, leaving the previous track with a pause button. Callbacks are
+  now dispatched regardless of queue state, `Progress` samples only fill half
+  of the queue, and stopping at the end of a queue keeps the last now-playing
+  metadata instead of blanking it
 
 ## [v1.8.0] - 2026-10-19
 

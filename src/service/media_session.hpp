@@ -54,6 +54,9 @@ struct Callbacks {
     std::function<void(double)> onSeekTo{}; ///< SMTC absolute seek position.
     std::function<void(kanariv::types::RepeatMode)> onRepeat{};
     std::function<void(bool)> onShuffle{};
+    /// Media key / OS mixer volume change. First parameter is linear volume
+    /// 0.0-1.0; second is true when the OS requested mute.
+    std::function<void(float, bool)> onVolume{};
 };
 
 /**

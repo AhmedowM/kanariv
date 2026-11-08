@@ -1624,11 +1624,19 @@ void Engine::Impl::preroll() {
 }
 
 void Engine::Impl::pushEvent(const kanariv::types::EngineEvent& ev) {
-    // MpscQueue cap 64 drop policy
-    auto r = eventQueue_.push(ev);
-    if (!r)
-        return; // drop if full
-    // dispatch callbacks outside queue lock
+    // The bounded event queue is a best-effort stream for pollEvent/drainEvents
+    // consumers. Nothing in the daemon drains it, so periodic Progress samples
+    // fill all 64 slots after ~30 s of playback. Progress is only enqueued
+    // while there is spare capacity so state transitions are not crowded out.
+    const bool isProgress = ev.type == kanariv::types::EngineEventType::Progress;
+    if (!isProgress || eventQueue_.size() < eventQueue_.capacity() / 2)
+        (void)eventQueue_.push(ev);
+
+    // Callbacks are the in-process notification channel (the daemon's OS
+    // media-session bridge, history, ...). They must fire regardless of the
+    // diagnostic queue state: tying dispatch to a successful push would
+    // silently swallow every track transition once the queue saturated, which
+    // left the OS now-playing UI stuck on the previous track.
     kanariv::types::EngineCallbacks cbsCopy;
     {
         std::lock_guard<std::mutex> lk(cbMutex_);

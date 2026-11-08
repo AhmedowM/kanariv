@@ -45,7 +45,9 @@ if(WIN32)
   endif()
   target_link_libraries(service PRIVATE ${_K_WIN_LIBS})
 elseif(APPLE)
-  target_link_libraries(service PRIVATE "-framework MediaPlayer" "-framework Foundation")
+  # AppKit provides NSImage, used to build MPMediaItemArtwork from cover art.
+  target_link_libraries(service PRIVATE "-framework MediaPlayer" "-framework Foundation"
+    "-framework AppKit")
 elseif(UNIX)
   # Linux MPRIS backend needs libdbus-1 (library + include dirs).
   # pkg-config is installed on all Linux CI jobs; dbus-1.pc returns both
@@ -118,15 +120,22 @@ if(KANARIV_BUILD_SHARED)
   if(KANARIV_BUILD_STATIC)
     _kanariv_service_link_rt(service_shared)
     target_link_libraries(service_shared PRIVATE tag)
-  endif()
-  if(WIN32)
-    target_link_libraries(service_shared PRIVATE ${_K_WIN_LIBS})
-  elseif(APPLE)
-    target_link_libraries(service_shared PRIVATE "-framework MediaPlayer" "-framework Foundation")
-  elseif(UNIX)
-    if(KANARIV_DBUS_FOUND)
-      target_link_libraries(service_shared PRIVATE ${KANARIV_DBUS_LIBRARIES})
-      target_include_directories(service_shared SYSTEM PRIVATE ${KANARIV_DBUS_INCLUDE_DIRS})
+    # A real service_shared target only exists when static libraries are
+    # built too. In a shared-only build kanariv_add_shared_variant() aliases
+    # service_shared to service, and CMake rejects target_* commands on ALIAS
+    # targets. service already carries these platform deps (applied above),
+    # so the alias needs nothing extra.
+    if(WIN32)
+      target_link_libraries(service_shared PRIVATE ${_K_WIN_LIBS})
+    elseif(APPLE)
+      target_link_libraries(service_shared PRIVATE "-framework MediaPlayer"
+        "-framework Foundation" "-framework AppKit")
+    elseif(UNIX)
+      if(KANARIV_DBUS_FOUND)
+        target_link_libraries(service_shared PRIVATE ${KANARIV_DBUS_LIBRARIES})
+        target_include_directories(service_shared SYSTEM PRIVATE
+          ${KANARIV_DBUS_INCLUDE_DIRS})
+      endif()
     endif()
   endif()
 endif()
