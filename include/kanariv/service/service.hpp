@@ -12,6 +12,8 @@
 
 #include <kanariv/config.hpp>
 #include <kanariv/fwd.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
@@ -146,6 +148,20 @@ class KANARIV_API Service final {
      * @return Success or Error InvalidArg if db is null or not open.
      */
     kanariv::utils::Expected<void> attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db);
+
+    /**
+     * @brief Dispatch an IPC command through the same path used by the socket
+     * IPC server. Host integrations (e.g. Android foreground service) can use
+     * this to send commands in-process instead of calling service methods
+     * directly, keeping all business logic in one place.
+     * @ingroup kanariv_service
+     * @param cmd Command to dispatch (LibraryAdd, Play, Pause, Seek, etc.).
+     * @return Result of command execution.
+     * @par Thread safety
+     * Thread-safe; serializes through the internal dispatch visitor.
+     */
+    kanariv::utils::Expected<kanariv::ipc::Result>
+    dispatchCommand(const kanariv::ipc::Command& cmd) noexcept;
 
     /**
      * @brief Access the audio engine instance.

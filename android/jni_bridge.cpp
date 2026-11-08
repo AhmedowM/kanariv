@@ -3,10 +3,8 @@
 #include <kanariv/config/runtime.hpp>
 #include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
-#include <kanariv/engine/engine.hpp>
-#include <kanariv/media/decoder.hpp>
+#include <kanariv/ipc/command.hpp>
 #include <kanariv/media/audio_ext.hpp>
-#include <media/fingerprint.hpp>
 #include <kanariv/service/host.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/types/engine.hpp>
@@ -15,13 +13,11 @@
 #include <kanariv/utils/log.hpp>
 
 #include <filesystem>
-#include <fstream>
 #include <jni.h>
 #include <jni_helpers.hpp>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <system_error>
 
 #include <android/log.h>
 
@@ -42,9 +38,20 @@ std::mutex g_hostMutex;
 
 const char* kBridgeClass = "com/kanariv/app/KanarivBridge";
 
-/** @brief Converts a StatusCode to a Java-friendly string. */
-[[maybe_unused]] std::string statusCodeToString(kanariv::utils::StatusCode code) {
-    return std::string(kanariv::utils::toString(code));
+/**
+ * @brief Dispatch an IPC command through the service and return whether it
+ * succeeded.
+ * @callfrom Java thread (serialized via g_hostMutex).
+ */
+[[maybe_unused]] bool dispatchCmd(kanariv::ipc::Command cmd) noexcept {
+    if (!g_host)
+        return false;
+    auto res = g_host->service().dispatchCommand(cmd);
+    if (!res) {
+        LOGE("dispatchCommand failed: %s", res.error().message.c_str());
+        return false;
+    }
+    return true;
 }
 
 } // namespace
@@ -145,133 +152,164 @@ static jboolean nativeIsDaemonRunning(JNIEnv*, jclass) noexcept {
 }
 
 /**
- * @brief Issue a play command to the engine.
+ * @brief Issue a play command via IPC.
  * @callfrom Java thread.
  */
 static void nativePlay(JNIEnv*, jclass) noexcept {
     std::lock_guard<std::mutex> lock(g_hostMutex);
-    if (g_host) {
-        auto& eng = g_host->service().engine();
-        LOGD("nativePlay: state=%d curTrackId=%ld activeQueueId=%ld",
-             static_cast<int>(eng.state()), eng.currentTrackId(), eng.activeQueueId());
-        (void)eng.play(eng.activeQueueId());
-    } else {
+    if (!g_host) {
         LOGE("nativePlay: g_host is null");
+        return;
     }
+    dispatchCmd(kanariv::ipc::Play{});
 }
 
 /**
- * @brief Issue a pause command to the engine.
+ * @brief Issue a pause command via IPC.
  * @callfrom Java thread.
  */
 static void nativePause(JNIEnv*, jclass) noexcept {
     std::lock_guard<std::mutex> lock(g_hostMutex);
-    if (g_host)
-        (void)g_host->service().engine().pause();
+    if (!g_host) {
+        LOGE("nativePause: g_host is null");
+        return;
+    }
+    dispatchCmd(kanariv::ipc::Pause{});
 }
 
 /**
- * @brief Issue a stop command to the engine.
+ * @brief Issue a stop command via IPC.
  * @callfrom Java thread.
  */
 static void nativeStop(JNIEnv*, jclass) noexcept {
     std::lock_guard<std::mutex> lock(g_hostMutex);
-    if (g_host)
-        (void)g_host->service().engine().stop();
+    if (!g_host) {
+        LOGE("nativeStop: g_host is null");
+        return;
+    }
+    dispatchCmd(kanariv::ipc::Stop{});
 }
 
 /**
- * @brief Skip to the next track.
+ * @brief Skip to the next track via IPC.
  * @callfrom Java thread.
  */
 static void nativeNext(JNIEnv*, jclass) noexcept {
     std::lock_guard<std::mutex> lock(g_hostMutex);
-    if (g_host)
-        (void)g_host->service().engine().next();
+    if (!g_host) {
+        LOGE("nativeNext: g_host is null");
+        return;
+    }
+    dispatchCmd(kanariv::ipc::Next{});
 }
 
 /**
- * @brief Skip to the previous track.
+ * @brief Skip to the previous track via IPC.
  * @callfrom Java thread.
  */
 static void nativePrev(JNIEnv*, jclass) noexcept {
     std::lock_guard<std::mutex> lock(g_hostMutex);
-    if (g_host)
-        (void)g_host->service().engine().prev();
+    if (!g_host) {
+        LOGE("nativePrev: g_host is null");
+        return;
+    }
+    dispatchCmd(kanariv::ipc::Prev{});
 }
 
 /**
- * @brief Seek by a relative delta (seconds).
+ * @brief Seek by a relative delta (seconds) via IPC.
  * @param delta Seconds to seek (may be negative).
  * @callfrom Java thread.
  */
 static void nativeSeek(JNIEnv*, jclass, jdouble delta) noexcept {
     std::lock_guard<std::mutex> lock(g_hostMutex);
-    if (g_host) {
-        auto cur = g_host->service().engine().position();
-        (void)g_host->service().engine().seek(cur + delta);
+    if (!g_host) {
+        LOGE("nativeSeek: g_host is null");
+        return;
     }
+    kanariv::ipc::Seek cmd;
+    cmd.seconds = delta;
+    dispatchCmd(std::move(cmd));
 }
 
 /**
- * @brief Seek to an absolute position (seconds).
+ * @brief Seek to an absolute position (seconds) via IPC.
  * @param position Seconds from the start of the track.
  * @callfrom Java thread.
  */
 static void nativeSeekTo(JNIEnv*, jclass, jdouble position) noexcept {
     std::lock_guard<std::mutex> lock(g_hostMutex);
-    if (g_host)
-        (void)g_host->service().engine().seek(position);
+    if (!g_host) {
+        LOGE("nativeSeekTo: g_host is null");
+        return;
+    }
+    kanariv::ipc::Seek cmd;
+    cmd.seconds = position;
+    dispatchCmd(std::move(cmd));
 }
 
 /**
- * @brief Set playback volume.
+ * @brief Set playback volume via IPC.
  * @param volume Linear volume 0.0-1.0.
  * @callfrom Java thread.
  */
 static void nativeSetVolume(JNIEnv*, jclass, jfloat volume) noexcept {
     std::lock_guard<std::mutex> lock(g_hostMutex);
-    if (g_host)
-        g_host->service().engine().setVolume(volume);
+    if (!g_host) {
+        LOGE("nativeSetVolume: g_host is null");
+        return;
+    }
+    kanariv::ipc::VolumeSet cmd;
+    cmd.level = static_cast<float>(volume) * 100.0f;
+    dispatchCmd(std::move(cmd));
 }
 
 /**
- * @brief Set repeat mode.
+ * @brief Set repeat mode via IPC.
  * @param repeat Ordinal of RepeatMode (off=0, one=1, all=2).
  * @callfrom Java thread.
  */
 static void nativeSetRepeat(JNIEnv*, jclass, jint repeat) noexcept {
     std::lock_guard<std::mutex> lock(g_hostMutex);
-    if (!g_host)
+    if (!g_host) {
+        LOGE("nativeSetRepeat: g_host is null");
         return;
+    }
+    kanariv::ipc::QueueRepeat cmd;
     switch (repeat) {
         case 0:
-            (void)g_host->service().engine().setRepeat(kanariv::types::RepeatMode::Off);
+            cmd.mode = kanariv::types::RepeatMode::Off;
             break;
         case 1:
-            (void)g_host->service().engine().setRepeat(kanariv::types::RepeatMode::All);
+            cmd.mode = kanariv::types::RepeatMode::All;
             break;
         case 2:
-            (void)g_host->service().engine().setRepeat(kanariv::types::RepeatMode::One);
+            cmd.mode = kanariv::types::RepeatMode::One;
             break;
         default:
-            break;
+            return;
     }
+    dispatchCmd(std::move(cmd));
 }
 
 /**
- * @brief Set shuffle mode.
+ * @brief Set shuffle mode via IPC.
  * @param shuffle JNI boolean.
  * @callfrom Java thread.
  */
 static void nativeSetShuffle(JNIEnv*, jclass, jboolean shuffle) noexcept {
     std::lock_guard<std::mutex> lock(g_hostMutex);
-    if (g_host)
-        (void)g_host->service().engine().setShuffle(shuffle == JNI_TRUE);
+    if (!g_host) {
+        LOGE("nativeSetShuffle: g_host is null");
+        return;
+    }
+    kanariv::ipc::QueueShuffle cmd;
+    cmd.on = shuffle == JNI_TRUE;
+    dispatchCmd(std::move(cmd));
 }
 
 /**
- * @brief Add a single audio file to the library.
+ * @brief Add a single audio file to the library via IPC.
  * @param path Absolute filesystem path to an audio file (already copied into
  *             app-private storage by the Java side).
  * @return JNI true on success, false on failure.
@@ -304,85 +342,18 @@ static jboolean nativeLibraryAdd(JNIEnv* env, jclass, jstring path) noexcept {
         return JNI_FALSE;
     }
 
-    LOGD("nativeLibraryAdd: file valid, computing fingerprint");
+    LOGD("nativeLibraryAdd: sending QueueAdd command via IPC");
 
-    // Compute BLAKE3 fingerprint (required: tracks.fingerprint is NOT NULL UNIQUE).
-    auto fp = kanariv::media::internal::computeFingerprint(p);
-    if (!fp) {
-        LOGE("nativeLibraryAdd: fingerprint computation failed: %s",
-             fp.error().message.c_str());
+    kanariv::ipc::QueueAdd cmd;
+    cmd.query = pathStr;
+    cmd.search = false;
+
+    if (!dispatchCmd(std::move(cmd))) {
+        LOGE("nativeLibraryAdd: QueueAdd command failed");
         return JNI_FALSE;
     }
 
-    kanariv::types::Track t;
-    t.path = pathStr;
-    t.fingerprint = *fp;
-
-    LOGD("nativeLibraryAdd: fingerprint computed (%zu bytes)", t.fingerprint.size());
-
-    if (auto meta = kanariv::media::extractMetadata(pathStr); meta) {
-        t.title = std::move(meta->title);
-        t.artist = std::move(meta->artist);
-        t.album = std::move(meta->album);
-        t.album_artist = std::move(meta->album_artist);
-        t.genre = std::move(meta->genre);
-        t.year = meta->year;
-        t.track_num = meta->track_num;
-        t.disc_num = meta->disc_num;
-        if (meta->duration > 0)
-            t.duration = meta->duration;
-        t.sample_rate = static_cast<uint32_t>(meta->sample_rate);
-        t.channels = static_cast<uint32_t>(meta->channels);
-        t.bitrate = meta->bitrate;
-        LOGD("nativeLibraryAdd: metadata extracted title=%s artist=%s duration=%.1f",
-             t.title.c_str(), t.artist.c_str(), t.duration);
-    } else {
-        LOGD("nativeLibraryAdd: metadata extraction failed: %s",
-             meta.error().message.c_str());
-    }
-
-    auto sz = std::filesystem::file_size(p, ec);
-    if (!ec)
-        t.size = static_cast<int64_t>(sz);
-    auto ftime = std::filesystem::last_write_time(p, ec);
-    if (!ec)
-        t.mtime = static_cast<int64_t>(ftime.time_since_epoch().count());
-
-    LOGD("nativeLibraryAdd: calling insertTrack path=%s size=%ld",
-         t.path.c_str(), t.size);
-
-    auto ins = g_host->service().db().insertTrack(t);
-    if (!ins) {
-        LOGE("nativeLibraryAdd: insertTrack failed: %s", ins.error().message.c_str());
-        if (ins.error().code == kanariv::utils::StatusCode::AlreadyExists) {
-            auto existing = g_host->service().db().findByFingerprint(t.fingerprint);
-            if (existing) {
-                int64_t trackId = existing->id;
-                LOGD("nativeLibraryAdd: track already exists (fingerprint match), trackId=%ld", trackId);
-                int64_t qid = g_host->service().engine().activeQueueId();
-                auto enq = g_host->service().db().queueEnqueue(qid, trackId, true);
-                if (!enq) {
-                    LOGD("nativeLibraryAdd: queueEnqueue failed: %s", enq.error().message.c_str());
-                } else {
-                    LOGD("nativeLibraryAdd: enqueued existing trackId=%ld into queue %ld", trackId, qid);
-                }
-                return JNI_TRUE;
-            }
-        }
-        return JNI_FALSE;
-    }
-    int64_t trackId = *ins;
-    LOGD("nativeLibraryAdd: insertTrack success trackId=%ld", trackId);
-
-    // Enqueue the track into the active playback queue so it can be played.
-    int64_t qid = g_host->service().engine().activeQueueId();
-    auto enq = g_host->service().db().queueEnqueue(qid, trackId, true);
-    if (!enq) {
-        LOGD("nativeLibraryAdd: queueEnqueue failed: %s", enq.error().message.c_str());
-    } else {
-        LOGD("nativeLibraryAdd: enqueued trackId=%ld into queue %ld", trackId, qid);
-    }
-
+    LOGD("nativeLibraryAdd: QueueAdd command succeeded");
     return JNI_TRUE;
 }
 

@@ -444,6 +444,12 @@ Service::attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db) {
     impl_->db_ = std::move(db);
     return engine().attachDatabase(impl_->db_);
 }
+
+kanariv::utils::Expected<kanariv::ipc::Result>
+Service::dispatchCommand(const kanariv::ipc::Command& cmd) noexcept {
+    return impl_->dispatch(cmd);
+}
+
 /**
  * @brief Access the audio engine instance.
  * @return Reference to the Engine.
