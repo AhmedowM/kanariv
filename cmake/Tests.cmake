@@ -93,6 +93,16 @@ if(KANARIV_ENABLE_TESTS)
   kanariv_add_catch_test(test_db_source tests/test_db_source.cpp LIBS kanariv::db kanariv::utils kanariv::sqlite3)
   kanariv_add_catch_test(test_service_host tests/test_service_host.cpp LIBS kanariv::service kanariv::config kanariv::db kanariv::utils kanariv::sqlite3)
 
+  # macOS media-session backend: drives the public MediaSession API against the
+  # real MediaPlayer/AppKit objects and reads the published now-playing info,
+  # playback state and remote-command modes back. Verifies behaviour rather
+  # than just linkage (the .mm only compiles on macOS).
+  if(APPLE)
+    kanariv_add_catch_test(test_media_session_mac tests/test_media_session_mac.mm
+      LIBS kanariv::service kanariv::utils
+           "-framework MediaPlayer" "-framework Foundation" "-framework AppKit")
+  endif()
+
   # CLI golden tests: spawn the real executable with hermetic temp configs
   # and assert on stdout/stderr/exit codes (help texts, parse errors,
   # no-daemon errors, full daemon lifecycle). Needs the CLI binary, so it

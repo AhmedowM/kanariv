@@ -182,17 +182,21 @@ jobs:
       - name: macOS media-session smoke test
         if: runner.os == 'macOS'
         run: |
-          # Verify the MediaPlayer framework is linked into libservice.dylib
-          # (the macOS media-session backend links it via service.cmake),
-          # then start the daemon briefly to confirm it does not crash with
-          # media-session enabled (MPNowPlayingInfoCenter / MPRemoteCommandCenter).
-          LIB="build/ci-${{ matrix.toolchain }}/libservice.1.dylib"
-          test -f "$LIB" || LIB="build/ci-${{ matrix.toolchain }}/libservice.dylib"
-          otool -L "$LIB" | grep -q "MediaPlayer" \
-            || (echo "MediaPlayer framework not linked into $LIB" && exit 1)
-          # AppKit provides NSImage, used to build MPMediaItemArtwork.
-          otool -L "$LIB" | grep -q "AppKit" \
-            || (echo "AppKit framework not linked into $LIB" && exit 1)
+          # Linkage is necessary but not sufficient: libservice.dylib and the
+          # combined libkanariv.dylib both carry the backend (combined links
+          # the object files directly, so it needs its own frameworks).
+          # Behavioural coverage lives in test_media_session_mac (Test step),
+          # which asserts against the real MediaPlayer objects.
+          for LIB in build/ci-${{ matrix.toolchain }}/libservice.1.dylib \
+                     build/ci-${{ matrix.toolchain }}/libkanariv.1.dylib; do
+            [ -f "$LIB" ] || LIB="${LIB%.1.dylib}.dylib"
+            test -f "$LIB" || { echo "missing $LIB" && exit 1; }
+            otool -L "$LIB" | grep -q "MediaPlayer" \
+              || (echo "MediaPlayer framework not linked into $LIB" && exit 1)
+            # AppKit provides NSImage, used to build MPMediaItemArtwork.
+            otool -L "$LIB" | grep -q "AppKit" \
+              || (echo "AppKit framework not linked into $LIB" && exit 1)
+          done
 
           BIN="build/ci-${{ matrix.toolchain }}/kanariv"
 
