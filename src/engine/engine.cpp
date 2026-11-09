@@ -237,6 +237,16 @@ struct Engine::Impl {
     // for the inter-track gap to elapse before starting the next track.
     std::atomic<bool> interTrackGapArmed_{false};
     uint64_t interTrackGapStartMs_{0};
+    // Crossfade state: when interTrackGapMs > 0, the outgoing track is faded
+    // out while the incoming track is faded in, and both are mixed into the
+    // ring during the overlap (replaces silence gap with audible crossfade).
+    std::unique_ptr<kanariv::media::Decoder> crossfadeDecoder_;
+    std::unique_ptr<kanariv::media::Reader> crossfadeReader_;
+    kanariv::types::Track crossfadeTrack_{};
+    uint64_t crossfadeSamples_{0};   // total crossfade length in samples
+    uint64_t crossfadeSample_{0};    // current sample within crossfade
+    bool crossfadeActive_{false};
+    std::atomic<bool> crossfadePending_{false};   // set by engineTick, consumed by decodeLoop
     mutable std::timed_mutex queueMutex_;
 };
 
@@ -1144,6 +1154,10 @@ Engine::Impl::Impl(const kanariv::types::EngineConfig& cfg) : cfg_(cfg), state_{
     fadeOutStart_ = 0;
     interTrackGapArmed_.store(false, std::memory_order_release);
     interTrackGapStartMs_ = 0;
+    crossfadeActive_ = false;
+    crossfadePending_ = false;
+    crossfadeSamples_ = 0;
+    crossfadeSample_ = 0;
     // callbacks from config
     callbacks_ = cfg.callbacks;
 }
@@ -1786,10 +1800,14 @@ void Engine::Impl::engineTick() {
             double pos = currentPositionLocked();
             double remaining = duration_ - pos;
             double gapS = (double)cfg_.gaplessMs / 1000.0;
-            // Gapless preroll is skipped when an inter-track gap is configured:
-            // the track plays to end, then decodeLoop handles the gap before
-            // starting the next track.
-            if (cfg_.interTrackGapMs == 0 && remaining <= gapS && remaining >= 0.0) {
+            double xfS = (double)cfg_.interTrackGapMs / 1000.0;
+            if (cfg_.interTrackGapMs > 0 && remaining <= xfS && remaining >= 0.0 &&
+                !crossfadeActive_ && !crossfadePending_.load(std::memory_order_acquire) &&
+                hasCurrent_) {
+                // Arm crossfade: decodeLoop will load the next track into
+                // crossfadeDecoder_ and mix it with the outgoing track.
+                crossfadePending_.store(true, std::memory_order_release);
+            } else if (cfg_.interTrackGapMs == 0 && remaining <= gapS && remaining >= 0.0) {
                 if (hasCurrent_.load(std::memory_order_acquire)) {
                     // gaplessArmed 0->1 CAS, 300ms preroll
                     bool expected = false;
@@ -1873,21 +1891,56 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             });
             continue;
         }
-        // Inter-track gap: after the current track decodes to EOF, wait
-        // interTrackGapMs before starting the next track. Check here so the
-        // gap elapses even while the ring is draining to silence.
-        if (interTrackGapArmed_.load(std::memory_order_acquire)) {
-            uint64_t now = detail::nowMs();
-            if (now - interTrackGapStartMs_ >=
-                (uint64_t)cfg_.interTrackGapMs) {
-                interTrackGapArmed_.store(false, std::memory_order_release);
+        // Consume a crossfade pending request: load the next track into
+        // crossfadeDecoder_ so it can be mixed with the outgoing track.
+        // Lock order: queueMutex_ (for queueNextLocked) → decodeMtx_
+        // (for crossfadeDecoder_ swap). Slow decoder open is done unlocked.
+        if (crossfadePending_.load(std::memory_order_acquire) && !crossfadeActive_) {
+            kanariv::types::Track next;
+            {
+                std::unique_lock<std::timed_mutex> qlk(queueMutex_);
                 if (playbackState_.load(std::memory_order_acquire) ==
-                    kanariv::types::PlaybackState::Playing) {
-                    auto nr = autoNext();
-                    (void)nr;
+                        kanariv::types::PlaybackState::Playing) {
+                    if (auto r = queueNextLocked(next); r) {
+                        crossfadeTrack_ = std::move(next);
+                    } else {
+                        crossfadePending_.store(false, std::memory_order_release);
+                    }
+                } else {
+                    crossfadePending_.store(false, std::memory_order_release);
+                }
+            }
+            // Slow I/O: open reader+decoder for the crossfade track (no mutex held).
+            if (crossfadePending_.load(std::memory_order_acquire)) {
+                auto path = kanariv::utils::detail::pathFromUtf8(crossfadeTrack_.path);
+                auto rRes = kanariv::media::FileReader::open(path);
+                if (rRes) {
+                    auto dRes = kanariv::media::Decoder::open(*rRes.value());
+                    if (dRes) {
+                        std::unique_lock<std::mutex> lk(decodeMtx_);
+                        if (playbackState_.load(std::memory_order_acquire) ==
+                                kanariv::types::PlaybackState::Playing &&
+                            !crossfadeActive_) {
+                            crossfadeReader_ = std::move(rRes.value());
+                            crossfadeDecoder_ = std::move(dRes.value());
+                            crossfadeActive_ = true;
+                            crossfadePending_.store(false, std::memory_order_release);
+                            crossfadeSamples_ =
+                                (uint64_t)cfg_.interTrackGapMs *
+                                (uint64_t)crossfadeDecoder_->sampleRate() / 1000;
+                            crossfadeSample_ = 0;
+                            if (cfg_.logger)
+                                cfg_.logger->debug("crossfade armed track={}",
+                                                    crossfadeTrack_.id);
+                        }
+                    }
                 }
             }
         }
+        // Crossfade is armed by engineTick when the outgoing track nears its
+        // end (remaining <= interTrackGapMs). decodeLoop consumes the pending
+        // request above and mixes both decoders during the overlap. The old
+        // silence-gap path (interTrackGapArmed_) is superseded by crossfade.
         if (avail == 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
             continue;
@@ -1905,6 +1958,8 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             scratch.resize(maxFrames * ch);
         std::span<float> chunk(scratch.data(), maxFrames * ch);
         size_t frames;
+        size_t xfFrames = 0;
+        std::vector<float> xfBuf;
         {
             std::unique_lock<std::mutex> lk(decodeMtx_);
             // Re-check state under lock to avoid race with seek()
@@ -1918,15 +1973,32 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             if (ch == 0)
                 ch = 2;
             frames = decoder_->decode(chunk);
+            // During crossfade, decode the incoming track into a second buffer.
+            if (crossfadeActive_ && crossfadeDecoder_ && frames > 0) {
+                xfBuf.resize(frames * ch);
+                xfFrames = crossfadeDecoder_->decode(std::span<float>(xfBuf.data(), xfBuf.size()));
+                if (xfFrames == 0) {
+                    // Incoming track reached EOF during crossfade: end crossfade early.
+                    crossfadeActive_ = false;
+                    crossfadeDecoder_.reset();
+                    crossfadeReader_.reset();
+                    xfFrames = 0;
+                }
+            }
         }
-        // Apply fade-in/fade-out envelope to decoded samples (decode thread only,
-        // real-time safe). fadeSample_ tracks samples decoded for this track.
-        if ((fadeInSamples_ > 0 || fadeOutSamples_ > 0) && frames > 0) {
+        // Apply fade-in/fade-out envelope and crossfade mix (decode thread only,
+        // real-time safe). fadeSample_ tracks samples into the outgoing track.
+        if ((fadeInSamples_ > 0 || fadeOutSamples_ > 0 || crossfadeActive_) && frames > 0) {
             uint64_t fadeStart = fadeSample_.load(std::memory_order_relaxed);
             double sr = (double)decoder_->sampleRate();
             if (sr == 0.0)
                 sr = 48000.0;
             size_t samples = frames * ch;
+            double xfProgress = crossfadeActive_
+                                    ? (double)crossfadeSample_ / (double)crossfadeSamples_
+                                    : 0.0;
+            if (xfProgress > 1.0)
+                xfProgress = 1.0;
             for (size_t i = 0; i < samples; ++i) {
                 uint64_t sampleIdx = fadeStart + i;
                 double gain = 1.0;
@@ -1942,18 +2014,54 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
                         gain = (fadeProg >= 1.0) ? 0.0 : (1.0 - fadeProg);
                     }
                 }
-                for (uint32_t c = 0; c < ch; ++c)
-                    scratch[i * ch + c] = (float)(scratch[i * ch + c] * gain);
+                // Crossfade mix: blend outgoing (gain) with incoming (xfProgress).
+                if (crossfadeActive_ && xfFrames > 0) {
+                    size_t xfIdx = i;
+                    double inSample = (double)xfBuf[xfIdx];
+                    double outSample = (double)scratch[i];
+                    // Crossfade uses equal-power mixing: sqrt(1-p) and sqrt(p).
+                    double outGain = std::sqrt(1.0 - xfProgress);
+                    double inGain = std::sqrt(xfProgress);
+                    scratch[i] = (float)(outSample * outGain * gain +
+                                         inSample * inGain * gain);
+                } else {
+                    for (uint32_t c = 0; c < ch; ++c)
+                        scratch[i * ch + c] = (float)(scratch[i * ch + c] * gain);
+                }
             }
             fadeSample_.store(fadeStart + samples, std::memory_order_release);
+            if (crossfadeActive_) {
+                crossfadeSample_ += samples;
+                if (crossfadeSample_ >= crossfadeSamples_) {
+                    // Crossfade complete: swap incoming decoder into place.
+                    crossfadeActive_ = false;
+                    decoder_ = std::move(crossfadeDecoder_);
+                    reader_ = std::move(crossfadeReader_);
+                    crossfadeDecoder_.reset();
+                    crossfadeReader_.reset();
+                    crossfadeSamples_ = 0;
+                    crossfadeSample_ = 0;
+                    // Restart fade accounting for the new track.
+                    fadeSample_.store(0, std::memory_order_release);
+                    fadeInSamples_ = 0;
+                    fadeOutSamples_ = 0;
+                    fadeOutStart_ = 0;
+                    if (cfg_.logger)
+                        cfg_.logger->debug("crossfade complete track={}",
+                                            crossfadeTrack_.id);
+                }
+            }
         }
         if (frames == 0) {
-            // EOF reached. If an inter-track gap is configured, arm the gap
-            // timer instead of advancing immediately: the next track starts
-            // after interTrackGapMs of silence. Otherwise advance as usual
+            // EOF reached. If crossfade is active, the incoming track is already
+            // being mixed in and will take over when the crossfade completes.
+            // Otherwise, if an inter-track gap is configured, arm the gap
+            // timer instead of advancing immediately. Otherwise advance as usual
             // (gapless path).
-            if (cfg_.interTrackGapMs > 0 &&
-                !interTrackGapArmed_.load(std::memory_order_acquire)) {
+            if (crossfadeActive_) {
+                // Let crossfade complete the transition.
+            } else if (cfg_.interTrackGapMs > 0 &&
+                       !interTrackGapArmed_.load(std::memory_order_acquire)) {
                 interTrackGapArmed_.store(true, std::memory_order_release);
                 interTrackGapStartMs_ = detail::nowMs();
             } else if (playbackState_.load(std::memory_order_acquire) ==

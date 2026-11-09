@@ -3,6 +3,7 @@
 #include <array>
 #include <kanariv/media/audio_ext.hpp>
 #include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
 #include <kanariv/media/scan.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/generator.hpp>
@@ -81,6 +82,70 @@ scanTracksToVector(const std::filesystem::path& root, ScanMode mode) {
     for (auto t : scanTracks(root, mode))
         out.push_back(std::move(t));
     return out;
+}
+
+kanariv::utils::Expected<double> computeReplayGainTrack(std::string_view path) {
+    // Open the file for decoding.
+    auto pathW = kanariv::utils::detail::pathFromUtf8(std::string(path));
+    auto rRes = kanariv::media::FileReader::open(pathW);
+    if (!rRes)
+        return std::unexpected{rRes.error()};
+    auto reader = std::move(rRes.value());
+    auto dRes = kanariv::media::Decoder::open(*reader);
+    if (!dRes)
+        return std::unexpected{dRes.error()};
+    auto& decoder = *dRes.value();
+
+    const uint32_t sr = decoder.sampleRate() ? decoder.sampleRate() : 48000;
+    const uint32_t ch = decoder.channels() ? decoder.channels() : 2;
+
+    // ReplayGain head filter: first-order high-pass at ~65 Hz.
+    // y[n] = x[n] - x[n-1] + a * y[n-1],  a = exp(-2*pi*fc/sr)
+    const double fc = 65.0;
+    const double a = std::exp(-2.0 * 3.14159265358979323846 * fc / (double)sr);
+    double hp_x1 = 0.0, hp_y1 = 0.0;
+
+    double sumSq = 0.0;
+    uint64_t totalSamples = 0;
+    constexpr std::size_t chunkFrames = 4096;
+    std::vector<float> buf(chunkFrames * ch);
+
+    while (true) {
+        std::size_t frames = decoder.decode(std::span<float>(buf.data(), buf.size()));
+        if (frames == 0)
+            break;
+        std::size_t samples = frames * ch;
+        for (std::size_t i = 0; i < samples; ++i) {
+            double x = (double)buf[i];
+            // Head filter (high-pass).
+            double y = x - hp_x1 + a * hp_y1;
+            hp_x1 = x;
+            hp_y1 = y;
+            sumSq += y * y;
+            ++totalSamples;
+        }
+    }
+
+    if (totalSamples == 0)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                      "no audio samples decoded")};
+
+    double rms = std::sqrt(sumSq / (double)totalSamples);
+    if (rms <= 0.0)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                      "silent audio")};
+
+    // dBFS of filtered RMS.
+    double dbfs = 20.0 * std::log10(rms);
+    // ReplayGain reference: 89 dB SPL. Approximate digital-to-acoustic
+    // calibration: -20 dBFS RMS broadband pink noise ~= 83 dB SPL.
+    // gain_dB = target(89) - measured(83 + (dbfs - (-20)))
+    //         = 89 - 83 - dbfs - 20
+    //         = -14 - dbfs
+    double gainDb = -14.0 - dbfs;
+    return gainDb;
 }
 
 } // namespace kanariv::media

@@ -16,6 +16,7 @@
 #include <expected>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
@@ -303,6 +304,8 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             upd.play_count = keepPlay;
             upd.rating = keepRating;
             upd.date_added = keepAdded;
+            if (auto rg = kanariv::media::computeReplayGainTrack(trk.path); rg)
+                upd.replayGainTrack = *rg;
             if (DatabaseAccess::updateTrackLocked(db, upd))
                 updated++;
             else {
@@ -312,6 +315,8 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             }
         } else {
             trk.library_id = libraryId;
+            if (auto rg = kanariv::media::computeReplayGainTrack(trk.path); rg)
+                trk.replayGainTrack = *rg;
             if (DatabaseAccess::insertTrackLocked(db, trk))
                 added++;
             else {
@@ -342,6 +347,61 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
     if (auto* lg = db.logger())
         lg->info("scan finished root={} scanned={} added={} updated={} failed={}", libPath, scanned,
                  added, updated, failed);
+
+    // Album gain: average the per-track gains of all tracks sharing an album
+    // name, then write replay_gain_album back to each track.
+    {
+        std::unique_lock<std::shared_mutex> lk(DatabaseAccess::mutex(db));
+        if (DatabaseAccess::handleLocked(db)) {
+            char* err = nullptr;
+            internal::SqliteErrGuard guard{err};
+            int rc = sqlite3_exec(DatabaseAccess::handleLocked(db), "BEGIN IMMEDIATE",
+                                  nullptr, nullptr, &err);
+            if (rc == SQLITE_OK) {
+                sqlite3_stmt* st = nullptr;
+                const char* sql =
+                    "SELECT id, album, replay_gain_track FROM tracks "
+                    "WHERE library_id=? AND album!='' AND replay_gain_track!=0";
+                if (sqlite3_prepare_v2(DatabaseAccess::handleLocked(db), sql, -1, &st,
+                                       nullptr) == SQLITE_OK) {
+                    sqlite3_bind_int64(st, 1, libraryId);
+                    struct AlbumGain { double sum; int count; };
+                    std::map<std::string, AlbumGain> albums;
+                    while (sqlite3_step(st) == SQLITE_ROW) {
+                        int64_t id = sqlite3_column_int64(st, 0);
+                        const char* album = (const char*)sqlite3_column_text(st, 1);
+                        double rg = sqlite3_column_double(st, 2);
+                        if (album && *album) {
+                            auto& ag = albums[std::string(album)];
+                            ag.sum += rg;
+                            ag.count++;
+                        }
+                        (void)id;
+                    }
+                    sqlite3_finalize(st);
+                    // Second pass: update each track with its album average.
+                    for (auto& [album, ag] : albums) {
+                        if (ag.count == 0)
+                            continue;
+                        double avg = ag.sum / (double)ag.count;
+                        sqlite3_stmt* ust = nullptr;
+                        if (sqlite3_prepare_v2(DatabaseAccess::handleLocked(db),
+                                               "UPDATE tracks SET replay_gain_album=? "
+                                               "WHERE library_id=? AND album=? AND replay_gain_track!=0",
+                                               -1, &ust, nullptr) == SQLITE_OK) {
+                            sqlite3_bind_double(ust, 1, avg);
+                            sqlite3_bind_int64(ust, 2, libraryId);
+                            sqlite3_bind_text(ust, 3, album.c_str(), -1, SQLITE_TRANSIENT);
+                            sqlite3_step(ust);
+                            sqlite3_finalize(ust);
+                        }
+                    }
+                }
+                sqlite3_exec(DatabaseAccess::handleLocked(db), "COMMIT", nullptr, nullptr, nullptr);
+            }
+        }
+    }
+
     auto libs2 = db.listLibraries();
     if (libs2) {
         for (auto& l : *libs2)

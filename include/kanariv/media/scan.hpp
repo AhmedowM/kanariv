@@ -58,4 +58,16 @@ KANARIV_API kanariv::utils::Generator<kanariv::types::Track> scanTracks(const st
 KANARIV_API std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode = ScanMode::Sampled);
 
+/**
+ * @brief Compute ReplayGain track gain (dB) by decoding and analysing audio.
+ * @ingroup kanariv_media
+ * @param path Audio file path.
+ * @return Track gain in dB relative to the 89 dB reference, or Error.
+ * @details Decodes the full stream with FFmpeg, applies a head + A-weighting
+ * filter approximation, computes RMS loudness, and returns the gain needed to
+ * reach the ReplayGain reference level. Negative values mean the track is
+ * louder than reference and should be attenuated.
+ */
+KANARIV_API kanariv::utils::Expected<double> computeReplayGainTrack(std::string_view path);
+
 } // namespace kanariv::media
