@@ -5,7 +5,10 @@ buildscript {
         gradlePluginPortal()
     }
     dependencies {
-        classpath "com.android.tools.build:gradle:8.2.0"
+        // AGP 9 requires Gradle 9.1+ (the project builds with Gradle 9.8)
+        // and aligns uncompressed native libraries to 16 KB zip boundaries,
+        // which Android 16 (16 KB page size) requires.
+        classpath "com.android.tools.build:gradle:9.5.1"
     }
 }
 

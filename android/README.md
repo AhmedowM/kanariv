@@ -17,7 +17,9 @@ this directory. The daemon itself is the normal kanariv C++ code under
 - JDK 17 or newer (JDK 21 is used in CI).
 - Android SDK with platform and build-tools 36.
 - Android NDK 30 (`ANDROID_NDK_ROOT`).
-- Gradle 8.x or newer (`gradle` on `PATH`).
+- Gradle 9.1 or newer (`gradle` on `PATH`). The build uses Android Gradle
+  plugin 9.x, which also aligns the packaged native libraries for Android's
+  16 KB page size.
 - `adb` for installing and inspecting the device.
 
 The app currently packages `arm64-v8a` only, matching the prebuilt native

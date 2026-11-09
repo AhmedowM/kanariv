@@ -41,6 +41,7 @@ Thumbs.db
 
 # Dev-environment artifacts (audits, plans, scratch tooling) — never shipped
 .dev/
+.tmp/
 
 # Vendored build artefacts
 *.o

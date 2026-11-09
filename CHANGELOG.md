@@ -244,6 +244,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   creates the real backend instead of the stub; the bridge loads only
   `libkanariv_android.so`. Notification, lock-screen, Bluetooth and headset
   controls now work, including seeking and play/pause.
+- Android 16 (16 KB page size) compatibility: the APK is now built with
+  Android Gradle plugin 9.x, which aligns uncompressed native libraries to
+  16 KB zip boundaries, and all packaged ELF load segments are 16 KB aligned.
+  This removes the "App isn't 16 KB compatible" warning shown on launch.
 
 ## [v1.8.0] - 2026-10-19
 
