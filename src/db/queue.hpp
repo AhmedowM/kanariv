@@ -19,9 +19,11 @@
  * @details All helpers are `*Locked` -- the caller must hold the
  * Database mutex (dbMutex_) exclusively for mutating ops and at least
  * shared for reads. The `queue` table enforces UNIQUE(queue_id, position)
- * (see schema.hpp); position shifts use
- * `UPDATE queue SET position=position+1 WHERE queue_id=? AND position>=?`
- * which requires serialized access -- guaranteed by the single-writer lock.
+ * (see schema.hpp). Positions use gap-based indexing: enqueue computes a
+ * midpoint between neighbours instead of shifting all subsequent items,
+ * and dequeue/remove leave gaps (ordering is by position value, so gaps
+ * are harmless). A rare renormalization restores full gaps when midpoint
+ * space is exhausted (~30 insertions between the same two items).
  * Every function normalizes qid == 0 to 1 (default queue).
  */
 
@@ -40,9 +42,11 @@ namespace kanariv::db {
  * @param pos Position (-1 = append at MAX+1, else shift + insert).
  * @return Success or Error with StatusCode::InvalidArg if tid==0,
  * StatusCode::Internal if no handle or SQLite error.
- * @details If pos < 0, computes MAX(position)+1; otherwise shifts
- * positions >= pos via position+1 before inserting. The UNIQUE invariant
- * requires exclusive lock (caller must hold dbMutex_).
+ * @details If pos < 0, computes MAX(position)+GAP; otherwise finds the
+ * items at indices pos-1 and pos (ORDER BY position) and inserts at their
+ * midpoint. No existing positions are shifted -- gaps are intentional.
+ * Renormalizes (renumbers 0, GAP, 2*GAP, ...) when midpoint space runs out.
+ * The UNIQUE invariant requires exclusive lock (caller must hold dbMutex_).
  * @par Thread safety
  * Caller must hold Database::mutex().
  */
@@ -55,8 +59,8 @@ std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64
  * @param db SQLite handle.
  * @param qid kanariv::types::Queue id (0 -> 1).
  * @return QueueItem or Error NotFound/Internal.
- * @details Selects ORDER BY position LIMIT 1, deletes it, then shifts
- * remaining positions down by 1 (position-1 where position > removed).
+ * @details Selects ORDER BY position LIMIT 1, deletes it. Remaining
+ * positions are left as-is (gaps are intentional; ordering is by value).
  * @par Thread safety
  * Caller must hold Database::mutex() exclusively.
  */
@@ -70,8 +74,8 @@ std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLock
  * @param qid kanariv::types::Queue id (0 -> 1).
  * @param pos Position to remove.
  * @return Success or Error NotFound/Internal.
- * @details Deletes WHERE queue_id=? AND position=?, then shifts down
- * positions > pos.
+ * @details Deletes WHERE queue_id=? AND position=?. Remaining positions
+ * are left as-is (gaps are intentional; ordering is by value).
  * @par Thread safety
  * Caller must hold Database::mutex() exclusively.
  */
