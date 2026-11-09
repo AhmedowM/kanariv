@@ -226,6 +226,17 @@ struct Engine::Impl {
     // gaplessArmed_: 0->1 CAS arms gapless pre-roll ~300ms before track end (gaplessMs).
     // Reset to false on TrackStarted / next() failure. Requires engineTick() single-writer.
     std::atomic<bool> gaplessArmed_{false};
+    // Playback polish state (real-time safe, touched only in decodeLoop/doPlayTrack):
+    // fadeSample_ counts samples into the current fade; fadeInSamples_/fadeOutSamples_
+    // are precomputed per track; fadeOutStart_ holds the position where fade-out begins.
+    std::atomic<uint64_t> fadeSample_{0};
+    uint64_t fadeInSamples_{0};
+    uint64_t fadeOutSamples_{0};
+    double fadeOutStart_{0};
+    // interTrackGapArmed_: set when the current track ends and we're waiting
+    // for the inter-track gap to elapse before starting the next track.
+    std::atomic<bool> interTrackGapArmed_{false};
+    uint64_t interTrackGapStartMs_{0};
     mutable std::timed_mutex queueMutex_;
 };
 
@@ -1127,6 +1138,12 @@ Engine::Impl::Impl(const kanariv::types::EngineConfig& cfg) : cfg_(cfg), state_{
     resetPlaybackAccounting();
     gaplessArmed_.store(false, std::memory_order_release);
     lastProgressMs_.store(0, std::memory_order_release);
+    fadeSample_.store(0, std::memory_order_release);
+    fadeInSamples_ = 0;
+    fadeOutSamples_ = 0;
+    fadeOutStart_ = 0;
+    interTrackGapArmed_.store(false, std::memory_order_release);
+    interTrackGapStartMs_ = 0;
     // callbacks from config
     callbacks_ = cfg.callbacks;
 }
@@ -1520,11 +1537,36 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
                 cfg.sampleRate = sr;
                 cfg.channels = ch;
                 cfg.ring = ring_.get();
-                cfg.volume = volume_.load(std::memory_order_relaxed);
+                // ReplayGain: apply track/album gain (dB) as a volume multiplier
+                // on top of the user volume. dB -> linear: 10^(dB/20).
+                float gain = volume_.load(std::memory_order_relaxed);
+                if (cfg_.replayGain != kanariv::types::ReplayGainMode::Off) {
+                    double gainDb = 0.0;
+                    if (cfg_.replayGain == kanariv::types::ReplayGainMode::Track)
+                        gainDb = t.replayGainTrack;
+                    else if (cfg_.replayGain == kanariv::types::ReplayGainMode::Album)
+                        gainDb = t.replayGainAlbum;
+                    if (gainDb != 0.0)
+                        gain = (float)(gain * std::pow(10.0, gainDb / 20.0));
+                }
+                cfg.volume = gain;
                 cfg.logger = cfg_.logger;
                 auto oRes = kanariv::player::AudioOutput::create(cfg);
                 if (oRes) {
                     output_ = std::move(oRes.value());
+                    // Initialize fade state for this track.
+                    fadeSample_.store(0, std::memory_order_release);
+                    fadeInSamples_ = 0;
+                    fadeOutSamples_ = 0;
+                    fadeOutStart_ = 0;
+                    if (cfg_.fadeInMs > 0 && sr > 0)
+                        fadeInSamples_ = (uint64_t)cfg_.fadeInMs * sr / 1000;
+                    if (cfg_.fadeOutMs > 0 && sr > 0 && duration_ > 0) {
+                        fadeOutSamples_ = (uint64_t)cfg_.fadeOutMs * sr / 1000;
+                        fadeOutStart_ = duration_ - (double)cfg_.fadeOutMs / 1000.0;
+                        if (fadeOutStart_ < 0.0)
+                            fadeOutStart_ = 0.0;
+                    }
                     // preroll: decode some frames before start
                     preroll();
                     output_->start();
@@ -1744,7 +1786,10 @@ void Engine::Impl::engineTick() {
             double pos = currentPositionLocked();
             double remaining = duration_ - pos;
             double gapS = (double)cfg_.gaplessMs / 1000.0;
-            if (remaining <= gapS && remaining >= 0.0) {
+            // Gapless preroll is skipped when an inter-track gap is configured:
+            // the track plays to end, then decodeLoop handles the gap before
+            // starting the next track.
+            if (cfg_.interTrackGapMs == 0 && remaining <= gapS && remaining >= 0.0) {
                 if (hasCurrent_.load(std::memory_order_acquire)) {
                     // gaplessArmed 0->1 CAS, 300ms preroll
                     bool expected = false;
@@ -1828,6 +1873,21 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             });
             continue;
         }
+        // Inter-track gap: after the current track decodes to EOF, wait
+        // interTrackGapMs before starting the next track. Check here so the
+        // gap elapses even while the ring is draining to silence.
+        if (interTrackGapArmed_.load(std::memory_order_acquire)) {
+            uint64_t now = detail::nowMs();
+            if (now - interTrackGapStartMs_ >=
+                (uint64_t)cfg_.interTrackGapMs) {
+                interTrackGapArmed_.store(false, std::memory_order_release);
+                if (playbackState_.load(std::memory_order_acquire) ==
+                    kanariv::types::PlaybackState::Playing) {
+                    auto nr = autoNext();
+                    (void)nr;
+                }
+            }
+        }
         if (avail == 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
             continue;
@@ -1859,14 +1919,45 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
                 ch = 2;
             frames = decoder_->decode(chunk);
         }
+        // Apply fade-in/fade-out envelope to decoded samples (decode thread only,
+        // real-time safe). fadeSample_ tracks samples decoded for this track.
+        if ((fadeInSamples_ > 0 || fadeOutSamples_ > 0) && frames > 0) {
+            uint64_t fadeStart = fadeSample_.load(std::memory_order_relaxed);
+            double sr = (double)decoder_->sampleRate();
+            if (sr == 0.0)
+                sr = 48000.0;
+            size_t samples = frames * ch;
+            for (size_t i = 0; i < samples; ++i) {
+                uint64_t sampleIdx = fadeStart + i;
+                double gain = 1.0;
+                // Fade-in: ramp 0 -> 1 over fadeInSamples.
+                if (fadeInSamples_ > 0 && sampleIdx < fadeInSamples_)
+                    gain = (double)sampleIdx / (double)fadeInSamples_;
+                // Fade-out: ramp 1 -> 0 over fadeOutSamples starting at fadeOutStart_.
+                if (fadeOutSamples_ > 0) {
+                    double posSec = (double)sampleIdx / sr;
+                    if (posSec >= fadeOutStart_) {
+                        double fadeProg = (posSec - fadeOutStart_) /
+                                          ((double)fadeOutSamples_ / sr);
+                        gain = (fadeProg >= 1.0) ? 0.0 : (1.0 - fadeProg);
+                    }
+                }
+                for (uint32_t c = 0; c < ch; ++c)
+                    scratch[i * ch + c] = (float)(scratch[i * ch + c] * gain);
+            }
+            fadeSample_.store(fadeStart + samples, std::memory_order_release);
+        }
         if (frames == 0) {
-            // EOF reached. The monitor's gapless autoNext should already have
-            // advanced or stopped the track. As a safety net, trigger it
-            // directly if state is still Playing so natural track end always
-            // transitions SMTC instead of leaving PlaybackStatus stuck on
-            // Playing. Guard on state to avoid double-handling once stopped.
-            if (playbackState_.load(std::memory_order_acquire) ==
-                kanariv::types::PlaybackState::Playing) {
+            // EOF reached. If an inter-track gap is configured, arm the gap
+            // timer instead of advancing immediately: the next track starts
+            // after interTrackGapMs of silence. Otherwise advance as usual
+            // (gapless path).
+            if (cfg_.interTrackGapMs > 0 &&
+                !interTrackGapArmed_.load(std::memory_order_acquire)) {
+                interTrackGapArmed_.store(true, std::memory_order_release);
+                interTrackGapStartMs_ = detail::nowMs();
+            } else if (playbackState_.load(std::memory_order_acquire) ==
+                       kanariv::types::PlaybackState::Playing) {
                 auto nr = autoNext();
                 (void)nr;
             }

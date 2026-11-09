@@ -76,6 +76,14 @@ struct Config {
     std::string repeatDefault{"off"};
     /** @brief When a track is added to an empty queue, auto-start playback. Default: false. */
     bool autostart{false};
+    /** @brief ReplayGain normalization: "off", "track", or "album". Default: "off". */
+    std::string replayGain{"off"};
+    /** @brief Fade-in duration in ms (0 = off). Default: 0. */
+    int fadeInMs{0};
+    /** @brief Fade-out duration in ms (0 = off). Default: 0. */
+    int fadeOutMs{0};
+    /** @brief Inter-track silence in ms (0 = gapless). Default: 0. */
+    int interTrackGapMs{0};
 };
 
 /**

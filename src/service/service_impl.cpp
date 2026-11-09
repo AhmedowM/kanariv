@@ -174,6 +174,15 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
     kanariv::types::EngineConfig ecfg{};
     ecfg.logger = logger;
     ecfg.autoResumeOnPlay = cfg.autoResumeOnPlay;
+    if (cfg.replayGain == "track")
+        ecfg.replayGain = kanariv::types::ReplayGainMode::Track;
+    else if (cfg.replayGain == "album")
+        ecfg.replayGain = kanariv::types::ReplayGainMode::Album;
+    else
+        ecfg.replayGain = kanariv::types::ReplayGainMode::Off;
+    ecfg.fadeInMs = cfg.fadeInMs;
+    ecfg.fadeOutMs = cfg.fadeOutMs;
+    ecfg.interTrackGapMs = cfg.interTrackGapMs;
     auto engRes = kanariv::engine::Engine::create(ecfg);
     if (!engRes) {
         detail::releaseLock(lockFd);

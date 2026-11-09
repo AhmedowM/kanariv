@@ -87,7 +87,9 @@ inline constexpr std::string_view schema =
     "source_kind INTEGER NOT NULL DEFAULT 0,"
     "source_key TEXT NOT NULL DEFAULT '',"
     "source_available BOOLEAN NOT NULL DEFAULT 1,"
-    "source_display_name TEXT"
+    "source_display_name TEXT,"
+    "replay_gain_track REAL DEFAULT 0,"
+    "replay_gain_album REAL DEFAULT 0"
     ");"
     "CREATE INDEX IF NOT EXISTS idx_tracks_fingerprint ON tracks(fingerprint);"
     "CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path);"
@@ -354,7 +356,9 @@ Database::open(std::string_view path, const DatabaseOptions& opts) {
           "ALTER TABLE tracks ADD COLUMN source_kind INTEGER NOT NULL DEFAULT 0",
           "ALTER TABLE tracks ADD COLUMN source_key TEXT NOT NULL DEFAULT ''",
           "ALTER TABLE tracks ADD COLUMN source_available BOOLEAN NOT NULL DEFAULT 1",
-          "ALTER TABLE tracks ADD COLUMN source_display_name TEXT"}) {
+          "ALTER TABLE tracks ADD COLUMN source_display_name TEXT",
+          "ALTER TABLE tracks ADD COLUMN replay_gain_track REAL DEFAULT 0",
+          "ALTER TABLE tracks ADD COLUMN replay_gain_album REAL DEFAULT 0"}) {
         char* migErr = nullptr;
         int migRc = sqlite3_exec(raw, mig, nullptr, nullptr, &migErr);
         if (migErr) {

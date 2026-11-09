@@ -70,6 +70,16 @@ struct EngineCallbacks {
 };
 
 /**
+ * @brief ReplayGain normalization mode.
+ * @ingroup kanariv_types
+ */
+enum class ReplayGainMode : std::uint8_t {
+    Off = 0,   ///< No replay gain (raw volume).
+    Track = 1, ///< Per-track gain normalization (replay_gain_track).
+    Album = 2, ///< Per-album gain normalization (replay_gain_album).
+};
+
+/**
  * @brief Configuration for Engine construction.
  * @ingroup kanariv_types
  * @details `pollMs` controls monitorLoop sleep (default 10 ms);
@@ -80,6 +90,15 @@ struct EngineCallbacks {
  * timer-only fallback for tracks whose file/decoder/device cannot be
  * opened; with it off, play/next/prev return an error instead of
  * reporting Playing with no sound.
+ *
+ * Playback polish (all configurable, default off = gapless/raw):
+ * - `replayGain`: Track/Album/Off normalization applied as a volume
+ *   multiplier at track load time from `Track::replayGainTrack` /
+ *   `Track::replayGainAlbum` (dB).
+ * - `fadeInMs`/`fadeOutMs`: fade envelope applied to decoded samples in the
+ *   decode loop (real-time safe, no blocking).
+ * - `interTrackGapMs`: silence between tracks (0 = gapless). Implemented by
+ *   delaying gapless arming so the output ring drains before the next track.
  */
 struct EngineConfig {
     bool enableMonitorThread{true};     ///< Whether to start monitorLoop.
@@ -97,6 +116,14 @@ struct EngineConfig {
     /// If true, play() in Stopped state resumes the persisted track/position
     /// (from DB) instead of advancing to the next queue track.
     bool autoResumeOnPlay{false};
+    /// ReplayGain normalization mode (default Off).
+    ReplayGainMode replayGain{ReplayGainMode::Off};
+    /// Fade-in duration in ms (0 = off). Applied to first samples of each track.
+    int fadeInMs{0};
+    /// Fade-out duration in ms (0 = off). Applied to last samples of each track.
+    int fadeOutMs{0};
+    /// Inter-track silence in ms (0 = gapless). Delay before starting next track.
+    int interTrackGapMs{0};
     EngineCallbacks callbacks{}; ///< Initial callbacks (also via setCallbacks).
     /// Non-owning logger (may be null = silent). Must outlive the Engine;
     /// never emitted from destructors. Threaded through to decode paths.

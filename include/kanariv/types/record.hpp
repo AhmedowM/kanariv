@@ -136,6 +136,8 @@ struct Track {
     std::array<uint8_t, 32> fingerprint{}; ///< BLAKE3-256 content fingerprint (UNIQUE).
     bool dirty{false};                     ///< True if metadata needs re-scan.
     SourceRef source{};                    ///< Durable source identity (path by default).
+    double replayGainTrack{};              ///< ReplayGain track gain (dB, applied if mode==Track).
+    double replayGainAlbum{};              ///< ReplayGain album gain (dB, applied if mode==Album).
 
 };
 

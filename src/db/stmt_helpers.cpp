@@ -48,6 +48,8 @@ void fillTrackFromStmt(sqlite3_stmt* stmt, kanariv::types::Track& t) {
     t.source.key = columnText(stmt, 27);
     t.source.available = sqlite3_column_int(stmt, 28) != 0;
     t.source.display_name = columnText(stmt, 29);
+    t.replayGainTrack = sqlite3_column_double(stmt, 30);
+    t.replayGainAlbum = sqlite3_column_double(stmt, 31);
 }
 
 SqliteErrGuard::~SqliteErrGuard() {

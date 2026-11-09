@@ -176,6 +176,20 @@ kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
         if (j.contains("autostart") && j["autostart"].isBoolean()) {
             cfg.autostart = j["autostart"].get<bool>();
         }
+        if (j.contains("replayGain") && j["replayGain"].isString()) {
+            std::string rg = j["replayGain"].get<std::string>();
+            if (rg == "off" || rg == "track" || rg == "album")
+                cfg.replayGain = rg;
+        }
+        if (j.contains("fadeInMs") && j["fadeInMs"].isInteger()) {
+            cfg.fadeInMs = j["fadeInMs"].get<int>();
+        }
+        if (j.contains("fadeOutMs") && j["fadeOutMs"].isInteger()) {
+            cfg.fadeOutMs = j["fadeOutMs"].get<int>();
+        }
+        if (j.contains("interTrackGapMs") && j["interTrackGapMs"].isInteger()) {
+            cfg.interTrackGapMs = j["interTrackGapMs"].get<int>();
+        }
         // legacy keys: db_path, log_level
         if (j.contains("db_path") && j["db_path"].isString()) {
             std::string s = j["db_path"].get<std::string>();
@@ -210,6 +224,10 @@ kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
         j["clearStopsPlayback"] = cfg.clearStopsPlayback;
         j["repeatDefault"] = cfg.repeatDefault;
         j["autostart"] = cfg.autostart;
+        j["replayGain"] = cfg.replayGain;
+        j["fadeInMs"] = cfg.fadeInMs;
+        j["fadeOutMs"] = cfg.fadeOutMs;
+        j["interTrackGapMs"] = cfg.interTrackGapMs;
         if (!cfg.socketPath.empty())
             j["socketPath"] = cfg.socketPath;
         std::ofstream out(cfg.configPath);

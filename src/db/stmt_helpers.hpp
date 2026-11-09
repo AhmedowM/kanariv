@@ -27,7 +27,8 @@ inline constexpr std::string_view selectTracksCols =
     "SELECT id, fingerprint, path, deleted_at, size, mtime, duration, sample_rate, channels, "
     "bitrate, title, artist, album, album_artist, genre, year, track_num, disc_num, "
     "cover_art_path, rating, play_count, last_played, date_added, last_scanned, dirty, library_id, "
-    "source_kind, source_key, source_available, source_display_name "
+    "source_kind, source_key, source_available, source_display_name, "
+    "replay_gain_track, replay_gain_album "
     "FROM tracks";
 
 /**
@@ -93,7 +94,8 @@ struct StmtGuard {
  * 13:album_artist 14:genre 15:year 16:track_num 17:disc_num 18:cover_art_path
  * 19:rating 20:play_count 21:last_played 22:date_added 23:last_scanned
  * 24:dirty 25:library_id 26:source_kind 27:source_key 28:source_available
- * 29:source_display_name. Fingerprint is zeroed if the blob is not 32 bytes.
+ * 29:source_display_name 30:replay_gain_track 31:replay_gain_album.
+ * Fingerprint is zeroed if the blob is not 32 bytes.
  * @par Thread safety
  * Caller must hold the DB lock protecting the statement's connection.
  * @see selectTracksCols
