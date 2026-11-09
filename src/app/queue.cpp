@@ -332,7 +332,7 @@ BatchResult App::queueRemove(const std::string& id, const std::string& pos,
     int removed = 0;
     std::vector<kanariv::types::Track> removedTracks;
     for (auto& t : targets) {
-        kanariv::ipc::Command cmd{kanariv::ipc::QueueRemove{std::to_string(t.pos)}};
+        kanariv::ipc::Command cmd{kanariv::ipc::QueueRemove{std::to_string(t.track.id)}};
         auto res = impl_->sendRaw(cmd);
         if (!res) {
             detail::renderErrorInto(rep.err, res.error());
