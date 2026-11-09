@@ -235,6 +235,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now dispatched regardless of queue state, `Progress` samples only fill half
   of the queue, and stopping at the end of a queue keeps the last now-playing
   metadata instead of blanking it
+- Android media integration: the foreground service now publishes real
+  `MediaMetadata` (title, artist, album, artwork and duration) and
+  `PlaybackState` (playing/paused/stopped, position, actions including seek)
+  to a platform `MediaSession`, and the `MediaStyle` notification updates its
+  artwork, text and play/pause action. `JNI_OnLoad` registers the Android
+  backend through `MediaSession::setAndroidFactory()`, so `libservice.so`
+  creates the real backend instead of the stub; the bridge loads only
+  `libkanariv_android.so`. Notification, lock-screen, Bluetooth and headset
+  controls now work, including seeking and play/pause.
 
 ## [v1.8.0] - 2026-10-19
 

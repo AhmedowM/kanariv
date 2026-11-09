@@ -107,6 +107,25 @@ class MediaSession {
     using ExpectedSession = std::expected<std::unique_ptr<MediaSession>, kanariv::utils::Error>;
 
     /**
+     * @brief Factory signature for an externally-provided platform backend.
+     * @details Android keeps its backend in the JNI shared library
+     * (`android/media_session_android.cpp`), which is linked after the core
+     * service. `setAndroidFactory()` lets that library register the real
+     * backend before the daemon creates its `MediaSession`.
+     */
+    using Factory = ExpectedSession (*)(std::string appName, std::string appIcon,
+                                        bool enableNotifications, bool enableMediaKeys);
+
+    /**
+     * @brief Register the Android media-session backend factory.
+     * @param factory Factory function, or nullptr to clear it.
+     * @note Called from `JNI_OnLoad` in the Android JNI library. The factory
+     * is only consulted by `create()` on Android; registering one on another
+     * platform has no effect.
+     */
+    KANARIV_API static void setAndroidFactory(Factory factory) noexcept;
+
+    /**
      * @brief Create the platform-specific backend.
      * @param appName Application name shown in OS UI.
      * @param appIcon Path to application icon (optional).

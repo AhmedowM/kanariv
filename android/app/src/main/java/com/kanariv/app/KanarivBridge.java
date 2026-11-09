@@ -21,7 +21,7 @@ public class KanarivBridge {
     private static final String TAG = "KanarivBridge";
 
     static {
-        System.loadLibrary("kanariv");
+        System.loadLibrary("kanariv_android");
     }
 
     // ---- Native methods (implemented in C++) ----
@@ -36,12 +36,14 @@ public class KanarivBridge {
     private static native void nativeStop();
     private static native void nativeNext();
     private static native void nativePrev();
+    private static native void nativeTogglePlayPause();
     private static native void nativeSeek(double delta);
     private static native void nativeSeekTo(double position);
     private static native void nativeSetVolume(float volume);
     private static native void nativeSetRepeat(int repeat);
     private static native void nativeSetShuffle(boolean shuffle);
     private static native boolean nativeLibraryAdd(String path);
+    private static native void nativeSetCallbackInstance(KanarivBridge instance);
 
     // ---- Callback object reference (set by the foreground service) ----
 
@@ -49,6 +51,9 @@ public class KanarivBridge {
 
     public static void setCallbackInstance(KanarivBridge instance) {
         sCallbackInstance = instance;
+        // Mirror the instance into the native layer so MediaSessionAndroid can
+        // call the onMedia* callbacks from the daemon thread.
+        nativeSetCallbackInstance(instance);
     }
 
     // ---- Public API used by the foreground service / activity ----
@@ -84,6 +89,10 @@ public class KanarivBridge {
 
     public static void prev() {
         nativePrev();
+    }
+
+    public static void togglePlayPause() {
+        nativeTogglePlayPause();
     }
 
     public static void seek(double delta) {
@@ -122,7 +131,7 @@ public class KanarivBridge {
 
     public void onMediaMetadata(String title, String artist, String album,
                                 String artworkPath, String artworkMime,
-                                long trackId) {
+                                String artworkBase64, long trackId) {
         Log.d(TAG, "metadata: " + title + " - " + artist);
     }
 

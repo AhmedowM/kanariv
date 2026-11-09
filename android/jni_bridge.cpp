@@ -1,8 +1,10 @@
 #include <jni_bridge.hpp>
+#include <media_session_android.hpp>
 
 #include <kanariv/config/runtime.hpp>
 #include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
+#include <kanariv/engine/engine.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/media/audio_ext.hpp>
 #include <kanariv/service/host.hpp>
@@ -139,6 +141,7 @@ static void nativeStopDaemon(JNIEnv*, jclass) noexcept {
         g_host->stop();
         g_host.reset();
     }
+    kanariv::android::jniClearCallbackObject();
 }
 
 /**
@@ -214,6 +217,36 @@ static void nativePrev(JNIEnv*, jclass) noexcept {
         return;
     }
     dispatchCmd(kanariv::ipc::Prev{});
+}
+
+/**
+ * @brief Toggle play/pause based on the engine's current state.
+ * @details Used by headset media buttons and the notification's play/pause
+ * action, where a single button has to decide between Play and Pause.
+ * @callfrom Java thread.
+ */
+static void nativeTogglePlayPause(JNIEnv*, jclass) noexcept {
+    std::lock_guard<std::mutex> lock(g_hostMutex);
+    if (!g_host) {
+        LOGE("nativeTogglePlayPause: g_host is null");
+        return;
+    }
+    if (g_host->service().engine().state() == kanariv::types::PlaybackState::Playing)
+        dispatchCmd(kanariv::ipc::Pause{});
+    else
+        dispatchCmd(kanariv::ipc::Play{});
+}
+
+/**
+ * @brief Register the Java callback object that receives media-session events.
+ * @param instance KanarivBridge instance, or null to clear it.
+ * @callfrom Java thread.
+ */
+static void nativeSetCallbackInstance(JNIEnv*, jclass, jobject instance) noexcept {
+    if (instance == nullptr)
+        kanariv::android::jniClearCallbackObject();
+    else
+        kanariv::android::jniSetCallbackObject(instance);
 }
 
 /**
@@ -371,12 +404,15 @@ static JNINativeMethod kMethods[] = {
     {"nativeStop", "()V", reinterpret_cast<void*>(nativeStop)},
     {"nativeNext", "()V", reinterpret_cast<void*>(nativeNext)},
     {"nativePrev", "()V", reinterpret_cast<void*>(nativePrev)},
+    {"nativeTogglePlayPause", "()V", reinterpret_cast<void*>(nativeTogglePlayPause)},
     {"nativeSeek", "(D)V", reinterpret_cast<void*>(nativeSeek)},
     {"nativeSeekTo", "(D)V", reinterpret_cast<void*>(nativeSeekTo)},
     {"nativeSetVolume", "(F)V", reinterpret_cast<void*>(nativeSetVolume)},
     {"nativeSetRepeat", "(I)V", reinterpret_cast<void*>(nativeSetRepeat)},
     {"nativeSetShuffle", "(Z)V", reinterpret_cast<void*>(nativeSetShuffle)},
     {"nativeLibraryAdd", "(Ljava/lang/String;)Z", reinterpret_cast<void*>(nativeLibraryAdd)},
+    {"nativeSetCallbackInstance", "(Lcom/kanariv/app/KanarivBridge;)V",
+     reinterpret_cast<void*>(nativeSetCallbackInstance)},
 };
 
 } // namespace kanariv::android
@@ -394,6 +430,10 @@ int kanariv::android::jniRegisterNatives(JNIEnv* env) noexcept {
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     (void)reserved;
     kanariv::android::jniInit(vm);
+    // Register the Android media-session backend before the service creates
+    // its MediaSession. The backend lives in this JNI library, not libservice.
+    kanariv::media_session::MediaSession::setAndroidFactory(
+        &kanariv::media_session::createAndroid);
     JNIEnv* env = nullptr;
     if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK)
         return JNI_ERR;

@@ -188,9 +188,12 @@ list of project options, inspect the [configuration reference](#configuration).
 - **Android:** configure the native shared-library target with
   `python scripts/build-ffmpeg.py --android-ndk <path>` followed by
   `python scripts/configure.py android --ndk <path> --ffmpeg-root <prefix>`.
-  The current target does not include Java/Kotlin or application lifecycle
-  code. The x86 variant automatically disables FFmpeg assembly because its
-  32-bit assembly is not PIC-compatible with Android shared libraries.
+  The `android/` directory also contains a Java app that hosts the daemon
+  in-process and integrates with the system media controls (notification,
+  lock screen, Bluetooth/headset buttons); see `android/README.md` for the
+  APK build, install and verification steps. The x86 variant automatically
+  disables FFmpeg assembly because its 32-bit assembly is not PIC-compatible
+  with Android shared libraries.
 
 Headless test runs can avoid opening an audio device:
 

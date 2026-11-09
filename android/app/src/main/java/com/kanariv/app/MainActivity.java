@@ -1,9 +1,12 @@
 package com.kanariv.app;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.OpenableColumns;
@@ -29,6 +32,7 @@ public class MainActivity extends Activity {
     private static final String TAG = "KanarivMain";
 
     private static final int REQUEST_PICK_AUDIO = 1;
+    private static final int REQUEST_NOTIFICATIONS = 2;
 
     private TextView mStatusText;
     private Button mStartButton;
@@ -42,6 +46,13 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                    REQUEST_NOTIFICATIONS);
+        }
+
         mStatusText = findViewById(R.id.status_text);
         mStartButton = findViewById(R.id.start_button);
         mStopButton = findViewById(R.id.stop_button);
@@ -52,8 +63,14 @@ public class MainActivity extends Activity {
         mStartButton.setOnClickListener(v -> {
             Intent intent = new Intent(this, KanarivService.class);
             intent.setAction("com.kanariv.app.action.START_DAEMON");
-            startService(intent);
-            updateStatus();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+            // The service starts the daemon asynchronously; refresh the status
+            // once it has had a moment to come up.
+            mStatusText.postDelayed(this::updateStatus, 750);
         });
 
         mStopButton.setOnClickListener(v -> {

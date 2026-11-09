@@ -2,9 +2,26 @@
 
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
+#include <atomic>
 #include <memory>
 
 namespace kanariv::media_session {
+
+namespace {
+
+/**
+ * @brief Android backend factory registered by the JNI shared library.
+ * @details The Android backend lives in `android/media_session_android.cpp`,
+ * which is linked into the app's JNI library rather than the core service.
+ * `JNI_OnLoad` registers it here before the daemon creates its MediaSession.
+ */
+std::atomic<MediaSession::Factory> g_androidFactory{nullptr};
+
+} // namespace
+
+void MediaSession::setAndroidFactory(Factory factory) noexcept {
+    g_androidFactory.store(factory, std::memory_order_release);
+}
 
 MediaSession::~MediaSession() = default;
 
@@ -146,8 +163,12 @@ MediaSession::ExpectedSession MediaSession::create(std::string appName,
     return createMacOS(std::move(appName), std::move(appIcon),
                        enableNotifications, enableMediaKeys);
 #elif defined(__ANDROID__)
-    // Android media-session backend lives under /android/ and is built
-    // separately; fall through to the stub on the core build.
+    // The real Android backend is compiled into the app's JNI shared library
+    // and registers itself from JNI_OnLoad. Fall back to the stub only when no
+    // factory is registered (for example in a non-app build).
+    if (auto factory = g_androidFactory.load(std::memory_order_acquire))
+        return factory(std::move(appName), std::move(appIcon),
+                       enableNotifications, enableMediaKeys);
     return createNone(std::move(appName), std::move(appIcon),
                       enableNotifications, enableMediaKeys);
 #elif defined(__linux__)

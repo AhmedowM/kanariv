@@ -111,8 +111,9 @@ python scripts/configure.py android --ndk <path> \
   --ffmpeg-root build/ffmpeg-android-arm64 --build
 ```
 
-The Android target produces native libraries only; Java/Kotlin code is outside
-this repository's scope.
+The `android/` directory also contains a Java app that hosts the daemon
+in-process and integrates with the system media controls. See
+`android/README.md` for the APK build, install and verification steps.
 
 ## Headless test runs
 

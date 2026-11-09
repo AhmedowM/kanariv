@@ -11,6 +11,31 @@
 
 namespace kanariv::media_session {
 
+namespace {
+
+// Stable android.media.session.PlaybackState state values. The C++ engine
+// enum has different ordinals, so translate here rather than exposing the
+// wire enum to Java.
+constexpr jint kAndroidStateNone = 0;
+constexpr jint kAndroidStateStopped = 1;
+constexpr jint kAndroidStatePaused = 2;
+constexpr jint kAndroidStatePlaying = 3;
+
+jint androidPlaybackState(kanariv::types::PlaybackState state) noexcept {
+    switch (state) {
+    case kanariv::types::PlaybackState::Playing:
+        return kAndroidStatePlaying;
+    case kanariv::types::PlaybackState::Paused:
+        return kAndroidStatePaused;
+    case kanariv::types::PlaybackState::Stopped:
+        return kAndroidStateStopped;
+    default:
+        return kAndroidStateNone;
+    }
+}
+
+} // namespace
+
 MediaSessionAndroid::MediaSessionAndroid() = default;
 
 MediaSessionAndroid::~MediaSessionAndroid() {
@@ -65,7 +90,7 @@ bool MediaSessionAndroid::callCallbackVoid(const char* methodName,
 
 kanariv::utils::Expected<void>
 MediaSessionAndroid::activate() {
-    if (active_)
+    if (active_.load(std::memory_order_acquire))
         return {};
 
     if (logger_)
@@ -76,26 +101,26 @@ MediaSessionAndroid::activate() {
             kanariv::utils::StatusCode::Device,
             "android media session activation failed")};
 
-    active_ = true;
+    active_.store(true, std::memory_order_release);
     return {};
 }
 
 kanariv::utils::Expected<void>
 MediaSessionAndroid::deactivate() {
-    if (!active_)
+    if (!active_.load(std::memory_order_acquire))
         return {};
 
     if (logger_)
         logger_->debug("media session android: deactivate");
 
     callCallbackVoid("onMediaSessionDeactivate", "()V");
-    active_ = false;
+    active_.store(false, std::memory_order_release);
     return {};
 }
 
 kanariv::utils::Expected<void>
 MediaSessionAndroid::setMetadata(const Metadata& meta) {
-    if (!active_)
+    if (!active_.load(std::memory_order_acquire))
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::State,
             "media session not active")};
@@ -129,7 +154,7 @@ MediaSessionAndroid::setMetadata(const Metadata& meta) {
 
     jmethodID mid = env->GetMethodID(
         cls, "onMediaMetadata",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V");
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V");
     if (!mid) {
         env->DeleteLocalRef(cls);
         env->DeleteLocalRef(callback);
@@ -146,10 +171,12 @@ MediaSessionAndroid::setMetadata(const Metadata& meta) {
         meta.artworkPath ? env->NewStringUTF(meta.artworkPath->c_str()) : nullptr;
     jstring jArtMime =
         env->NewStringUTF(meta.artworkMime.empty() ? "image/jpeg" : meta.artworkMime.c_str());
+    jstring jArtBase64 =
+        meta.artworkBase64 ? env->NewStringUTF(meta.artworkBase64->c_str()) : nullptr;
     jlong jTrackId = meta.trackId;
 
     env->CallVoidMethod(callback, mid, jTitle, jArtist, jAlbum, jArtPath, jArtMime,
-                        jTrackId);
+                        jArtBase64, jTrackId);
 
     bool success = (env->ExceptionCheck() == JNI_FALSE);
     if (!success)
@@ -162,6 +189,8 @@ MediaSessionAndroid::setMetadata(const Metadata& meta) {
     if (jArtPath)
         env->DeleteLocalRef(jArtPath);
     env->DeleteLocalRef(jArtMime);
+    if (jArtBase64)
+        env->DeleteLocalRef(jArtBase64);
     env->DeleteLocalRef(cls);
     env->DeleteLocalRef(callback);
     kanariv::android::jniDetach();
@@ -175,7 +204,7 @@ MediaSessionAndroid::setMetadata(const Metadata& meta) {
 kanariv::utils::Expected<void>
 MediaSessionAndroid::setPlaybackState(
     kanariv::types::PlaybackState state, double position, double duration) {
-    if (!active_)
+    if (!active_.load(std::memory_order_acquire))
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::State,
             "media session not active")};
@@ -219,7 +248,7 @@ MediaSessionAndroid::setPlaybackState(
             "callback method lookup failed")};
     }
 
-    jint jState = static_cast<jint>(state);
+    jint jState = androidPlaybackState(state);
     jdouble jPosition = position;
     jdouble jDuration = duration;
 
@@ -242,7 +271,7 @@ MediaSessionAndroid::setPlaybackState(
 kanariv::utils::Expected<void>
 MediaSessionAndroid::setPlaybackMode(bool shuffle,
                                      kanariv::types::RepeatMode repeat) {
-    if (!active_)
+    if (!active_.load(std::memory_order_acquire))
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::State,
             "media session not active")};
@@ -266,7 +295,7 @@ void MediaSessionAndroid::setLogger(kanariv::utils::Logger* logger) noexcept {
 
 kanariv::utils::Expected<void>
 MediaSessionAndroid::setVolume(float volume, bool muted) {
-    if (!active_)
+    if (!active_.load(std::memory_order_acquire))
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::State,
             "media session not active")};
@@ -283,7 +312,7 @@ MediaSessionAndroid::setVolume(float volume, bool muted) {
 }
 
 bool MediaSessionAndroid::active() const noexcept {
-    return active_;
+    return active_.load(std::memory_order_acquire);
 }
 
 kanariv::utils::Expected<std::unique_ptr<kanariv::media_session::MediaSession>>

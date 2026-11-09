@@ -51,10 +51,11 @@ python scripts/configure.py dev --help
 ```
 
 Android builds require an NDK-built FFmpeg prefix supplied with
-`--ffmpeg-root` (or `FFmpeg_ROOT`). The Android intent produces native
-libraries only; Java/Kotlin code is outside this repository's C++ build.
-The Android x86 FFmpeg variant disables assembly because FFmpeg's 32-bit x86
-assembly is not position-independent when linked into Android shared libraries.
+`--ffmpeg-root` (or `FFmpeg_ROOT`). The Android CMake intent produces the
+native component libraries; the Java app and JNI bridge under `android/` are
+built separately with Gradle (see `android/README.md`). The Android x86 FFmpeg
+variant disables assembly because FFmpeg's 32-bit x86 assembly is not
+position-independent when linked into Android shared libraries.
 
 Use CMake presets when the compiler is already configured in the environment:
 

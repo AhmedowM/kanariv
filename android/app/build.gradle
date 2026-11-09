@@ -23,7 +23,9 @@ android {
         }
 
         ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
+            // Only the arm64-v8a prebuilt component libraries exist under
+            // build/android-arm64, so package that ABI alone for now.
+            abiFilters 'arm64-v8a'
         }
         ndkVersion "30.0.16248370"
     }
@@ -38,6 +40,15 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    packagingOptions {
+        jniLibs {
+            // The combined library duplicates the service/media-session
+            // classes already present in the component libraries. Nothing
+            // loads it, and packaging it risks shadowed symbols.
+            excludes += ['lib/arm64-v8a/libkanariv.so']
+        }
     }
 }
 

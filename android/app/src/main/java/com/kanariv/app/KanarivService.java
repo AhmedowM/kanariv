@@ -6,18 +6,22 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ServiceInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.drawable.Icon;
 import android.media.AudioManager;
+import android.media.MediaMetadata;
 import android.media.session.MediaSession;
-import android.media.session.MediaSessionManager;
+import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
-import android.os.Looper;
+import android.util.Base64;
 import android.util.Log;
 
 import java.io.File;
@@ -27,20 +31,41 @@ import java.io.File;
  *
  * The service loads the native library, starts the Host (in-process service)
  * via JNI, and manages the Android MediaSession and media notification.
- * Audio focus is handled so playback pauses/resumes appropriately when
- * another app requests focus.
+ * Metadata and playback state are pushed from the native media-session
+ * backend; this class mirrors them into the platform MediaSession so the
+ * system media controls (lock screen, notification shade, quick settings,
+ * Bluetooth/headset buttons) show real title/artist/artwork, progress and a
+ * working seek bar.
  */
 public class KanarivService extends Service implements AudioManager.OnAudioFocusChangeListener {
     private static final String TAG = "KanarivService";
     private static final int FOREGROUND_ID = 1;
     private static final String CHANNEL_ID = "kanariv_playback";
 
+    private static final String ACTION_START_DAEMON = "com.kanariv.app.action.START_DAEMON";
+    private static final String ACTION_PREV = "com.kanariv.app.action.PREV";
+    private static final String ACTION_PLAY_PAUSE = "com.kanariv.app.action.PLAY_PAUSE";
+    private static final String ACTION_NEXT = "com.kanariv.app.action.NEXT";
+    private static final String ACTION_STOP = "com.kanariv.app.action.STOP";
+
     private MediaSession mMediaSession;
     private AudioManager mAudioManager;
     private boolean mAudioFocused = false;
+    private boolean mResumeOnFocusGain = false;
     private Handler mCallbackHandler;
     private HandlerThread mCallbackThread;
     private NotificationActionReceiver mNotificationReceiver;
+
+    // Cached now-playing state, mirrored from the native media-session backend.
+    private String mTitle = "";
+    private String mArtist = "";
+    private String mAlbum = "";
+    private String mMediaId = "";
+    private Bitmap mArtwork;
+    private long mDurationMs = 0;
+    private long mPositionMs = 0;
+    private int mPlaybackState = PlaybackState.STATE_NONE;
+    private boolean mHasMetadata = false;
 
     @Override
     public void onCreate() {
@@ -60,9 +85,9 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
             @Override
             public void onMediaMetadata(String title, String artist, String album,
                                         String artworkPath, String artworkMime,
-                                        long trackId) {
+                                        String artworkBase64, long trackId) {
                 mCallbackHandler.post(() -> updateMediaMetadata(title, artist, album,
-                        artworkPath, artworkMime, trackId));
+                        artworkPath, artworkBase64, trackId));
             }
 
             @Override
@@ -78,7 +103,7 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
 
             @Override
             public void onMediaVolume(float volume, boolean muted) {
-                mCallbackHandler.post(() -> updateVolume(volume, muted));
+                // Volume is applied natively in the engine.
             }
         });
     }
@@ -86,10 +111,14 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "service onStartCommand");
-        if (intent != null && "com.kanariv.app.action.START_DAEMON".equals(intent.getAction())) {
-            startDaemon();
+        // Promote to foreground before starting the daemon: startForegroundService
+        // requires this within a few seconds, and daemon startup touches disk.
+        startForegroundCompat(buildNotification());
+        if (intent == null || ACTION_START_DAEMON.equals(intent.getAction())) {
+            if (!KanarivBridge.isDaemonRunning()) {
+                startDaemon();
+            }
         }
-        startForeground(FOREGROUND_ID, buildNotification());
         return START_STICKY;
     }
 
@@ -98,7 +127,9 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
         Log.d(TAG, "service onDestroy");
         unregisterNotificationReceiver();
         stopDaemon();
+        KanarivBridge.setCallbackInstance(null);
         releaseMediaSession();
+        stopForegroundCompat();
         if (mCallbackThread != null) {
             mCallbackThread.quitSafely();
         }
@@ -137,17 +168,13 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
             return;
         }
 
-        MediaSessionManager manager =
-                (MediaSessionManager) getSystemService(Context.MEDIA_SESSION_SERVICE);
-        if (manager == null) {
-            Log.w(TAG, "MediaSessionManager not available");
-            return;
-        }
-
-        ComponentName componentName = new ComponentName(this, MediaButtonReceiver.class);
+        // The platform constructor is deprecated since API 29 in favour of
+        // MediaSession.Builder, but the Builder is absent from some SDK
+        // platform stubs; the constructor remains functional and is the most
+        // portable option for this in-process session.
         mMediaSession = new MediaSession(this, "Kanariv");
 
-        mMediaSession.setCallback(new android.media.session.MediaSession.Callback() {
+        mMediaSession.setCallback(new MediaSession.Callback() {
             @Override
             public void onPlay() {
                 KanarivBridge.play();
@@ -183,9 +210,12 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
         mMediaSession.setSessionActivity(
                 PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class),
                         PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
+        mMediaSession.setMediaButtonReceiver(
+                PendingIntent.getBroadcast(this, 0,
+                        new Intent(Intent.ACTION_MEDIA_BUTTON)
+                                .setClass(this, MediaButtonReceiver.class),
+                        PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
         mMediaSession.setActive(true);
-
-        requestAudioFocus();
     }
 
     private void releaseMediaSession() {
@@ -198,52 +228,102 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
     }
 
     private void updateMediaMetadata(String title, String artist, String album,
-                                     String artworkPath, String artworkMime,
+                                     String artworkPath, String artworkBase64,
                                      long trackId) {
         if (mMediaSession == null) return;
-        // MediaMetadata API (API 21+) is used via fully qualified names.
-        // Metadata updates are handled on the C++ side; the Java MediaSession
-        // is kept in sync by the callback handlers below.
+
+        mTitle = title != null ? title : "";
+        mArtist = artist != null ? artist : "";
+        mAlbum = album != null ? album : "";
+        mMediaId = trackId != 0 ? Long.toString(trackId) : "";
+        mHasMetadata = true;
+        mArtwork = decodeArtwork(artworkPath, artworkBase64);
+        publishMetadata();
+        updateNotification();
     }
 
-    private void updatePlaybackState(int state, double position, double duration) {
+    private void publishMetadata() {
+        if (mMediaSession == null || !mHasMetadata) return;
+
+        MediaMetadata.Builder builder = new MediaMetadata.Builder()
+                .putString(MediaMetadata.METADATA_KEY_TITLE, mTitle)
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, mArtist)
+                .putString(MediaMetadata.METADATA_KEY_ALBUM, mAlbum)
+                .putLong(MediaMetadata.METADATA_KEY_DURATION, mDurationMs);
+        if (!mMediaId.isEmpty()) {
+            builder.putString(MediaMetadata.METADATA_KEY_MEDIA_ID, mMediaId);
+        }
+        if (mArtwork != null) {
+            builder.putBitmap(MediaMetadata.METADATA_KEY_ART, mArtwork);
+            builder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, mArtwork);
+        }
+        mMediaSession.setMetadata(builder.build());
+    }
+
+    private void updatePlaybackState(int androidState, double position, double duration) {
         if (mMediaSession == null) return;
 
-        android.media.session.PlaybackState.Builder builder =
-                new android.media.session.PlaybackState.Builder();
-        int compatState;
-        switch (state) {
-            case android.media.session.PlaybackState.STATE_PLAYING:
-                compatState = android.media.session.PlaybackState.STATE_PLAYING;
-                break;
-            case android.media.session.PlaybackState.STATE_PAUSED:
-                compatState = android.media.session.PlaybackState.STATE_PAUSED;
-                break;
-            case android.media.session.PlaybackState.STATE_STOPPED:
-                compatState = android.media.session.PlaybackState.STATE_STOPPED;
-                break;
-            default:
-                compatState = android.media.session.PlaybackState.STATE_NONE;
-        }
-        long posMs = (long) (position * 1000);
-        builder.setState(compatState, posMs, 1.0f);
-        builder.setActiveQueueItemId(0);
+        mPlaybackState = androidState;
+        mPositionMs = Math.max(0, (long) (position * 1000));
+        long newDurationMs = Math.max(0, (long) (duration * 1000));
+        boolean durationChanged = newDurationMs != mDurationMs;
+        mDurationMs = newDurationMs;
+
+        long actions = PlaybackState.ACTION_PLAY
+                | PlaybackState.ACTION_PAUSE
+                | PlaybackState.ACTION_PLAY_PAUSE
+                | PlaybackState.ACTION_STOP
+                | PlaybackState.ACTION_SKIP_TO_NEXT
+                | PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                | PlaybackState.ACTION_SEEK_TO;
+
+        PlaybackState.Builder builder = new PlaybackState.Builder()
+                .setActions(actions)
+                .setState(androidState, mPositionMs, 1.0f)
+                .setBufferedPosition(mDurationMs);
         mMediaSession.setPlaybackState(builder.build());
+
+        // Duration arrives with the playback state, so refresh metadata once
+        // it is known; Android needs METADATA_KEY_DURATION for the seek bar.
+        if (durationChanged) {
+            publishMetadata();
+        }
+
+        if (androidState == PlaybackState.STATE_PLAYING) {
+            requestAudioFocus();
+        } else if (androidState == PlaybackState.STATE_STOPPED
+                || androidState == PlaybackState.STATE_NONE) {
+            abandonAudioFocus();
+        }
+
+        updateNotification();
     }
 
     private void updatePlaybackMode(boolean shuffle, int repeat) {
-        if (mMediaSession == null) return;
-        // Shuffle/repeat mode APIs (API 28+) handled on C++ side.
+        // Android's MediaSession has no first-class shuffle/repeat state.
+        // Keep the values cached for future custom actions/extras.
+        Log.d(TAG, "playback mode: shuffle=" + shuffle + " repeat=" + repeat);
     }
 
-    private void updateVolume(float volume, boolean muted) {
-        // Volume is applied natively in the engine; no Java-side action needed.
+    private Bitmap decodeArtwork(String artworkPath, String artworkBase64) {
+        try {
+            if (artworkBase64 != null && !artworkBase64.isEmpty()) {
+                byte[] bytes = Base64.decode(artworkBase64, Base64.DEFAULT);
+                return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            }
+            if (artworkPath != null && !artworkPath.isEmpty()) {
+                return BitmapFactory.decodeFile(artworkPath);
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "failed to decode artwork", e);
+        }
+        return null;
     }
 
     // ---- Audio focus -----------------------------------------------------
 
     private void requestAudioFocus() {
-        // Use the older API (available since API 5) for maximum compatibility.
+        if (mAudioManager == null || mAudioFocused) return;
         int result = mAudioManager.requestAudioFocus(this,
                 AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
         mAudioFocused = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
@@ -251,22 +331,27 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
     }
 
     private void abandonAudioFocus() {
-        if (mAudioManager != null) {
+        if (mAudioManager != null && mAudioFocused) {
             mAudioManager.abandonAudioFocus(this);
             mAudioFocused = false;
         }
     }
 
-    // ---- Notification action receiver --------------------------------------
+    // ---- Notification action receiver ------------------------------------
 
     private void registerNotificationReceiver() {
         mNotificationReceiver = new NotificationActionReceiver();
         IntentFilter filter = new IntentFilter();
-        filter.addAction("com.kanariv.app.action.PREV");
-        filter.addAction("com.kanariv.app.action.PAUSE");
-        filter.addAction("com.kanariv.app.action.NEXT");
+        filter.addAction(ACTION_PREV);
+        filter.addAction(ACTION_PLAY_PAUSE);
+        filter.addAction(ACTION_NEXT);
+        filter.addAction(ACTION_STOP);
         filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
-        registerReceiver(mNotificationReceiver, filter, Context.RECEIVER_EXPORTED);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(mNotificationReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(mNotificationReceiver, filter);
+        }
     }
 
     private void unregisterNotificationReceiver() {
@@ -281,8 +366,8 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
     }
 
     /**
-     * BroadcastReceiver for notification action buttons (Previous/Pause/Next).
-     * Forwards to KanarivBridge which issues commands to the native daemon.
+     * Receiver for notification action buttons. All actions go through
+     * KanarivBridge so the daemon remains the single source of truth.
      */
     public static class NotificationActionReceiver extends BroadcastReceiver {
         private static final String TAG = "NotificationActionReceiver";
@@ -294,15 +379,21 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
             }
             String action = intent.getAction();
             Log.d(TAG, "notification action: " + action);
+            if (action == null) {
+                return;
+            }
             switch (action) {
-                case "com.kanariv.app.action.PREV":
+                case ACTION_PREV:
                     KanarivBridge.prev();
                     break;
-                case "com.kanariv.app.action.PAUSE":
-                    KanarivBridge.pause();
+                case ACTION_PLAY_PAUSE:
+                    KanarivBridge.togglePlayPause();
                     break;
-                case "com.kanariv.app.action.NEXT":
+                case ACTION_NEXT:
                     KanarivBridge.next();
+                    break;
+                case ACTION_STOP:
+                    KanarivBridge.stop();
                     break;
                 default:
                     Log.d(TAG, "unhandled notification action: " + action);
@@ -316,20 +407,22 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
         switch (focusChange) {
             case AudioManager.AUDIOFOCUS_GAIN:
                 mAudioFocused = true;
-                if (KanarivBridge.isDaemonRunning()) {
+                if (mResumeOnFocusGain) {
+                    mResumeOnFocusGain = false;
                     KanarivBridge.play();
                 }
                 break;
             case AudioManager.AUDIOFOCUS_LOSS:
                 mAudioFocused = false;
+                mResumeOnFocusGain = false;
                 KanarivBridge.pause();
                 break;
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
                 mAudioFocused = false;
+                mResumeOnFocusGain = mPlaybackState == PlaybackState.STATE_PLAYING;
                 KanarivBridge.pause();
                 break;
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
-                mAudioFocused = false;
                 KanarivBridge.setVolume(0.2f);
                 break;
         }
@@ -340,10 +433,13 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID, "Kanariv Playback",
+                    CHANNEL_ID, getString(R.string.channel_name),
                     NotificationManager.IMPORTANCE_LOW);
-            channel.setDescription("Media playback controls");
+            channel.setDescription(getString(R.string.channel_description));
             channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            channel.setShowBadge(false);
+            channel.setSound(null, null);
+            channel.enableVibration(false);
             NotificationManager manager =
                     (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (manager != null) {
@@ -353,37 +449,96 @@ public class KanarivService extends Service implements AudioManager.OnAudioFocus
     }
 
     private Notification buildNotification() {
-        Intent playIntent = new Intent(this, MainActivity.class);
-        PendingIntent contentPendingIntent = PendingIntent.getActivity(this, 0, playIntent,
+        PendingIntent contentPendingIntent = PendingIntent.getActivity(this, 0,
+                new Intent(this, MainActivity.class),
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
         Notification.MediaStyle style = new Notification.MediaStyle()
                 .setMediaSession(mMediaSession != null ? mMediaSession.getSessionToken() : null)
                 .setShowActionsInCompactView(0, 1, 2);
 
-        Notification.Builder builder = new Notification.Builder(this, CHANNEL_ID)
-                .setStyle(style)
-                .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentTitle("Kanariv")
-                .setContentText("No track")
-                .setOngoing(true)
+        Notification.Builder builder;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            builder = new Notification.Builder(this, CHANNEL_ID);
+        } else {
+            builder = new Notification.Builder(this);
+        }
+
+        boolean playing = mPlaybackState == PlaybackState.STATE_PLAYING;
+        String title = mHasMetadata && !mTitle.isEmpty() ? mTitle : "Kanariv";
+        String text = mHasMetadata ? subtitle() : getString(R.string.notification_no_track);
+
+        builder.setStyle(style)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setSubText(mHasMetadata && !mAlbum.isEmpty() ? mAlbum : null)
+                .setLargeIcon(mArtwork)
+                .setOnlyAlertOnce(true)
+                .setOngoing(playing)
+                .setShowWhen(false)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setCategory(Notification.CATEGORY_TRANSPORT)
                 .setContentIntent(contentPendingIntent)
-                .addAction(android.R.drawable.ic_media_previous, "Previous",
-                        buildMediaIntent("com.kanariv.app.action.PREV"))
-                .addAction(android.R.drawable.ic_media_pause, "Pause",
-                        buildMediaIntent("com.kanariv.app.action.PAUSE"))
-                .addAction(android.R.drawable.ic_media_next, "Next",
-                        buildMediaIntent("com.kanariv.app.action.NEXT"));
+                .addAction(action(R.drawable.ic_prev, getString(R.string.notification_previous),
+                        ACTION_PREV))
+                .addAction(action(playing ? R.drawable.ic_pause : R.drawable.ic_play,
+                        getString(playing ? R.string.notification_pause
+                                : R.string.notification_play),
+                        ACTION_PLAY_PAUSE))
+                .addAction(action(R.drawable.ic_next, getString(R.string.notification_next),
+                        ACTION_NEXT));
 
         return builder.build();
+    }
+
+    private String subtitle() {
+        if (!mArtist.isEmpty() && !mAlbum.isEmpty()) {
+            return mArtist + " \u2014 " + mAlbum;
+        }
+        if (!mArtist.isEmpty()) {
+            return mArtist;
+        }
+        if (!mAlbum.isEmpty()) {
+            return mAlbum;
+        }
+        return getString(R.string.notification_no_track);
+    }
+
+    private Notification.Action action(int iconRes, String title, String action) {
+        return new Notification.Action.Builder(
+                Icon.createWithResource(this, iconRes), title, buildMediaIntent(action)).build();
     }
 
     private PendingIntent buildMediaIntent(String action) {
         Intent intent = new Intent(action);
         intent.setPackage(getPackageName());
-        return PendingIntent.getBroadcast(this, 0, intent,
+        return PendingIntent.getBroadcast(this, action.hashCode(), intent,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    private void updateNotification() {
+        NotificationManager manager =
+                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.notify(FOREGROUND_ID, buildNotification());
+        }
+    }
+
+    private void startForegroundCompat(Notification notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(FOREGROUND_ID, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+        } else {
+            startForeground(FOREGROUND_ID, notification);
+        }
+    }
+
+    private void stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } else {
+            stopForeground(true);
+        }
     }
 }

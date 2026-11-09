@@ -16,7 +16,10 @@ public class KanarivApp extends Application {
     public void onCreate() {
         super.onCreate();
         Log.d(TAG, "application onCreate");
-        System.loadLibrary("kanariv");
+        // Load the JNI bridge; its DT_NEEDED entries pull in the kanariv
+        // component libraries. Do not load the combined libkanariv.so: it
+        // contains a second copy of the service/media-session classes and
+        // would shadow the component libraries used by the bridge.
         System.loadLibrary("kanariv_android");
     }
 }

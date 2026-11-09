@@ -10,8 +10,8 @@ namespace {
 JavaVM* g_jvm{nullptr};
 std::mutex g_callbackMutex;
 jobject g_callbackObj{nullptr};
-std::mutex g_attachMutex;
-bool g_detachOnExit{false};
+// Per-thread flag: only detach a thread that this helper attached itself.
+thread_local bool t_detachOnExit{false};
 
 } // namespace
 
@@ -28,8 +28,7 @@ JNIEnv* jniAttach() noexcept {
         rc = g_jvm->AttachCurrentThread(&env, nullptr);
         if (rc != JNI_OK)
             return nullptr;
-        std::lock_guard<std::mutex> lock(g_attachMutex);
-        g_detachOnExit = true;
+        t_detachOnExit = true;
     } else if (rc != JNI_OK) {
         return nullptr;
     }
@@ -37,36 +36,25 @@ JNIEnv* jniAttach() noexcept {
 }
 
 void jniDetach() noexcept {
-    std::lock_guard<std::mutex> lock(g_attachMutex);
-    if (g_detachOnExit && g_jvm) {
+    if (t_detachOnExit && g_jvm) {
         g_jvm->DetachCurrentThread();
-        g_detachOnExit = false;
+        t_detachOnExit = false;
     }
 }
 
 void jniSetCallbackObject(jobject obj) noexcept {
-    if (!g_jvm)
-        return;
-    JNIEnv* env = nullptr;
-    if (g_jvm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK)
+    JNIEnv* env = jniAttach();
+    if (!env)
         return;
     std::lock_guard<std::mutex> lock(g_callbackMutex);
     if (g_callbackObj)
         env->DeleteGlobalRef(g_callbackObj);
-    g_callbackObj = env->NewGlobalRef(obj);
+    g_callbackObj = obj ? env->NewGlobalRef(obj) : nullptr;
+    jniDetach();
 }
 
 void jniClearCallbackObject() noexcept {
-    if (!g_jvm)
-        return;
-    JNIEnv* env = nullptr;
-    if (g_jvm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK)
-        return;
-    std::lock_guard<std::mutex> lock(g_callbackMutex);
-    if (g_callbackObj) {
-        env->DeleteGlobalRef(g_callbackObj);
-        g_callbackObj = nullptr;
-    }
+    jniSetCallbackObject(nullptr);
 }
 
 jobject jniGetCallbackObject() noexcept {

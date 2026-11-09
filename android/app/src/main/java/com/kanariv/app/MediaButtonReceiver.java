@@ -37,7 +37,7 @@ public class MediaButtonReceiver extends BroadcastReceiver {
         int keyCode = keyEvent.getKeyCode();
         int action = keyEvent.getAction();
 
-        if (action != KeyEvent.ACTION_DOWN) {
+        if (action != KeyEvent.ACTION_DOWN || keyEvent.getRepeatCount() > 0) {
             return;
         }
 
@@ -45,7 +45,7 @@ public class MediaButtonReceiver extends BroadcastReceiver {
 
         switch (keyCode) {
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                KanarivBridge.play();
+                KanarivBridge.togglePlayPause();
                 break;
             case KeyEvent.KEYCODE_MEDIA_PAUSE:
                 KanarivBridge.pause();

@@ -20,6 +20,7 @@
 #include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
+#include <atomic>
 #include <cstdint>
 #include <expected>
 #include <memory>
@@ -74,7 +75,7 @@ class MediaSessionAndroid : public Impl {
         "com/kanariv/app/KanarivBridge";
 
     /** @brief Whether activate() has succeeded. */
-    bool active_{false};
+    std::atomic_bool active_{false};
 
     /** @brief Non-owning logger. */
     kanariv::utils::Logger* logger_{nullptr};

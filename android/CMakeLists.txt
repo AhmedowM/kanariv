@@ -27,7 +27,17 @@ if(NOT DEFINED KANARIV_ROOT)
     message(STATUS "KANARIV_ROOT auto-detected: ${KANARIV_ROOT}")
 endif()
 
-set(KANARIV_BUILD_DIR "${KANARIV_ROOT}/build/android-arm64")
+# Match the prebuilt component libraries to the ABI Gradle is building.
+# The arm64 tree keeps its historical name; other ABIs use android-<abi>.
+if(DEFINED ANDROID_ABI AND NOT ANDROID_ABI STREQUAL "")
+    if(ANDROID_ABI STREQUAL "arm64-v8a")
+        set(KANARIV_BUILD_DIR "${KANARIV_ROOT}/build/android-arm64")
+    else()
+        set(KANARIV_BUILD_DIR "${KANARIV_ROOT}/build/android-${ANDROID_ABI}")
+    endif()
+else()
+    set(KANARIV_BUILD_DIR "${KANARIV_ROOT}/build/android-arm64")
+endif()
 
 # Verify prebuilt kanariv libraries exist (built by the main kanariv CMake for Android)
 set(KANARIV_LIBS service engine db player media utils config ipc client)
