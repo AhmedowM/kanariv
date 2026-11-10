@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v2.0.0] - 2026-11-10
 
 ### Changed
 - **BREAKING** Project renamed from `caudio` to `kanariv`. The C++ namespace
@@ -248,6 +248,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Android Gradle plugin 9.x, which aligns uncompressed native libraries to
   16 KB zip boundaries, and all packaged ELF load segments are 16 KB aligned.
   This removes the "App isn't 16 KB compatible" warning shown on launch.
+
+## [Unreleased]
 
 ## [v1.8.0] - 2026-10-19
 
