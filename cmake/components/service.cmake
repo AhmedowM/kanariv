@@ -38,8 +38,7 @@ if(WIN32)
   # runtimeobject.lib provides RoGetActivationFactory / WindowsCreateString etc.
   find_library(KANARIV_RUNTIMEOBJECT_LIB runtimeobject
     PATHS "C:/Program Files (x86)/Windows Kits/10/Lib"
-    PATH_SUFFIXES "10.0.26100.0/um/x64"
-    NO_DEFAULT_PATH)
+    PATH_SUFFIXES "10.0.26100.0/um")
   if(KANARIV_RUNTIMEOBJECT_LIB)
     set(_K_WIN_LIBS user32 ole32 shcore ${KANARIV_RUNTIMEOBJECT_LIB})
   else()
