@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LyricsRemove`) and CLI (`kanariv lyrics set <text>`, `lyrics get`, `lyrics
   remove`). Synced (`--synced`) and plain text supported, with provenance
   source and per-track upsert semantics.
+- `lyrics set --file <path>`: read lyrics from an `.lrc` file (auto-marks
+  synced). `lyrics get --out <path>.lrc`: export lyrics text to an `.lrc`
+  file.
+- `lyrics get --live`: live synced lyrics display — polls playback position
+  and shows the current LRC line in real time, modeled after `status --watch`.
 
 ## [v2.0.0] - 2026-11-10
 

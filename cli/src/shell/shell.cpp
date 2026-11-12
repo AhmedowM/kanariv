@@ -49,6 +49,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -271,6 +272,110 @@ int renderVersion(bool asJson) {
     kanariv::println("  os:       {}", platform);
     kanariv::println("  arch:     {}", arch);
     return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Live lyrics display
+// ---------------------------------------------------------------------------
+
+struct LrcLine {
+    double seconds{0.0};
+    std::string text;
+};
+
+// Parse LRC text into timestamped lines.
+// Handles [mm:ss.xx], [mm:ss.ms], and [mm:ss] timestamp formats.
+static std::vector<LrcLine> parseLrc(const std::string& lrc_text) {
+    std::vector<LrcLine> lines;
+    std::istringstream iss(lrc_text);
+    std::string raw;
+    while (std::getline(iss, raw)) {
+        // Strip trailing \r (Windows CRLF)
+        if (!raw.empty() && raw.back() == '\r')
+            raw.pop_back();
+        if (raw.empty() || raw[0] != '[')
+            continue;
+        auto close = raw.find(']');
+        if (close == std::string::npos || close < 9)
+            continue;
+        std::string ts = raw.substr(1, close - 1);
+        auto colon = ts.find(':');
+        if (colon == std::string::npos)
+            continue;
+        try {
+            int minutes = std::stoi(ts.substr(0, colon));
+            std::string rest = ts.substr(colon + 1);
+            auto dot = rest.find('.');
+            if (dot == std::string::npos) {
+                // [mm:ss] no fractional part
+                int seconds = std::stoi(rest);
+                double total = minutes * 60.0 + seconds;
+                std::string text = raw.substr(close + 1);
+                while (!text.empty() && text[0] == ' ')
+                    text.erase(0, 1);
+                if (!text.empty())
+                    lines.push_back({total, text});
+            } else {
+                int seconds = std::stoi(rest.substr(0, dot));
+                std::string frac = rest.substr(dot + 1);
+                // Truncate/pad fractional part to milliseconds
+                while (frac.size() < 3)
+                    frac += '0';
+                frac.resize(3);
+                int ms = std::stoi(frac.substr(0, 3));
+                double total = minutes * 60.0 + seconds + ms / 1000.0;
+                std::string text = raw.substr(close + 1);
+                while (!text.empty() && text[0] == ' ')
+                    text.erase(0, 1);
+                if (!text.empty())
+                    lines.push_back({total, text});
+            }
+        } catch (...) {
+            // Skip malformed timestamp lines
+        }
+    }
+    return lines;
+}
+
+int renderLyricsLive(const kanariv::ipc::Lyrics& ly,
+                     const std::filesystem::path& dbPath,
+                     const std::filesystem::path& socketPath) {
+    auto lines = parseLrc(ly.lrc_text);
+    if (lines.empty()) {
+        kanariv::println(std::cerr,
+                        "lyrics get --live: no time-coded lyrics found");
+        return 1;
+    }
+
+    using namespace std::chrono;
+    while (true) {
+        kanariv::client::Client client{dbPath, socketPath.string()};
+        auto pres =
+            client.waitForStatus(milliseconds{500});
+        if (!pres) {
+            kanariv::println(std::cerr,
+                            "lyrics get --live: lost connection to daemon");
+            return 1;
+        }
+        if (auto* st = std::get_if<kanariv::ipc::Status>(&*pres)) {
+            if (st->state == kanariv::types::PlaybackState::Playing) {
+                double pos = st->pos;
+                const LrcLine* current = nullptr;
+                for (const auto& line : lines) {
+                    if (line.seconds <= pos)
+                        current = &line;
+                    else
+                        break;
+                }
+                if (current && !current->text.empty())
+                    kanariv::print(std::cout, "\r\33[2K{}", current->text);
+                else
+                    kanariv::print(std::cout, "\r\33[2K");
+                std::cout.flush();
+            }
+            // If not playing, just keep polling silently.
+        }
+    }
 }
 
 } // namespace detail
@@ -650,17 +755,23 @@ int Shell::run(int argc, char** argv) {
     bool lyricsSetSynced = false;
     std::string lyricsSetSource = "local";
     std::string lyricsSetTrack;
+    std::string lyricsSetFile;
     bool lyricsSetJson = false;
     auto* lyricsSet = lyricsCmd->add_subcommand("set", "Set lyrics for a track");
-    lyricsSet->add_option("text", lyricsSetText, "Lyrics text (LRC format when synced)")->required();
+    lyricsSet->add_option("text", lyricsSetText, "Lyrics text (LRC format when synced)");
     lyricsSet->add_flag("--synced", lyricsSetSynced, "Text is time-coded LRC");
+    lyricsSet->add_option("--file", lyricsSetFile, "Read lyrics from .lrc file");
     lyricsSet->add_option("--source", lyricsSetSource, "Provenance label (default: local)");
     lyricsSet->add_option("--track", lyricsSetTrack, "Track id or path (default: current track)");
     lyricsSet->add_flag("--json", lyricsSetJson, "JSON output");
     std::string lyricsGetTrack;
+    std::string lyricsGetOut;
+    bool lyricsGetLive = false;
     bool lyricsGetJson = false;
     auto* lyricsGet = lyricsCmd->add_subcommand("get", "Get lyrics for a track");
     lyricsGet->add_option("--track", lyricsGetTrack, "Track id or path (default: current track)");
+    lyricsGet->add_option("--out", lyricsGetOut, "Write lyrics to .lrc file");
+    lyricsGet->add_flag("--live", lyricsGetLive, "Display live lyrics synced to playback");
     lyricsGet->add_flag("--json", lyricsGetJson, "JSON output");
     std::string lyricsRemoveTrack;
     bool lyricsRemoveJson = false;
@@ -1211,7 +1322,24 @@ int Shell::run(int argc, char** argv) {
     }
     if (lyricsCmd->parsed()) {
         if (lyricsSet->parsed()) {
-            return detail::render(app_.lyricsSet(lyricsSetText, lyricsSetSynced,
+            std::string lrc_text = lyricsSetText;
+            if (!lyricsSetFile.empty()) {
+                std::ifstream ifs(lyricsSetFile, std::ios::binary);
+                if (!ifs) {
+                    kanariv::println(std::cerr, "lyrics set: cannot open file '{}'", lyricsSetFile);
+                    return 1;
+                }
+                std::stringstream ss;
+                ss << ifs.rdbuf();
+                lrc_text = ss.str();
+                // .lrc files are inherently time-coded
+                lyricsSetSynced = true;
+            } else if (lrc_text.empty()) {
+                kanariv::println(std::cerr,
+                                "lyrics set: provide TEXT or --file <path>");
+                return 1;
+            }
+            return detail::render(app_.lyricsSet(std::move(lrc_text), lyricsSetSynced,
                                                  lyricsSetSource,
                                                  lyricsSetTrack.empty()
                                                      ? std::nullopt
@@ -1219,11 +1347,54 @@ int Shell::run(int argc, char** argv) {
                                   lyricsSetJson);
         }
         if (lyricsGet->parsed()) {
-            return detail::render(app_.lyricsGet(
-                                      lyricsGetTrack.empty()
-                                          ? std::nullopt
-                                          : std::optional<std::string>{lyricsGetTrack}),
-                                  lyricsGetJson);
+            auto res = app_.lyricsGet(
+                          lyricsGetTrack.empty()
+                              ? std::nullopt
+                              : std::optional<std::string>{lyricsGetTrack});
+            if (!res) {
+                return detail::renderError(res.error());
+            }
+            auto* outcome = &*res;
+            if (!outcome->result) {
+                kanariv::println(std::cerr, "lyrics get: no result from daemon");
+                return 1;
+            }
+            auto& ipc_res = *outcome->result;
+            if (lyricsGetLive) {
+                if (auto* ly = std::get_if<kanariv::ipc::Lyrics>(&ipc_res)) {
+                    return detail::renderLyricsLive(*ly, config_.dbPath, config_.socketPath);
+                }
+                kanariv::println(std::cerr, "lyrics get --live: no lyrics data");
+                return 1;
+            }
+            if (auto* ly = std::get_if<kanariv::ipc::Lyrics>(&ipc_res)) {
+                if (!lyricsGetOut.empty()) {
+                    std::ofstream ofs(lyricsGetOut, std::ios::binary | std::ios::trunc);
+                    if (!ofs) {
+                        kanariv::println(std::cerr, "lyrics get: cannot write to file '{}'",
+                                         lyricsGetOut);
+                        return 1;
+                    }
+                    ofs << ly->lrc_text;
+                    ofs.flush();
+                    kanariv::println(std::cout, "Wrote lyrics ({} bytes) to {}",
+                                     ly->lrc_text.size(), lyricsGetOut);
+                    return 0;
+                }
+                if (lyricsGetJson) {
+                    kanariv::println("{}", kanariv::ipc::toJson(ipc_res).dump());
+                    return 0;
+                }
+                std::string line;
+                if (!ly->lrc_text.empty())
+                    line = std::format("Lyrics for track {} ({}):\n{}", ly->track_id,
+                                       ly->is_synced ? "synced" : "plain", ly->lrc_text);
+                else
+                    line = std::format("No lyrics text for track {}", ly->track_id);
+                kanariv::println(std::cout, "{}", line);
+                return 0;
+            }
+            return detail::render(std::move(res), lyricsGetJson);
         }
         if (lyricsRemove->parsed()) {
             return detail::render(app_.lyricsRemove(
