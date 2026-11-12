@@ -16,6 +16,7 @@
 #include <kanariv/ipc/result/device.hpp>
 #include <kanariv/ipc/result/history.hpp>
 #include <kanariv/ipc/result/library.hpp>
+#include <kanariv/ipc/result/lyrics.hpp>
 #include <kanariv/ipc/result/playback.hpp>
 #include <kanariv/ipc/result/playlist.hpp>
 #include <kanariv/ipc/result/queue.hpp>
@@ -43,7 +44,7 @@ using Result =
     std::variant<Status, QueueTracks, Queues, QueueCreated, PlaylistLoaded, VolumeInfo,
                  kanariv::types::LibraryStats, Tracks, SearchResults, Playlists, PlaylistData,
                  PlaylistCreated, PlaylistImportReport, ScanReport, LibraryMaintenanceReport,
-                 ConfigValue, ConfigValues, SingleTrack, TrackInfo, History, Bookmarks, Empty,
+                 ConfigValue, ConfigValues, SingleTrack, TrackInfo, History, Bookmarks, Lyrics, Empty,
                  CliError, Devices>;
 
 /**

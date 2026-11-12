@@ -1788,6 +1788,95 @@ std::expected<void, kanariv::utils::Error> Database::bookmarkRemove(int64_t id) 
     return {};
 }
 
+std::expected<void, kanariv::utils::Error> Database::lyricsSet(int64_t tid,
+                                                               std::string_view lrc_text,
+                                                               bool is_synced,
+                                                               std::string_view source) {
+    if (tid == 0 || lrc_text.empty())
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
+    std::unique_lock lk{impl_->dbMutex_};
+    if (!impl_->db_)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
+    // Upsert: delete any existing lyrics for this track, then insert.
+    SqliteStatement st;
+    if (auto e = st.prepare(impl_->db_.get(),
+                            "DELETE FROM lyrics WHERE track_id=?");
+        !e)
+        return std::unexpected{e.error()};
+    st.bindInt(1, tid);
+    (void)st.stepDone();
+    st.reset();
+    if (auto e = st.prepare(impl_->db_.get(),
+                            "INSERT INTO lyrics (track_id, lrc_text, is_synced, source) "
+                            "VALUES (?,?,?,?)");
+        !e)
+        return std::unexpected{e.error()};
+    st.bindInt(1, tid);
+    st.bindText(2, lrc_text);
+    st.bindInt(3, is_synced ? 1 : 0);
+    if (source.empty())
+        st.bindNull(4);
+    else
+        st.bindText(4, source);
+    int rc = st.stepDone();
+    if (rc != SQLITE_DONE)
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Internal, sqlite3_errmsg(impl_->db_.get()))};
+    return {};
+}
+
+std::expected<kanariv::types::Lyrics, kanariv::utils::Error>
+Database::lyricsGet(int64_t tid) {
+    if (tid == 0)
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
+    std::shared_lock lk{impl_->dbMutex_};
+    if (!impl_->db_)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
+    SqliteStatement st;
+    if (auto e = st.prepare(impl_->db_.get(),
+                            "SELECT id, track_id, lrc_text, is_synced, source, "
+                            "CAST(strftime('%s', fetched_at) AS INTEGER) FROM lyrics "
+                            "WHERE track_id=?");
+        !e)
+        return std::unexpected{e.error()};
+    st.bindInt(1, tid);
+    if (!st.step())
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::NotFound, "no lyrics for track")};
+    kanariv::types::Lyrics l;
+    l.id = st.columnInt(0);
+    l.track_id = st.columnInt(1);
+    l.lrc_text = st.columnText(2);
+    l.is_synced = st.columnInt(3) != 0;
+    l.source = st.columnText(4);
+    l.fetched_at = st.columnInt(5);
+    return l;
+}
+
+std::expected<void, kanariv::utils::Error> Database::lyricsRemove(int64_t tid) {
+    if (tid == 0)
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
+    std::unique_lock lk{impl_->dbMutex_};
+    if (!impl_->db_)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
+    SqliteStatement st;
+    if (auto e = st.prepare(impl_->db_.get(), "DELETE FROM lyrics WHERE track_id=?");
+        !e)
+        return std::unexpected{e.error()};
+    st.bindInt(1, tid);
+    int rc = st.stepDone();
+    if (rc != SQLITE_DONE)
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Internal, sqlite3_errmsg(impl_->db_.get()))};
+    if (sqlite3_changes(impl_->db_.get()) == 0)
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::NotFound, "no lyrics for track")};
+    return {};
+}
+
 std::expected<int64_t, kanariv::utils::Error> Database::libraryAdd(std::string_view path,
                                                                   std::string_view name) {
     if (path.empty())

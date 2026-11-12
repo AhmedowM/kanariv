@@ -628,6 +628,41 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      */
     std::expected<void, kanariv::utils::Error> bookmarkRemove(int64_t id) override;
 
+    // Lyrics
+    /**
+     * @brief Sets lyrics for a track (upsert by track id).
+     * @ingroup kanariv_db
+     * @param tid Track id.
+     * @param lrc_text Lyrics text (LRC format when synced).
+     * @param is_synced True when lrc_text contains time-coded lines.
+     * @param source Provenance label (e.g. "local", "import").
+     * @return Success or Error InvalidArg/Internal.
+     * @par Thread safety
+     * Thread-safe: unique_lock.
+     */
+    std::expected<void, kanariv::utils::Error> lyricsSet(int64_t tid,
+                                                         std::string_view lrc_text,
+                                                         bool is_synced,
+                                                         std::string_view source) override;
+    /**
+     * @brief Gets lyrics for a track.
+     * @ingroup kanariv_db
+     * @param tid Track id.
+     * @return Lyrics, or NotFound when no lyrics exist for the track.
+     * @par Thread safety
+     * Thread-safe: shared_lock.
+     */
+    std::expected<kanariv::types::Lyrics, kanariv::utils::Error> lyricsGet(int64_t tid) override;
+    /**
+     * @brief Removes lyrics for a track.
+     * @ingroup kanariv_db
+     * @param tid Track id.
+     * @return Success, InvalidArg, NotFound or Internal.
+     * @par Thread safety
+     * Thread-safe: unique_lock.
+     */
+    std::expected<void, kanariv::utils::Error> lyricsRemove(int64_t tid) override;
+
     // Libraries and aggregate statistics
     /**
      * @brief Adds a library.

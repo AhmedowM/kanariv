@@ -74,6 +74,12 @@ struct Service::Impl {
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::BookmarkRemove& cmd);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    handle(const kanariv::ipc::LyricsGet& cmd);
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    handle(const kanariv::ipc::LyricsSet& cmd);
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    handle(const kanariv::ipc::LyricsRemove& cmd);
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::ConfigExport& cmd);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::ConfigGet& cmd);

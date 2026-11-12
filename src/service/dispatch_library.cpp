@@ -368,6 +368,48 @@ Service::Impl::handle(const kanariv::ipc::BookmarkGoto& cmd) {
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LyricsGet& cmd) {
+    int64_t tid = cmd.track_id.value_or(engine_->currentTrackId());
+    if (tid == 0)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "no current track")};
+    auto l = db_->lyricsGet(tid);
+    if (!l)
+        return std::unexpected{l.error()};
+    return Result{kanariv::ipc::Lyrics{l->id, l->track_id, std::move(l->lrc_text),
+                                       l->is_synced, std::move(l->source), l->fetched_at}};
+}
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LyricsSet& cmd) {
+    if (cmd.lrc_text.empty())
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, "lyrics: empty text")};
+    int64_t tid = cmd.track_id.value_or(engine_->currentTrackId());
+    if (tid == 0)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "no current track")};
+    if (auto tr = db_->getTrack(tid); !tr)
+        return std::unexpected{tr.error()};
+    auto r = db_->lyricsSet(tid, cmd.lrc_text, cmd.is_synced, cmd.source);
+    if (!r)
+        return std::unexpected{r.error()};
+    return Result{Empty{}};
+}
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LyricsRemove& cmd) {
+    int64_t tid = cmd.track_id.value_or(engine_->currentTrackId());
+    if (tid == 0)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "no current track")};
+    auto r = db_->lyricsRemove(tid);
+    if (!r)
+        return std::unexpected{r.error()};
+    return Result{Empty{}};
+}
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::LibraryAdd& cmd) {
     if (cmd.path.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,

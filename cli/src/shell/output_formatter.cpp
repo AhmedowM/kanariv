@@ -464,6 +464,15 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                                     truncateField(e.note, 40));
                 }
             },
+            [&os](const kanariv::ipc::Lyrics& v) {
+                kanariv::println(os, "Lyrics for track {} (id {}):", v.track_id, v.id);
+                kanariv::println(os, "  Synced: {}  Source: {}  Fetched: {}", v.is_synced,
+                                v.source, v.fetched_at);
+                if (!v.lrc_text.empty())
+                    kanariv::println(os, "{}", v.lrc_text);
+                else
+                    kanariv::println(os, "  (no text)");
+            },
             [&os](const kanariv::ipc::Devices& v) {
                 std::span<const kanariv::types::DeviceInfo> devicesSpan(v.devices.data(),
                                                                        v.devices.size());

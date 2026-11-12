@@ -17,6 +17,7 @@
 #include <kanariv/ipc/command/device.hpp>
 #include <kanariv/ipc/command/history.hpp>
 #include <kanariv/ipc/command/library.hpp>
+#include <kanariv/ipc/command/lyrics.hpp>
 #include <kanariv/ipc/command/playback.hpp>
 #include <kanariv/ipc/command/playlist.hpp>
 #include <kanariv/ipc/command/queue.hpp>
@@ -51,6 +52,7 @@ using Command =
                  LibrarySearch, LibraryStats, LibraryAdd, LibraryRemove, LibraryList, TagEdit,
                  TagGet, ConfigGet, ConfigSet, ConfigList, ConfigExport, ConfigImport, ConfigReset,
                  HistoryList, HistoryClear, BookmarkList, BookmarkAdd, BookmarkRemove, BookmarkGoto,
+                 LyricsGet, LyricsSet, LyricsRemove,
                  Shutdown, Preview, DeviceList, DeviceSet, DeviceTest, Info, TrackRate,
                  LibraryMaintenance, StatusWait>;
 

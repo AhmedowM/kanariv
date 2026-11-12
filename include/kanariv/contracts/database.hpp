@@ -376,6 +376,32 @@ class IDatabase {
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> bookmarkRemove(int64_t id) = 0;
+    // Lyrics
+    /**
+     * @brief Sets lyrics for a track (upsert by track id).
+     * @param tid Track id.
+     * @param lrc_text Lyrics text (LRC format when synced).
+     * @param is_synced True when lrc_text contains time-coded lines.
+     * @param source Provenance label (e.g. "local", "import").
+     * @return Success or Error.
+     */
+    virtual std::expected<void, kanariv::utils::Error> lyricsSet(int64_t tid,
+                                                                 std::string_view lrc_text,
+                                                                 bool is_synced,
+                                                                 std::string_view source) = 0;
+    /**
+     * @brief Gets lyrics for a track.
+     * @param tid Track id.
+     * @return Lyrics, or NotFound when no lyrics exist for the track.
+     */
+    virtual std::expected<kanariv::types::Lyrics, kanariv::utils::Error> lyricsGet(
+        int64_t tid) = 0;
+    /**
+     * @brief Removes lyrics for a track.
+     * @param tid Track id.
+     * @return Success, or NotFound when no lyrics exist for the track.
+     */
+    virtual std::expected<void, kanariv::utils::Error> lyricsRemove(int64_t tid) = 0;
     // Playlists
     /**
      * @brief Lists playlists.

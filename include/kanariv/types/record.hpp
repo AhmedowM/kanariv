@@ -308,4 +308,21 @@ struct LibraryStats {
     std::optional<std::vector<TopEntity>> top_artists{};
 };
 
+/**
+ * @brief Synced or plain-text lyrics for a track.
+ * @ingroup kanariv_types
+ * @details Maps 1:1 to the `lyrics` table. `lrc_text` holds the raw
+ *  `.lrc` content (timed lines when `is_synced` is true, plain text when
+ *  false). `source` names where the lyrics came from (e.g. "local",
+ *  "musixmatch", "manual").
+ */
+struct Lyrics {
+    int64_t id{};           ///< Row id (PK).
+    int64_t track_id{};     ///< Owning track id.
+    std::string lrc_text;   ///< Lyrics text (LRC format when synced).
+    bool is_synced{false};  ///< True when lrc_text contains time-coded lines.
+    std::string source;     ///< Provenance: "local", "import", etc.
+    int64_t fetched_at{};   ///< Unix seconds when lyrics were stored.
+};
+
 } // namespace kanariv::types

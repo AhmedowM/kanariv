@@ -494,6 +494,31 @@ class KANARIV_API App {
     /** @brief Plays the bookmarked track and seeks to its position. @ingroup kanariv_app */
     AppResult bookmarkGoto(int64_t id);
 
+    /**
+     * @brief Sets (upsert) lyrics for a track (default: current track).
+     * @ingroup kanariv_app
+     * @param lrc_text Lyrics text (LRC format when synced).
+     * @param is_synced True when lrc_text contains time-coded lines.
+     * @param source Provenance label (e.g. "local", "import").
+     * @param track Track id or path; if empty, uses the current track.
+     */
+    AppResult lyricsSet(std::string lrc_text, bool is_synced, std::string source,
+                        std::optional<std::string> track = {});
+
+    /**
+     * @brief Gets lyrics for a track (default: current track).
+     * @ingroup kanariv_app
+     * @param track Track id or path; if empty, uses the current track.
+     */
+    AppResult lyricsGet(std::optional<std::string> track = {});
+
+    /**
+     * @brief Removes lyrics for a track (default: current track).
+     * @ingroup kanariv_app
+     * @param track Track id or path; if empty, uses the current track.
+     */
+    AppResult lyricsRemove(std::optional<std::string> track = {});
+
     /** @brief Lists audio output devices. @ingroup kanariv_app */
     AppResult deviceList();
 

@@ -403,6 +403,27 @@ Json toJson(const Command& cmd) {
             } else if constexpr (std::is_same_v<T, BookmarkGoto>) {
                 j["type"] = "BookmarkGoto";
                 j["id"] = v.id;
+            } else if constexpr (std::is_same_v<T, LyricsGet>) {
+                j["type"] = "LyricsGet";
+                if (v.track_id.has_value())
+                    j["track_id"] = *v.track_id;
+                else
+                    j["track_id"] = nullptr;
+            } else if constexpr (std::is_same_v<T, LyricsSet>) {
+                j["type"] = "LyricsSet";
+                j["lrc_text"] = v.lrc_text;
+                j["is_synced"] = v.is_synced;
+                j["source"] = v.source;
+                if (v.track_id.has_value())
+                    j["track_id"] = *v.track_id;
+                else
+                    j["track_id"] = nullptr;
+            } else if constexpr (std::is_same_v<T, LyricsRemove>) {
+                j["type"] = "LyricsRemove";
+                if (v.track_id.has_value())
+                    j["track_id"] = *v.track_id;
+                else
+                    j["track_id"] = nullptr;
             } else if constexpr (std::is_same_v<T, Shutdown>) {
                 j["type"] = "Shutdown";
             } else if constexpr (std::is_same_v<T, Preview>) {
@@ -815,6 +836,30 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 v.id = j["id"].get<int64_t>();
             return Command{std::move(v)};
         }
+        if (t == "LyricsGet") {
+            LyricsGet v{};
+            if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber())
+                v.track_id = j["track_id"].get<int64_t>();
+            return Command{std::move(v)};
+        }
+        if (t == "LyricsSet") {
+            LyricsSet v{};
+            if (j.contains("lrc_text") && j["lrc_text"].isString())
+                v.lrc_text = j["lrc_text"].get<std::string>();
+            if (j.contains("is_synced") && j["is_synced"].isBoolean())
+                v.is_synced = j["is_synced"].get<bool>();
+            if (j.contains("source") && j["source"].isString())
+                v.source = j["source"].get<std::string>();
+            if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber())
+                v.track_id = j["track_id"].get<int64_t>();
+            return Command{std::move(v)};
+        }
+        if (t == "LyricsRemove") {
+            LyricsRemove v{};
+            if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber())
+                v.track_id = j["track_id"].get<int64_t>();
+            return Command{std::move(v)};
+        }
         if (t == "Shutdown")
             return Command{Shutdown{}};
         if (t == "Preview") {
@@ -1109,6 +1154,16 @@ Json toJson(const Result& r) {
                     ej["created"] = e.created;
                     j["entries"].push_back(ej);
                 }
+                return j;
+            } else if constexpr (std::is_same_v<T, Lyrics>) {
+                Json j;
+                j["type"] = "Lyrics";
+                j["id"] = v.id;
+                j["track_id"] = v.track_id;
+                j["lrc_text"] = v.lrc_text;
+                j["is_synced"] = v.is_synced;
+                j["source"] = v.source;
+                j["fetched_at"] = v.fetched_at;
                 return j;
             } else if constexpr (std::is_same_v<T, Devices>) {
                 Json j;
@@ -1599,6 +1654,22 @@ std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
                 }
             }
             return Result{std::move(b)};
+        }
+        if (t == "Lyrics") {
+            Lyrics l{};
+            if (j.contains("id") && j["id"].isNumber())
+                l.id = j["id"].get<int64_t>();
+            if (j.contains("track_id") && j["track_id"].isNumber())
+                l.track_id = j["track_id"].get<int64_t>();
+            if (j.contains("lrc_text") && j["lrc_text"].isString())
+                l.lrc_text = j["lrc_text"].get<std::string>();
+            if (j.contains("is_synced") && j["is_synced"].isBoolean())
+                l.is_synced = j["is_synced"].get<bool>();
+            if (j.contains("source") && j["source"].isString())
+                l.source = j["source"].get<std::string>();
+            if (j.contains("fetched_at") && j["fetched_at"].isNumber())
+                l.fetched_at = j["fetched_at"].get<int64_t>();
+            return Result{std::move(l)};
         }
         if (t == "Devices") {
             Devices d{};

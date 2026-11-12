@@ -645,6 +645,28 @@ int Shell::run(int argc, char** argv) {
     auto* bmGoto = bookmarkCmd->add_subcommand("goto", "Play and seek to a bookmark");
     bmGoto->add_option("id", bmGotoId, "Bookmark id")->required();
     bmGoto->add_flag("--json", bmGotoJson, "JSON output");
+    auto* lyricsCmd = cli_->add_subcommand("lyrics", "Lyrics operations");
+    std::string lyricsSetText;
+    bool lyricsSetSynced = false;
+    std::string lyricsSetSource = "local";
+    std::string lyricsSetTrack;
+    bool lyricsSetJson = false;
+    auto* lyricsSet = lyricsCmd->add_subcommand("set", "Set lyrics for a track");
+    lyricsSet->add_option("text", lyricsSetText, "Lyrics text (LRC format when synced)")->required();
+    lyricsSet->add_flag("--synced", lyricsSetSynced, "Text is time-coded LRC");
+    lyricsSet->add_option("--source", lyricsSetSource, "Provenance label (default: local)");
+    lyricsSet->add_option("--track", lyricsSetTrack, "Track id or path (default: current track)");
+    lyricsSet->add_flag("--json", lyricsSetJson, "JSON output");
+    std::string lyricsGetTrack;
+    bool lyricsGetJson = false;
+    auto* lyricsGet = lyricsCmd->add_subcommand("get", "Get lyrics for a track");
+    lyricsGet->add_option("--track", lyricsGetTrack, "Track id or path (default: current track)");
+    lyricsGet->add_flag("--json", lyricsGetJson, "JSON output");
+    std::string lyricsRemoveTrack;
+    bool lyricsRemoveJson = false;
+    auto* lyricsRemove = lyricsCmd->add_subcommand("remove", "Remove lyrics for a track");
+    lyricsRemove->add_option("--track", lyricsRemoveTrack, "Track id or path (default: current track)");
+    lyricsRemove->add_flag("--json", lyricsRemoveJson, "JSON output");
     std::string previewFile;
     bool previewKeepPlaying = false;
     auto* previewCmd = cli_->add_subcommand("preview", "Preview file (ephemeral)");
@@ -1185,6 +1207,32 @@ int Shell::run(int argc, char** argv) {
         if (bmGoto->parsed())
             return detail::render(app_.bookmarkGoto(bmGotoId), bmGotoJson);
         std::cout << bookmarkCmd->help() << "\n";
+        return 0;
+    }
+    if (lyricsCmd->parsed()) {
+        if (lyricsSet->parsed()) {
+            return detail::render(app_.lyricsSet(lyricsSetText, lyricsSetSynced,
+                                                 lyricsSetSource,
+                                                 lyricsSetTrack.empty()
+                                                     ? std::nullopt
+                                                     : std::optional<std::string>{lyricsSetTrack}),
+                                  lyricsSetJson);
+        }
+        if (lyricsGet->parsed()) {
+            return detail::render(app_.lyricsGet(
+                                      lyricsGetTrack.empty()
+                                          ? std::nullopt
+                                          : std::optional<std::string>{lyricsGetTrack}),
+                                  lyricsGetJson);
+        }
+        if (lyricsRemove->parsed()) {
+            return detail::render(app_.lyricsRemove(
+                                      lyricsRemoveTrack.empty()
+                                          ? std::nullopt
+                                          : std::optional<std::string>{lyricsRemoveTrack}),
+                                  lyricsRemoveJson);
+        }
+        std::cout << lyricsCmd->help() << "\n";
         return 0;
     }
     if (previewCmd->parsed()) {
