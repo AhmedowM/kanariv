@@ -484,6 +484,17 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                                     truncateField(d.name, 40), d.isDefault ? "yes" : "no");
                 }
             },
+            [&os](const kanariv::ipc::TagBatchEditResult& v) {
+                kanariv::println(os, "Tag batch: {} succeeded, {} failed", v.succeeded, v.failed);
+                for (const auto& er : v.results) {
+                    std::string idStr = er.id.has_value()
+                                            ? std::to_string(*er.id)
+                                            : (er.path.has_value() ? *er.path : "?");
+                    kanariv::println(os, "  [{}] {}={} {}", idStr, er.field,
+                                     er.ok ? "OK" : "FAIL",
+                                     er.ok ? "" : er.error);
+                }
+            },
             [&os](const std::monostate&) { kanariv::println(os, "OK"); },
             [&os](const kanariv::utils::Error& v) {
                 // Error variant - print to given stream (caller may pass cerr)

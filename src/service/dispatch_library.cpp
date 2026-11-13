@@ -76,6 +76,7 @@ using kanariv::ipc::PlaylistSave;
 using kanariv::ipc::PlaylistTracks;
 using kanariv::ipc::Preview;
 using kanariv::ipc::TagEdit;
+using kanariv::ipc::TagBatchEdit;
 using kanariv::ipc::TagGet;
 using kanariv::ipc::TrackRate;
 
@@ -698,6 +699,190 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
         logger_->info("tag edit id={} field={} file={} suspended={}", cmd.id, cmd.field, t.path,
                       loaded);
     return Result{Empty{}};
+}
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
+    static const std::array<std::string_view, 8> allowed{
+        "title", "artist", "album", "album_artist", "genre", "year", "track_number", "disc_number"};
+
+    TagBatchEditResult out{};
+    for (const auto& entry : cmd.entries) {
+        TagBatchEditEntryResult er{};
+        er.field = entry.field;
+        if (entry.path.has_value())
+            er.path = *entry.path;
+
+        // Resolve track id.
+        int64_t id = 0;
+        if (entry.id.has_value()) {
+            id = *entry.id;
+            er.id = id;
+        } else if (entry.path.has_value()) {
+            auto fpRes = db_->findByPath(*entry.path);
+            if (!fpRes) {
+                er.ok = false;
+                er.error = "track not found for path '" + *entry.path + "'";
+                out.results.push_back(std::move(er));
+                ++out.failed;
+                continue;
+            }
+            id = fpRes->id;
+            er.id = id;
+        } else {
+            er.ok = false;
+            er.error = "no id or path specified";
+            out.results.push_back(std::move(er));
+            ++out.failed;
+            continue;
+        }
+
+        // Validate field.
+        bool ok = false;
+        for (auto a : allowed)
+            if (a == entry.field) {
+                ok = true;
+                break;
+            }
+        if (!ok) {
+            er.ok = false;
+            er.error = "invalid field: " + entry.field;
+            out.results.push_back(std::move(er));
+            ++out.failed;
+            continue;
+        }
+
+        if (cmd.dry_run) {
+            er.ok = true;
+            out.results.push_back(std::move(er));
+            ++out.succeeded;
+            continue;
+        }
+
+        // Fetch the track row, merge the field, write file tags, re-register.
+        auto trRes = db_->getTrack(id);
+        if (!trRes) {
+            er.ok = false;
+            er.error = trRes.error().message;
+            out.results.push_back(std::move(er));
+            ++out.failed;
+            continue;
+        }
+        kanariv::types::Track t = std::move(*trRes);
+        if (entry.field == "title")
+            t.title = entry.value;
+        else if (entry.field == "artist")
+            t.artist = entry.value;
+        else if (entry.field == "album")
+            t.album = entry.value;
+        else if (entry.field == "album_artist")
+            t.album_artist = entry.value;
+        else if (entry.field == "genre")
+            t.genre = entry.value;
+        else if (entry.field == "year") {
+            try {
+                size_t pos = 0;
+                int v = std::stoi(entry.value, &pos);
+                if (pos != entry.value.size())
+                    throw std::invalid_argument("extra");
+                t.year = v;
+            } catch (...) {
+                er.ok = false;
+                er.error = "invalid year: " + entry.value;
+                out.results.push_back(std::move(er));
+                ++out.failed;
+                continue;
+            }
+        } else if (entry.field == "track_number") {
+            try {
+                size_t pos = 0;
+                int v = std::stoi(entry.value, &pos);
+                if (pos != entry.value.size())
+                    throw std::invalid_argument("extra");
+                t.track_num = v;
+            } catch (...) {
+                er.ok = false;
+                er.error = "invalid track_number: " + entry.value;
+                out.results.push_back(std::move(er));
+                ++out.failed;
+                continue;
+            }
+        } else if (entry.field == "disc_number") {
+            try {
+                size_t pos = 0;
+                int v = std::stoi(entry.value, &pos);
+                if (pos != entry.value.size())
+                    throw std::invalid_argument("extra");
+                t.disc_num = v;
+            } catch (...) {
+                er.ok = false;
+                er.error = "invalid disc_number: " + entry.value;
+                out.results.push_back(std::move(er));
+                ++out.failed;
+                continue;
+            }
+        }
+
+        if (!detail::canWriteFileTags(t.path)) {
+            er.ok = false;
+            er.error = "tag write not supported for this format: " + t.path;
+            out.results.push_back(std::move(er));
+            ++out.failed;
+            continue;
+        }
+
+        auto& eng = *engine_;
+        bool loaded = (eng.state() == kanariv::types::PlaybackState::Playing ||
+                       eng.state() == kanariv::types::PlaybackState::Paused) &&
+                      eng.currentTrackId() == t.id;
+        double resumePos = 0.0;
+        bool wasPaused = false;
+        if (loaded) {
+            resumePos = eng.position();
+            wasPaused = (eng.state() == kanariv::types::PlaybackState::Paused);
+            if (auto s = ServiceAccess::suspendCurrentTrack(eng); !s) {
+                er.ok = false;
+                er.error = s.error().message;
+                out.results.push_back(std::move(er));
+                ++out.failed;
+                continue;
+            }
+        }
+        auto wr = detail::writeFileTags(t.path, t);
+        if (!wr) {
+            if (loaded)
+                (void)ServiceAccess::resumeAfterTagWrite(eng, t, resumePos, wasPaused);
+            er.ok = false;
+            er.error = wr.error().message;
+            out.results.push_back(std::move(er));
+            ++out.failed;
+            continue;
+        }
+        auto reg = detail::reregisterTrackRow(*db_, t);
+        if (!reg) {
+            if (loaded)
+                (void)ServiceAccess::resumeAfterTagWrite(eng, t, resumePos, wasPaused);
+            er.ok = false;
+            er.error = reg.error().message;
+            out.results.push_back(std::move(er));
+            ++out.failed;
+            continue;
+        }
+        if (loaded) {
+            if (auto r = ServiceAccess::resumeAfterTagWrite(eng, *reg, resumePos, wasPaused); !r) {
+                er.ok = false;
+                er.error = r.error().message;
+                out.results.push_back(std::move(er));
+                ++out.failed;
+                continue;
+            }
+        }
+        er.ok = true;
+        er.id = reg->id;
+        out.results.push_back(std::move(er));
+        ++out.succeeded;
+    }
+    return Result{std::move(out)};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>

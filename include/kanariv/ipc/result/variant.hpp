@@ -21,6 +21,7 @@
 #include <kanariv/ipc/result/playlist.hpp>
 #include <kanariv/ipc/result/queue.hpp>
 #include <kanariv/ipc/result/special.hpp>
+#include <kanariv/ipc/result/tag.hpp>
 #include <variant>
 
 namespace kanariv::ipc {
@@ -44,7 +45,7 @@ using Result =
     std::variant<Status, QueueTracks, Queues, QueueCreated, PlaylistLoaded, VolumeInfo,
                  kanariv::types::LibraryStats, Tracks, SearchResults, Playlists, PlaylistData,
                  PlaylistCreated, PlaylistImportReport, ScanReport, LibraryMaintenanceReport,
-                 ConfigValue, ConfigValues, SingleTrack, TrackInfo, History, Bookmarks, Lyrics, Empty,
+                 ConfigValue, ConfigValues, SingleTrack, TrackInfo, History, Bookmarks, Lyrics, TagBatchEditResult, Empty,
                  CliError, Devices>;
 
 /**

@@ -59,6 +59,15 @@ AppResult App::tagEdit(std::string idOrPath, const std::string& field,
                           std::format("Updated {} for track {}", field, id));
 }
 
+AppResult App::tagBatchEdit(std::vector<kanariv::ipc::TagBatchEditEntry> entries,
+                            bool dry_run) {
+    std::size_t count = entries.size();
+    kanariv::ipc::Command cmd{kanariv::ipc::TagBatchEdit{std::move(entries), dry_run}};
+    return impl_->confirm(impl_->sendRaw(cmd),
+                          std::format("Batch tag edit: {} entries{}", count,
+                                      dry_run ? " (dry-run)" : ""));
+}
+
 AppResult App::tagGet(std::string idOrPath, bool cover) {
     kanariv::ipc::TagGet tg{.cover = cover};
     if (isNumericId(idOrPath)) {

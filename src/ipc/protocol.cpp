@@ -354,6 +354,20 @@ Json toJson(const Command& cmd) {
                 if (v.path.has_value())
                     j["path"] = *v.path;
                 j["cover"] = v.cover;
+            } else if constexpr (std::is_same_v<T, TagBatchEdit>) {
+                j["type"] = "TagBatchEdit";
+                j["dry_run"] = v.dry_run;
+                j["entries"] = Json::array();
+                for (const auto& e : v.entries) {
+                    Json je = Json::object();
+                    if (e.id.has_value())
+                        je["id"] = *e.id;
+                    if (e.path.has_value())
+                        je["path"] = *e.path;
+                    je["field"] = e.field;
+                    je["value"] = e.value;
+                    j["entries"].push_back(std::move(je));
+                }
             } else if constexpr (std::is_same_v<T, ConfigGet>) {
                 j["type"] = "ConfigGet";
                 j["key"] = v.key;
@@ -765,6 +779,31 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 tg.cover = j["cover"].get<bool>();
             return Command{std::move(tg)};
         }
+        if (t == "TagBatchEdit") {
+            TagBatchEdit tbe{};
+            if (j.contains("dry_run") && j["dry_run"].isBoolean())
+                tbe.dry_run = j["dry_run"].get<bool>();
+            if (j.contains("entries") && j["entries"].isArray()) {
+                const Json arr = j["entries"];
+                for (std::size_t ei = 0, en = arr.size(); ei < en; ++ei) {
+                    auto jeExp = arr.at(ei);
+                    if (!jeExp)
+                        return std::unexpected{jeExp.error()};
+                    const Json je = std::move(*jeExp);
+                    TagBatchEditEntry e{};
+                    if (je.contains("id") && je["id"].isNumber())
+                        e.id = je["id"].get<int64_t>();
+                    if (je.contains("path") && je["path"].isString())
+                        e.path = je["path"].get<std::string>();
+                    if (je.contains("field") && je["field"].isString())
+                        e.field = je["field"].get<std::string>();
+                    if (je.contains("value") && je["value"].isString())
+                        e.value = je["value"].get<std::string>();
+                    tbe.entries.push_back(std::move(e));
+                }
+            }
+            return Command{std::move(tbe)};
+        }
         if (t == "ConfigGet") {
             std::string k;
             if (j.contains("key") && j["key"].isString())
@@ -1164,6 +1203,24 @@ Json toJson(const Result& r) {
                 j["is_synced"] = v.is_synced;
                 j["source"] = v.source;
                 j["fetched_at"] = v.fetched_at;
+                return j;
+            } else if constexpr (std::is_same_v<T, TagBatchEditResult>) {
+                Json j;
+                j["type"] = "TagBatchEditResult";
+                j["succeeded"] = v.succeeded;
+                j["failed"] = v.failed;
+                j["results"] = Json::array();
+                for (const auto& r : v.results) {
+                    Json er = Json::object();
+                    if (r.id.has_value())
+                        er["id"] = *r.id;
+                    if (r.path.has_value())
+                        er["path"] = *r.path;
+                    er["field"] = r.field;
+                    er["ok"] = r.ok;
+                    er["error"] = r.error;
+                    j["results"].push_back(std::move(er));
+                }
                 return j;
             } else if constexpr (std::is_same_v<T, Devices>) {
                 Json j;
@@ -1670,6 +1727,35 @@ std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
             if (j.contains("fetched_at") && j["fetched_at"].isNumber())
                 l.fetched_at = j["fetched_at"].get<int64_t>();
             return Result{std::move(l)};
+        }
+        if (t == "TagBatchEditResult") {
+            TagBatchEditResult r{};
+            if (j.contains("succeeded") && j["succeeded"].isNumber())
+                r.succeeded = j["succeeded"].get<int64_t>();
+            if (j.contains("failed") && j["failed"].isNumber())
+                r.failed = j["failed"].get<int64_t>();
+            if (j.contains("results") && j["results"].isArray()) {
+                const Json arr = j["results"];
+                for (std::size_t ri = 0, rn = arr.size(); ri < rn; ++ri) {
+                    auto jreExp = arr.at(ri);
+                    if (!jreExp)
+                        return std::unexpected{jreExp.error()};
+                    const Json jre = std::move(*jreExp);
+                    TagBatchEditEntryResult er{};
+                    if (jre.contains("id") && jre["id"].isNumber())
+                        er.id = jre["id"].get<int64_t>();
+                    if (jre.contains("path") && jre["path"].isString())
+                        er.path = jre["path"].get<std::string>();
+                    if (jre.contains("field") && jre["field"].isString())
+                        er.field = jre["field"].get<std::string>();
+                    if (jre.contains("ok") && jre["ok"].isBoolean())
+                        er.ok = jre["ok"].get<bool>();
+                    if (jre.contains("error") && jre["error"].isString())
+                        er.error = jre["error"].get<std::string>();
+                    r.results.push_back(std::move(er));
+                }
+            }
+            return Result{std::move(r)};
         }
         if (t == "Devices") {
             Devices d{};

@@ -707,6 +707,14 @@ int Shell::run(int argc, char** argv) {
     tagGet->add_option("field", tagGetField, "Single field (default: all)");
     tagGet->add_flag("--json", tagGetJson, "JSON output");
     tagGet->add_option("--out", tagGetOut, "Output file path (cover art only)");
+    std::string tagBatchFile;
+    bool tagBatchDryRun = false;
+    bool tagBatchJson = false;
+    auto* tagBatch = tagCmd->add_subcommand("batch", "Batch-edit tags from a file");
+    tagBatch->add_option("--file", tagBatchFile, "Tag assignments file (JSON or id|field|value lines)")
+        ->required();
+    tagBatch->add_flag("--dry-run", tagBatchDryRun, "Validate only, do not write");
+    tagBatch->add_flag("--json", tagBatchJson, "JSON output");
     auto* trackCmd = cli_->add_subcommand("track", "Track operations");
     std::string trRateId;
     int trRateRating = 0;
@@ -1271,6 +1279,128 @@ int Shell::run(int argc, char** argv) {
             else
                 kanariv::println("{}", tv->value);
             return 0;
+        }
+        if (tagBatch->parsed()) {
+            std::ifstream ifs(tagBatchFile, std::ios::binary);
+            if (!ifs) {
+                kanariv::println(std::cerr, "tag batch: cannot open file '{}'", tagBatchFile);
+                return 1;
+            }
+            std::stringstream ss;
+            ss << ifs.rdbuf();
+            std::string content = ss.str();
+
+            std::vector<kanariv::ipc::TagBatchEditEntry> entries;
+            // Detect JSON by leading '[' or '{'; otherwise parse line-oriented
+            // "id|field|value" or "path|field|value" records.
+            std::size_t first = content.find_first_not_of(" \t\r\n");
+            bool isJson = first != std::string::npos &&
+                          (content[first] == '[' || content[first] == '{');
+            if (isJson) {
+                auto j = kanariv::utils::Json::tryParse(content);
+                if (!j)
+                    return detail::renderError(
+                        kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                 "tag batch: invalid JSON: " + j.error().message));
+                const kanariv::utils::Json& arr = *j;
+                if (!arr.isArray())
+                    return detail::renderError(
+                        kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                 "tag batch: JSON must be an array of entries"));
+                for (std::size_t i = 0, n = arr.size(); i < n; ++i) {
+                    auto jeExp = arr.at(i);
+                    if (!jeExp)
+                        return detail::renderError(jeExp.error());
+                    const kanariv::utils::Json& je = *jeExp;
+                    kanariv::ipc::TagBatchEditEntry e{};
+                    if (je.contains("id") && je["id"].isNumber())
+                        e.id = je["id"].get<int64_t>();
+                    if (je.contains("path") && je["path"].isString())
+                        e.path = je["path"].get<std::string>();
+                    if (je.contains("field") && je["field"].isString())
+                        e.field = je["field"].get<std::string>();
+                    if (je.contains("value") && je["value"].isString())
+                        e.value = je["value"].get<std::string>();
+                    entries.push_back(std::move(e));
+                }
+            } else {
+                std::istringstream lines(content);
+                std::string line;
+                while (std::getline(lines, line)) {
+                    // Strip trailing \r
+                    if (!line.empty() && line.back() == '\r')
+                        line.pop_back();
+                    if (line.empty() || line[0] == '#')
+                        continue;
+                    std::vector<std::string> parts;
+                    std::size_t start = 0;
+                    std::size_t pos = line.find('|');
+                    while (pos != std::string::npos) {
+                        parts.push_back(line.substr(start, pos - start));
+                        start = pos + 1;
+                        pos = line.find('|', start);
+                    }
+                    parts.push_back(line.substr(start));
+                    if (parts.size() != 3) {
+                        kanariv::println(std::cerr,
+                                        "tag batch: malformed line (expected id|field|value): {}",
+                                        line);
+                        return 1;
+                    }
+                    kanariv::ipc::TagBatchEditEntry e{};
+                    // First part: numeric id or path
+                    bool isId = true;
+                    for (char c : parts[0]) {
+                        if (c < '0' || c > '9') {
+                            isId = false;
+                            break;
+                        }
+                    }
+                    if (isId && !parts[0].empty())
+                        e.id = std::stoll(parts[0]);
+                    else
+                        e.path = parts[0];
+                    e.field = parts[1];
+                    e.value = parts[2];
+                    entries.push_back(std::move(e));
+                }
+            }
+
+            if (entries.empty()) {
+                kanariv::println(std::cerr, "tag batch: no entries found in '{}'", tagBatchFile);
+                return 1;
+            }
+
+            auto res = app_.tagBatchEdit(std::move(entries), tagBatchDryRun);
+            if (!res)
+                return detail::renderError(res.error());
+            if (auto* outcome = &*res) {
+                if (!outcome->result) {
+                    kanariv::println(std::cerr, "tag batch: no result from daemon");
+                    return 1;
+                }
+                auto& ipc_res = *outcome->result;
+                if (auto* br = std::get_if<kanariv::ipc::TagBatchEditResult>(&ipc_res)) {
+                    if (tagBatchJson) {
+                        kanariv::println("{}", kanariv::ipc::toJson(ipc_res).dump());
+                        return 0;
+                    }
+                    kanariv::println(std::cout, "Tag batch: {} succeeded, {} failed",
+                                     br->succeeded, br->failed);
+                    for (const auto& er : br->results) {
+                        std::string idStr = er.id.has_value()
+                                                ? std::to_string(*er.id)
+                                                : (er.path.has_value() ? *er.path : "?");
+                        kanariv::println(std::cout, "  [{}] {}={} {}", idStr, er.field,
+                                         er.ok ? "OK" : "FAIL",
+                                         er.ok ? "" : er.error);
+                    }
+                    return br->failed > 0 ? 1 : 0;
+                }
+                kanariv::println(std::cerr, "tag batch: unexpected result type");
+                return 1;
+            }
+            return detail::render(std::move(res), tagBatchJson);
         }
         std::cout << tagCmd->help() << "\n";
         return 0;

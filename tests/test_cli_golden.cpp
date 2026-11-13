@@ -798,6 +798,72 @@ TEST_CASE("cli tag edit writes file", "[cli]") {
     REQUIRE(contains(get2.out, "Golden Title"));
 }
 
+TEST_CASE("cli tag batch writes file", "[cli]") {
+    namespace fs = std::filesystem;
+    fs::path dir = tempDirPath("gold_tagbatch");
+    fs::path cfg = dir / "config.json";
+    {
+        std::ofstream f(cfg, std::ios::binary);
+        f << "{\"dbPath\": \"" << dir.generic_string() << "/library.db\"}";
+    }
+    std::string cfgS = cfg.generic_string();
+    auto run = [&](std::vector<std::string> a) {
+        a.insert(a.begin(), {"--config", cfgS});
+        return runCli(a);
+    };
+    DaemonGuard<decltype(run)> guard{&run, dir};
+#ifdef TEST_DATA_DIR
+    fs::path src = fs::path(std::string(TEST_DATA_DIR)) / "sample.mp3";
+#else
+    fs::path src;
+#endif
+    if (src.empty() || !fs::exists(src)) {
+        SKIP("no fixture sample.mp3");
+    }
+    fs::path music = dir / "music";
+    std::error_code ec;
+    fs::create_directories(music, ec);
+    fs::copy_file(src, music / "song.mp3", fs::copy_options::overwrite_existing, ec);
+    REQUIRE(!ec);
+    auto start = run({"start"});
+    if (start.exitCode != 0)
+        start = run({"start"});
+    INFO("start stdout: " << start.out << "\nstart stderr: " << start.err);
+    REQUIRE(start.exitCode == 0);
+    bool up = false;
+    for (int i = 0; i < 150 && !up; ++i) {
+        auto s = run({"status"});
+        up = (s.exitCode == 0);
+        if (!up)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    REQUIRE(up);
+    auto add = run({"library", "add", (music / "song.mp3").generic_string()});
+    REQUIRE(add.exitCode == 0);
+    // Write a JSON batch file: set title + artist on track 1.
+    fs::path batchFile = dir / "batch.json";
+    {
+        std::ofstream f(batchFile, std::ios::binary);
+        f << "[{\"id\": 1, \"field\": \"title\", \"value\": \"Batch Title\"},"
+             "{\"id\": 1, \"field\": \"artist\", \"value\": \"Batch Artist\"}]";
+    }
+    auto batch = run({"tag", "batch", "--file", batchFile.generic_string()});
+    REQUIRE(batch.exitCode == 0);
+    INFO("batch stdout: " << batch.out << "\nbatch stderr: " << batch.err);
+    REQUIRE(contains(batch.out, "succeeded"));
+    auto get = run({"tag", "get", "1"});
+    REQUIRE(get.exitCode == 0);
+    REQUIRE(contains(get.out, "Batch Title"));
+    REQUIRE(contains(get.out, "Batch Artist"));
+    // Dry-run should not change anything.
+    auto dry = run({"tag", "batch", "--file", batchFile.generic_string(), "--dry-run"});
+    REQUIRE(dry.exitCode == 0);
+    REQUIRE(contains(dry.out, "succeeded"));
+    auto get2 = run({"tag", "get", "1", "title"});
+    REQUIRE(get2.exitCode == 0);
+    REQUIRE(contains(get2.out, "Batch Title"));
+}
+
 TEST_CASE("cli playback one-liners", "[cli]") {
     KANARIV_SKIP_IF_NOAUDIO();
     namespace fs = std::filesystem;

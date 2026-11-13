@@ -447,6 +447,17 @@ class KANARIV_API App {
     AppResult tagEdit(std::string idOrPath, const std::string& field, const std::string& value);
 
     /**
+     * @brief Batch-edit multiple tag fields across one or more tracks.
+     * @ingroup kanariv_app
+     * @param entries One or more tag assignments (id or path + field + value).
+     * @param dry_run When true, validate and report without writing.
+     * @return Outcome data; result carries TagBatchEditResult with per-entry
+     *   success/failure details.
+     */
+    AppResult tagBatchEdit(std::vector<kanariv::ipc::TagBatchEditEntry> entries,
+                           bool dry_run = false);
+
+    /**
      * @brief Reads the full track tag record.
      * @ingroup kanariv_app
      * @param id Track id.

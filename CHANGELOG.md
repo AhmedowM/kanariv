@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file.
 - `lyrics get --live`: live synced lyrics display — polls playback position
   and shows the current LRC line in real time, modeled after `status --watch`.
+- Tag batch operations (`tag batch --file <path> [--dry-run] [--json]`):
+  apply multiple tag assignments across one or more tracks from a JSON array
+  or line-oriented (`id|field|value` / `path|field|value`) file. Reuses the
+  TagLib file-first writer (`writeFileTags` + `reregisterTrackRow`) with
+  loaded-track suspend/resume. Reports per-entry success/failure; `--dry-run`
+  validates without writing.
 
 ## [v2.0.0] - 2026-11-10
 

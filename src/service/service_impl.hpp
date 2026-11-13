@@ -172,6 +172,8 @@ struct Service::Impl {
     handle(const kanariv::ipc::TagEdit& cmd);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::TagGet& cmd);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    handle(const kanariv::ipc::TagBatchEdit& cmd);
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::TrackRate& cmd);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::VolumeSet& v);

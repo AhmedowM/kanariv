@@ -54,7 +54,7 @@ using Command =
                  HistoryList, HistoryClear, BookmarkList, BookmarkAdd, BookmarkRemove, BookmarkGoto,
                  LyricsGet, LyricsSet, LyricsRemove,
                  Shutdown, Preview, DeviceList, DeviceSet, DeviceTest, Info, TrackRate,
-                 LibraryMaintenance, StatusWait>;
+                 LibraryMaintenance, StatusWait, TagBatchEdit>;
 
 // helper concepts
 namespace detail {

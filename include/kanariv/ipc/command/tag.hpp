@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace kanariv::ipc {
 
@@ -71,6 +72,45 @@ struct TagGet final {
      * Reads the file at track.cover_art_path.
      */
     bool cover{false};
+};
+
+/**
+ * @struct TagBatchEditEntry
+ * @brief A single tag assignment within a batch edit.
+ * @ingroup kanariv_ipc
+ *
+ * Either `id` or `path` must be set to identify the track.
+ *
+ * @json_example {"id": 123, "field": "artist", "value": "New Artist"}
+ *
+ * @param id Track id (optional if path is given).
+ * @param path File path to identify the track (optional if id is given).
+ * @param field Tag field name (title, artist, album, album_artist, genre,
+ *   year, track_number, disc_number).
+ * @param value New value for the tag.
+ */
+struct TagBatchEditEntry final {
+    std::optional<int64_t> id{};
+    std::optional<std::string> path{};
+    std::string field{};
+    std::string value{};
+};
+
+/**
+ * @struct TagBatchEdit
+ * @brief Batch-edit multiple tag fields across one or more tracks.
+ * @ingroup kanariv_ipc
+ *
+ * @json_example {"type": "TagBatchEdit", "entries": [{"id": 1, "field": "artist", "value": "A"}]}
+ *
+ * @param entries One or more tag assignments to apply.
+ * @param dry_run When true, validate and report what would change without
+ *   writing any file or DB row.
+ * @return TagBatchEditResult with per-entry success/failure.
+ */
+struct TagBatchEdit final {
+    std::vector<TagBatchEditEntry> entries{};
+    bool dry_run{false};
 };
 
 } // namespace kanariv::ipc
