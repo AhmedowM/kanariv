@@ -2,6 +2,7 @@
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
 #include <kanariv/utils/result.hpp>
 #include <cerrno>
 #include <cmath>
@@ -25,6 +26,7 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/error.h>
 #include <libavutil/opt.h>
 #include <libavutil/samplefmt.h>
 #include <libswresample/swresample.h>
@@ -35,6 +37,24 @@ extern "C" {
 
 namespace kanariv::media {
 
+namespace {
+
+// Probing bounds shared by every FFmpeg session (P1-1). Defaults (5 MB and an
+// unbounded-ish analysis window) let a single open buffer megabytes per file;
+// 1 MB / 0.5 s covers headers, Xing/Info tables and attached pictures.
+constexpr int probeSizeBytes = 1048576;
+constexpr int analyzeDurationUs = 500000;
+constexpr const char* probeSizeOption = "1048576";
+constexpr const char* analyzeDurationOption = "500000";
+std::string ffErrorString(int err) {
+    char buf[AV_ERROR_MAX_STRING_SIZE] = {};
+    if (av_strerror(err, buf, sizeof(buf)) < 0)
+        return "unknown FFmpeg error " + std::to_string(err);
+    return std::string(buf);
+}
+
+} // namespace
+
 struct Decoder::Impl {
     Impl() = default;
     ~Impl();
@@ -43,7 +63,11 @@ struct Decoder::Impl {
     [[nodiscard]] uint32_t channels() const noexcept;
     [[nodiscard]] uint64_t totalFrames() const noexcept;
 
-    std::size_t decode(std::span<float> out);
+    struct DecodeResult {
+        std::size_t frames{0};
+        DecodeStatus status{DecodeStatus::Ok};
+    };
+    DecodeResult decode(std::span<float> out);
 
     kanariv::utils::Expected<void> seek(double seconds);
 
@@ -77,6 +101,11 @@ struct Decoder::Impl {
 
     int convertFrameBuffered(AVFrame* frame);
     int drainResampler();
+    // Receives every frame the codec currently holds into spill_. Returns the
+    // number of frames consumed, or a negative FFmpeg/swr error. A codec-side
+    // AVERROR_EOF sets codecEof_ and is not an error.
+    int drainDecoder(AVFrame* frame);
+    void resetDecodeState();
     std::size_t serveSpill(std::span<float> out, std::size_t totalDecoded, std::size_t frames);
 
     static int readCallback(void* opaque, uint8_t* buf, int bufSize);
@@ -86,6 +115,7 @@ struct Decoder::Impl {
     static int64_t seekCallback(void* opaque, int64_t offset, int whence);
 
     Reader* reader_{nullptr};
+    kanariv::utils::Logger* logger_{nullptr};
     AVFormatContext* fmt_{nullptr};
     AVCodecContext* dec_{nullptr};
     AVIOContext* avio_{nullptr};
@@ -94,7 +124,14 @@ struct Decoder::Impl {
     uint32_t sampleRate_{0};
     uint32_t channels_{0};
     uint64_t totalFrames_{0};
-    uint64_t pos_{0};
+    // Send/receive bookkeeping (M1). The packet in scratchPkt_ may have been
+    // read but not yet accepted by the codec (EAGAIN): it stays pending and is
+    // retried verbatim; it is unref'd only after avcodec_send_packet accepted
+    // it, so no packet is dropped or delivered twice.
+    bool packetPending_{false};
+    bool eofReached_{false};
+    bool flushed_{false};
+    bool codecEof_{false};
     PacketPtr scratchPkt_{};
     FramePtr scratchFrame_{};
     static constexpr std::size_t convertFrames = 4096;
@@ -104,23 +141,30 @@ struct Decoder::Impl {
 };
 
 kanariv::utils::Expected<kanariv::types::TrackMetadata> extractMetadata(std::string_view path) {
+    // FFmpeg takes a NUL-terminated UTF-8 path; a string_view is not
+    // guaranteed to be terminated, so own the bytes first (M5).
+    const std::string ownedPath(path);
     AVFormatContext* fmt = avformat_alloc_context();
     if (!fmt) {
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::NoMem,
                                                         "avformat_alloc_context failed"));
     }
 
-    if (avformat_open_input(&fmt, path.data(), nullptr, nullptr) < 0) {
-        avformat_free_context(fmt);
+    // Probing bounds must be in place before the context is opened:
+    // avformat_open_input runs the format probe itself, so assigning them
+    // afterwards bounded only avformat_find_stream_info (M13).
+    AVDictionary* openOpts = nullptr;
+    av_dict_set(&openOpts, "probesize", probeSizeOption, 0);
+    av_dict_set(&openOpts, "fprobesize", probeSizeOption, 0);
+    av_dict_set(&openOpts, "analyzeduration", analyzeDurationOption, 0);
+    const int openRet = avformat_open_input(&fmt, ownedPath.c_str(), nullptr, &openOpts);
+    av_dict_free(&openOpts);
+    if (openRet < 0) {
+        // avformat_open_input frees a caller-provided context on failure.
         return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "avformat_open_input failed"));
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                      "avformat_open_input failed: " + ffErrorString(openRet)));
     }
-
-    // Bound probing (P1-1): defaults (5 MB / unbounded-ish analysis) let a
-    // single open buffer megabytes per file. 1 MB / 0.5 s covers headers,
-    // Xing/Info tables and attached pictures for sane files.
-    fmt->probesize = 1048576;
-    fmt->max_analyze_duration = 500000;
 
     if (avformat_find_stream_info(fmt, nullptr) < 0) {
         avformat_close_input(&fmt);
@@ -210,84 +254,151 @@ uint64_t Decoder::Impl::totalFrames() const noexcept {
     return totalFrames_;
 }
 
-std::size_t Decoder::Impl::decode(std::span<float> out) {
-    if (out.empty() || !fmt_ || !dec_ || !swr_ || channels_ == 0)
-        return 0;
+Decoder::Impl::DecodeResult Decoder::Impl::decode(std::span<float> out) {
+    DecodeResult result{};
+    if (out.empty())
+        return result; // nothing requested: not an error
+    if (!fmt_ || !dec_ || !swr_ || channels_ == 0) {
+        result.status = DecodeStatus::Error;
+        return result;
+    }
 
     std::size_t frames = out.size() / channels_;
-    if (frames == 0)
-        return 0;
+    if (frames == 0) {
+        result.status = DecodeStatus::Error;
+        return result;
+    }
 
     std::size_t totalDecoded = 0;
-    bool eofReached = false;
     // Reusable scratch packet/frame (P-1). Lazily (re)allocated if init()
     // failed to pre-allocate or cleanup() released them.
     if (!scratchPkt_)
         scratchPkt_.reset(av_packet_alloc());
     if (!scratchFrame_)
         scratchFrame_.reset(av_frame_alloc());
-    if (!scratchPkt_ || !scratchFrame_)
-        return 0;
+    if (!scratchPkt_ || !scratchFrame_) {
+        result.status = DecodeStatus::Error;
+        return result;
+    }
     AVPacket* pkt = scratchPkt_.get();
     AVFrame* frame = scratchFrame_.get();
-    // Decode at most what `out` (plus the bounded spill_) can hold: each
-    // iteration serves spill_ first and converts at most one more frame, so
-    // swr_convert always sees the full convertFrames window (P-7).
-    while (totalDecoded < frames && !eofReached) {
+    // Decode at most what `out` (plus the bounded spill_) can hold. Each
+    // iteration serves spill_ first, then makes at most one send/receive step,
+    // so swr_convert always sees the full convertFrames window (P-7).
+    while (totalDecoded < frames) {
         totalDecoded += serveSpill(out, totalDecoded, frames);
         if (totalDecoded >= frames)
-            break;
-        av_packet_unref(pkt);
+            break; // output full: status stays Ok, more audio may follow
 
-        int ret = av_read_frame(fmt_, pkt);
-        if (ret < 0) {
-            // EOF: flush decoder internal buffers
-            if (ret == AVERROR_EOF || ret < 0) {
-                (void)avcodec_send_packet(dec_, nullptr);
-                for (;;) {
-                    av_frame_unref(frame);
-                    ret = avcodec_receive_frame(dec_, frame);
-                    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                        break;
-                    if (ret < 0)
-                        break;
-                    if (convertFrameBuffered(frame) < 0)
-                        break;
-                }
-                if (drainResampler() < 0)
+        if (codecEof_) {
+            result.status = DecodeStatus::Eof;
+            break;
+        }
+
+        if (packetPending_) {
+            // Invariant (M1): scratchPkt_ holds a packet the codec has not
+            // accepted yet. It is retained across iterations and calls and is
+            // unref'd only after a successful send, so EAGAIN never drops it
+            // and the packet is never delivered twice.
+            const int ret = avcodec_send_packet(dec_, pkt);
+            if (ret == AVERROR(EAGAIN)) {
+                // The codec still holds output: receive it, keep the packet
+                // pending, and retry the send on the next iteration.
+                if (drainDecoder(frame) <= 0) {
+                    if (logger_)
+                        logger_->warn("decoder stalled while draining for EAGAIN");
+                    result.status = DecodeStatus::Error;
                     break;
-                totalDecoded += serveSpill(out, totalDecoded, frames);
+                }
+                continue;
             }
-            eofReached = true;
+            if (ret == AVERROR_EOF) {
+                // The codec is already flushed and holds no more frames.
+                packetPending_ = false;
+                av_packet_unref(pkt);
+                codecEof_ = true;
+                result.status = DecodeStatus::Eof;
+                break;
+            }
+            if (ret < 0) {
+                // InvalidData and friends: corrupt input, not end of stream.
+                // Drop the packet so an Error-aware caller can resume after it,
+                // then report the failure instead of silently continuing.
+                packetPending_ = false;
+                av_packet_unref(pkt);
+                if (logger_)
+                    logger_->warn("avcodec_send_packet failed: {}", ffErrorString(ret));
+                result.status = DecodeStatus::Error;
+                break;
+            }
+            packetPending_ = false;
+            av_packet_unref(pkt);
+            if (drainDecoder(frame) < 0) {
+                result.status = DecodeStatus::Error;
+                break;
+            }
+            continue;
+        }
+
+        if (eofReached_) {
+            // Flush the codec once, drain every remaining frame, then drain the
+            // resampler so its held-back tail is not lost.
+            if (!flushed_) {
+                const int ret = avcodec_send_packet(dec_, nullptr);
+                if (ret == AVERROR(EAGAIN)) {
+                    if (drainDecoder(frame) <= 0) {
+                        result.status = DecodeStatus::Error;
+                        break;
+                    }
+                    continue;
+                }
+                if (ret < 0 && ret != AVERROR_EOF) {
+                    if (logger_)
+                        logger_->warn("decoder flush failed: {}", ffErrorString(ret));
+                    result.status = DecodeStatus::Error;
+                    break;
+                }
+                flushed_ = true;
+            }
+            if (drainDecoder(frame) < 0) {
+                result.status = DecodeStatus::Error;
+                break;
+            }
+            if (drainResampler() < 0) {
+                result.status = DecodeStatus::Error;
+                break;
+            }
+            codecEof_ = true;
+            totalDecoded += serveSpill(out, totalDecoded, frames);
+            result.status = DecodeStatus::Eof;
             break;
         }
 
-        if (pkt->stream_index != audioStreamIdx_) {
+        av_packet_unref(pkt);
+        const int ret = av_read_frame(fmt_, pkt);
+        if (ret == AVERROR_EOF) {
+            eofReached_ = true;
             continue;
         }
-
-        ret = avcodec_send_packet(dec_, pkt);
-        if (ret == AVERROR(EAGAIN)) {
-            av_frame_unref(frame);
-            if (avcodec_receive_frame(dec_, frame) == 0)
-                (void)convertFrameBuffered(frame);
-            continue;
-        }
-        if (ret < 0)
-            continue;
-
-        av_frame_unref(frame);
-        ret = avcodec_receive_frame(dec_, frame);
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-            continue;
-        if (ret < 0)
-            continue;
-        if (convertFrameBuffered(frame) < 0)
+        if (ret < 0) {
+            // Only AVERROR_EOF is a clean end (M2). AVERROR(EIO) from a reader
+            // failure, AVERROR_INVALIDDATA and everything else are real errors
+            // and must not truncate playback silently.
+            if (logger_)
+                logger_->warn("av_read_frame failed: {}", ffErrorString(ret));
+            result.status = DecodeStatus::Error;
             break;
+        }
+        if (pkt->stream_index != audioStreamIdx_)
+            continue; // non-audio packet: consumed and dropped
+        packetPending_ = true;
     }
 
-    pos_ += totalDecoded;
-    return totalDecoded;
+    // Deliver anything already converted -- including frames decoded just
+    // before a mid-stream failure -- before reporting the final status.
+    totalDecoded += serveSpill(out, totalDecoded, frames);
+    result.frames = totalDecoded;
+    return result;
 }
 
 kanariv::utils::Expected<void> Decoder::Impl::seek(double seconds) {
@@ -327,15 +438,51 @@ kanariv::utils::Expected<void> Decoder::Impl::seek(double seconds) {
     if (swr_)
         swr_init(swr_);
     // Drop converted-but-undelivered residue: positions before the seek
-    // target must never surface after it.
+    // target must never surface after it. Also forget any packet the codec
+    // had not accepted yet; it belongs to the pre-seek stream.
     spill_.clear();
     spillPos_ = 0;
-    pos_ = static_cast<uint64_t>(seconds * sampleRate_);
+    resetDecodeState();
     return {};
 }
 
 Decoder::Impl::~Impl() {
     cleanup();
+}
+
+int Decoder::Impl::drainDecoder(AVFrame* frame) {
+    int received = 0;
+    for (;;) {
+        av_frame_unref(frame);
+        const int ret = avcodec_receive_frame(dec_, frame);
+        if (ret == AVERROR(EAGAIN))
+            return received;
+        if (ret == AVERROR_EOF) {
+            codecEof_ = true;
+            return received;
+        }
+        if (ret < 0) {
+            if (logger_)
+                logger_->warn("avcodec_receive_frame failed: {}", ffErrorString(ret));
+            return ret;
+        }
+        ++received;
+        const int converted = convertFrameBuffered(frame);
+        if (converted < 0) {
+            if (logger_)
+                logger_->warn("swr_convert failed: {}", ffErrorString(converted));
+            return converted;
+        }
+    }
+}
+
+void Decoder::Impl::resetDecodeState() {
+    packetPending_ = false;
+    eofReached_ = false;
+    flushed_ = false;
+    codecEof_ = false;
+    if (scratchPkt_)
+        av_packet_unref(scratchPkt_.get());
 }
 
 int Decoder::Impl::convertFrameBuffered(AVFrame* frame) {
@@ -410,9 +557,13 @@ int Decoder::Impl::readCallback(void* opaque, uint8_t* buf, int bufSize) {
     auto* self = static_cast<Impl*>(opaque);
     if (!self->reader_)
         return AVERROR(EIO);
-    std::span<std::byte> dst(reinterpret_cast<std::byte*>(buf), bufSize);
+    std::span<std::byte> dst(reinterpret_cast<std::byte*>(buf), static_cast<std::size_t>(bufSize));
     std::size_t n = self->reader_->read(dst);
-    return n > 0 ? static_cast<int>(n) : AVERROR_EOF;
+    if (n > 0)
+        return static_cast<int>(n);
+    // Only a real end-of-stream is EOF; an I/O failure must surface so
+    // av_read_frame reports it instead of pretending the file ended (M2).
+    return self->reader_->lastReadStatus() == ReadStatus::Error ? AVERROR(EIO) : AVERROR_EOF;
 }
 
 int64_t Decoder::Impl::seekCallback(void* opaque, int64_t offset, int whence) {
@@ -488,15 +639,18 @@ bool Decoder::Impl::init() {
     // masked restart bugs (Header missing x3, CRC mismatch). Keep silent after init.
     av_log_set_level(AV_LOG_QUIET);
 
-    // Open input (probes format)
+    // Open input (probes format). The probing bounds are set on the context
+    // *before* the open so avformat_open_input's own format probe is bounded
+    // too; assigning them afterwards only bounded find_stream_info (M13).
+    // `probesize` bounds stream-info reads, `fprobesize` bounds the
+    // input-format probe (ignored gracefully when the option is absent).
+    fmt_->probesize = probeSizeBytes;
+    (void)av_opt_set_int(fmt_, "fprobesize", probeSizeBytes, 0);
+    fmt_->max_analyze_duration = analyzeDurationUs;
     if (avformat_open_input(&fmt_, nullptr, nullptr, nullptr) < 0) {
         cleanup();
         return false;
     }
-
-    // Bound probing (P1-1): see extractMetadata above.
-    fmt_->probesize = 1048576;
-    fmt_->max_analyze_duration = 500000;
 
     if (avformat_find_stream_info(fmt_, nullptr) < 0) {
         cleanup();
@@ -590,11 +744,12 @@ bool Decoder::Impl::init() {
         totalFrames_ = 0; // Unknown -- will still decode to EOF
     }
 
-    pos_ = 0;
+    resetDecodeState();
     return true;
 }
 
 void Decoder::Impl::cleanup() {
+    resetDecodeState();
     scratchPkt_.reset();
     scratchFrame_.reset();
     convertBuf_.clear();
@@ -632,6 +787,7 @@ Decoder& Decoder::operator=(Decoder&&) noexcept = default;
 
 kanariv::utils::Expected<void> Decoder::init(Reader& reader) {
     impl_->reader_ = &reader;
+    impl_->logger_ = logger_;
     if (!impl_->init())
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
                                                     std::string_view("FFmpeg init failed")});
@@ -639,22 +795,39 @@ kanariv::utils::Expected<void> Decoder::init(Reader& reader) {
 }
 
 uint32_t Decoder::sampleRate() const noexcept {
-    return impl_->sampleRate();
+    return impl_ ? impl_->sampleRate() : 0;
 }
 
 uint32_t Decoder::channels() const noexcept {
-    return impl_->channels();
+    return impl_ ? impl_->channels() : 0;
 }
 
 uint64_t Decoder::totalFrames() const noexcept {
-    return impl_->totalFrames();
+    return impl_ ? impl_->totalFrames() : 0;
 }
 
 std::size_t Decoder::decode(std::span<float> out) {
-    return impl_->decode(out);
+    if (!impl_)
+        return 0;
+    return impl_->decode(out).frames;
+}
+
+std::size_t Decoder::decode(std::span<float> out, DecodeStatus* status) {
+    if (!status)
+        return decode(out);
+    if (!impl_) {
+        *status = DecodeStatus::Error;
+        return 0;
+    }
+    const auto result = impl_->decode(out);
+    *status = result.status;
+    return result.frames;
 }
 
 kanariv::utils::Expected<void> Decoder::seek(double seconds) {
+    if (!impl_)
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
+                                                     std::string_view("moved-from decoder")});
     return impl_->seek(seconds);
 }
 

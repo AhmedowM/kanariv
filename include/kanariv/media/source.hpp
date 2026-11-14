@@ -109,7 +109,7 @@ class KANARIV_API PathSource final : public Source {
     /** @brief Returns SourceKind::path. */
     [[nodiscard]] SourceKind kind() const noexcept override;
 
-    /** @brief Returns the path's generic/native string for diagnostics. */
+    /** @brief Returns the path as UTF-8 for diagnostics (never ANSI). */
     [[nodiscard]] std::string_view displayName() const noexcept override;
 
     /** @brief Path sources are always seekable. */

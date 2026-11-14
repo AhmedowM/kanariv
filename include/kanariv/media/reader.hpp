@@ -15,7 +15,9 @@
  *
  * @par Thread safety
  * - Reader interface: Thread-compatible (single-threaded use expected)
- * - FileReader: Thread-safe for concurrent read/seek/tell (internal mutex)
+ * - FileReader: Not thread-safe. read(), seek() and tell() share the FILE*
+ *   position, so concurrent read+seek is a data race; use one owner thread.
+ *   The internal mutex only serializes seek()/tell() bookkeeping.
  * - MemoryReader: Not thread-safe (no internal synchronization)
  * - DescriptorReader: Thread-safe for concurrent read/seek/tell (internal mutex)
  *
@@ -68,6 +70,22 @@ struct FileDescriptor {
 };
 
 /**
+ * @enum ReadStatus
+ * @brief Outcome of the most recent Reader::read() call.
+ * @ingroup kanariv_media
+ *
+ * `Reader::read()` returns a byte count because it is a hot path, but a zero
+ * return is ambiguous on its own. Every reader records the reason here so
+ * consumers (notably the FFmpeg AVIO callback) can tell end-of-stream from an
+ * I/O failure instead of silently truncating playback.
+ */
+enum class ReadStatus : std::uint8_t {
+    Ok,   ///< The last read() returned data (or no read happened yet).
+    Eof,  ///< The last read() returned zero at the end of the stream.
+    Error ///< The last read() returned zero because of an I/O failure.
+};
+
+/**
  * @class Reader
  * @brief Abstract base class for audio data input sources
  * @ingroup kanariv_media
@@ -79,7 +97,7 @@ struct FileDescriptor {
  * @par Thread safety
  * Thread-compatible. The Player uses a single reader
  * from the decode thread. Concurrent access requires external synchronization
- * (except FileReader which has internal mutex for seek/tell).
+ * except for DescriptorReader, whose read/seek/tell share one mutex.
  *
  * NOTE: The `data()` method from C ca_reader.c was removed to avoid
  * GCC 14.2 module ICE. Decoders needing direct memory access (e.g., Vorbis)
@@ -92,13 +110,26 @@ class KANARIV_API Reader {
     /**
      * @brief Read data into the provided buffer
      * @param dst Destination buffer
-     * @return Number of bytes read (0 = EOF or error)
+     * @return Number of bytes read (0 = EOF or error; see lastReadStatus())
      *
      * Reads up to dst.size() bytes from the current position.
      * Advances the internal position by the number of bytes read.
-     * Returns 0 on EOF or if the source is invalid.
+     * Returns 0 at end-of-stream or if the source failed; callers that must
+     * distinguish the two check lastReadStatus().
      */
     virtual std::size_t read(std::span<std::byte> dst) = 0;
+
+    /**
+     * @brief Reports why the most recent read() returned zero
+     * @return ReadStatus::Error after an I/O failure, ReadStatus::Eof at end
+     * of stream, ReadStatus::Ok when the last read returned data.
+     *
+     * Readers that cannot fail (or do not track the distinction) keep the
+     * default, which reports Ok; a zero-length read then means end of stream.
+     */
+    [[nodiscard]] virtual ReadStatus lastReadStatus() const noexcept {
+        return ReadStatus::Ok;
+    }
 
     /**
      * @brief Seek to a new position
@@ -151,12 +182,14 @@ class KANARIV_API Reader {
  * to support files larger than 2GB.
  *
  * @par Thread safety
- * Thread-safe for concurrent read/seek/tell operations
- * via internal mutex. The FILE* is owned exclusively by this instance.
+ * Not thread-safe. read(), seek() and tell() share the FILE* position, so
+ * concurrent read+seek races on it; use one owner thread. The internal mutex
+ * only serializes seek()/tell() bookkeeping. The FILE* is owned exclusively
+ * by this instance.
  *
  * Error Handling:
  * - open(): Returns Error on file not found, permission denied, or seek failure
- * - read(): Returns 0 on EOF or read error
+ * - read(): Returns 0 at EOF or on read error; see lastReadStatus()
  * - seek(): Returns Error on invalid whence, out of range, or fseek failure
  * - tell(): Returns -1 on error
  * - size(): Returns cached size or -1
@@ -187,6 +220,9 @@ class KANARIV_API FileReader final : public Reader {
 
     /** @brief Reads bytes from the owned file; returns zero at EOF or on read error. */
     std::size_t read(std::span<std::byte> dst) override;
+
+    /** @brief Distinguishes end-of-file from a read failure. */
+    [[nodiscard]] ReadStatus lastReadStatus() const noexcept override;
 
     /** @brief Moves the file position, using the platform's 64-bit seek API. */
     [[nodiscard]] kanariv::utils::Expected<void> seek(int64_t offset, int whence) override;
@@ -229,6 +265,7 @@ class KANARIV_API FileReader final : public Reader {
  * - open(): InvalidArg for a negative or unreadable descriptor; Unsupported
  *   when the descriptor claims seekability but the platform seek probe fails.
  * - read(): Returns 0 at EOF or on read error; interrupted reads are retried.
+ *   Use lastReadStatus() to tell the two apart.
  * - seek(): Unsupported for a non-seekable descriptor; InvalidArg for a bad
  *   whence or out-of-range target; Io for a failed platform seek.
  * - tell(): Returns the tracked position, or -1 after a failed seek.
@@ -256,6 +293,9 @@ class KANARIV_API DescriptorReader final : public Reader {
 
     /** @brief Reads bytes and advances the tracked position; 0 at EOF/error. */
     std::size_t read(std::span<std::byte> dst) override;
+
+    /** @brief Distinguishes end-of-file from a read failure. */
+    [[nodiscard]] ReadStatus lastReadStatus() const noexcept override;
 
     /** @brief Moves the descriptor position when the source is seekable. */
     [[nodiscard]] kanariv::utils::Expected<void> seek(int64_t offset, int whence) override;
@@ -328,6 +368,9 @@ class KANARIV_API MemoryReader final : public Reader {
     /** @brief Reads bytes from the current in-memory position. */
     std::size_t read(std::span<std::byte> dst) override;
 
+    /** @brief Reports ReadStatus::Eof once the buffer is exhausted. */
+    [[nodiscard]] ReadStatus lastReadStatus() const noexcept override;
+
     /** @brief Moves the in-memory position within the buffer. */
     [[nodiscard]] kanariv::utils::Expected<void> seek(int64_t offset, int whence) override;
 
@@ -342,6 +385,7 @@ class KANARIV_API MemoryReader final : public Reader {
     explicit MemoryReader(std::span<const std::byte> src);
     std::vector<std::byte> buf_;
     std::size_t pos_{0};
+    ReadStatus status_{ReadStatus::Ok};
 };
 
 } // namespace kanariv::media

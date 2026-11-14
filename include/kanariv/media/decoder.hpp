@@ -12,20 +12,25 @@
  *
  * Decoding follows a probe-based workflow matching the C reference
  * implementation (ca_decode.c):
- * 1. Save current reader position
- * 2. Seek to start (offset 0) and read 32 bytes
- * 3. Restore original position BEFORE probing
- * 4. Probe the header data (any input of 4+ bytes is attempted; FFmpeg
- *    initialization fails gracefully for unsupported data)
- * 5. On probe success, seek to 0 and open the decoder (FFmpeg AVIO requires
- *    start at 0)
- * 6. On open failure, restore the original position
+ * 1. For seekable readers: save the current position, seek to start (offset
+ *    0), read 32 bytes, restore the position, and probe the header bytes.
+ * 2. Seek back to 0 and open the decoder (FFmpeg AVIO requires start at 0).
+ * 3. For non-seekable readers the read-ahead is skipped entirely: the probe
+ *    bytes could not be restored, so consuming them would start playback
+ *    mid-stream. FFmpeg's own format probe reads from offset 0 instead.
+ * 4. On open failure the original position is restored.
  *
  * @par Thread safety
  * A Decoder instance is not thread-safe for concurrent calls.
  * Callers must externally serialize decode() and seek(); the Player keeps
  * decode() on its decode thread and coordinates control-thread seeks.
  * sampleRate(), channels() and totalFrames() are thread-safe (const noexcept).
+ *
+ * @par Moved-from state
+ * A moved-from Decoder is only destructible or assignable, but its accessors
+ * are null-safe: sampleRate()/channels()/totalFrames() return 0, decode()
+ * returns 0 and reports DecodeStatus::Error, and seek() reports
+ * StatusCode::Internal. A moved-from decoder is never reopened.
  */
 
 #include <kanariv/fwd.hpp>
@@ -37,6 +42,22 @@
 #include <string_view>
 
 namespace kanariv::media {
+
+/**
+ * @enum DecodeStatus
+ * @brief Outcome of the most recent Decoder::decode() call.
+ * @ingroup kanariv_media
+ *
+ * decode() returns a frame count for historical and hot-path reasons, so the
+ * count alone cannot distinguish "the track ended" from "the source failed".
+ * The optional status out-parameter carries that distinction without an
+ * allocation per block.
+ */
+enum class DecodeStatus : std::uint8_t {
+    Ok,   ///< Frames were decoded; more audio may be pending.
+    Eof,  ///< End of stream reached (possibly after decoding tail frames).
+    Error ///< I/O or codec failure; frames decoded before it remain valid.
+};
 
 /**
  * @class Decoder
@@ -108,8 +129,23 @@ class KANARIV_API Decoder final {
      * @return Number of frames decoded (0 = EOF or error).
      * @details Decodes up to out.size() / channels() frames. Must be called
      * from the decode thread only; not safe concurrently with seek().
+     * A pending input packet is never discarded: when FFmpeg reports
+     * AVERROR(EAGAIN) the packet is retained and retried on the next
+     * iteration, so no sample is lost and no packet is sent twice.
+     * Use the overload below when EOF must be told apart from failure.
      */
-    std::size_t decode(std::span<float> out);
+    [[nodiscard]] std::size_t decode(std::span<float> out);
+
+    /**
+     * @brief Decode audio samples and report why decoding stopped.
+     * @param out Output buffer for interleaved float samples.
+     * @param status Receives Ok, Eof, or Error; must not be null.
+     * @return Number of frames decoded (0 = EOF or error; see @p status).
+     * @details Same contract as the single-argument overload. Kept as a
+     * separate overload (not a defaulted parameter) so the original exported
+     * symbol and its ABI stay unchanged.
+     */
+    [[nodiscard]] std::size_t decode(std::span<float> out, DecodeStatus* status);
 
     /**
      * @brief Seek to a time position in seconds from stream start.

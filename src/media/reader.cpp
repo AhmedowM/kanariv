@@ -121,11 +121,13 @@ void fdClose(int fd) noexcept {
 }
 } // namespace detail
 
-/// File handle, cached size and seek lock, hidden from the public header.
+/// File handle, cached size, last-read outcome and seek lock, hidden from the
+/// public header.
 struct FileReader::Impl {
     FILE* file = nullptr;
     int64_t fileSize = -1;
     mutable std::mutex seekMutex;
+    ReadStatus readStatus = ReadStatus::Ok;
 };
 
 kanariv::utils::Expected<std::unique_ptr<Reader>>
@@ -180,9 +182,21 @@ FileReader::~FileReader() {
 }
 
 std::size_t FileReader::read(std::span<std::byte> dst) {
-    if (!impl_->file || dst.empty())
+    if (!impl_->file || dst.empty()) {
+        impl_->readStatus = ReadStatus::Ok;
         return 0;
-    return std::fread(dst.data(), 1, dst.size(), impl_->file);
+    }
+    std::size_t n = std::fread(dst.data(), 1, dst.size(), impl_->file);
+    // A short-but-nonzero read is normal; only a zero return needs a reason.
+    if (n == 0)
+        impl_->readStatus = std::feof(impl_->file) ? ReadStatus::Eof : ReadStatus::Error;
+    else
+        impl_->readStatus = ReadStatus::Ok;
+    return n;
+}
+
+ReadStatus FileReader::lastReadStatus() const noexcept {
+    return impl_->readStatus;
 }
 
 kanariv::utils::Expected<void> FileReader::seek(int64_t offset, int whence) {
@@ -253,6 +267,7 @@ struct DescriptorReader::Impl {
     bool owned{false};
     int64_t size{-1};
     int64_t pos{0};
+    ReadStatus readStatus{ReadStatus::Ok};
     mutable std::mutex mutex;
 };
 
@@ -302,19 +317,31 @@ DescriptorReader::~DescriptorReader() {
 }
 
 std::size_t DescriptorReader::read(std::span<std::byte> dst) {
-    if (!impl_ || impl_->fd < 0 || dst.empty())
+    if (!impl_ || impl_->fd < 0 || dst.empty()) {
+        if (impl_)
+            impl_->readStatus = ReadStatus::Ok;
         return 0;
+    }
     std::lock_guard<std::mutex> lock(impl_->mutex);
     for (;;) {
         int64_t n = detail::fdRead(impl_->fd, dst.data(), dst.size());
         if (n < 0) {
             if (errno == EINTR)
                 continue;
+            impl_->readStatus = ReadStatus::Error;
             return 0;
         }
+        impl_->readStatus = n == 0 ? ReadStatus::Eof : ReadStatus::Ok;
         impl_->pos += n;
         return static_cast<std::size_t>(n);
     }
+}
+
+ReadStatus DescriptorReader::lastReadStatus() const noexcept {
+    if (!impl_)
+        return ReadStatus::Error;
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->readStatus;
 }
 
 kanariv::utils::Expected<void> DescriptorReader::seek(int64_t offset, int whence) {
@@ -403,15 +430,24 @@ kanariv::utils::Expected<std::unique_ptr<Reader>> MemoryReader::open(const std::
 }
 
 std::size_t MemoryReader::read(std::span<std::byte> dst) {
-    if (dst.empty())
+    if (dst.empty()) {
+        status_ = ReadStatus::Ok;
         return 0;
+    }
     std::size_t avail = buf_.size() > pos_ ? buf_.size() - pos_ : 0;
     std::size_t n = dst.size() < avail ? dst.size() : avail;
     if (n > 0) {
         std::memcpy(dst.data(), buf_.data() + pos_, n);
         pos_ += n;
+        status_ = ReadStatus::Ok;
+    } else {
+        status_ = ReadStatus::Eof;
     }
     return n;
+}
+
+ReadStatus MemoryReader::lastReadStatus() const noexcept {
+    return status_;
 }
 
 kanariv::utils::Expected<void> MemoryReader::seek(int64_t offset, int whence) {

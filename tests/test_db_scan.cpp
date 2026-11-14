@@ -7,6 +7,7 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <chrono>
+#include <cmath>
 #include <common.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +23,51 @@
 using namespace kanariv::db;
 using namespace kanariv::utils;
 using namespace kanariv::test_helpers;
+
+namespace {
+
+/// Minimal 16-bit PCM mono WAV with a sine tone, enough for FFmpeg to decode.
+std::vector<std::byte> makeSineWav() {
+    constexpr uint32_t sampleRate = 8000;
+    constexpr uint32_t sampleCount = 4000; // 0.5 s
+    constexpr uint16_t channels = 1;
+    constexpr uint16_t bits = 16;
+    const uint32_t dataBytes = sampleCount * channels * (bits / 8);
+    std::vector<std::byte> wav(44 + dataBytes);
+    const auto put32 = [&](std::size_t off, uint32_t v) {
+        for (int i = 0; i < 4; ++i)
+            wav[off + i] = static_cast<std::byte>((v >> (8 * i)) & 0xFF);
+    };
+    const auto put16 = [&](std::size_t off, uint16_t v) {
+        wav[off] = static_cast<std::byte>(v & 0xFF);
+        wav[off + 1] = static_cast<std::byte>((v >> 8) & 0xFF);
+    };
+    const auto tag = [&](std::size_t off, const char* s) {
+        for (int i = 0; i < 4; ++i)
+            wav[off + i] = static_cast<std::byte>(s[i]);
+    };
+    tag(0, "RIFF");
+    put32(4, 36 + dataBytes);
+    tag(8, "WAVE");
+    tag(12, "fmt ");
+    put32(16, 16);
+    put16(20, 1); // PCM
+    put16(22, channels);
+    put32(24, sampleRate);
+    put32(28, sampleRate * channels * (bits / 8));
+    put16(32, static_cast<uint16_t>(channels * (bits / 8)));
+    put16(34, bits);
+    tag(36, "data");
+    put32(40, dataBytes);
+    for (uint32_t i = 0; i < sampleCount; ++i) {
+        const double phase = 2.0 * 3.14159265358979323846 * 440.0 * i / sampleRate;
+        const auto sample = static_cast<int16_t>(std::sin(phase) * 12000.0);
+        put16(44 + i * 2, static_cast<uint16_t>(sample));
+    }
+    return wav;
+}
+
+} // namespace
 
 TEST_CASE("scan generator yields audio files recursively", "[db_scan]") {
     auto root = tempDirPath("scan_test");
@@ -159,6 +205,27 @@ TEST_CASE("scan non-existent dir returns empty", "[db_scan]") {
                                                     kanariv::media::ScanMode::Sampled);
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->empty());
+}
+
+TEST_CASE("computeReplayGainTrack accepts a non-NUL-terminated path view", "[db_scan]") {
+    auto dir = tempDirPath("replaygain");
+    const auto p = dir / "tone.wav";
+    {
+        const auto wav = makeSineWav();
+        std::ofstream f(p, std::ios::binary);
+        f.write(reinterpret_cast<const char*>(wav.data()),
+                static_cast<std::streamsize>(wav.size()));
+    }
+    const std::string raw = p.string();
+    // The view ends before the string's terminator; M5 required an owned copy
+    // so FFmpeg never reads the trailing bytes as part of the path.
+    const std::string padded = raw + "garbage";
+    const std::string_view view(padded.data(), raw.size());
+    auto gain = kanariv::media::computeReplayGainTrack(view);
+    REQUIRE(gain.has_value());
+    REQUIRE(std::isfinite(*gain));
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
 }
 
 TEST_CASE("library maintenance reports missing and duplicate rows", "[db_scan]") {

@@ -159,3 +159,31 @@ TEST_CASE("FileReader tell and read", "[reader]") {
     }
     std::filesystem::remove(path);
 }
+
+TEST_CASE("FileReader distinguishes EOF from read failure", "[reader]") {
+    std::vector<std::byte> data(4, std::byte{0x5A});
+    auto path = makeTempFile("eof_status.wav", data);
+    {
+        auto r = FileReader::open(path);
+        REQUIRE(r.has_value());
+        auto& reader = **r;
+        std::array<std::byte, 4> buf{};
+        REQUIRE(reader.read(buf) == 4);
+        REQUIRE(reader.lastReadStatus() == ReadStatus::Ok);
+        // Exhausted stream: zero bytes and an explicit Eof status.
+        REQUIRE(reader.read(buf) == 0);
+        REQUIRE(reader.lastReadStatus() == ReadStatus::Eof);
+    }
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("MemoryReader reports EOF via lastReadStatus", "[reader]") {
+    std::vector<std::byte> src(4, std::byte{0x11});
+    auto r = MemoryReader::open(src);
+    REQUIRE(r.has_value());
+    auto& reader = **r;
+    std::array<std::byte, 4> buf{};
+    REQUIRE(reader.read(buf) == 4);
+    REQUIRE(reader.read(buf) == 0);
+    REQUIRE(reader.lastReadStatus() == ReadStatus::Eof);
+}

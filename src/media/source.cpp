@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <utils/path_utf8.hpp>
 
 #if defined(_WIN32)
 #include <io.h>
@@ -28,8 +29,12 @@ void closeDescriptor(int fd) noexcept {
 
 } // namespace
 
+// `path::string()` converts to the Windows ANSI code page and throws for names
+// it cannot represent. Display names (and anything later handed to FFmpeg) must
+// be UTF-8, matching the scan path; FFmpeg interprets narrow paths as UTF-8 on
+// Windows. See utils::detail::pathToUtf8.
 PathSource::PathSource(std::filesystem::path path)
-    : path_(std::move(path)), displayName_(path_.string()) {}
+    : path_(std::move(path)), displayName_(kanariv::utils::detail::pathToUtf8(path_)) {}
 
 SourceKind PathSource::kind() const noexcept {
     return SourceKind::path;

@@ -13,6 +13,7 @@
 #include <fstream>
 #include <ios>
 #include <media/fingerprint.hpp>
+#include <string>
 #include <system_error>
 #include <utility>
 #include <utils/path_utf8.hpp>
@@ -95,20 +96,28 @@ scanTracksToVector(const std::filesystem::path& root, ScanMode mode) {
 kanariv::utils::Expected<double> computeReplayGainTrack(std::string_view path) {
     // Direct FFmpeg decode (same pattern as extractMetadata -- no custom AVIO,
     // so avformat_close_input frees everything and there is nothing to leak).
+    // FFmpeg needs a NUL-terminated UTF-8 path; a string_view is not guaranteed
+    // to be terminated, so own the bytes first (M5).
+    const std::string ownedPath(path);
     AVFormatContext* fmt = avformat_alloc_context();
     if (!fmt) {
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::NoMem, "avformat_alloc_context failed")};
     }
 
-    if (avformat_open_input(&fmt, path.data(), nullptr, nullptr) < 0) {
-        avformat_free_context(fmt);
+    // Bound probing before the open; assigning these after it only bounded
+    // avformat_find_stream_info (M13).
+    AVDictionary* openOpts = nullptr;
+    av_dict_set(&openOpts, "probesize", "1048576", 0);
+    av_dict_set(&openOpts, "fprobesize", "1048576", 0);
+    av_dict_set(&openOpts, "analyzeduration", "500000", 0);
+    const int openRet = avformat_open_input(&fmt, ownedPath.c_str(), nullptr, &openOpts);
+    av_dict_free(&openOpts);
+    if (openRet < 0) {
+        // avformat_open_input frees a caller-provided context on failure.
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::Io, "avformat_open_input failed")};
     }
-
-    fmt->probesize = 1048576;
-    fmt->max_analyze_duration = 500000;
 
     if (avformat_find_stream_info(fmt, nullptr) < 0) {
         avformat_close_input(&fmt);

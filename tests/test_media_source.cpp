@@ -14,6 +14,7 @@
 #include <ios>
 #include <memory>
 #include <string>
+#include <utils/path_utf8.hpp>
 #include <vector>
 
 #if defined(_WIN32)
@@ -71,7 +72,7 @@ TEST_CASE("PathSource opens a path repeatedly", "[media][source]") {
 
     REQUIRE(source.kind() == SourceKind::path);
     REQUIRE(source.seekable());
-    REQUIRE(source.displayName() == path.string());
+    REQUIRE(source.displayName() == kanariv::utils::detail::pathToUtf8(path));
     REQUIRE(source.path() == path);
 
     auto first = source.open();
@@ -86,6 +87,35 @@ TEST_CASE("PathSource opens a path repeatedly", "[media][source]") {
     REQUIRE(second.has_value());
     REQUIRE((*second)->tell() == 0);
     REQUIRE((*second)->size() == static_cast<int64_t>(sampleBytes().size()));
+}
+
+TEST_CASE("PathSource keeps non-ASCII names as UTF-8", "[media][source]") {
+    // Before the fix the constructor used path::string(), which throws
+    // std::system_error on Windows for names outside the ANSI code page.
+    const auto dir = tempDirPath("kanariv_source_utf8");
+    const std::u8string name = u8"\u0442\u0435\u0441\u0442-\u043f\u0456\u0441\u043d\u044f.wav";
+    const auto path = dir / std::filesystem::path(name);
+    {
+        std::ofstream out(path, std::ios::binary);
+        const auto bytes = sampleBytes();
+        out.write(reinterpret_cast<const char*>(bytes.data()),
+                  static_cast<std::streamsize>(bytes.size()));
+    }
+
+    PathSource source(path);
+    const std::string expected = kanariv::utils::detail::pathToUtf8(path);
+    REQUIRE(source.displayName() == expected);
+    // The UTF-8 form must round-trip through the filesystem again (no ANSI
+    // lossy conversion in between).
+    REQUIRE(kanariv::utils::detail::pathFromUtf8(source.displayName()) == path);
+
+    auto reader = source.open();
+    REQUIRE(reader.has_value());
+    std::array<std::byte, 4> out{};
+    REQUIRE((*reader)->read(out) == 4);
+
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
 }
 
 TEST_CASE("DescriptorSource rejects negative descriptor", "[media][source]") {
