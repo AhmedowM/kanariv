@@ -1,6 +1,7 @@
 # Build
 build/
 build*/
+target
 out/
 cmake-build-*/
 ffmpeg-trimmed/
@@ -52,6 +53,8 @@ Thumbs.db
 *.dll
 *.dylib
 *.exe
+*.lock
+*.log
 
 # Doxygen output
 docs/html/
@@ -65,3 +68,6 @@ CPP_PORT_REPORT.md
 docs/specs/
 docs/superpowers/
 gcm.cache
+
+# Rust workspace lockfile (binary crate: keep for reproducible builds)
+!rust/Cargo.lock

@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = ["kanariv-cli"]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2021"
+rust-version = "1.75"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# The CLI mirrors C++ integer/time formatting and JSON field names; the
+# conversions are deliberate and bounded by validated inputs.
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+struct_field_names = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

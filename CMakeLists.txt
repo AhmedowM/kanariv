@@ -54,6 +54,10 @@ option(KANARIV_BUILD_DOCS "Build Doxygen documentation" OFF)
 option(KANARIV_TEST_NOAUDIO "skip audio device tests (no beep) for headless CI" OFF)
 option(KANARIV_ENABLE_CLANG_TIDY "enable clang-tidy checks during build" OFF)
 option(KANARIV_ENABLE_CCACHE "use ccache/sccache compiler launcher if found (opt-in)" ON)
+# Experimental phase-1 Rust frontend (rust/, binary `kanariv-rs`). Built via
+# cargo, speaks the IPC wire to the C++ daemon, links nothing from C++, and
+# never replaces the C++ `kanariv` target. See rust/README.md.
+option(KANARIV_ENABLE_RUST_CLI "build the experimental Rust CLI (kanariv-rs, optional)" OFF)
 # Shared mode builds per-component DLLs/import libraries by default.
 # KANARIV_BUILD_STATIC can be enabled to build the static component libraries too.
 option(KANARIV_BUILD_SHARED "build per-component shared libraries" ON)
@@ -466,6 +470,12 @@ if(KANARIV_ENABLE_EXAMPLES AND KANARIV_ENABLE_MODULES)
   if(KANARIV_ENABLE_SANITIZERS)
     kanariv_apply_sanitizers(kanariv_mini_mod)
   endif()
+endif()
+
+# Optional experimental Rust frontend. Isolated under rust/ so the C++ component
+# graph and the kanariv/kanariv_cli targets are unaffected when disabled.
+if(KANARIV_ENABLE_RUST_CLI)
+  add_subdirectory(rust)
 endif()
 
 include(cmake/Tests.cmake)

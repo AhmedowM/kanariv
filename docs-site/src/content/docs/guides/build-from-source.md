@@ -103,6 +103,7 @@ For modules, add `-DKANARIV_ENABLE_MODULES=ON` and use Ninja.
 | `KANARIV_BUILD_DOCS` | `OFF` | Build API docs with Doxygen |
 | `KANARIV_TEST_NOAUDIO` | `OFF` | Skip audio-device tests |
 | `KANARIV_ENABLE_CLANG_TIDY` | `OFF` | Run clang-tidy during build |
+| `KANARIV_ENABLE_RUST_CLI` | `OFF` | Build the experimental Rust frontend (`kanariv-rs`) |
 | `KANARIV_USE_TRIMMED_FFMPEG` | `OFF` | Use decode-only trimmed FFmpeg |
 | `FFmpeg_ROOT` | unset | Override FFmpeg installation |
 

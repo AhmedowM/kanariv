@@ -1,0 +1,53 @@
+//! Request/response client with the daemon's framing and timeout policy.
+
+use std::sync::mpsc;
+use std::time::Duration;
+
+use crate::error::{Error, Result, StatusCode};
+use crate::ipc::protocol::{encode_request, parse_reply, Command, Payload};
+use crate::ipc::{transport, Connection};
+
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(2000);
+
+/// Connect-only check (used for readiness and teardown polling).
+#[must_use]
+pub fn probe(socket_path: &str) -> bool {
+    transport::Connection::connect(socket_path).is_ok()
+}
+
+/// Sends one command and waits for its reply.
+///
+/// A failed connect is reported as `State/"daemon not running"` (the
+/// transport detail is uninteresting to users and would break parity). The
+/// exchange runs on a worker thread so a wedged peer surfaces `Io/"timeout"`
+/// instead of blocking forever, mirroring `Client::send`.
+pub fn send(socket_path: &str, command: &Command, timeout: Duration) -> Result<Payload> {
+    let (sender, receiver) = mpsc::channel();
+    let socket = socket_path.to_string();
+    let command = command.clone();
+    std::thread::spawn(move || {
+        let result = transact(&socket, &command);
+        let _ = sender.send(result);
+    });
+
+    match receiver.recv_timeout(timeout) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(Error::io("timeout")),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(Error::io("request worker stopped")),
+    }
+}
+
+fn transact(socket_path: &str, command: &Command) -> Result<Payload> {
+    let mut connection = Connection::connect(socket_path)
+        .map_err(|_| Error::new(StatusCode::State, "daemon not running"))?;
+    let request = encode_request(1, command);
+    let payload = serde_json::to_vec(&request)
+        .map_err(|err| Error::new(StatusCode::Corrupt, err.to_string()))?;
+    connection
+        .send_bytes(&crate::ipc::encode(&payload))
+        .map_err(|err| Error::io(format!("send failed: {err}")))?;
+    let reply = connection
+        .recv_bytes()
+        .map_err(|err| Error::io(format!("recv failed: {err}")))?;
+    parse_reply(&reply)
+}
