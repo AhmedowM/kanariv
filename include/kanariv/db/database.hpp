@@ -579,21 +579,14 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @brief Lists history entries with optional filters.
      * @ingroup kanariv_db
      * @param q Optional filter.
-     * @return Vector of entries or Error.
+     * @return Vector of entries or Error; track metadata is not populated.
+     * @details Use `historyList()` for the engine view, which joins tracks and
+     * fills title/artist/path/duration.
      * @par Thread safety
      * Thread-safe: shared_lock.
      */
     std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
-    listHistory(const kanariv::types::HistoryQuery* q = nullptr);
-
-    /**
-     * @brief Clears all history.
-     * @ingroup kanariv_db
-     * @return Success or Error.
-     * @par Thread safety
-     * Thread-safe: unique_lock.
-     */
-    std::expected<void, kanariv::utils::Error> historyClear();
+    queryHistory(const kanariv::types::HistoryQuery* q = nullptr);
 
     // Bookmarks
     /**
@@ -824,17 +817,17 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
                                                          double completion_pct,
                                                          int64_t queue_id) override;
     /**
-     * @brief Lists engine history entries.
-     * @param limit Maximum number of entries.
+     * @brief Lists engine history entries, joined with track metadata.
+     * @param limit Maximum number of entries; non-positive means no limit.
      * @return History entries, or a backend error.
      */
     std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
-    engineHistoryList(int limit) override;
+    historyList(int limit) override;
     /**
-     * @brief Clears engine playback history.
+     * @brief Clears playback history.
      * @return Success, or a backend error.
      */
-    std::expected<void, kanariv::utils::Error> engineHistoryClear() override;
+    std::expected<void, kanariv::utils::Error> historyClear() override;
 
 }; // class Database
 

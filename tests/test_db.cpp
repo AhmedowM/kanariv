@@ -573,12 +573,41 @@ TEST_CASE("history completion_pct round-trip 0/50/100", "[db]") {
 
     kanariv::types::HistoryQuery q;
     q.track_id = *tr;
-    auto list = db->listHistory(&q);
+    auto list = db->queryHistory(&q);
     REQUIRE(list.has_value());
     REQUIRE(list->size() == 3);
     REQUIRE((*list)[0].completion_pct == 100.0);
     REQUIRE((*list)[1].completion_pct == 50.0);
     REQUIRE((*list)[2].completion_pct == 0.0);
+}
+
+TEST_CASE("historyList joins track metadata and historyClear empties it", "[db][history]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    auto tr = db->insertTrack(makeTrack(9));
+    REQUIRE(tr.has_value());
+
+    kanariv::types::HistoryEntry e;
+    e.track_id = *tr;
+    e.started_at = 1000;
+    e.completed_at = 1100;
+    e.position_ms = 750;
+    e.completion_pct = 75.0;
+    REQUIRE(db->historyAdd(e).has_value());
+
+    auto listed = db->historyList(10);
+    REQUIRE(listed.has_value());
+    REQUIRE(listed->size() == 1);
+    CHECK((*listed)[0].track_id == *tr);
+    CHECK((*listed)[0].title == "Title9");
+    CHECK((*listed)[0].artist == "Artist9");
+    CHECK((*listed)[0].duration == 10.0);
+
+    REQUIRE(db->historyClear().has_value());
+    auto empty = db->historyList(10);
+    REQUIRE(empty.has_value());
+    CHECK(empty->empty());
 }
 
 TEST_CASE("queue repeat mode round-trips through the DB", "[db][queue][repeat]") {

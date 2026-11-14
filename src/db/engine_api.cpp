@@ -326,7 +326,7 @@ Database::markPlayed(int64_t trackId, int64_t startedAt, int64_t completedAt, in
 }
 
 std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
-Database::engineHistoryList(int limit) {
+Database::historyList(int limit) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
@@ -367,20 +367,6 @@ Database::engineHistoryList(int limit) {
         entries.push_back(std::move(entry));
     }
     return entries;
-}
-
-std::expected<void, kanariv::utils::Error> Database::engineHistoryClear() {
-    sqlite3* handle = DatabaseAccess::handle(*this);
-    if (!handle)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
-    std::unique_lock lock(DatabaseAccess::mutex(*this));
-    char* error = nullptr;
-    internal::SqliteErrGuard errorGuard(error);
-    if (sqlite3_exec(handle, "DELETE FROM history", nullptr, nullptr, &error) != SQLITE_OK)
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        error ? error : "clear history failed"));
-    return {};
 }
 
 } // namespace kanariv::db

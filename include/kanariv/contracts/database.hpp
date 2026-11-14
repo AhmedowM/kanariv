@@ -2,7 +2,8 @@
 
 /**
  * @file database.hpp
- * @brief Neutral persistence contract used by the playback engine.
+ * @brief Neutral persistence contract shared by the engine, the service and the
+ * CLI-facing client.
  * @defgroup kanariv_contracts kanariv persistence contracts
  */
 
@@ -44,6 +45,12 @@ namespace kanariv::contracts {
  * Implementations should use `StatusCode::NotFound` for absent entities,
  * `InvalidArg` for invalid caller input, `State` for an invalid lifecycle
  * state, and `Io`, `Corrupt`, or `Internal` for backend failures.
+ *
+ * @par Queue index vocabulary
+ * Every queue parameter named `index` is a zero-based index into the ordered
+ * queue listing, in `[0, count]` for insertion and `[0, count)` for removal.
+ * `QueueItem::position` is a backend-assigned ordering value with no
+ * index meaning; never pass it back as an index.
  */
 class IDatabase {
   public:
@@ -309,12 +316,12 @@ class IDatabase {
      * @return History entries, or a backend error.
      */
     virtual std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
-    engineHistoryList(int limit) = 0;
+    historyList(int limit) = 0;
     /**
      * @brief Clears playback history.
      * @return Success, or a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> engineHistoryClear() = 0;
+    virtual std::expected<void, kanariv::utils::Error> historyClear() = 0;
 
     // Libraries and statistics
     /**

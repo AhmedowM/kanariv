@@ -1375,7 +1375,7 @@ Database::historyAdd(const kanariv::types::HistoryEntry& e) {
 }
 
 std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
-Database::listHistory(const kanariv::types::HistoryQuery* q) {
+Database::queryHistory(const kanariv::types::HistoryQuery* q) {
     std::shared_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{

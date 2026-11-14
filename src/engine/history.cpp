@@ -40,13 +40,13 @@ History::History(std::shared_ptr<kanariv::contracts::IDatabase> db) : db_(std::m
 History::ExpectedEntries History::listHistory(int limit) {
     if (!db_ || !db_->isOpen())
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    return db_->engineHistoryList(limit);
+    return db_->historyList(limit);
 }
 
 History::ExpectedVoid History::clearHistory() {
     if (!db_ || !db_->isOpen())
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    return db_->engineHistoryClear();
+    return db_->historyClear();
 }
 
 } // namespace kanariv::engine
