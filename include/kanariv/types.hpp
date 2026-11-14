@@ -17,4 +17,5 @@
 #include <kanariv/types/record.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
+#include <kanariv/types/status.hpp>
 #include <kanariv/types/wire.hpp>

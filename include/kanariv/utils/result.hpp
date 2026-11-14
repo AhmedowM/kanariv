@@ -8,34 +8,10 @@
 
 #include <cstdint>
 #include <format>
+#include <kanariv/types/status.hpp>
 #include <string_view>
 
 namespace kanariv::utils {
-
-/**
- * @brief Status codes used across kanariv for `std::expected` error reporting.
- * @ingroup kanariv_utils
- * @details Mirrors the C API `ca_status` values. `Ok` (0) indicates success;
- * all other values indicate failure. Pass to toString() for diagnostics or
- * construct an Error with makeError().
- * @see Error
- * @see toString
- */
-enum class StatusCode : std::uint8_t {
-    Ok = 0,            ///< Success.
-    InvalidArg = 1,    ///< Invalid argument supplied by caller.
-    NotFound = 2,      ///< Requested entity not found.
-    Unsupported = 3,   ///< Operation not supported on this platform/build.
-    Io = 4,            ///< Generic I/O error.
-    Device = 5,        ///< Audio device error.
-    State = 6,         ///< Invalid state for operation (e.g. queue empty).
-    NoMem = 7,         ///< Memory allocation failure.
-    Internal = 8,      ///< Internal invariant violation.
-    AlreadyExists = 9, ///< Entity already exists.
-    Busy = 10,         ///< Resource busy or queue full.
-    Corrupt = 11,      ///< Data corruption detected.
-    NoSpace = 12       ///< No space left (buffer/queue full).
-};
 
 /**
  * @brief Converts a StatusCode to a human-readable string view.

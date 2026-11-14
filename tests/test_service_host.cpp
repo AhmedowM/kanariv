@@ -2,8 +2,11 @@
 #include <kanariv/config/runtime.hpp>
 #include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
 #include <kanariv/service/host.hpp>
 #include <kanariv/service/service.hpp>
+#include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <common.hpp>
@@ -13,6 +16,7 @@
 #include <stop_token>
 #include <string>
 #include <thread>
+#include <variant>
 
 using namespace kanariv::service;
 using namespace kanariv::utils;
@@ -116,6 +120,46 @@ TEST_CASE("host missing database path fails cleanly", "[service][host]") {
 
     auto hostRes = Host::create(inProcessConfig(badDb, logsDir));
     REQUIRE_FALSE(hostRes.has_value());
+}
+
+TEST_CASE("queue create maps repeatDefault to RepeatMode", "[service][queue][repeat]") {
+    struct Case {
+        const char* repeatDefault;
+        kanariv::types::RepeatMode expected;
+    };
+    // Wire order is authoritative: "one" must store RepeatMode::One (2) and
+    // "all" must store RepeatMode::All (1); the handler used to swap them.
+    const Case cases[] = {
+        {"one", kanariv::types::RepeatMode::One},
+        {"all", kanariv::types::RepeatMode::All},
+        {"off", kanariv::types::RepeatMode::Off},
+    };
+    for (const auto& c : cases) {
+        auto dir = tempDirPath(std::string("qrepeat_") + c.repeatDefault);
+        auto dbPath = dir / "library.db";
+        auto logsDir = dir / "logs";
+        std::filesystem::create_directories(logsDir);
+
+        auto cfg = inProcessConfig(dbPath, logsDir);
+        cfg.repeatDefault = c.repeatDefault;
+
+        auto dbRes = kanariv::db::Database::open(dbPath.generic_string());
+        REQUIRE(dbRes.has_value());
+        std::shared_ptr<kanariv::contracts::IDatabase> db(std::move(*dbRes));
+
+        auto svcRes = Service::create(cfg, db);
+        REQUIRE(svcRes.has_value());
+        auto svc = std::move(*svcRes);
+
+        auto res = svc->dispatchCommand(kanariv::ipc::QueueCreate{.name = "mapped"});
+        REQUIRE(res.has_value());
+        auto* created = std::get_if<kanariv::ipc::QueueCreated>(&*res);
+        REQUIRE(created != nullptr);
+
+        auto q = db->getQueue(created->id);
+        REQUIRE(q.has_value());
+        REQUIRE(q->repeat_mode == c.expected);
+    }
 }
 
 TEST_CASE("host exposes service for direct commands", "[service][host]") {

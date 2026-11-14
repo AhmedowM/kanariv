@@ -4,6 +4,7 @@
 set(KANARIV_TYPES_MODULE_SOURCES
   modules/kanariv/types.cppm
   modules/kanariv/types/wire.cppm
+  modules/kanariv/types/status.cppm
   modules/kanariv/types/format.cppm
   modules/kanariv/types/parse.cppm
   modules/kanariv/types/record.cppm

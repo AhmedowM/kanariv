@@ -555,3 +555,35 @@ TEST_CASE("history completion_pct round-trip 0/50/100", "[db]") {
     REQUIRE((*list)[1].completion_pct == 50.0);
     REQUIRE((*list)[2].completion_pct == 0.0);
 }
+
+TEST_CASE("queue repeat mode round-trips through the DB", "[db][queue][repeat]") {
+    // Pin the wire order the SQL column stores (Off=0, All=1, One=2).
+    static_assert(static_cast<int>(kanariv::types::RepeatMode::Off) == 0);
+    static_assert(static_cast<int>(kanariv::types::RepeatMode::All) == 1);
+    static_assert(static_cast<int>(kanariv::types::RepeatMode::One) == 2);
+
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    auto id = db->createQueue("repeat");
+    REQUIRE(id.has_value());
+
+    // A fresh queue defaults to Off (column default 0).
+    auto fresh = db->getQueue(*id);
+    REQUIRE(fresh.has_value());
+    REQUIRE(fresh->repeat_mode == kanariv::types::RepeatMode::Off);
+
+    for (auto mode : {kanariv::types::RepeatMode::Off, kanariv::types::RepeatMode::All,
+                      kanariv::types::RepeatMode::One}) {
+        REQUIRE(db->setQueueRepeat(*id, static_cast<int>(mode)).has_value());
+        auto stored = db->getQueue(*id);
+        REQUIRE(stored.has_value());
+        REQUIRE(stored->repeat_mode == mode);
+    }
+
+    // An out-of-range legacy value must read back as Off, never as a bogus mode.
+    REQUIRE(db->setQueueRepeat(*id, 99).has_value());
+    auto fallback = db->getQueue(*id);
+    REQUIRE(fallback.has_value());
+    REQUIRE(fallback->repeat_mode == kanariv::types::RepeatMode::Off);
+}

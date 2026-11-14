@@ -25,6 +25,23 @@ namespace {
 constexpr int64_t kPositionGap = 1000000000LL;
 
 /**
+ * @brief Maps a stored `queues.repeat_mode` integer to the wire enum.
+ * @details The column keeps its INTEGER type; only the in-memory representation
+ * is typed. Out-of-range legacy or corrupt values fall back to
+ * `RepeatMode::Off` so storage can never invent a playback policy.
+ */
+[[nodiscard]] kanariv::types::RepeatMode repeatModeFromStored(int value) noexcept {
+    switch (value) {
+    case static_cast<int>(kanariv::types::RepeatMode::All):
+        return kanariv::types::RepeatMode::All;
+    case static_cast<int>(kanariv::types::RepeatMode::One):
+        return kanariv::types::RepeatMode::One;
+    default:
+        return kanariv::types::RepeatMode::Off;
+    }
+}
+
+/**
  * @brief Position of the item at a given 0-based index (ORDER BY position),
  * or -1 if the index is beyond the queue length.
  */
@@ -322,7 +339,7 @@ std::expected<kanariv::types::Queue, kanariv::utils::Error> getQueueLocked(sqlit
     kanariv::types::Queue q;
     q.id = st.columnInt(0);
     q.name = st.columnText(1);
-    q.repeat_mode = static_cast<int32_t>(st.columnInt(2));
+    q.repeat_mode = repeatModeFromStored(static_cast<int>(st.columnInt(2)));
     q.temp = st.columnInt(3) != 0;
     q.library_id = st.columnInt(4);
     return q;
@@ -342,7 +359,7 @@ std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error> listQue
         kanariv::types::Queue q;
         q.id = st.columnInt(0);
         q.name = st.columnText(1);
-        q.repeat_mode = static_cast<int32_t>(st.columnInt(2));
+        q.repeat_mode = repeatModeFromStored(static_cast<int>(st.columnInt(2)));
         q.temp = st.columnInt(3) != 0;
         q.library_id = st.columnInt(4);
         out.push_back(std::move(q));
@@ -362,7 +379,7 @@ std::expected<int64_t, kanariv::utils::Error> createQueueLocked(sqlite3* db, std
     if (!e)
         return std::unexpected{e.error()};
     st.bindText(1, name);
-    st.bindInt(2, 0);
+    st.bindInt(2, static_cast<int>(kanariv::types::RepeatMode::Off));
     st.bindInt(3, library_id);
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)

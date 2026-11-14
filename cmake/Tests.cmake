@@ -66,6 +66,9 @@ if(KANARIV_ENABLE_TESTS)
   kanariv_add_catch_test(test_utils_json tests/test_utils_json.cpp LIBS kanariv::utils)
   kanariv_add_catch_test(test_utils_misc tests/test_utils_misc.cpp LIBS kanariv::utils)
 
+  # T1: the `types` layer must be includable without any `utils` header.
+  kanariv_add_catch_test(test_types_engine tests/test_types_engine.cpp LIBS kanariv::types kanariv::utils)
+
   kanariv_add_catch_test(test_reader tests/test_reader.cpp LIBS kanariv::player kanariv::media kanariv::utils)
   kanariv_add_catch_test(test_decoder tests/test_decoder.cpp LIBS kanariv::player kanariv::media kanariv::utils WITH_TEST_DATA)
   kanariv_add_catch_test(test_ffmpeg tests/test_ffmpeg.cpp LIBS kanariv::player kanariv::media kanariv::utils WITH_TEST_DATA)

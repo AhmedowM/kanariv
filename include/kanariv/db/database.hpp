@@ -524,7 +524,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
     /**
      * @brief Sets the repeat mode stored for a queue.
      * @param qid Queue identifier; zero selects the default queue.
-     * @param repeat_mode Stored repeat-mode value.
+     * @param repeat_mode Stored repeat-mode value (0 = off, 1 = all, 2 = one).
      * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
      * @par Thread safety
      * Thread-safe; takes the database write lock.

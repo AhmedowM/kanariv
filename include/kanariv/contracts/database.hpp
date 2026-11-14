@@ -192,7 +192,7 @@ class IDatabase {
     /**
      * @brief Sets the repeat mode stored for a queue.
      * @param qid Queue identifier; zero selects the default queue.
-     * @param repeat_mode Stored repeat-mode value (0 = off, 1 = one, 2 = all).
+     * @param repeat_mode Stored repeat-mode value (0 = off, 1 = all, 2 = one).
      * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> setQueueRepeat(int64_t qid,

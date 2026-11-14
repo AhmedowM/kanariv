@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <kanariv/types/status.hpp>
 #include <type_traits>
 
 #if defined(_WIN32)
@@ -135,7 +136,6 @@ class Generator;
 class Logger;
 class Json;
 class JsonRef;
-enum class StatusCode : std::uint8_t;
 struct Error;
 
 /**

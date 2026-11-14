@@ -37,6 +37,12 @@ enum class RepeatMode : std::uint8_t {
     One = 2  ///< Repeat the current track without advancing.
 };
 
+// The wire order is authoritative: persisted columns and IPC payloads encode
+// these values. Changing an enumerator value is a storage/wire break.
+static_assert(static_cast<int>(RepeatMode::Off) == 0, "RepeatMode::Off wire value changed");
+static_assert(static_cast<int>(RepeatMode::All) == 1, "RepeatMode::All wire value changed");
+static_assert(static_cast<int>(RepeatMode::One) == 2, "RepeatMode::One wire value changed");
+
 /**
  * @brief Playback state machine (wire value).
  * @ingroup kanariv_types

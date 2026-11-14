@@ -12,7 +12,7 @@
 
 #include <kanariv/fwd.hpp>
 #include <kanariv/types/wire.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/types/status.hpp>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -65,7 +65,7 @@ struct EngineCallbacks {
     std::function<void(int64_t track_id, double pct)>
         on_track_ended{}; ///< Fired on TrackEnded with completion pct.
     std::function<void(int64_t queue_id)> on_queue_changed{}; ///< Fired on QueueChanged.
-    std::function<void(kanariv::utils::StatusCode err, std::string_view msg)>
+    std::function<void(kanariv::types::StatusCode err, std::string_view msg)>
         on_error{}; ///< Fired on Error.
 };
 

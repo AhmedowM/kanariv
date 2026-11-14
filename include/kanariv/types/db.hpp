@@ -11,6 +11,7 @@
  */
 
 #include <kanariv/types/record.hpp>
+#include <kanariv/types/wire.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -28,11 +29,11 @@ namespace kanariv::types {
  * I/O.
  */
 struct Queue {
-    int64_t id{};          ///< Row id (PK).
-    std::string name;      ///< Display name.
-    int32_t repeat_mode{}; ///< Repeat mode (0 = off).
-    bool temp{};           ///< Ephemeral direct-play queue (purged on shutdown).
-    int64_t library_id{1}; ///< Owning library id.
+    int64_t id{};                            ///< Row id (PK).
+    std::string name;                        ///< Display name.
+    RepeatMode repeat_mode{RepeatMode::Off}; ///< Repeat mode.
+    bool temp{};                             ///< Ephemeral direct-play queue (purged on shutdown).
+    int64_t library_id{1};                   ///< Owning library id.
 };
 
 /**
