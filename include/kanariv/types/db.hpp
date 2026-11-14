@@ -11,9 +11,11 @@
  */
 
 #include <kanariv/types/record.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace kanariv::types {
 
@@ -116,6 +118,44 @@ struct HistoryQuery {
     std::optional<int64_t> queue_id{}; ///< Filter by queue.
     int limit{};                       ///< Max rows (0 = unlimited).
     int offset{};                      ///< Row offset.
+};
+
+/**
+ * @brief Summary of a library reconciliation pass.
+ * @ingroup kanariv_types
+ * @details Neutral value type so persistence contracts can expose the
+ * maintenance operations without depending on the concrete database layer.
+ */
+struct LibraryMaintenanceReport {
+    std::size_t tracks_checked{}; ///< Live rows examined.
+    std::vector<kanariv::types::Track> missing_tracks{}; ///< Rows whose paths no longer exist.
+    std::vector<std::vector<kanariv::types::Track>>
+        duplicate_groups{}; ///< Groups sharing a path.
+
+    /**
+     * @brief Returns the number of missing-file rows.
+     */
+    std::size_t missingFiles() const noexcept { return missing_tracks.size(); }
+
+    /**
+     * @brief Returns the number of redundant rows in duplicate groups.
+     */
+    std::size_t duplicateTracks() const noexcept {
+        std::size_t count = 0;
+        for (const auto& group : duplicate_groups)
+            if (group.size() > 1)
+                count += group.size() - 1;
+        return count;
+    }
+};
+
+/**
+ * @brief Options for applying library maintenance actions.
+ * @ingroup kanariv_types
+ */
+struct LibraryMaintenanceOptions {
+    bool dry_run{true};       ///< Report planned actions without changing the database.
+    bool prune_missing{false}; ///< Delete rows reported as missing when not dry-running.
 };
 
 } // namespace kanariv::types

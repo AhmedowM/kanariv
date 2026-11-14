@@ -248,6 +248,17 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
     std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
     listTracks(const kanariv::types::TrackQuery* q = nullptr) override;
     /**
+     * @brief Searches track metadata with FTS5 and a LIKE fallback.
+     * @param query Raw user query.
+     * @param limit Maximum rows (<=0 defaults to 50).
+     * @return Matching tracks, or a backend error.
+     * @par Thread safety
+     * Thread-safe: shared_lock for the whole operation.
+     * @ingroup kanariv_db
+     */
+    std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    searchTracks(std::string_view query, int limit = 50) override;
+    /**
      * @brief Sets the dirty flag for a track.
      * @ingroup kanariv_db
      * @param id Track id.
@@ -266,7 +277,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<void, kanariv::utils::Error> setRating(int64_t id, int32_t rating);
+    std::expected<void, kanariv::utils::Error> setRating(int64_t id, int32_t rating) override;
 
     // Playlists
     // Queue operations
@@ -519,7 +530,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * Thread-safe; takes the database write lock.
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error> setQueueRepeat(int64_t qid, int repeat_mode);
+    std::expected<void, kanariv::utils::Error> setQueueRepeat(int64_t qid, int repeat_mode) override;
 
     /**
      * @brief Sets the temporary flag for a queue.
@@ -742,6 +753,28 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
                  std::optional<int> topAlbums = std::nullopt,
                  std::optional<int> topGenres = std::nullopt,
                  std::optional<int> topArtists = std::nullopt) override;
+    /**
+     * @brief Reports missing files and duplicate paths in a library.
+     * @param libraryId Library identifier to inspect.
+     * @return Reconciliation report, or `InvalidArg`/`NotFound`/a backend error.
+     * @par Thread safety
+     * Thread-safe; delegates to the maintenance helpers.
+     * @ingroup kanariv_db
+     */
+    std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+    libraryReport(int64_t libraryId) override;
+    /**
+     * @brief Applies selected maintenance actions after producing a report.
+     * @param libraryId Library identifier to inspect and optionally update.
+     * @param options Actions and dry-run policy.
+     * @return Report describing the state before application, or an error.
+     * @par Thread safety
+     * Thread-safe; delegates to the maintenance helpers.
+     * @ingroup kanariv_db
+     */
+    std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+    libraryApplyMaintenance(int64_t libraryId,
+                            const kanariv::types::LibraryMaintenanceOptions& options) override;
 
     // Persisted engine state and playback history
     /**

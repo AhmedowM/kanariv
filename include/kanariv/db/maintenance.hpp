@@ -20,29 +20,10 @@ namespace kanariv::db {
 /**
  * @brief Summary of a library reconciliation pass.
  * @ingroup kanariv_db
+ * @details Alias of the neutral value type so the operations can also be
+ * reached through `kanariv::contracts::IDatabase`.
  */
-struct LibraryMaintenanceReport {
-    std::size_t tracks_checked{}; ///< Live rows examined.
-    std::vector<kanariv::types::Track> missing_tracks{}; ///< Rows whose paths no longer exist.
-    std::vector<std::vector<kanariv::types::Track>>
-        duplicate_groups{}; ///< Groups sharing a path.
-
-    /**
-     * @brief Returns the number of missing-file rows.
-     */
-    std::size_t missingFiles() const noexcept { return missing_tracks.size(); }
-
-    /**
-     * @brief Returns the number of redundant rows in duplicate groups.
-     */
-    std::size_t duplicateTracks() const noexcept {
-        std::size_t count = 0;
-        for (const auto& group : duplicate_groups)
-            if (group.size() > 1)
-                count += group.size() - 1;
-        return count;
-    }
-};
+using LibraryMaintenanceReport = kanariv::types::LibraryMaintenanceReport;
 
 /**
  * @brief Reports database rows whose files are missing or paths are duplicated.
@@ -71,11 +52,9 @@ libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report);
 /**
  * @brief Options for applying library maintenance actions.
  * @ingroup kanariv_db
+ * @details Alias of the neutral value type used by `IDatabase`.
  */
-struct LibraryMaintenanceOptions {
-    bool dry_run{true}; ///< Report planned actions without changing the database.
-    bool prune_missing{false}; ///< Delete rows reported as missing when not dry-running.
-};
+using LibraryMaintenanceOptions = kanariv::types::LibraryMaintenanceOptions;
 
 /**
  * @brief Applies selected maintenance actions after producing a report.

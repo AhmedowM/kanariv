@@ -145,6 +145,11 @@ std::string sanitizeFtsTerm(std::string_view term) {
 }
 
 std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+Database::searchTracks(std::string_view query, int limit) {
+    return searchFts(*this, query, limit);
+}
+
+std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 search(contracts::IDatabase& db_, std::string_view query, int limit) {
     Database& db = dynamic_cast<Database&>(db_);
     return searchFts(db, query, limit);

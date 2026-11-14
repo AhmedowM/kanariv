@@ -80,4 +80,15 @@ libraryApplyMaintenance(Database& db, int64_t libraryId,
     return report;
 }
 
+std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+Database::libraryReport(int64_t libraryId) {
+    return kanariv::db::libraryReport(*this, libraryId);
+}
+
+std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+Database::libraryApplyMaintenance(int64_t libraryId,
+                                  const kanariv::types::LibraryMaintenanceOptions& options) {
+    return kanariv::db::libraryApplyMaintenance(*this, libraryId, options);
+}
+
 } // namespace kanariv::db

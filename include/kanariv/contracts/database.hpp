@@ -120,6 +120,13 @@ class IDatabase {
      * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> deleteTrack(int64_t id) = 0;
+    /**
+     * @brief Sets the user rating for a track.
+     * @param id Track identifier.
+     * @param rating Rating value (0..5).
+     * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
+     */
+    virtual std::expected<void, kanariv::utils::Error> setRating(int64_t id, int32_t rating) = 0;
 
     // Queue lookup and mutation
     /**
@@ -182,6 +189,14 @@ class IDatabase {
      * @return Success, or `NotFound`/a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> setQueueTemp(int64_t qid, bool temp) = 0;
+    /**
+     * @brief Sets the repeat mode stored for a queue.
+     * @param qid Queue identifier; zero selects the default queue.
+     * @param repeat_mode Stored repeat-mode value (0 = off, 1 = one, 2 = all).
+     * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
+     */
+    virtual std::expected<void, kanariv::utils::Error> setQueueRepeat(int64_t qid,
+                                                                      int repeat_mode) = 0;
     /**
      * @brief Enqueues track identifiers atomically.
      * @param qid Queue identifier; zero selects the default queue.
@@ -344,6 +359,34 @@ class IDatabase {
      */
     virtual std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
     listTracks(const kanariv::types::TrackQuery* q = nullptr) = 0;
+    /**
+     * @brief Searches track metadata using the implementation's full-text index.
+     * @param query Raw user query.
+     * @param limit Maximum rows; non-positive values use the implementation default.
+     * @return Matching tracks, or a backend error.
+     * @details Implementations should fall back to a substring match when the
+     * full-text index yields nothing.
+     */
+    virtual std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    searchTracks(std::string_view query, int limit = 50) = 0;
+    /**
+     * @brief Reports rows whose files are missing or whose paths are duplicated.
+     * @param library_id Library identifier to inspect.
+     * @return Reconciliation report, or `InvalidArg`/`NotFound`/a backend error.
+     * @details Read-only: never deletes files or rows.
+     */
+    virtual std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+    libraryReport(int64_t library_id) = 0;
+    /**
+     * @brief Applies selected library maintenance actions after producing a report.
+     * @param library_id Library identifier to inspect and optionally update.
+     * @param options Actions and dry-run policy.
+     * @return Report describing the state before application, or an error.
+     * @details Deleting rows is skipped when `options.dry_run` is true.
+     */
+    virtual std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+    libraryApplyMaintenance(int64_t library_id,
+                            const kanariv::types::LibraryMaintenanceOptions& options) = 0;
 
     // Bookmarks
     // Bookmarks

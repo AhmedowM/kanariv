@@ -3,7 +3,6 @@
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/maintenance.hpp>
 #include <kanariv/db/scan.hpp>
-#include <kanariv/db/search.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -241,7 +240,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::LibrarySearch& cmd) {
-    auto tracks = kanariv::db::search(*db_, cmd.query, cmd.limit);
+    auto tracks = db_->searchTracks(cmd.query, cmd.limit);
     if (!tracks)
         return std::unexpected{tracks.error()};
     // fallback to like handled inside search; if empty still return
@@ -1256,12 +1255,11 @@ Service::Impl::handle(const kanariv::ipc::TrackRate& cmd) {
     if (cmd.rating < 0 || cmd.rating > 5)
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::InvalidArg, "track rate: rating must be 0..5")};
-    kanariv::db::Database& db = dynamic_cast<kanariv::db::Database&>(*db_);
-    if (!db.getTrack(cmd.track_id))
+    if (!db_->getTrack(cmd.track_id))
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::NotFound, "track not found: " +
             std::to_string(cmd.track_id))};
-    auto r = db.setRating(cmd.track_id, cmd.rating);
+    auto r = db_->setRating(cmd.track_id, cmd.rating);
     if (!r)
         return std::unexpected{r.error()};
     return Result{Empty{}};
@@ -1269,9 +1267,8 @@ Service::Impl::handle(const kanariv::ipc::TrackRate& cmd) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::LibraryMaintenance& cmd) {
-    kanariv::db::Database& db = dynamic_cast<kanariv::db::Database&>(*db_);
     if (cmd.action == "report") {
-        auto report = kanariv::db::libraryReport(db, cmd.library_id);
+        auto report = db_->libraryReport(cmd.library_id);
         if (!report)
             return std::unexpected{report.error()};
         kanariv::ipc::LibraryMaintenanceReport rep{};
@@ -1286,7 +1283,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryMaintenance& cmd) {
         kanariv::db::LibraryMaintenanceOptions opts{};
         opts.dry_run = cmd.dry_run;
         opts.prune_missing = true;
-        auto report = kanariv::db::libraryApplyMaintenance(db, cmd.library_id, opts);
+        auto report = db_->libraryApplyMaintenance(cmd.library_id, opts);
         if (!report)
             return std::unexpected{report.error()};
         if (cmd.dry_run) {

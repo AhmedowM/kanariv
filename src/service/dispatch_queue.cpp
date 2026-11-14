@@ -1,6 +1,5 @@
 #include <algorithm>
-#include <kanariv/db/database.hpp>
-#include <kanariv/db/search.hpp>
+#include <kanariv/contracts/database.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -184,12 +183,11 @@ Service::Impl::handle(const kanariv::ipc::QueueCreate& qc) {
     if (!id)
         return std::unexpected{id.error()};
     // Apply the configured default repeat mode to the new queue.
-    kanariv::db::Database& db = dynamic_cast<kanariv::db::Database&>(*db_);
     if (config_.repeatDefault == "one") {
-        if (auto e = db.setQueueRepeat(*id, 1); !e)
+        if (auto e = db_->setQueueRepeat(*id, 1); !e)
             return std::unexpected{e.error()};
     } else if (config_.repeatDefault == "all") {
-        if (auto e = db.setQueueRepeat(*id, 2); !e)
+        if (auto e = db_->setQueueRepeat(*id, 2); !e)
             return std::unexpected{e.error()};
     }
     return Result{kanariv::ipc::QueueCreated{*id, qc.name}};
@@ -325,7 +323,7 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
     }
     std::vector<kanariv::types::Track> toAdd;
     if (qa.search) {
-        auto sr = kanariv::db::search(*db_, qa.query, 50);
+        auto sr = db_->searchTracks(qa.query, 50);
         if (!sr)
             return std::unexpected{sr.error()};
         toAdd = std::move(*sr);
@@ -369,7 +367,7 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
                 toAdd.push_back(std::move(*tr));
             } else {
                 // fallback to search via FTS (covers LIKE)
-                auto sr = kanariv::db::search(*db_, qa.query, 50);
+                auto sr = db_->searchTracks(qa.query, 50);
                 if (!sr)
                     return std::unexpected{sr.error()};
                 toAdd = std::move(*sr);
