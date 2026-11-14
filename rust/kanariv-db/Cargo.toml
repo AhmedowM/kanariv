@@ -1,0 +1,16 @@
+[package]
+name = "kanariv-db"
+version.workspace = true
+edition.workspace = true
+# rusqlite 0.42 requires 1.89; this crate is an isolated experiment and does
+# not raise the workspace MSRV used by the frontend crates.
+rust-version = "1.89.0"
+publish.workspace = true
+description = "Experimental Rust implementation of the kanariv SQLite schema"
+
+[dependencies]
+rusqlite = { version = "0.42", features = ["bundled"] }
+thiserror = "2"
+
+[lints]
+workspace = true

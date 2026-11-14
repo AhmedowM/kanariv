@@ -1,6 +1,6 @@
-# kanariv-rs (experimental Rust CLI)
+# kanariv-rs (experimental Rust components)
 
-An isolated Rust exploration in two layers:
+An isolated Rust exploration in three layers:
 
 1. `kanariv-ipc` — a reusable, FFI-free codec and transport for the existing
    IPC wire. It models all 65 commands and all 26 result kinds key-for-key
@@ -8,18 +8,22 @@ An isolated Rust exploration in two layers:
    tests.
 2. `kanariv-cli` (binary `kanariv-rs`) — a frontend-only CLI that talks to the
    existing C++ daemon over that wire.
+3. `kanariv-db` — an experimental, link-free reimplementation of the SQLite
+   persistence layer (schema, FTS5 search, queue positioning, playlists,
+   history, bookmarks, lyrics). It is a parity experiment only: the daemon
+   does **not** link it and no C ABI adapter exists yet.
 
-Neither crate links C++ code, uses FFI, or touches decoding or the audio
-thread — the audio path stays entirely C++ by design.
+None of these crates links C++ code, uses FFI, or touches decoding or the
+audio thread — the audio path stays entirely C++ by design.
 
-The C++ `kanariv` binary remains canonical. The Rust target builds alongside
-it and is disabled unless explicitly enabled.
+The C++ `kanariv` binary remains canonical. Rust targets build alongside it
+and are disabled unless explicitly enabled.
 
 ## Workspace layout
 
 ```
 rust/
-  Cargo.toml          # workspace (kanariv-ipc + kanariv-cli)
+  Cargo.toml          # workspace (kanariv-ipc + kanariv-cli + kanariv-db)
   kanariv-ipc/        # wire codec + transport (no CLI policy)
     src/frame.rs      # [u32 BE length][JSON], 16 MiB cap
     src/command.rs    # typed Command, exact C++ JSON
@@ -27,7 +31,12 @@ rust/
     src/model.rs      # Track, Playlist, Status records, wire enums
     tests/            # golden schema, reply fixtures, mutation/fuzz
   kanariv-cli/        # CLI, config discovery, daemon lifecycle
-  CMakeLists.txt      # optional KANARIV_ENABLE_RUST_CLI integration
+  kanariv-db/         # experimental SQLite parity crate (not linked)
+    src/schema.rs     # schema/pragmas/triggers, byte-identical to core.cpp
+    src/store.rs      # CRUD, 3-stage search, queue gaps, history, playlists
+    tests/schema_parity.rs  # compares SCHEMA against src/db/core.cpp
+    tests/store.rs          # behavior tests (14 total across both files)
+  CMakeLists.txt      # optional KANARIV_ENABLE_RUST_CLI / _RUST_DB wiring
 ```
 
 ## Scope
@@ -54,7 +63,7 @@ API is the planned successor.
 cargo build --release            # from rust/
 cargo test --workspace
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy -p kanariv-cli -p kanariv-ipc -p kanariv-db --all-targets -- -D warnings
 ```
 
 Via CMake (off by default; the C++ build is untouched when disabled):
@@ -63,11 +72,17 @@ Via CMake (off by default; the C++ build is untouched when disabled):
 python scripts/configure.py dev --toolchain clang \
   --define KANARIV_ENABLE_RUST_CLI=ON --build
 # or: cmake -DKANARIV_ENABLE_RUST_CLI=ON ...
+
+python scripts/configure.py dev --toolchain clang \
+  --define KANARIV_ENABLE_RUST_DB=ON
+cmake --build build/dev-clang-ninja-x64 --target kanariv_db_check
 ```
 
-The CMake target `kanariv_rs` runs `cargo build --release` and stages the
-binary next to the C++ `kanariv` executable. `kanariv_rs_check` runs rustfmt,
-clippy, and the test suite.
+The CMake target `kanariv_rs` runs `cargo build --release -p kanariv-cli` and
+stages the binary next to the C++ `kanariv` executable. `kanariv_rs_check`
+runs rustfmt, clippy, and the CLI/IPC test suites. `kanariv_db_check` runs the
+same gates for `kanariv-db`; it is the only thing `KANARIV_ENABLE_RUST_DB`
+adds, and it never becomes part of the default build.
 
 On memory-constrained hosts (8 GB and below), parallel rustc/clang jobs can
 exhaust RAM and fail with `memory allocation ... failed` or
@@ -76,6 +91,36 @@ exhaust RAM and fail with `memory allocation ... failed` or
 ```sh
 CARGO_BUILD_JOBS=2 cmake --build build/rust-cli-clang --target kanariv_rs_check
 ```
+
+## kanariv-db (experimental)
+
+`kanariv-db` reimplements the persistence slice of `kanariv::db::Database`
+directly on rusqlite 0.42 with bundled SQLite (FTS5 enabled). It exists to
+measure whether a Rust DB is worth pursuing, not to ship.
+
+Parity mechanisms:
+
+- `tests/schema_parity.rs` reads `src/db/core.cpp`, extracts the `schema`
+  string literal, and asserts byte-for-byte equality with `SCHEMA`. The C++
+  file remains the single source of truth; the test fails if either drifts.
+- `tests/store.rs` exercises the behaviors that are easy to get subtly wrong:
+  fingerprint uniqueness, source/library-id normalization, `date_added == 0`
+  -> NULL, the three-stage search (exact MATCH -> prefix MATCH -> escaped
+  LIKE with FTS errors tolerated), FTS trigger propagation on update/delete,
+  queue gaps/midpoint insertion/renormalization, transactional batch rollback,
+  playlist reorder, history + play-count updates, bookmarks/lyrics upsert, and
+  cascade deletes.
+
+Implemented surface: tracks (insert/update/get/lookup/delete/rating/dirty/
+list/search), queues and queue items (including batch enqueue and positioning),
+manual playlists, libraries, playback history and stats, bookmarks, and lyrics.
+
+Known gaps (intentionally untouched in this experiment): write batching, smart
+playlists, engine-state persistence, JSON import/export, scanning/maintenance,
+and any C ABI adapter. The daemon does not link the crate, so the C++ layer
+remains authoritative. Because rusqlite 0.42 needs a newer compiler, the crate
+declares `rust-version = "1.89.0"` while the workspace MSRV stays 1.75 for the
+IPC/CLI crates.
 
 ## Talking to the daemon
 
