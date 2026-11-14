@@ -62,6 +62,10 @@ option(KANARIV_ENABLE_RUST_CLI "build the experimental Rust CLI (kanariv-rs, opt
 # not linked into the daemon; it exists to measure parity with the C++ SQLite
 # layer. Enabling it only adds a `kanariv_db_check` quality-gate target.
 option(KANARIV_ENABLE_RUST_DB "build/check the experimental Rust DB crate (optional)" OFF)
+# Experimental read-only C ABI pilot over kanariv-db. Adds a standalone parity
+# executable that compares Rust search/lookup against the C++ database on the
+# same file. Never linked into the daemon.
+option(KANARIV_ENABLE_RUST_DB_FFI "build the Rust DB C ABI parity pilot (optional)" OFF)
 # Shared mode builds per-component DLLs/import libraries by default.
 # KANARIV_BUILD_STATIC can be enabled to build the static component libraries too.
 option(KANARIV_BUILD_SHARED "build per-component shared libraries" ON)
@@ -478,7 +482,7 @@ endif()
 
 # Optional experimental Rust components. Isolated under rust/ so the C++ component
 # graph and the kanariv/kanariv_cli targets are unaffected when disabled.
-if(KANARIV_ENABLE_RUST_CLI OR KANARIV_ENABLE_RUST_DB)
+if(KANARIV_ENABLE_RUST_CLI OR KANARIV_ENABLE_RUST_DB OR KANARIV_ENABLE_RUST_DB_FFI)
   add_subdirectory(rust)
 endif()
 

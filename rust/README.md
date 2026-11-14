@@ -11,7 +11,11 @@ An isolated Rust exploration in three layers:
 3. `kanariv-db` — an experimental, link-free reimplementation of the SQLite
    persistence layer (schema, FTS5 search, queue positioning, playlists,
    history, bookmarks, lyrics). It is a parity experiment only: the daemon
-   does **not** link it and no C ABI adapter exists yet.
+   does not link it.
+4. `kanariv-db-ffi` — a read-only C ABI (`cdylib`) over `kanariv-db`, plus a
+   standalone C++ parity executable. This measures cross-language cost and ABI
+   maintenance; it does not implement `IDatabase` and is never linked into the
+   daemon.
 
 None of these crates links C++ code, uses FFI, or touches decoding or the
 audio thread — the audio path stays entirely C++ by design.
@@ -35,8 +39,12 @@ rust/
     src/schema.rs     # schema/pragmas/triggers, byte-identical to core.cpp
     src/store.rs      # CRUD, 3-stage search, queue gaps, history, playlists
     tests/schema_parity.rs  # compares SCHEMA against src/db/core.cpp
-    tests/store.rs          # behavior tests (14 total across both files)
-  CMakeLists.txt      # optional KANARIV_ENABLE_RUST_CLI / _RUST_DB wiring
+    tests/store.rs          # behavior tests (16 total across both files)
+  kanariv-db-ffi/     # read-only C ABI pilot (cdylib, not linked)
+    include/kanariv/db_ffi.h  # C contract: open/close/search/get/string_free
+    src/lib.rs                # JSON-returning ABI + status mapping
+    parity.cpp                # C++ harness: same DB through both layers
+  CMakeLists.txt      # optional KANARIV_ENABLE_RUST_CLI / _RUST_DB / _RUST_DB_FFI
 ```
 
 ## Scope
@@ -63,7 +71,7 @@ API is the planned successor.
 cargo build --release            # from rust/
 cargo test --workspace
 cargo fmt --all --check
-cargo clippy -p kanariv-cli -p kanariv-ipc -p kanariv-db --all-targets -- -D warnings
+cargo clippy -p kanariv-cli -p kanariv-ipc -p kanariv-db -p kanariv-db-ffi --all-targets -- -D warnings
 ```
 
 Via CMake (off by default; the C++ build is untouched when disabled):
@@ -76,13 +84,18 @@ python scripts/configure.py dev --toolchain clang \
 python scripts/configure.py dev --toolchain clang \
   --define KANARIV_ENABLE_RUST_DB=ON
 cmake --build build/dev-clang-ninja-x64 --target kanariv_db_check
+
+python scripts/configure.py dev --toolchain clang \
+  --define KANARIV_ENABLE_RUST_DB_FFI=ON
+cmake --build build/dev-clang-ninja-x64 --target test_rust_db_ffi
+ctest -R test_rust_db_ffi --output-on-failure
 ```
 
 The CMake target `kanariv_rs` runs `cargo build --release -p kanariv-cli` and
 stages the binary next to the C++ `kanariv` executable. `kanariv_rs_check`
 runs rustfmt, clippy, and the CLI/IPC test suites. `kanariv_db_check` runs the
-same gates for `kanariv-db`; it is the only thing `KANARIV_ENABLE_RUST_DB`
-adds, and it never becomes part of the default build.
+same gates for `kanariv-db`; `kanariv_db_ffi_check` does so for the ABI crate.
+Neither is part of the default build.
 
 On memory-constrained hosts (8 GB and below), parallel rustc/clang jobs can
 exhaust RAM and fail with `memory allocation ... failed` or
@@ -116,11 +129,51 @@ list/search), queues and queue items (including batch enqueue and positioning),
 manual playlists, libraries, playback history and stats, bookmarks, and lyrics.
 
 Known gaps (intentionally untouched in this experiment): write batching, smart
-playlists, engine-state persistence, JSON import/export, scanning/maintenance,
-and any C ABI adapter. The daemon does not link the crate, so the C++ layer
+playlists, engine-state persistence, JSON import/export, and
+scanning/maintenance. The daemon does not link the crate, so the C++ layer
 remains authoritative. Because rusqlite 0.42 needs a newer compiler, the crate
 declares `rust-version = "1.89.0"` while the workspace MSRV stays 1.75 for the
 IPC/CLI crates.
+
+The parity harness also caught a real defect in this crate: the FTS join used
+the unqualified shared SELECT list, so `title`/`artist` were ambiguous and
+every FTS stage failed silently into the LIKE fallback. The fields are now
+qualified, and `search_uses_fts_stemming_not_only_like` guards the FTS path
+(a stemming-only match that LIKE cannot produce).
+
+## kanariv-db-ffi (C ABI pilot)
+
+`rust/kanariv-db-ffi` builds a small `cdylib` exposing:
+
+```c
+KanarivDbHandle* kanariv_db_ffi_open(const char* path, char** error);
+void             kanariv_db_ffi_close(KanarivDbHandle* handle);
+int32_t          kanariv_db_ffi_search_json(KanarivDbHandle*, const char* query,
+                                            int32_t limit, char** json, char** error);
+int32_t          kanariv_db_ffi_get_track_json(KanarivDbHandle*, int64_t id,
+                                               char** json, char** error);
+void             kanariv_db_ffi_string_free(char* value);
+```
+
+Status codes are 0/1/2/3 (ok / invalid argument / not found / internal), and
+every returned string is owned by the caller. Search returns a JSON array;
+lookup returns one JSON object. JSON keeps the ABI to scalars and byte strings
+while still exercising allocation, serialization, and error mapping.
+
+`parity.cpp` opens a temporary on-disk database, inserts tracks through the
+C++ `Database`, then queries the same file through the ABI and compares:
+result sets for nine queries (FTS, prefix, LIKE fallback, literal `%`, operator
+stripping, quoted phrase, empty/blank, no match), full field equality for
+lookup, and the error mappings. It runs as CTest case `test_rust_db_ffi`.
+
+The harness also prints a timing line, but treat it as illustrative only: the
+C++ side is a Debug build while the Rust side is `--release`, so it does not
+isolate FFI overhead. A release C++ build is required before drawing cost
+conclusions.
+
+Deliberately not done: implementing `IDatabase`, sharing an open connection or
+mutex across the boundary, and linking the ABI into the daemon. Those are the
+expensive, risky steps this pilot is meant to inform.
 
 ## Talking to the daemon
 

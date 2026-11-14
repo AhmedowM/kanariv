@@ -1,0 +1,22 @@
+[package]
+name = "kanariv-db-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.89.0"
+publish.workspace = true
+description = "Read-only C ABI probe over the experimental kanariv-db crate"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+kanariv-db = { path = "../kanariv-db" }
+serde_json = "1"
+
+# FFI necessarily uses `unsafe`; the workspace forbids it for the Rust-only
+# crates, so this crate opts out explicitly instead of inheriting workspace lints.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

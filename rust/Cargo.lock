@@ -192,6 +192,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kanariv-db-ffi"
+version = "2.0.0"
+dependencies = [
+ "kanariv-db",
+ "serde_json",
+]
+
+[[package]]
 name = "kanariv-ipc"
 version = "2.0.0"
 dependencies = [
