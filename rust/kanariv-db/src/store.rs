@@ -287,8 +287,17 @@ impl Store {
     }
 
     fn fts_query(&self, query: &str, limit: i64) -> Result<Vec<Track>> {
+        // `tracks_fts` mirrors column names, so the shared field list must be
+        // qualified to avoid "ambiguous column name" errors that would
+        // otherwise force every FTS hit through the LIKE fallback.
+        let fields = TRACK_FIELDS
+            .split(',')
+            .map(str::trim)
+            .map(|name| format!("t.{name}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         let sql = format!(
-            "SELECT {TRACK_FIELDS} FROM tracks t JOIN tracks_fts f ON t.id = f.rowid \
+            "SELECT {fields} FROM tracks t JOIN tracks_fts f ON t.id = f.rowid \
              WHERE tracks_fts MATCH ? ORDER BY rank LIMIT ?"
         );
         let mut stmt = self.conn.prepare(&sql)?;

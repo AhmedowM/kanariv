@@ -116,6 +116,25 @@ fn search_uses_fts_then_prefix_then_like() {
 }
 
 #[test]
+fn search_uses_fts_stemming_not_only_like() {
+    let store = Store::open_in_memory().unwrap();
+    insert(&store, "C:/stem.flac", "Happy");
+    // Porter stems "happiness" and "Happy" to the same root; the LIKE
+    // fallback would not match, so this only succeeds when the FTS stage runs.
+    let hits = store.search_tracks("happiness", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].title, "Happy");
+}
+
+#[test]
+fn search_matches_quoted_phrase() {
+    let store = Store::open_in_memory().unwrap();
+    insert(&store, "C:/abbey.flac", "Abbey Road");
+    let hits = store.search_tracks("\"Abbey Road\"", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+}
+
+#[test]
 fn fts_triggers_follow_update_and_delete() {
     let store = Store::open_in_memory().unwrap();
     let id = insert(&store, "C:/music/x.mp3", "Oldname");
