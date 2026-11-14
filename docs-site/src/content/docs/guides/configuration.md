@@ -33,7 +33,7 @@ helpers for socket, PID, lock, and log file locations.
 | `socketPath` | string | derived from dbPath | Explicit socket path |
 | `autoResumeOnPlay` | bool | `false` | Resume persisted track on play after restart |
 | `clearStopsPlayback` | bool | `true` | Stop playback when queue is cleared |
-| `repeatDefault` | string | `"off"` | `"off"`, `"one"`, or `"all"` |
+| `repeatDefault` | string | `"off"` | `"off"`, `"one"`, or `"all"` (case-insensitive). Stored on newly created queues and adopted when switching to a queue |
 | `autostart` | bool | `false` | Auto-start playback when track added to empty queue |
 
 ## Config commands
@@ -63,6 +63,20 @@ The `kanariv::config` module provides path helpers derived from `dbPath`:
 - **Windows:** Socket is a named pipe; PID/lock files under `%LOCALAPPDATA%/kanariv`
 - **POSIX:** Socket/PID/lock under `$XDG_RUNTIME_DIR/kanariv` or
   `$XDG_DATA_HOME/kanariv` or `~/.local/share/kanariv`
+
+The endpoint identifier is the FNV-1a 64-bit digest of the canonical UTF-8
+database path (forward slashes), written as 16 lowercase hex digits, so it
+is identical across compilers and standard libraries. The socket/pipe, PID
+file, lock file, and shared-memory block derived from one `dbPath` share that
+digest.
+
+**Upgrade note (endpoint rename):** older releases used an 8-hex identifier
+derived from `std::hash<std::string>`. After upgrading, `kanariv-<old-id>.sock`,
+`.pid`, and `.lock` files are orphaned (Windows named pipes are recreated under
+the new name). Stop the daemon and remove those stale files manually; kanariv
+does not delete them. Upgrade the daemon and every CLI together — an older
+client derives the old name and will report the daemon as not running. Setting
+`socketPath` explicitly overrides derivation and works for mixed versions.
 
 ## ServiceConfig (C++ API)
 

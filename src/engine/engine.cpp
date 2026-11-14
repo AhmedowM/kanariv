@@ -946,12 +946,20 @@ Engine::ExpectedVoid Engine::Impl::switchQueue(int64_t qid) {
         unlockQueue();
         return {};
     }
-    // switch active queue: reset cursor, clear shuffle perm, update state
+    // switch active queue: reset cursor, clear shuffle perm, adopt the queue's
+    // stored repeat mode, update state
     queue_.queue_id = qid;
     queue_.cursor = 0;
     queue_.perm.clear();
     state_.activeQueueId = qid;
     state_.cursorPos = 0;
+    // The queue row's repeat_mode is the per-queue setting (written when a queue
+    // is created from the configured default), so it wins on switch. A lookup
+    // failure keeps the current mode: switching must not fail because of it.
+    if (auto target = db_->getQueue(qid); target) {
+        queue_.repeat = target->repeat_mode;
+        state_.repeatMode = target->repeat_mode;
+    }
     // keep shuffle flag as-is but perm cleared; next shuffle will regenerate for new queue
     std::optional<kanariv::utils::Error> err;
     if (auto e = saveState(); !e)

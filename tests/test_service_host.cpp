@@ -124,18 +124,20 @@ TEST_CASE("host missing database path fails cleanly", "[service][host]") {
 
 TEST_CASE("queue create maps repeatDefault to RepeatMode", "[service][queue][repeat]") {
     struct Case {
-        const char* repeatDefault;
+        kanariv::types::RepeatMode repeatDefault;
         kanariv::types::RepeatMode expected;
     };
     // Wire order is authoritative: "one" must store RepeatMode::One (2) and
     // "all" must store RepeatMode::All (1); the handler used to swap them.
+    // Config::repeatDefault is already the parsed enum.
     const Case cases[] = {
-        {"one", kanariv::types::RepeatMode::One},
-        {"all", kanariv::types::RepeatMode::All},
-        {"off", kanariv::types::RepeatMode::Off},
+        {kanariv::types::RepeatMode::One, kanariv::types::RepeatMode::One},
+        {kanariv::types::RepeatMode::All, kanariv::types::RepeatMode::All},
+        {kanariv::types::RepeatMode::Off, kanariv::types::RepeatMode::Off},
     };
     for (const auto& c : cases) {
-        auto dir = tempDirPath(std::string("qrepeat_") + c.repeatDefault);
+        const std::string tag = std::to_string(static_cast<int>(c.repeatDefault));
+        auto dir = tempDirPath("qrepeat_" + tag);
         auto dbPath = dir / "library.db";
         auto logsDir = dir / "logs";
         std::filesystem::create_directories(logsDir);

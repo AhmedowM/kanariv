@@ -36,7 +36,7 @@ Default location: XDG/LOCALAPPDATA derived, e.g.
 | `socketPath` | string | `""` | Explicit socket/named pipe path (empty = derived) |
 | `autoResumeOnPlay` | boolean | `false` | Resume persisted track on play after daemon restart |
 | `clearStopsPlayback` | boolean | `true` | Stop playback when queue is cleared |
-| `repeatDefault` | string | `"off"` | Default repeat mode: `"off"`, `"one"`, `"all"` |
+| `repeatDefault` | string | `"off"` | Default repeat mode for new and switched-to queues: `"off"`, `"one"`, `"all"` (case-insensitive; unknown values mean `off`) |
 | `autostart` | boolean | `false` | Auto-start playback when track added to empty queue |
 
 ## Config commands
@@ -64,6 +64,18 @@ The `kanariv::config` module derives runtime paths from `dbPath`:
 | `pidPathFor(dbPath)` | PID file under `%LOCALAPPDATA%/kanariv` (Windows) or XDG data dir |
 | `lockPathFor(dbPath)` | Lock file next to PID file |
 | `logPathFor(dbPath)` | `<db-dir>/kanariv.log`; falls back to temp dir |
+
+Socket/pipe, PID, and lock names embed a 16-hex FNV-1a 64-bit digest of the
+canonical UTF-8 `dbPath` (forward slashes). The digest is specified rather than
+inherited from `std::hash`, so C++ binaries built with different standard
+libraries agree. These names are a **breaking on-disk rename** from the previous
+8-hex `std::hash` identifier: old `kanariv-<id>.sock`/`.pid`/`.lock` files are
+orphaned after upgrade and must be removed manually; upgrade the daemon and
+clients together (or set `socketPath`).
+
+Configuration is saved atomically: `saveConfig` writes `<configPath>.tmp`,
+checks every write, then renames it over the target, so an interrupted save
+cannot truncate the live config file.
 
 ## ServiceConfig (in-process hosts)
 

@@ -182,14 +182,10 @@ Service::Impl::handle(const kanariv::ipc::QueueCreate& qc) {
     auto id = db_->createQueue(qc.name);
     if (!id)
         return std::unexpected{id.error()};
-    // Apply the configured default repeat mode to the new queue. The stored
-    // integer is the wire value of RepeatMode (Off=0, All=1, One=2), not the
-    // legacy "off/one/all" ordinal that this handler used to write.
-    kanariv::types::RepeatMode mode = kanariv::types::RepeatMode::Off;
-    if (config_.repeatDefault == "one")
-        mode = kanariv::types::RepeatMode::One;
-    else if (config_.repeatDefault == "all")
-        mode = kanariv::types::RepeatMode::All;
+    // Apply the configured default repeat mode to the new queue. `repeatDefault` is
+    // already parsed; the stored integer is the wire value of RepeatMode
+    // (Off=0, All=1, One=2).
+    const auto mode = config_.repeatDefault;
     if (mode != kanariv::types::RepeatMode::Off) {
         if (auto e = db_->setQueueRepeat(*id, static_cast<int>(mode)); !e)
             return std::unexpected{e.error()};

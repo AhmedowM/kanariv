@@ -65,7 +65,7 @@ std::filesystem::path lockPathForSocket(const std::filesystem::path& dbPath,
     auto r = kanariv::config::lockPathFor(dbPath);
     if (r)
         return *r;
-    std::string hex = kanariv::config::detail_paths::hex8ForDb(dbPath);
+    std::string hex = kanariv::config::detail_paths::endpointIdForDb(dbPath);
     auto pidPath = pidPathForSocket(dbPath, "");
     return pidPath.parent_path() / ("kanariv-" + hex + ".lock");
 }
@@ -74,8 +74,8 @@ std::string socketPathForDb(const std::filesystem::path& dbPath) {
     auto r = kanariv::config::socketPathFor(dbPath);
     if (r)
         return *r;
-    // Fallback uses canonical hex8 encoding (consistent with primary socketPathFor)
-    std::string hex = kanariv::config::detail_paths::hex8ForDb(dbPath);
+    // Fallback uses the canonical endpoint id (consistent with primary socketPathFor)
+    std::string hex = kanariv::config::detail_paths::endpointIdForDb(dbPath);
 #ifdef _WIN32
     return std::string("\\\\.\\pipe\\kanariv-") + hex;
 #else

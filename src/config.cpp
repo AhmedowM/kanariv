@@ -1,8 +1,10 @@
 #include <kanariv/config.hpp>
+#include <kanariv/types/wire.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/result.hpp>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -11,7 +13,6 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <functional>
 #include <iterator>
 #include <string>
 #include <string_view>
@@ -20,6 +21,53 @@
 #include <vector>
 
 #include "config_detail.hpp"
+
+namespace {
+
+using kanariv::types::RepeatMode;
+
+/// Lowercases ASCII text; the config vocabulary is ASCII.
+std::string lowerAscii(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    for (const char ch : text)
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    return out;
+}
+
+/// Parses the config spelling of a repeat default (case-insensitive).
+/// Unknown text is tolerated and means Off, matching the lenient loader.
+RepeatMode parseRepeatDefault(std::string_view text) {
+    const std::string lower = lowerAscii(text);
+    if (lower == "all")
+        return RepeatMode::All;
+    if (lower == "one")
+        return RepeatMode::One;
+    return RepeatMode::Off;
+}
+
+/// Canonical (lowercase) config spelling written by saveConfig.
+std::string_view repeatDefaultName(RepeatMode mode) noexcept {
+    using enum RepeatMode;
+    switch (mode) {
+    case All:
+        return "all";
+    case One:
+        return "one";
+    case Off:
+        break;
+    }
+    return "off";
+}
+
+/// Maps filesystem failures to the public status codes.
+kanariv::utils::StatusCode statusForFsError(const std::error_code& ec) noexcept {
+    if (ec == std::errc::no_space_on_device)
+        return kanariv::utils::StatusCode::NoSpace;
+    return kanariv::utils::StatusCode::Io;
+}
+
+} // namespace
 
 namespace kanariv::config::detail {
 
@@ -169,9 +217,7 @@ kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
             cfg.clearStopsPlayback = j["clearStopsPlayback"].get<bool>();
         }
         if (j.contains("repeatDefault") && j["repeatDefault"].isString()) {
-            std::string rd = j["repeatDefault"].get<std::string>();
-            if (rd == "off" || rd == "one" || rd == "all")
-                cfg.repeatDefault = rd;
+            cfg.repeatDefault = parseRepeatDefault(j["repeatDefault"].get<std::string>());
         }
         if (j.contains("autostart") && j["autostart"].isBoolean()) {
             cfg.autostart = j["autostart"].get<bool>();
@@ -210,11 +256,18 @@ kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
 }
 
 kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
+    namespace fs = std::filesystem;
+    fs::path tmp{};
     try {
-        std::filesystem::path dir = cfg.configPath.parent_path();
+        const fs::path dir = cfg.configPath.parent_path();
         if (!dir.empty()) {
             std::error_code ec;
-            std::filesystem::create_directories(dir, ec);
+            fs::create_directories(dir, ec);
+            if (ec) {
+                return std::unexpected{kanariv::utils::makeError(
+                    statusForFsError(ec), "cannot create config directory '" +
+                                              dir.generic_string() + "': " + ec.message())};
+            }
         }
         Json j;
         j["dbPath"] = cfg.dbPath.generic_string();
@@ -222,7 +275,7 @@ kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
         j["logLevel"] = cfg.logLevel;
         j["autoResumeOnPlay"] = cfg.autoResumeOnPlay;
         j["clearStopsPlayback"] = cfg.clearStopsPlayback;
-        j["repeatDefault"] = cfg.repeatDefault;
+        j["repeatDefault"] = repeatDefaultName(cfg.repeatDefault);
         j["autostart"] = cfg.autostart;
         j["replayGain"] = cfg.replayGain;
         j["fadeInMs"] = cfg.fadeInMs;
@@ -230,14 +283,61 @@ kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
         j["interTrackGapMs"] = cfg.interTrackGapMs;
         if (!cfg.socketPath.empty())
             j["socketPath"] = cfg.socketPath;
-        std::ofstream out(cfg.configPath);
-        if (!out) {
-            return std::unexpected{
-                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "cannot write config")};
+        const std::string payload = j.dump(2);
+
+        // Write beside the target first so a failure never truncates the live config.
+        tmp = cfg.configPath;
+        tmp += ".tmp";
+        {
+            std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+            if (!out) {
+                return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                                                 "cannot write config '" +
+                                                                     tmp.generic_string() + "'")};
+            }
+            out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+            out.flush();
+            if (!out.good()) {
+                out.close();
+                std::error_code rmEc;
+                fs::remove(tmp, rmEc);
+                return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                                                 "cannot write config '" +
+                                                                     tmp.generic_string() + "'")};
+            }
+            out.close();
+            if (out.fail()) {
+                std::error_code rmEc;
+                fs::remove(tmp, rmEc);
+                return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                                                 "cannot close config '" +
+                                                                     tmp.generic_string() + "'")};
+            }
         }
-        out << j.dump(2);
+
+        std::error_code renameEc;
+        fs::rename(tmp, cfg.configPath, renameEc);
+        if (renameEc) {
+            // POSIX rename and the MSVC/MinGW implementations replace the target
+            // atomically. Filesystems that reject that keep this documented
+            // non-atomic fallback: copy over, then drop the temp file.
+            std::error_code copyEc;
+            fs::copy_file(tmp, cfg.configPath, fs::copy_options::overwrite_existing, copyEc);
+            std::error_code rmEc;
+            fs::remove(tmp, rmEc);
+            if (copyEc) {
+                return std::unexpected{kanariv::utils::makeError(
+                    statusForFsError(copyEc),
+                    "cannot replace config '" + cfg.configPath.generic_string() +
+                        "': " + renameEc.message() + " (copy fallback: " + copyEc.message() + ")")};
+            }
+        }
         return {};
     } catch (const std::exception& e) {
+        // Never leave a partially written temp file behind.
+        std::error_code rmEc;
+        if (!tmp.empty())
+            fs::remove(tmp, rmEc);
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
     }
@@ -247,14 +347,42 @@ kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
 
 namespace kanariv::config::detail_paths {
 
-std::string hex8ForDb(const std::filesystem::path& dbPath) {
-    std::string input = dbPath.generic_string();
-    if (input.empty())
-        input = dbPath.string();
-    const std::uint64_t raw = static_cast<std::uint64_t>(std::hash<std::string>{}(input));
-    std::uint32_t hv = static_cast<std::uint32_t>(raw & 0xFFFFFFFFu);
-    hv ^= static_cast<std::uint32_t>((raw >> 32) & 0xFFFFFFFFu);
-    return std::format("{:08x}", hv);
+namespace {
+
+constexpr std::uint64_t fnvOffsetBasis = 0xcbf2'9ce4'8422'2325ULL;
+constexpr std::uint64_t fnvPrime = 0x0000'0100'0000'01b3ULL;
+
+/// FNV-1a 64-bit over the given bytes (specified, toolchain independent).
+std::uint64_t fnv1a64(std::string_view bytes) noexcept {
+    std::uint64_t hash = fnvOffsetBasis;
+    for (const unsigned char byte : bytes) {
+        hash ^= byte;
+        hash *= fnvPrime;
+    }
+    return hash;
+}
+
+/// Canonical endpoint input bytes: UTF-8 with `/` separators when the path can be
+/// converted; otherwise the raw spelling of the supplied input.
+std::string canonicalEndpointInput(const std::filesystem::path& dbPath) {
+    try {
+        const std::u8string utf8 = dbPath.generic_u8string();
+        return std::string(reinterpret_cast<const char*>(utf8.data()), utf8.size());
+    } catch (const std::exception&) {
+        // Invalid native encoding; fall back to the raw input spelling below.
+    } catch (...) {
+    }
+    try {
+        return dbPath.string();
+    } catch (...) {
+        return {};
+    }
+}
+
+} // namespace
+
+std::string endpointIdForDb(const std::filesystem::path& dbPath) {
+    return std::format("{:016x}", fnv1a64(canonicalEndpointInput(dbPath)));
 }
 
 std::filesystem::path baseDirForSocket() {
@@ -291,12 +419,12 @@ namespace kanariv::config {
 
 kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path& dbPath) {
     try {
-        std::string hex = detail_paths::hex8ForDb(dbPath);
+        std::string id = detail_paths::endpointIdForDb(dbPath);
 #ifdef _WIN32
-        return std::string("\\\\.\\pipe\\kanariv-") + hex;
+        return std::string("\\\\.\\pipe\\kanariv-") + id;
 #else
         auto base = detail_paths::baseDirForSocket();
-        return (base / ("kanariv-" + hex + ".sock")).generic_string();
+        return (base / ("kanariv-" + id + ".sock")).generic_string();
 #endif
     } catch (const std::exception& e) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
@@ -308,9 +436,9 @@ kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path&
 
 kanariv::utils::Expected<std::filesystem::path> pidPathFor(const std::filesystem::path& dbPath) {
     try {
-        std::string hex = detail_paths::hex8ForDb(dbPath);
+        std::string id = detail_paths::endpointIdForDb(dbPath);
         auto base = detail_paths::baseDirForSocket();
-        return base / ("kanariv-" + hex + ".pid");
+        return base / ("kanariv-" + id + ".pid");
     } catch (const std::exception& e) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
     } catch (...) {
@@ -321,9 +449,9 @@ kanariv::utils::Expected<std::filesystem::path> pidPathFor(const std::filesystem
 
 kanariv::utils::Expected<std::filesystem::path> lockPathFor(const std::filesystem::path& dbPath) {
     try {
-        std::string hex = detail_paths::hex8ForDb(dbPath);
+        std::string id = detail_paths::endpointIdForDb(dbPath);
         auto base = detail_paths::baseDirForSocket();
-        return base / ("kanariv-" + hex + ".lock");
+        return base / ("kanariv-" + id + ".lock");
     } catch (const std::exception& e) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
     } catch (...) {

@@ -1,9 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <kanariv/config.hpp>
+#include <kanariv/types/wire.hpp>
+#include <kanariv/utils/error.hpp>
 #include <common.hpp>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <system_error>
 
@@ -107,7 +110,7 @@ TEST_CASE("config load/save playback-policy keys", "[config]") {
     auto loaded = kanariv::config::loadConfig(cfgPath);
     REQUIRE(loaded.has_value());
     REQUIRE(loaded->clearStopsPlayback == false);
-    REQUIRE(loaded->repeatDefault == "all");
+    REQUIRE(loaded->repeatDefault == kanariv::types::RepeatMode::All);
     REQUIRE(loaded->autostart == true);
 
     // Save and reload to verify round-trip.
@@ -117,7 +120,7 @@ TEST_CASE("config load/save playback-policy keys", "[config]") {
     auto reloaded = kanariv::config::loadConfig(cfgPath);
     REQUIRE(reloaded.has_value());
     REQUIRE(reloaded->clearStopsPlayback == false);
-    REQUIRE(reloaded->repeatDefault == "all");
+    REQUIRE(reloaded->repeatDefault == kanariv::types::RepeatMode::All);
     REQUIRE(reloaded->autostart == true);
 }
 
@@ -134,7 +137,139 @@ TEST_CASE("config defaults for playback-policy keys", "[config]") {
 
     auto loaded = kanariv::config::loadConfig(cfgPath);
     REQUIRE(loaded.has_value());
-    REQUIRE(loaded->clearStopsPlayback == true);   // default
-    REQUIRE(loaded->repeatDefault == "off");        // default
-    REQUIRE(loaded->autostart == false);            // default
+    REQUIRE(loaded->clearStopsPlayback == true);                       // default
+    REQUIRE(loaded->repeatDefault == kanariv::types::RepeatMode::Off); // default
+    REQUIRE(loaded->autostart == false);                               // default
+}
+
+TEST_CASE("config repeatDefault parses case-insensitively to RepeatMode", "[config]") {
+    using kanariv::types::RepeatMode;
+    struct Case {
+        const char* json_text;
+        RepeatMode expected;
+    };
+    const Case cases[] = {
+        {"\"off\"", RepeatMode::Off}, {"\"all\"", RepeatMode::All}, {"\"one\"", RepeatMode::One},
+        {"\"ALL\"", RepeatMode::All}, {"\"One\"", RepeatMode::One}, {"\"bogus\"", RepeatMode::Off},
+        {"\"\"", RepeatMode::Off},
+    };
+    for (const auto& c : cases) {
+        auto tmp = freshTempDir("kanariv_test_config_repeat");
+        auto cfgPath = tmp / "config.json";
+        {
+            std::ofstream out(cfgPath);
+            REQUIRE(out.good());
+            out << R"({"repeatDefault": )" << c.json_text << "}";
+        }
+        auto loaded = kanariv::config::loadConfig(cfgPath);
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->repeatDefault == c.expected);
+    }
+}
+
+TEST_CASE("config repeatDefault ignores non-string values", "[config]") {
+    auto tmp = freshTempDir("kanariv_test_config_repeat_type");
+    auto cfgPath = tmp / "config.json";
+    {
+        std::ofstream out(cfgPath);
+        REQUIRE(out.good());
+        out << R"({"repeatDefault": 2})";
+    }
+    auto loaded = kanariv::config::loadConfig(cfgPath);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->repeatDefault == kanariv::types::RepeatMode::Off);
+}
+
+TEST_CASE("endpoint id is a stable FNV-1a digest", "[config][endpoint]") {
+    using kanariv::config::detail_paths::endpointIdForDb;
+    // Fixed golden values: changing the digest or its canonicalisation renames every
+    // on-disk endpoint, so an update here must be deliberate and documented.
+    REQUIRE(endpointIdForDb(std::filesystem::path("data/library.db")) == "4f477ef70d3ca00b");
+    REQUIRE(endpointIdForDb(std::filesystem::path("C:/kanariv/library.db")) == "1b00c40520a0a75b");
+    REQUIRE(endpointIdForDb(std::filesystem::path{}) == "cbf29ce484222325");
+    // Path composition and separator normalisation do not change the identity.
+    REQUIRE(endpointIdForDb(std::filesystem::path("data") / "library.db") ==
+            endpointIdForDb(std::filesystem::path("data/library.db")));
+}
+
+TEST_CASE("socket/pid/lock share one endpoint digest", "[config][endpoint]") {
+    const auto dbPath = std::filesystem::path("data") / "library.db";
+    const std::string id = kanariv::config::detail_paths::endpointIdForDb(dbPath);
+    REQUIRE(id.size() == 16);
+
+    auto pid = kanariv::config::pidPathFor(dbPath);
+    REQUIRE(pid.has_value());
+    REQUIRE(pid->filename().string() == "kanariv-" + id + ".pid");
+
+    auto lock = kanariv::config::lockPathFor(dbPath);
+    REQUIRE(lock.has_value());
+    REQUIRE(lock->filename().string() == "kanariv-" + id + ".lock");
+
+    auto sock = kanariv::config::socketPathFor(dbPath);
+    REQUIRE(sock.has_value());
+#ifdef _WIN32
+    REQUIRE(*sock == "\\\\.\\pipe\\kanariv-" + id);
+#else
+    REQUIRE(sock->ends_with("kanariv-" + id + ".sock"));
+#endif
+}
+
+TEST_CASE("config save replaces atomically without temp leftovers", "[config][save]") {
+    auto tmp = freshTempDir("kanariv_test_config_save");
+    auto cfgPath = tmp / "config.json";
+    kanariv::config::Config cfg{};
+    cfg.configPath = cfgPath;
+    cfg.dbPath = tmp / "library.db";
+    cfg.device = "device-one";
+    cfg.repeatDefault = kanariv::types::RepeatMode::One;
+
+    REQUIRE(kanariv::config::saveConfig(cfg).has_value());
+    auto tmpPath = cfgPath;
+    tmpPath += ".tmp";
+    REQUIRE_FALSE(std::filesystem::exists(tmpPath));
+
+    auto first = kanariv::config::loadConfig(cfgPath);
+    REQUIRE(first.has_value());
+    REQUIRE(first->device == "device-one");
+    REQUIRE(first->repeatDefault == kanariv::types::RepeatMode::One);
+
+    // Saving over an existing file replaces its content (and writes lowercase names).
+    cfg.device = "device-two";
+    cfg.repeatDefault = kanariv::types::RepeatMode::Off;
+    REQUIRE(kanariv::config::saveConfig(cfg).has_value());
+    REQUIRE_FALSE(std::filesystem::exists(tmpPath));
+
+    auto second = kanariv::config::loadConfig(cfgPath);
+    REQUIRE(second.has_value());
+    REQUIRE(second->device == "device-two");
+    REQUIRE(second->repeatDefault == kanariv::types::RepeatMode::Off);
+
+    std::ifstream in(cfgPath);
+    REQUIRE(in.good());
+    const std::string content((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    REQUIRE(content.find("\"repeatDefault\"") != std::string::npos);
+    REQUIRE(content.find("\"off\"") != std::string::npos);
+}
+
+TEST_CASE("config save reports an unwritable destination", "[config][save]") {
+    // A regular file standing in for the config directory fails on every platform
+    // (a read-only directory does not reliably block the owner on Windows).
+    auto tmp = freshTempDir("kanariv_test_config_unwritable");
+    auto blocker = tmp / "blocker";
+    {
+        std::ofstream out(blocker);
+        REQUIRE(out.good());
+        out << "not a directory";
+    }
+    kanariv::config::Config cfg{};
+    cfg.configPath = blocker / "config.json";
+
+    const auto saved = kanariv::config::saveConfig(cfg);
+    REQUIRE_FALSE(saved.has_value());
+    REQUIRE(saved.error().code == kanariv::utils::StatusCode::Io);
+
+    auto tmpPath = cfg.configPath;
+    tmpPath += ".tmp";
+    REQUIRE_FALSE(std::filesystem::exists(tmpPath));
 }

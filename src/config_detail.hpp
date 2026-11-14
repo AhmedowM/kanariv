@@ -52,13 +52,17 @@ kanariv::utils::Expected<std::string> readFileString(const std::filesystem::path
 namespace kanariv::config::detail_paths {
 
 /**
- * @brief Compute 8-char hex hash from dbPath for socket/pid/lock naming.
- * Uses std::hash on dbPath.generic_string(), folded to 32 bits, formatted as 8-char hex.
+ * @brief Stable endpoint identifier used in socket/pid/lock/shm names.
  * @param dbPath Database path.
- * @return 8-character lowercase hex string.
+ * @return 16-character lowercase hex string: FNV-1a 64-bit over the canonical
+ * UTF-8 form of @p dbPath (`generic_u8string()` with `/` separators, or the
+ * raw path spelling if that conversion fails).
+ * @details Self-contained and toolchain independent; `std::hash` is never used.
+ * The same digest names the socket/pipe, PID file, lock file, and shared
+ * memory block.
  * @note KANARIV_API: service.dll derives socket/SHM names through config.dll.
  */
-KANARIV_API std::string hex8ForDb(const std::filesystem::path& dbPath);
+KANARIV_API std::string endpointIdForDb(const std::filesystem::path& dbPath);
 
 /**
  * @brief Get base directory for socket/pid/lock files.

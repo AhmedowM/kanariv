@@ -9,24 +9,37 @@
 
 #include <kanariv/config/runtime.hpp>
 #include <kanariv/fwd.hpp>
+#include <kanariv/types/wire.hpp>
 #include <filesystem>
 #include <string>
 
 namespace kanariv::config {
 
 /**
- * @brief Canonical path helpers: single source for socket/pid/lock derived from dbPath.
- * All three use hash of dbPath.generic_string() + XDG/LOCALAPPDATA base dir.
- * - Windows uses a named pipe derived from the database path; pid/lock are files under
- * `%LOCALAPPDATA%/kanariv`
- * - POSIX socket/pid/lock are under $XDG_RUNTIME_DIR/kanariv or $XDG_DATA_HOME/kanariv or
- * ~/.local/share/kanariv
- */
-/**
  * @brief Derives the local IPC endpoint for a database.
+ *
+ * Endpoint identity is the FNV-1a 64-bit digest of the canonical UTF-8 form of the
+ * database path, written as 16 lowercase hex digits:
+ * `std::filesystem::path(dbPath).generic_u8string()` (`/` separators) when that
+ * conversion succeeds, and the raw path spelling otherwise. The digest is specified
+ * here rather than inherited from `std::hash`, so a daemon and a client built with
+ * different C++ runtimes still agree. Socket, PID, lock, and shared-memory names all
+ * use this one digest.
+ * - Windows uses a named pipe derived from the database path; pid/lock are files under
+ *   `%LOCALAPPDATA%/kanariv`
+ * - POSIX socket/pid/lock are under $XDG_RUNTIME_DIR/kanariv or $XDG_DATA_HOME/kanariv or
+ *   ~/.local/share/kanariv
+ *
  * @param dbPath Database path used as the stable identity for the endpoint.
  * @return Named-pipe or Unix-socket path, or an error when the platform
  *         runtime directory cannot be determined.
+ * @warning Endpoint rename (upgrade note): earlier releases derived an 8-hex identifier
+ * from `std::hash<std::string>`, which is implementation-defined and therefore toolchain
+ * dependent. After upgrading, `kanariv-<old-id>.sock`, `.pid`, and `.lock` files are
+ * orphaned (Windows named pipes are recreated under the new name). Remove the stale files
+ * manually; the library never deletes them. A daemon started with the new binary and a CLI
+ * built from an older revision (or a tool that re-derives the old `std::hash` name) will not
+ * find each other: upgrade both, or set `socketPath` explicitly.
  */
 KANARIV_API kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path& dbPath);
 /**
@@ -72,8 +85,10 @@ struct Config {
     bool autoResumeOnPlay{false};
     /** @brief When the active queue is cleared, also stop playback. Default: true. */
     bool clearStopsPlayback{true};
-    /** @brief Default repeat mode for newly created queues: "off", "one", or "all". Default: "off". */
-    std::string repeatDefault{"off"};
+    /** @brief Default repeat mode for newly created queues. Default: Off.
+     *  The config file spells it `"off"`, `"one"`, or `"all"` (case-insensitive on load;
+     *  unknown text falls back to Off without failing the load). */
+    kanariv::types::RepeatMode repeatDefault{kanariv::types::RepeatMode::Off};
     /** @brief When a track is added to an empty queue, auto-start playback. Default: false. */
     bool autostart{false};
     /** @brief ReplayGain normalization: "off", "track", or "album". Default: "off". */
@@ -101,8 +116,13 @@ KANARIV_API kanariv::utils::Expected<Config> loadConfig(const std::filesystem::p
  * @param cfg Config to save.
  * @return void on success, Error on failure.
  *
- * Creates parent directories if needed. Writes JSON with 2-space indentation.
- * Only writes dbPath, device, logLevel, and socketPath (if non-empty).
+ * Creates parent directories if needed (creation errors are reported, not ignored).
+ * Writes all configuration keys with 2-space indentation to a sibling
+ * `<configPath>.tmp`, checks every stream operation, then renames the temporary file
+ * over `configPath`, so a crash cannot truncate the live config. The temp file is
+ * removed on failure. Rename is atomic on POSIX filesystems and on Windows (both MSVC
+ * and MinGW map it to `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`); only when the
+ * filesystem rejects the rename is a documented non-atomic copy-over fallback used.
  */
 KANARIV_API kanariv::utils::Expected<void> saveConfig(const Config& cfg);
 

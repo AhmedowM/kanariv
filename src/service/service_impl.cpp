@@ -228,8 +228,8 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
         }
 
         // Create shared memory status block for event-driven status snapshots
-        // Derive shm name via canonical hex8 (consistent with socket/pid/lock)
-        shmName = kanariv::config::detail_paths::hex8ForDb(dbPath);
+        // Derive shm name via the canonical endpoint id (consistent with socket/pid/lock)
+        shmName = kanariv::config::detail_paths::endpointIdForDb(dbPath);
         auto shmRes = kanariv::ipc::ShmStatusWriter::create(shmName);
         if (!shmRes) {
             // Non-fatal: continue without shm (clients fall back to IPC status).

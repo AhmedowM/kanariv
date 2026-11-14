@@ -499,3 +499,43 @@ TEST_CASE("engine play missing file fails without simulation", "[engine_queue]")
     eng.reset();
     safeRemoveDb(dbPath);
 }
+
+TEST_CASE("engine switchQueue adopts the queue's stored repeat mode", "[engine_queue][repeat]") {
+    using kanariv::types::RepeatMode;
+    const RepeatMode modes[] = {RepeatMode::Off, RepeatMode::All, RepeatMode::One};
+    for (const auto mode : modes) {
+        const std::string tag = std::to_string(static_cast<int>(mode));
+        const std::string dbPath = tempDbPath("eng_q_switch_repeat_" + tag).string();
+        auto dbRes = Database::open(dbPath);
+        REQUIRE(dbRes.has_value());
+        auto db = std::move(dbRes.value());
+
+        auto qid = db->createQueue("target_" + tag);
+        REQUIRE(qid.has_value());
+        REQUIRE(db->setQueueRepeat(*qid, static_cast<int>(mode)).has_value());
+
+        kanariv::types::EngineConfig cfg;
+        cfg.allowSimulatedPlayback = true;
+        cfg.enableMonitorThread = false;
+        auto eRes = Engine::create(cfg);
+        REQUIRE(eRes.has_value());
+        auto eng = std::move(eRes.value());
+        auto sharedDb = std::shared_ptr<kanariv::db::Database>(std::move(db));
+        REQUIRE(eng->attachDatabase(sharedDb).has_value());
+
+        // Start from a different mode so adoption is observable, including Off.
+        const RepeatMode initial = mode == RepeatMode::One ? RepeatMode::Off : RepeatMode::One;
+        REQUIRE(eng->setRepeat(initial).has_value());
+        REQUIRE(eng->repeat() == initial);
+
+        REQUIRE(eng->switchQueue(*qid).has_value());
+        REQUIRE(eng->repeat() == mode);
+
+        auto persisted = sharedDb->loadEngineState();
+        REQUIRE(persisted.has_value());
+        REQUIRE(persisted->repeat_mode == mode);
+
+        eng.reset();
+        safeRemoveDb(dbPath);
+    }
+}
