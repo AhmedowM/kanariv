@@ -1,4 +1,10 @@
 ﻿#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/player/output.hpp>
@@ -8,14 +14,9 @@
 #include <kanariv/utils/math.hpp>
 #include <kanariv/utils/result.hpp>
 #include <kanariv/utils/ring.hpp>
-#include <chrono>
-#include <cmath>
-#include <condition_variable>
-#include <cstddef>
-#include <cstdint>
-#include <expected>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <stop_token>
 #include <string>
@@ -27,6 +28,32 @@
 namespace kanariv::player {
 
 /// Player state and playback components, hidden from the public header.
+///
+/// @par Lock protocol
+/// Two mutexes guard the playback graph. They must never be taken in the
+/// opposite order:
+///
+/// 1. `controlMutex_` serializes control operations (open, openReader, play,
+///    pause, resume, stop, seek, setVolume) for their whole duration, so a
+///    graph teardown can never interleave with a device start or a seek.
+/// 2. `graphMutex_` guards the playback graph itself: `decoder_`, `ring_`,
+///    `output_`, and every call that mutates them (Decoder::decode/seek,
+///    SpscRing::reset, AudioOutput::start/stop), plus the decode thread's
+///    condition-variable wait.
+///
+/// Ordering is `controlMutex_` -> `graphMutex_`. The decode thread only ever
+/// takes `graphMutex_` (never `controlMutex_`), and it holds it for at most
+/// one bounded decode chunk (<= 1024 frames), so control operations waiting on
+/// it cannot stall for long.
+///
+/// The miniaudio data callback takes no Player mutex: AudioOutput::stop()
+/// joins the callback before the ring is reset or the graph replaced, so the
+/// consumer is quiescent while `graphMutex_` is held for those operations.
+/// A Decoder::decode() call binds the decoder contract (decode and seek must
+/// not overlap), so `graphMutex_` is held for one such call; when the
+/// underlying Reader blocks, control operations wait for that call to return,
+/// but the audio callback and the device keep running and shutdown is never
+/// blocked by a CV wait (stop_token-aware).
 struct Player::Impl {
     // Configuration
     uint32_t sampleRate_{48000};
@@ -40,9 +67,11 @@ struct Player::Impl {
 
     // Threading
     std::jthread decodeThread_;
-    std::mutex cvMutex_;
+    /// Serializes control operations; see @par Lock protocol above.
+    std::mutex controlMutex_;
+    /// Guards the playback graph; see @par Lock protocol above.
+    std::mutex graphMutex_;
     std::condition_variable cv_;
-    std::mutex openMutex_;
 
     // Atomic state (C ca_player.c atomic fields)
     std::atomic<State> state_{State::Stopped};
@@ -52,6 +81,13 @@ struct Player::Impl {
     std::atomic<bool> openGate_{false};
     std::atomic<bool> decodeBusy_{false};
     std::atomic<float> volume_{1.0f};
+
+    /// True once the decoder reported clean EOS for the current position.
+    bool eosReached_{false};
+    /// True when stop() left the decoder mid-stream, so play() must rewind.
+    bool rewindOnPlay_{false};
+    /// True when the audio output uses miniaudio's silent null backend.
+    bool nullOutput_{false};
 
     std::string lastError_;
     kanariv::utils::Logger* logger_{nullptr};
@@ -67,10 +103,11 @@ struct Player::Impl {
     Player::ExpectedVoid setVolume(float volume);
     [[nodiscard]] State state() const noexcept;
     [[nodiscard]] std::chrono::duration<double> position() const noexcept;
-    [[nodiscard]] std::string_view lastError() const noexcept;
 
-    Player::ExpectedVoid stopInternal();
-    void preroll();
+    /// @pre `controlMutex_` is held by the caller.
+    Player::ExpectedVoid stopInternalLocked();
+    static media::DecodeStatus preroll(media::Decoder& decoder,
+                                       kanariv::utils::SpscRing<float>& ring);
     void decodeLoop(std::stop_token st);
     static int64_t nowMs() noexcept;
 };
@@ -81,7 +118,7 @@ Player::ExpectedPlayer Player::create(const PlayerOptions& opts) {
     auto p = std::unique_ptr<Player>(new Player());
     if (!p->impl_->init(opts)) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Device,
-                                                    std::string_view("player init failed")});
+                                                     std::string_view("player init failed")});
     }
     return std::unique_ptr<Player>(std::move(p));
 }
@@ -139,6 +176,7 @@ bool Player::Impl::init(const PlayerOptions& opts) {
     sampleRate_ = opts.sampleRate ? opts.sampleRate : 48000;
     channels_ = opts.channels ? opts.channels : 2;
     logger_ = opts.logger;
+    nullOutput_ = opts.nullOutput;
     volume_.store(1.0f, std::memory_order_relaxed);
     state_.store(State::Stopped, std::memory_order_relaxed);
 
@@ -151,135 +189,207 @@ bool Player::Impl::init(const PlayerOptions& opts) {
 Player::ExpectedVoid Player::Impl::open(std::string_view path) {
     if (path.empty()) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("empty path")});
+                                                     std::string_view("empty path")});
     }
     auto readerResult = kanariv::media::FileReader::open(path);
     if (!readerResult) {
-        lastError_ = readerResult.error().message;
-        state_.store(State::Error, std::memory_order_release);
-        if (logger_)
-            logger_->warn("player open failed file={} err={}", path, lastError_);
+        // Log once, here; openReader() logs its own failures (P11).
+        {
+            std::lock_guard<std::mutex> control(controlMutex_);
+            std::lock_guard<std::mutex> graph(graphMutex_);
+            lastError_ = readerResult.error().message;
+            state_.store(State::Error, std::memory_order_release);
+            if (logger_)
+                logger_->warn("player open failed file={} err={}", path, lastError_);
+        }
         return std::unexpected(readerResult.error());
     }
-    auto rRes = openReader(std::move(readerResult.value()));
-    if (!rRes && logger_)
-        logger_->warn("player open failed file={} err={}", path, lastError_);
-    return rRes;
+    return openReader(std::move(readerResult.value()));
 }
 
 Player::ExpectedVoid Player::Impl::openReader(std::unique_ptr<media::Reader> reader) {
     if (!reader) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("null reader")});
+                                                     std::string_view("null reader")});
     }
 
-    std::lock_guard<std::mutex> lk(openMutex_);
+    std::lock_guard<std::mutex> control(controlMutex_);
 
-    // Stop any existing playback
-    if (state_.load(std::memory_order_acquire) != State::Stopped) {
-        (void)stopInternal();
-    }
+    // Stop playback first: the audio callback is joined and the ring quiesced
+    // before the old graph is replaced.
+    if (auto stopped = stopInternalLocked(); !stopped)
+        return stopped;
 
-    // Open decoder
+    // Build the replacement graph privately; the old graph is only discarded
+    // once the new one is complete.
     auto decResult = media::Decoder::open(*reader, logger_);
     if (!decResult) {
-        lastError_ = decResult.error().message;
-        state_.store(State::Error, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> graph(graphMutex_);
+            lastError_ = decResult.error().message;
+            state_.store(State::Error, std::memory_order_release);
+            if (logger_)
+                logger_->warn("player open failed err={}", lastError_);
+        }
         return std::unexpected(decResult.error());
     }
 
-    decoder_ = std::move(decResult.value());
-    reader_ = std::move(reader);
+    auto decoder = std::move(decResult.value());
 
     // Create ring buffer: 8192 frames in all layouts (P-3). Capacity is in
     // frames; buf_ holds cap_*channels floats. The old 8192*ch passed frames
     // but scaled by channels twice (8192*ch*ch floats, ~1.1 MB at 5.1).
     // NOTE: engine ring intentionally NOT flattened (see engine.cpp note) --
     // Player has no daemon playback path, so this is inert there.
-    uint32_t sr = decoder_->sampleRate();
-    uint32_t ch = decoder_->channels();
+    uint32_t sr = decoder->sampleRate();
+    uint32_t ch = decoder->channels();
     if (sr == 0)
         sr = 48000;
     if (ch == 0)
         ch = 2;
 
-    ring_ = std::make_unique<kanariv::utils::SpscRing<float>>(8192, ch);
+    auto ring = std::make_unique<kanariv::utils::SpscRing<float>>(8192, ch);
 
     // Create audio output
     AudioOutput::Config cfg;
     cfg.sampleRate = sr;
     cfg.channels = ch;
-    cfg.ring = ring_.get();
+    cfg.ring = ring.get();
     cfg.volume = volume_.load(std::memory_order_relaxed);
     cfg.logger = logger_;
+    cfg.nullBackend = nullOutput_;
 
     auto outResult = AudioOutput::create(cfg);
     if (!outResult) {
-        lastError_ = outResult.error().message;
-        state_.store(State::Error, std::memory_order_release);
-        if (logger_)
-            logger_->warn("audio output create failed: {}", lastError_);
+        {
+            std::lock_guard<std::mutex> graph(graphMutex_);
+            lastError_ = outResult.error().message;
+            state_.store(State::Error, std::memory_order_release);
+            if (logger_)
+                logger_->warn("audio output create failed: {}", lastError_);
+        }
         return std::unexpected(outResult.error());
     }
 
-    output_ = std::move(outResult.value());
+    auto output = std::move(outResult.value());
 
-    // Preroll: decode cap/2 samples before play returns
-    preroll();
+    // Preroll: decode cap/2 samples before open returns.
+    auto prerollStatus = preroll(*decoder, *ring);
 
-    posBase_.store(0, std::memory_order_relaxed);
-    posStartMs_.store(0, std::memory_order_relaxed);
-    isPlaying_.store(false, std::memory_order_relaxed);
-    decodeBusy_.store(false, std::memory_order_relaxed);
-    openGate_.store(true, std::memory_order_release);
-    lastError_.clear();
-    state_.store(State::Stopped, std::memory_order_release);
-
-    return {};
-}
-
-Player::ExpectedVoid Player::Impl::play() {
-    if (!decoder_ || !output_ || !ring_) {
-        return std::unexpected(
-            kanariv::utils::Error{kanariv::utils::StatusCode::State, std::string_view("not opened")});
-    }
-
-    State expected = State::Stopped;
-    if (!state_.compare_exchange_strong(expected, State::Playing, std::memory_order_acq_rel)) {
-        expected = State::Paused;
-        if (!state_.compare_exchange_strong(expected, State::Playing, std::memory_order_acq_rel)) {
-            return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
-                                                        std::string_view("already playing")});
-        }
-    }
-
-    isPlaying_.store(true, std::memory_order_release);
-    posStartMs_.store(nowMs(), std::memory_order_release);
-
-    // Start audio device
-    output_->start();
-
-    // Wake decode thread
+    // Publish the new graph. State is committed only after every component is
+    // ready and the preroll has run (P12).
     {
-        std::lock_guard<std::mutex> lk(cvMutex_);
-        decodeBusy_.store(true, std::memory_order_release);
+        std::lock_guard<std::mutex> graph(graphMutex_);
+        output_.reset();
+        ring_.reset();
+        decoder_.reset();
+        reader_.reset();
+
+        decoder_ = std::move(decoder);
+        ring_ = std::move(ring);
+        output_ = std::move(output);
+        reader_ = std::move(reader);
+
+        posBase_.store(0, std::memory_order_relaxed);
+        posStartMs_.store(0, std::memory_order_relaxed);
+        eosReached_ = false;
+        rewindOnPlay_ = false;
+        if (prerollStatus == media::DecodeStatus::Error) {
+            lastError_ = "preroll decode failed";
+            state_.store(State::Error, std::memory_order_release);
+            openGate_.store(true, std::memory_order_release);
+            cv_.notify_all();
+            return std::unexpected(kanariv::utils::Error{
+                kanariv::utils::StatusCode::Io, std::string_view("preroll decode failed")});
+        }
+        lastError_.clear();
+        state_.store(State::Stopped, std::memory_order_release);
+        openGate_.store(true, std::memory_order_release);
     }
     cv_.notify_all();
 
     return {};
 }
 
-Player::ExpectedVoid Player::Impl::pause() {
-    State expected = State::Playing;
-    if (!state_.compare_exchange_strong(expected, State::Paused, std::memory_order_acq_rel)) {
+Player::ExpectedVoid Player::Impl::play() {
+    std::lock_guard<std::mutex> control(controlMutex_);
+    std::lock_guard<std::mutex> graph(graphMutex_);
+
+    if (!decoder_ || !ring_ || !output_) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
-                                                    std::string_view("not playing")});
+                                                     std::string_view("not opened")});
+    }
+
+    State s = state_.load(std::memory_order_acquire);
+    if (s == State::Playing) {
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
+                                                     std::string_view("already playing")});
+    }
+    if (s == State::Error) {
+        return std::unexpected(kanariv::utils::Error{
+            kanariv::utils::StatusCode::State, std::string_view("error state; reopen to play")});
+    }
+
+    // Replay after a clean end of stream, or after stop() left the decoder
+    // mid-stream, rewinds to the start (P2).
+    if (eosReached_ || rewindOnPlay_) {
+        auto seekResult = decoder_->seek(0.0);
+        if (!seekResult) {
+            lastError_ = seekResult.error().message;
+            state_.store(State::Error, std::memory_order_release);
+            cv_.notify_all();
+            return std::unexpected(seekResult.error());
+        }
+        ring_->reset();
+        posBase_.store(0, std::memory_order_relaxed);
+        eosReached_ = false;
+        rewindOnPlay_ = false;
+    }
+
+    // Set the subordinate fields before publishing the state (P12).
+    openGate_.store(true, std::memory_order_release);
+    isPlaying_.store(true, std::memory_order_release);
+    posStartMs_.store(nowMs(), std::memory_order_release);
+    decodeBusy_.store(true, std::memory_order_release);
+
+    if (auto startResult = output_->start(); !startResult) {
+        // Never report Playing if the device did not start (P3).
+        isPlaying_.store(false, std::memory_order_release);
+        decodeBusy_.store(false, std::memory_order_release);
+        posStartMs_.store(0, std::memory_order_relaxed);
+        lastError_ = startResult.error().message;
+        state_.store(State::Error, std::memory_order_release);
+        cv_.notify_all();
+        return std::unexpected(startResult.error());
+    }
+
+    state_.store(State::Playing, std::memory_order_release);
+    cv_.notify_all();
+    return {};
+}
+
+Player::ExpectedVoid Player::Impl::pause() {
+    std::lock_guard<std::mutex> control(controlMutex_);
+    std::lock_guard<std::mutex> graph(graphMutex_);
+
+    if (state_.load(std::memory_order_acquire) != State::Playing) {
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
+                                                     std::string_view("not playing")});
     }
 
     isPlaying_.store(false, std::memory_order_release);
-    output_->stop();
+    decodeBusy_.store(false, std::memory_order_release);
 
-    // Update posBase with elapsed time
+    if (auto stopResult = output_->stop(); !stopResult) {
+        // Never report Paused if the device did not stop (P3).
+        posStartMs_.store(0, std::memory_order_relaxed);
+        lastError_ = stopResult.error().message;
+        state_.store(State::Error, std::memory_order_release);
+        cv_.notify_all();
+        return std::unexpected(stopResult.error());
+    }
+
+    // Fold elapsed playback into the base position.
     int64_t now = nowMs();
     int64_t start = posStartMs_.load(std::memory_order_acquire);
     if (start > 0 && now > start) {
@@ -289,77 +399,121 @@ Player::ExpectedVoid Player::Impl::pause() {
     }
     posStartMs_.store(0, std::memory_order_relaxed);
 
+    state_.store(State::Paused, std::memory_order_release);
+    cv_.notify_all();
     return {};
 }
 
 Player::ExpectedVoid Player::Impl::resume() {
-    State expected = State::Paused;
-    if (!state_.compare_exchange_strong(expected, State::Playing, std::memory_order_acq_rel)) {
-        return std::unexpected(
-            kanariv::utils::Error{kanariv::utils::StatusCode::State, std::string_view("not paused")});
+    std::lock_guard<std::mutex> control(controlMutex_);
+    std::lock_guard<std::mutex> graph(graphMutex_);
+
+    if (state_.load(std::memory_order_acquire) != State::Paused) {
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
+                                                     std::string_view("not paused")});
     }
 
+    openGate_.store(true, std::memory_order_release);
     isPlaying_.store(true, std::memory_order_release);
     posStartMs_.store(nowMs(), std::memory_order_release);
-    output_->start();
+    decodeBusy_.store(true, std::memory_order_release);
 
-    {
-        std::lock_guard<std::mutex> lk(cvMutex_);
-        decodeBusy_.store(true, std::memory_order_release);
+    if (auto startResult = output_->start(); !startResult) {
+        isPlaying_.store(false, std::memory_order_release);
+        decodeBusy_.store(false, std::memory_order_release);
+        posStartMs_.store(0, std::memory_order_relaxed);
+        lastError_ = startResult.error().message;
+        state_.store(State::Error, std::memory_order_release);
+        cv_.notify_all();
+        return std::unexpected(startResult.error());
     }
-    cv_.notify_all();
 
+    state_.store(State::Playing, std::memory_order_release);
+    cv_.notify_all();
     return {};
 }
 
 Player::ExpectedVoid Player::Impl::stop() {
-    std::lock_guard<std::mutex> lk(openMutex_);
-    return stopInternal();
+    std::lock_guard<std::mutex> control(controlMutex_);
+    return stopInternalLocked();
 }
 
 Player::ExpectedVoid Player::Impl::seek(double seconds) {
-    if (!decoder_ || !ring_) {
-        return std::unexpected(
-            kanariv::utils::Error{kanariv::utils::StatusCode::State, std::string_view("not opened")});
+    std::lock_guard<std::mutex> control(controlMutex_);
+    std::lock_guard<std::mutex> graph(graphMutex_);
+
+    if (!decoder_ || !ring_ || !output_) {
+        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
+                                                     std::string_view("not opened")});
     }
     if (seconds < 0.0 || std::isnan(seconds) || std::isinf(seconds)) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("bad seconds")});
+                                                     std::string_view("bad seconds")});
     }
 
-    auto seekRes = decoder_->seek(seconds);
-    if (!seekRes) {
-        lastError_ = seekRes.error().message;
-        state_.store(State::Error, std::memory_order_release);
-        return std::unexpected(seekRes.error());
-    }
-
-    uint64_t newPosBase = static_cast<uint64_t>(seconds * sampleRate_);
-    posBase_.store(newPosBase, std::memory_order_relaxed);
-    ring_->reset();
-
-    // If playing, update posStartMs and restart decode thread
     State s = state_.load(std::memory_order_acquire);
-    if (s == State::Playing) {
-        posStartMs_.store(nowMs(), std::memory_order_release);
-        {
-            std::lock_guard<std::mutex> lk(cvMutex_);
-            decodeBusy_.store(true, std::memory_order_release);
+    const bool wasPlaying = (s == State::Playing);
+
+    // AudioOutput::stop() joins the data callback, so the consumer is quiescent
+    // before the ring is reset and the decoder is repositioned.
+    if (wasPlaying) {
+        isPlaying_.store(false, std::memory_order_release);
+        decodeBusy_.store(false, std::memory_order_release);
+        if (auto stopResult = output_->stop(); !stopResult) {
+            posStartMs_.store(0, std::memory_order_relaxed);
+            lastError_ = stopResult.error().message;
+            state_.store(State::Error, std::memory_order_release);
+            cv_.notify_all();
+            return std::unexpected(stopResult.error());
         }
+    }
+
+    auto seekResult = decoder_->seek(seconds);
+    if (!seekResult) {
+        lastError_ = seekResult.error().message;
+        state_.store(State::Error, std::memory_order_release);
         cv_.notify_all();
+        return std::unexpected(seekResult.error());
+    }
+
+    ring_->reset();
+    posBase_.store(static_cast<uint64_t>(seconds * sampleRate_), std::memory_order_relaxed);
+    eosReached_ = false;
+    rewindOnPlay_ = false;
+
+    if (wasPlaying) {
+        // Restart from the new position, publishing Playing last (P12).
+        isPlaying_.store(true, std::memory_order_release);
+        posStartMs_.store(nowMs(), std::memory_order_release);
+        decodeBusy_.store(true, std::memory_order_release);
+        if (auto startResult = output_->start(); !startResult) {
+            isPlaying_.store(false, std::memory_order_release);
+            decodeBusy_.store(false, std::memory_order_release);
+            posStartMs_.store(0, std::memory_order_relaxed);
+            lastError_ = startResult.error().message;
+            state_.store(State::Error, std::memory_order_release);
+            cv_.notify_all();
+            return std::unexpected(startResult.error());
+        }
+        state_.store(State::Playing, std::memory_order_release);
     } else if (s == State::Paused) {
         posStartMs_.store(0, std::memory_order_relaxed);
     }
 
+    cv_.notify_all();
     return {};
 }
 
 Player::ExpectedVoid Player::Impl::setVolume(float volume) {
     if (std::isnan(volume) || std::isinf(volume)) {
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("bad volume")});
+                                                     std::string_view("bad volume")});
     }
     float vol = kanariv::utils::clampVolume(volume);
+
+    // volume_ and output_ are both touched under controlMutex_ so a concurrent
+    // openReader() cannot replace the output between the store and apply.
+    std::lock_guard<std::mutex> control(controlMutex_);
     volume_.store(vol, std::memory_order_relaxed);
     if (output_) {
         output_->setVolume(vol);
@@ -390,42 +544,52 @@ std::chrono::duration<double> Player::Impl::position() const noexcept {
     return std::chrono::duration<double>(static_cast<double>(base) / sampleRate_);
 }
 
-std::string_view Player::Impl::lastError() const noexcept {
-    return lastError_;
-}
+Player::ExpectedVoid Player::Impl::stopInternalLocked() {
+    std::lock_guard<std::mutex> graph(graphMutex_);
 
-Player::ExpectedVoid Player::Impl::stopInternal() {
     State s = state_.load(std::memory_order_acquire);
     if (s == State::Stopped && !decoder_) {
         return {};
     }
 
+    // Close the gate and drop the flags before touching the graph so the
+    // decode thread cannot start a new chunk on the old position.
+    openGate_.store(false, std::memory_order_release);
     isPlaying_.store(false, std::memory_order_release);
+    decodeBusy_.store(false, std::memory_order_release);
+
+    std::optional<kanariv::utils::Error> stopError;
     if (output_) {
-        output_->stop();
+        if (auto stopResult = output_->stop(); !stopResult) {
+            stopError = stopResult.error();
+            lastError_ = stopError->message;
+        }
     }
-    if (ring_) {
+    if (ring_)
         ring_->reset();
-    }
+
     posBase_.store(0, std::memory_order_relaxed);
     posStartMs_.store(0, std::memory_order_relaxed);
-    state_.store(State::Stopped, std::memory_order_release);
-    openGate_.store(false, std::memory_order_release);
-
-    // Wake decode thread to exit cleanly
+    eosReached_ = false;
+    // The decoder stays where playback stopped; play() rewinds it so the
+    // "Stopped == initial state" contract still holds.
+    rewindOnPlay_ = (decoder_ != nullptr);
+    state_.store(stopError ? State::Error : State::Stopped, std::memory_order_release);
     cv_.notify_all();
 
+    if (stopError)
+        return std::unexpected(*stopError);
     return {};
 }
 
-void Player::Impl::preroll() {
-    if (!decoder_ || !ring_)
-        return;
-
+media::DecodeStatus Player::Impl::preroll(media::Decoder& decoder,
+                                          kanariv::utils::SpscRing<float>& ring) {
     // Preroll cap/2 samples (C ca_player.c:462)
-    std::size_t ringCap = ring_->capacity();
+    std::size_t ringCap = ring.capacity();
     std::size_t prerollSamples = ringCap / 2;
-    uint32_t ch = decoder_->channels();
+    uint32_t ch = decoder.channels();
+    if (ch == 0)
+        return media::DecodeStatus::Error;
     std::size_t prerollFrames = prerollSamples / ch;
 
     // Use fixed chunk size: min(avail, 1024, 2048/ch) like C ca_player.c:156
@@ -433,18 +597,26 @@ void Player::Impl::preroll() {
     std::size_t maxChunk = 2048 / ch;
     if (chunkFrames > maxChunk)
         chunkFrames = maxChunk;
+    if (chunkFrames == 0)
+        chunkFrames = 1;
 
     std::vector<float> buffer(chunkFrames * ch);
     std::size_t filled = 0;
+    media::DecodeStatus status = media::DecodeStatus::Ok;
 
-    while (filled < prerollFrames && ring_->availableWrite() >= chunkFrames * ch) {
-        std::size_t frames = decoder_->decode(std::span<float>(buffer.data(), buffer.size()));
+    while (filled < prerollFrames && ring.availableWrite() >= chunkFrames * ch) {
+        std::size_t frames =
+            decoder.decode(std::span<float>(buffer.data(), buffer.size()), &status);
+        if (status == media::DecodeStatus::Error)
+            return status;
         if (frames == 0)
             break;
-        std::size_t samples = frames * ch;
-        ring_->write(std::span<float>(buffer.data(), samples));
+        (void)ring.write(std::span<const float>(buffer.data(), frames * ch));
         filled += frames;
+        if (status == media::DecodeStatus::Eof)
+            break;
     }
+    return status;
 }
 
 void Player::Impl::decodeLoop(std::stop_token st) {
@@ -454,34 +626,41 @@ void Player::Impl::decodeLoop(std::stop_token st) {
     scratch.reserve(maxChunkFrames * 8);
 
     while (!st.stop_requested()) {
-        // Wait for openGate and decodeBusy
-        {
-            std::unique_lock<std::mutex> lk(cvMutex_);
-            cv_.wait(lk, [this, &st]() {
-                return st.stop_requested() || (openGate_.load(std::memory_order_acquire) &&
-                                               decodeBusy_.load(std::memory_order_acquire));
-            });
-            if (st.stop_requested())
-                break;
+        std::unique_lock<std::mutex> graph(graphMutex_);
+        cv_.wait(graph, [this, &st]() {
+            return st.stop_requested() || (openGate_.load(std::memory_order_acquire) &&
+                                           decodeBusy_.load(std::memory_order_acquire));
+        });
+        if (st.stop_requested())
+            break;
+
+        if (!decoder_ || !ring_ || !output_) {
+            decodeBusy_.store(false, std::memory_order_release);
+            continue;
         }
 
-        if (!decoder_ || !ring_ || !output_)
-            continue;
-
-        // Check if still playing
         if (!isPlaying_.load(std::memory_order_acquire)) {
             decodeBusy_.store(false, std::memory_order_release);
             continue;
         }
 
-        // Check available space in ring
         std::size_t avail = ring_->availableWrite();
         if (avail == 0) {
+            graph.unlock();
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
             continue;
         }
 
         uint32_t ch = decoder_->channels();
+        if (ch == 0) {
+            isPlaying_.store(false, std::memory_order_release);
+            decodeBusy_.store(false, std::memory_order_release);
+            lastError_ = "decoder reports zero channels";
+            (void)output_->stop();
+            state_.store(State::Error, std::memory_order_release);
+            cv_.notify_all();
+            continue;
+        }
         std::size_t maxFrames = avail / ch;
         if (maxFrames > maxChunkFrames)
             maxFrames = maxChunkFrames;
@@ -494,22 +673,45 @@ void Player::Impl::decodeLoop(std::stop_token st) {
         if (scratch.size() < maxFrames * ch)
             scratch.resize(maxFrames * ch);
         std::span<float> chunk(scratch.data(), maxFrames * ch);
-        std::size_t frames = decoder_->decode(chunk);
 
-        if (frames == 0) {
-            // EOF reached
+        media::DecodeStatus status = media::DecodeStatus::Ok;
+        std::size_t frames = decoder_->decode(chunk, &status);
+
+        if (frames > 0) {
+            // availableWrite() bounds the chunk, so the write always fits; no
+            // partial-write branch exists to check (P9).
+            (void)ring_->write(std::span<const float>(scratch.data(), frames * ch));
+        }
+
+        if (status == media::DecodeStatus::Error) {
+            // A decode failure is not a normal end of stream (P2). Report it
+            // through the error state, never as Stopped.
             isPlaying_.store(false, std::memory_order_release);
-            output_->stop();
-            state_.store(State::Stopped, std::memory_order_release);
             decodeBusy_.store(false, std::memory_order_release);
+            lastError_ = "decode error";
+            (void)output_->stop();
+            state_.store(State::Error, std::memory_order_release);
+            cv_.notify_all();
             continue;
         }
 
-        std::size_t samples = frames * ch;
-        std::size_t writtenFrames = ring_->write(std::span<float>(scratch.data(), samples));
-        if (writtenFrames < frames) {
-            // Ring full, will retry next iteration
+        if (status == media::DecodeStatus::Eof && frames == 0) {
+            // Drain the tail before ending so the last samples are audible.
+            if (ring_->availableRead() > 0) {
+                graph.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+            // Clean end of stream: Stopped, and play() will rewind (P2).
+            isPlaying_.store(false, std::memory_order_release);
+            decodeBusy_.store(false, std::memory_order_release);
+            eosReached_ = true;
+            (void)output_->stop();
+            state_.store(State::Stopped, std::memory_order_release);
+            cv_.notify_all();
+            continue;
         }
+        // Ok, or Eof with a tail: loop for the next chunk.
     }
 }
 

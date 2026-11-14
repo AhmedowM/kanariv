@@ -446,7 +446,7 @@ void Engine::Impl::shutdown() {
         (void)saveState();
     }
     if (output_) {
-        output_->stop();
+        (void)output_->stop();
         output_.reset();
     }
     decoder_.reset();
@@ -466,7 +466,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
         lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
         playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
         if (output_)
-            output_->start();
+            (void)output_->start();
         decodeCv_.notify_all();
         monCv_.notify_all();
         return {};
@@ -486,7 +486,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
         playStart_ = std::chrono::steady_clock::now();
         resetPlaybackAccounting();
         if (output_)
-            output_->start();
+            (void)output_->start();
         lk.unlock();
         decodeCv_.notify_all();
         monCv_.notify_all();
@@ -593,7 +593,7 @@ Engine::ExpectedVoid Engine::Impl::pause() {
     lastPlaybackSampleMs_.store(0, std::memory_order_release);
     playbackState_.store(kanariv::types::PlaybackState::Paused, std::memory_order_release);
     if (output_)
-        output_->stop();
+        (void)output_->stop();
     if (hasDb())
         (void)saveState();
     return {};
@@ -608,7 +608,7 @@ Engine::ExpectedVoid Engine::Impl::resume() {
     lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
     playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
     if (output_)
-        output_->start();
+        (void)output_->start();
     decodeCv_.notify_all();
     monCv_.notify_all();
     return {};
@@ -629,7 +629,7 @@ Engine::ExpectedVoid Engine::Impl::stop() {
     {
         std::unique_lock<std::mutex> lk(decodeMtx_);
         if (output_) {
-            output_->stop();
+            (void)output_->stop();
             output_.reset();
         }
         decoder_.reset();
@@ -715,7 +715,7 @@ Engine::ExpectedVoid Engine::Impl::suspendCurrentTrack() {
     std::unique_lock<std::mutex> lk(decodeMtx_);
     playbackState_.store(kanariv::types::PlaybackState::Paused, std::memory_order_release);
     if (output_)
-        output_->stop();
+        (void)output_->stop();
     if (ring_)
         ring_->reset();
     decoder_.reset();
@@ -1048,7 +1048,7 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs)
             unlockQueue();
             playbackState_.store(kanariv::types::PlaybackState::Stopped, std::memory_order_release);
             if (output_)
-                output_->stop();
+                (void)output_->stop();
             if (ring_)
                 ring_->reset();
             pausePos_ = 0;
@@ -1498,7 +1498,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
     // every caller already holds the queue lock.
     std::unique_lock<std::mutex> lk(decodeMtx_);
     if (output_) {
-        output_->stop();
+        (void)output_->stop();
         output_.reset();
     }
     decoder_.reset();
@@ -1591,7 +1591,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
                     }
                     // preroll: decode some frames before start
                     preroll();
-                    output_->start();
+                    (void)output_->start();
                 } else {
                     lastErr_ = oRes.error().message;
                 }

@@ -29,10 +29,10 @@
  * - NoMem: Allocation failure
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/types/record.hpp>
 #include <cstdint>
 #include <expected>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/record.hpp>
 #include <memory>
 
 namespace kanariv::player {
@@ -75,7 +75,10 @@ KANARIV_API kanariv::types::DeviceList enumerateDevices();
  *
  * @par Thread safety
  * - create()/init()/shutdown(): Thread-safe, called from control thread
- * - start()/stop()/setVolume()/volume(): Thread-safe (atomic)
+ * - start()/stop(): serialized by an internal mutex; the audio callback never
+ *   takes that mutex, so start/stop may block on the backend but never recurse
+ *   into the real-time callback.
+ * - setVolume()/volume(): Thread-safe (atomic)
  * - audio callback: runs on the audio thread (real-time), lock-free
  *
  * Audio Pipeline:
@@ -97,6 +100,8 @@ KANARIV_API kanariv::types::DeviceList enumerateDevices();
 class KANARIV_API AudioOutput {
   public:
     using Expected = std::expected<std::unique_ptr<AudioOutput>, kanariv::utils::Error>;
+    /** @brief Result of control operations that produce no value. */
+    using ExpectedVoid = std::expected<void, kanariv::utils::Error>;
 
     /**
      * @struct Config
@@ -118,6 +123,15 @@ class KANARIV_API AudioOutput {
          * The logger must outlive the AudioOutput.
          */
         kanariv::utils::Logger* logger{nullptr};
+        /**
+         * @brief Use miniaudio's silent null backend instead of a real device.
+         *
+         * The null backend initializes always and drives the data callback at
+         * the configured sample rate, but writes nowhere. Intended for
+         * headless tests and simulations: it never beeps. Only the f32 format
+         * is supported (the device format is fixed).
+         */
+        bool nullBackend = false;
     };
 
     /** @brief Default-constructs an uninitialized output; use create(). */
@@ -135,7 +149,9 @@ class KANARIV_API AudioOutput {
      * the miniaudio device. Returns an error if device initialization fails.
      *
      * @retval StatusCode::Device miniaudio device init failed
-     * @retval StatusCode::InvalidArg Invalid config (0 channels, 0 sample rate, null ring)
+     * @retval StatusCode::InvalidArg Invalid config (0 channels, 0 sample rate, null ring,
+     *         already initialized)
+     * @retval StatusCode::Unsupported Channel count above 32
      *
      * @par Thread safety
      * Thread-safe; can be called from any thread.
@@ -165,27 +181,38 @@ class KANARIV_API AudioOutput {
 
     /**
      * @brief Start audio playback
+     * @return void on success, Error on failure
      *
-     * Starts the miniaudio device if initialized. Uses compare_exchange
-     * to ensure only one start transition occurs.
+     * Starts the miniaudio device. The backend is started first and the
+     * internal running flag is committed only on success, so a failed start
+     * never leaves the output looking active.
+     *
+     * @retval StatusCode::State Output is not initialized
+     * @retval StatusCode::Device ma_device_start() failed
      *
      * @par Thread safety
-     * Thread-safe; uses an atomic running-state transition.
+     * Thread-safe; serialized against start()/stop()/shutdown() by an
+     * internal mutex (never taken by the audio callback).
      * @par Blocking
      * May block while the backend starts the audio device.
      */
-    void start();
+    ExpectedVoid start();
 
     /**
      * @brief Stop audio playback
+     * @return void on success, Error on failure
      *
-     * Stops the miniaudio device if running. Uses compare_exchange
-     * to ensure only one stop transition occurs.
+     * Stops the miniaudio device and clears the running flag even when the
+     * backend reports an error, so callers never observe a stale "playing"
+     * state.
+     *
+     * @retval StatusCode::Device ma_device_stop() failed
      *
      * @par Thread safety
-     * Thread-safe; uses an atomic running-state transition.
+     * Thread-safe; serialized against start()/stop()/shutdown() by an
+     * internal mutex (never taken by the audio callback).
      */
-    void stop();
+    ExpectedVoid stop();
 
     /**
      * @brief Shutdown and release audio device resources
@@ -201,18 +228,23 @@ class KANARIV_API AudioOutput {
     /**
      * @brief Initialize the miniaudio playback device
      * @param cfg Device configuration
-     * @return true on success, false on failure
+     * @return void on success, Error on failure
      *
-     * Configures and initializes the miniaudio device with float32 format.
-     * This is normally called by create(); call it directly only on a
-     * default-constructed or shut-down object.
+     * Validates the documented preconditions, then configures and initializes
+     * the miniaudio device with float32 format. This is normally called by
+     * create(); call it directly only on a default-constructed or shut-down
+     * object (calling it twice is rejected instead of leaking the device).
      * Sets up the data callback for lock-free ring buffer consumption.
      * Device starts in stopped state; caller must call start() after preroll.
      *
-     * @pre cfg.channels > 0 && cfg.channels <= 32 && cfg.sampleRate > 0 && cfg.ring != nullptr
+     * @pre cfg.ring != nullptr, cfg.sampleRate > 0, 1 <= cfg.channels <= 32,
+     * object not already initialized, and the fixed f32 format (only supported
+     * format).
      *
-     * @retval true Device initialized successfully
-     * @retval false Initialization failed (invalid config or miniaudio error)
+     * @retval StatusCode::InvalidArg Null ring, zero rate/channels, or already
+     *         initialized.
+     * @retval StatusCode::Unsupported Channel count above 32.
+     * @retval StatusCode::Device miniaudio device initialization failed.
      *
      * @par Thread safety
      * Thread-safe during setup; callers should not reconfigure a running device.
@@ -220,7 +252,7 @@ class KANARIV_API AudioOutput {
      * - ma_device_config_init(ma_device_type_playback)
      * - Format: ma_format_f32 (float32)
      */
-    bool init(const Config& cfg);
+    ExpectedVoid init(const Config& cfg);
 
   private:
     /// Opaque audio backend (miniaudio device) and mutable state, defined in output.cpp.

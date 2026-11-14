@@ -271,7 +271,7 @@ Service::Impl::handle(const kanariv::ipc::DeviceTest& cmd) {
         if (!out)
             return std::unexpected{out.error()};
 
-        (*out)->start();
+        (void)(*out)->start();
 
         const std::size_t totalFrames =
             sampleRate * static_cast<std::size_t>(durationSec);
@@ -302,7 +302,7 @@ Service::Impl::handle(const kanariv::ipc::DeviceTest& cmd) {
         // Wait for the tone to finish playing through the device.
         std::this_thread::sleep_for(
             std::chrono::milliseconds(static_cast<int>(durationSec * 1000) + 500));
-        (*out)->stop();
+        (void)(*out)->stop();
         (*out)->shutdown();
     }
     return Result{Empty{}};

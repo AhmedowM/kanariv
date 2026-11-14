@@ -14,10 +14,19 @@
  * - Control thread: Application calls play/pause/stop/seek/volume
  *
  * @par Thread safety
- * - Public methods: Thread-safe (atomic state + mutexes for complex operations)
+ * - Public methods: thread-safe. Two mutexes guard the playback graph:
+ *   `controlMutex_` serializes control operations for their whole duration and
+ *   `graphMutex_` guards the decoder, ring, and audio output. Lock order is
+ *   `controlMutex_` -> `graphMutex_`; the decode thread takes only
+ *   `graphMutex_`, and it is held for at most one decode chunk (a reader that
+ *   blocks can delay control calls, never the audio callback).
+ *   AudioOutput::stop() joins the miniaudio callback before the ring is reset
+ *   or the graph replaced, so the audio callback never takes a Player mutex.
  * - decodeLoop(): Runs on dedicated jthread, single-threaded
  * - AudioOutput::dataCallback(): Runs on miniaudio audio thread (real-time)
- * - State transitions use compare_exchange for lock-free control
+ * - `state()` is the only observation point for asynchronous transitions
+ *   (end of stream, decode failure); it is published after the subordinate
+ *   flags, so a reader never sees `Playing` with stale bookkeeping.
  *
  * Playback State Machine:
  *   Stopped <-> Playing <-> Paused
@@ -38,10 +47,10 @@
  * - Seeking uses stream time_base for accurate container positioning
  */
 
-#include <kanariv/fwd.hpp>
 #include <chrono>
 #include <cstdint>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <memory>
 #include <string_view>
 
@@ -76,6 +85,14 @@ struct PlayerOptions {
      * is never called from the destructor.
      */
     kanariv::utils::Logger* logger{nullptr};
+    /**
+     * @brief Use miniaudio's silent null backend instead of a real device.
+     *
+     * The null backend runs the data callback at the configured rate without
+     * touching hardware, so playback can be exercised headless (tests, CI).
+     * Only float32 interleaved output is supported.
+     */
+    bool nullOutput{false};
 };
 
 /**
@@ -106,6 +123,8 @@ struct PlayerOptions {
  * Error Handling:
  * - Errors stored in lastError_, state set to Error
  * - All public methods return Expected<void> for explicit error handling
+ * - Clean end of stream sets Stopped (and play() rewinds); a decoder or
+ *   device failure sets Error and is never reported as a normal end
  */
 class KANARIV_API Player {
   public:
@@ -158,10 +177,8 @@ class KANARIV_API Player {
      * @retval StatusCode::Device Audio output device creation failed
      *
      * @par Thread safety
-     * Thread-safe; uses the open mutex for exclusive access.
-     * @par Ownership
-     * The player takes ownership of `reader` after successful or failed
-     * opening and releases it when the player is destroyed or reopened.
+     * Thread-safe; serialized by the control mutex, which also spans the graph
+     * replacement so no other control call sees a half-built graph.
      */
     ExpectedVoid open(std::string_view path);
 
@@ -180,7 +197,11 @@ class KANARIV_API Player {
      * @retval StatusCode::Device Audio output device creation failed
      *
      * @par Thread safety
-     * Thread-safe; uses the open mutex for exclusive access.
+     * Thread-safe; serialized by the control mutex. The old graph is only
+     * discarded after the new decoder, ring, and output are fully built.
+     * @par Ownership
+     * The player takes ownership of `reader` after successful or failed
+     * opening and releases it when the player is destroyed or reopened.
      */
     ExpectedVoid openReader(std::unique_ptr<media::Reader> reader);
 
@@ -191,11 +212,13 @@ class KANARIV_API Player {
      * Transitions state: Stopped -> Playing or Paused -> Playing.
      * Starts the audio device and signals the decode thread to begin filling
      * the ring buffer. Preroll was already performed during open().
+     * If playback previously ended at end of stream, it rewinds to the start.
      *
-     * @retval StatusCode::State Not opened, or already playing
+     * @retval StatusCode::State Not opened, already playing, or in Error
+     * @retval StatusCode::Device Audio device failed to start; state becomes Error
      *
      * @par Thread safety
-     * Thread-safe; uses an atomic state transition.
+     * Thread-safe; serialized by the control mutex.
      */
     ExpectedVoid play();
 
@@ -208,9 +231,10 @@ class KANARIV_API Player {
      * Decode thread will stop filling the ring buffer.
      *
      * @retval StatusCode::State Not currently playing
+     * @retval StatusCode::Device Audio device failed to stop; state becomes Error
      *
      * @par Thread safety
-     * Thread-safe; uses an atomic state transition.
+     * Thread-safe; serialized by the control mutex.
      */
     ExpectedVoid pause();
 
@@ -223,9 +247,10 @@ class KANARIV_API Player {
      * Position tracking resumes from the paused position.
      *
      * @retval StatusCode::State Not currently paused
+     * @retval StatusCode::Device Audio device failed to start; state becomes Error
      *
      * @par Thread safety
-     * Thread-safe; uses an atomic state transition.
+     * Thread-safe; serialized by the control mutex.
      */
     ExpectedVoid resume();
 
@@ -239,7 +264,7 @@ class KANARIV_API Player {
      * Does not close the decoder/reader; call open() again to play.
      *
      * @par Thread safety
-     * Thread-safe; uses the open mutex for exclusive access.
+     * Thread-safe; serialized by the control mutex.
      */
     ExpectedVoid stop();
 
@@ -256,11 +281,15 @@ class KANARIV_API Player {
      * @retval StatusCode::InvalidArg seconds is negative, NaN, or infinity
      * @retval StatusCode::Io Decoder seek failed
      * @retval StatusCode::Internal Decoder not initialized
+     * @retval StatusCode::Device Audio device failed to stop or restart;
+     *         state becomes Error
      *
      * @par Thread safety
-     * Thread-safe; synchronizes decoder access and wakes the decode thread.
+     * Thread-safe; serialized by the control mutex. The device is stopped
+     * (joining the audio callback) before the decoder is repositioned and the
+     * ring buffer is reset.
      * @par Blocking
-     * May wait for decoder synchronization and device state changes.
+     * May wait for an in-flight decode chunk and device state changes.
      */
     ExpectedVoid seek(double seconds);
 
@@ -275,7 +304,7 @@ class KANARIV_API Player {
      * @retval StatusCode::InvalidArg volume is NaN or infinity
      *
      * @par Thread safety
-     * Thread-safe; stores the volume atomically.
+     * Thread-safe; serialized by the control mutex.
      */
     ExpectedVoid setVolume(float volume);
 

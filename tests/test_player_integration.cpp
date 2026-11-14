@@ -1,24 +1,25 @@
 #include <array>
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/db/database.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/engine/engine.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/media/decoder.hpp>
-#include <kanariv/media/reader.hpp>
-#include <kanariv/player/output.hpp>
-#include <kanariv/player/player.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
-#include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <kanariv/db/database.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/player/output.hpp>
+#include <kanariv/player/player.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <limits>
 #include <memory>
+#include <span>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -56,6 +57,71 @@ static std::string fixturePath(const std::string& name) {
 #endif
     return "tests/fixtures/" + name;
 }
+
+namespace {
+
+/// @brief Reader wrapper that turns every read past a byte budget into an I/O
+/// error, so the decoder reports DecodeStatus::Error instead of clean EOS.
+class FailingReader final : public kanariv::media::Reader {
+  public:
+    FailingReader(std::unique_ptr<kanariv::media::Reader> inner, int64_t failAfter)
+        : inner_(std::move(inner)), failAfter_(failAfter) {}
+
+    std::size_t read(std::span<std::byte> dst) override {
+        if (readBytes_ >= failAfter_) {
+            status_ = kanariv::media::ReadStatus::Error;
+            return 0;
+        }
+        int64_t budget = failAfter_ - readBytes_;
+        if (static_cast<int64_t>(dst.size()) > budget)
+            dst = dst.first(static_cast<std::size_t>(budget));
+        std::size_t n = inner_->read(dst);
+        if (n == 0) {
+            status_ = kanariv::media::ReadStatus::Error;
+            return 0;
+        }
+        readBytes_ += static_cast<int64_t>(n);
+        status_ = kanariv::media::ReadStatus::Ok;
+        return n;
+    }
+
+    [[nodiscard]] kanariv::media::ReadStatus lastReadStatus() const noexcept override {
+        return status_;
+    }
+    [[nodiscard]] kanariv::utils::Expected<void> seek(int64_t offset, int whence) override {
+        auto r = inner_->seek(offset, whence);
+        if (r) {
+            readBytes_ = inner_->tell();
+            status_ = kanariv::media::ReadStatus::Ok;
+        }
+        return r;
+    }
+    [[nodiscard]] int64_t tell() noexcept override {
+        return inner_->tell();
+    }
+    [[nodiscard]] int64_t size() noexcept override {
+        return inner_->size();
+    }
+    [[nodiscard]] bool seekable() const noexcept override {
+        return inner_->seekable();
+    }
+
+  private:
+    std::unique_ptr<kanariv::media::Reader> inner_;
+    int64_t failAfter_{0};
+    int64_t readBytes_{0};
+    kanariv::media::ReadStatus status_{kanariv::media::ReadStatus::Ok};
+};
+
+/// @brief Player whose audio output uses miniaudio's silent null backend, so
+/// playback runs (and must not be skipped) under KANARIV_TEST_NOAUDIO=1.
+std::unique_ptr<Player> makeSilentPlayer() {
+    auto res = Player::create(PlayerOptions{.logger = nullptr, .nullOutput = true});
+    REQUIRE(res.has_value());
+    return std::move(*res);
+}
+
+} // namespace
 TEST_CASE("player create open decode wav", "[player_integration]") {
     auto r = FileReader::open(fixturePath("sample.wav"));
     REQUIRE(r.has_value());
@@ -306,4 +372,116 @@ TEST_CASE("gapless via Player Engine 300ms lookahead", "[player_integration][gap
     std::filesystem::remove(dbPath, ec);
     std::filesystem::remove(dbPath + "-wal", ec);
     std::filesystem::remove(dbPath + "-shm", ec);
+}
+
+TEST_CASE("player stop then play restarts playback", "[player_integration][lifecycle]") {
+    auto player = makeSilentPlayer();
+    REQUIRE(player->open(fixturePath("sample.wav")).has_value());
+    REQUIRE(player->play().has_value());
+    REQUIRE(player->state() == State::Playing);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    REQUIRE(player->stop().has_value());
+    REQUIRE(player->state() == State::Stopped);
+
+    // stop() reset the graph; play() must restart the decode thread instead of
+    // leaving a stale Playing state over an idle ring.
+    REQUIRE(player->play().has_value());
+    REQUIRE(player->state() == State::Playing);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    REQUIRE(player->state() == State::Playing);
+    REQUIRE(player->position().count() > 0.0);
+
+    REQUIRE(player->stop().has_value());
+    REQUIRE(player->state() == State::Stopped);
+}
+
+TEST_CASE("player end of stream stops cleanly and play rewinds", "[player_integration][eos]") {
+    auto player = makeSilentPlayer();
+    REQUIRE(player->open(fixturePath("sample.wav")).has_value());
+    REQUIRE(player->seek(0.8).has_value());
+    REQUIRE(player->play().has_value());
+
+    busyWaitUntil([&] { return player->state() != State::Playing; },
+                  std::chrono::milliseconds(5000), std::chrono::milliseconds(10));
+    // A clean end must be Stopped, never Error.
+    REQUIRE(player->state() == State::Stopped);
+
+    // End of stream is restartable: play() rewinds to the beginning.
+    auto replay = player->play();
+    REQUIRE(replay.has_value());
+    REQUIRE(player->state() == State::Playing);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    REQUIRE(player->state() == State::Playing);
+
+    REQUIRE(player->stop().has_value());
+    REQUIRE(player->state() == State::Stopped);
+}
+
+TEST_CASE("player decode error reports Error not Stopped", "[player_integration][eos]") {
+    auto fileRes = FileReader::open(fixturePath("sample.wav"));
+    REQUIRE(fileRes.has_value());
+    auto inner = std::move(*fileRes);
+    REQUIRE(inner->size() > 160000);
+
+    auto player = makeSilentPlayer();
+    // Fail roughly 0.85 s into a 1 s file: after probe + preroll, mid-playback.
+    auto reader = std::make_unique<FailingReader>(std::move(inner), 150000);
+    REQUIRE(player->openReader(std::move(reader)).has_value());
+    REQUIRE(player->play().has_value());
+
+    busyWaitUntil([&] { return player->state() != State::Playing; },
+                  std::chrono::milliseconds(5000), std::chrono::milliseconds(10));
+    REQUIRE(player->state() == State::Error);
+
+    // Error is not restartable without reopening.
+    auto replay = player->play();
+    REQUIRE(!replay.has_value());
+    REQUIRE(replay.error().code == StatusCode::State);
+    REQUIRE(player->state() == State::Error);
+
+    // stop() still resets to a usable state.
+    REQUIRE(player->stop().has_value());
+    REQUIRE(player->state() == State::Stopped);
+}
+
+TEST_CASE("player start seek stop stress", "[player_integration][stress]") {
+    // Exercises the control mutex / graph mutex protocol (P1) against the
+    // decode thread and the miniaudio (null) callback. Runs headless: the
+    // output uses the silent null backend, so no KANARIV_SKIP_IF_NOAUDIO.
+    auto player = makeSilentPlayer();
+    REQUIRE(player->open(fixturePath("sample.wav")).has_value());
+    REQUIRE(player->play().has_value());
+
+    std::atomic<bool> done{false};
+    std::thread observer([&] {
+        while (!done.load(std::memory_order_relaxed)) {
+            (void)player->state();
+            (void)player->position();
+        }
+    });
+
+    for (int i = 0; i < 100; ++i) {
+        REQUIRE(player->seek((i % 4) * 0.1).has_value());
+        if (i % 3 == 0 && player->state() == State::Playing) {
+            REQUIRE(player->pause().has_value());
+            REQUIRE(player->resume().has_value());
+        }
+        if (i % 7 == 0) {
+            REQUIRE(player->stop().has_value());
+            REQUIRE(player->play().has_value());
+        }
+        if (i % 20 == 0) {
+            // Device swap: replace decoder, ring, and output while the decode
+            // thread and the observer are active.
+            REQUIRE(player->open(fixturePath("sample.wav")).has_value());
+            REQUIRE(player->play().has_value());
+        }
+    }
+
+    done.store(true, std::memory_order_relaxed);
+    observer.join();
+
+    REQUIRE(player->stop().has_value());
+    REQUIRE(player->state() == State::Stopped);
 }

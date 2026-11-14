@@ -161,7 +161,7 @@ bool playTrackViaPlayer(const kanariv::types::Track& track) {
         return false;
     }
     auto output = std::move(outRes.value());
-    output->start();
+    (void)output->start();
 
     std::vector<float> tmp(1024 * decoder->channels());
     int ticks = 0;
@@ -192,7 +192,7 @@ bool playTrackViaPlayer(const kanariv::types::Track& track) {
         std::cout << "[demo] finished '" << (track.title.empty() ? track.path : track.title)
                   << "' in " << ticks << " ticks\n";
     }
-    output->stop();
+    (void)output->stop();
     return true;
 }
 

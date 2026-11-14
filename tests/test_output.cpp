@@ -1,13 +1,15 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/player/output.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/ring.hpp>
+#include <chrono>
 #include <cmath>
 #include <common.hpp>
 #include <cstddef>
+#include <kanariv/player/output.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <span>
 #include <support/ring_fill.hpp>
+#include <vector>
 
 TEST_CASE("output callback no alloc") {
     KANARIV_SKIP_IF_NOAUDIO();
@@ -91,4 +93,102 @@ TEST_CASE("output fillFromRing volume 1.0 passthrough", "[output]") {
         REQUIRE(std::abs(buf[i] - pat[i]) < 1e-6f);
     for (size_t i = 4; i < 8; ++i)
         REQUIRE(buf[i] == 0.0f);
+}
+
+TEST_CASE("output create rejects invalid config", "[output][validation]") {
+    // Validation happens before any device is touched, so this runs headless
+    // without KANARIV_SKIP_IF_NOAUDIO and without beeping.
+    using kanariv::player::AudioOutput;
+    using kanariv::utils::StatusCode;
+    kanariv::utils::SpscRing<float> ring{1024, 2};
+
+    SECTION("null ring") {
+        auto res = AudioOutput::create({48000, 2, nullptr, 1.0f});
+        REQUIRE(!res.has_value());
+        REQUIRE(res.error().code == StatusCode::InvalidArg);
+    }
+    SECTION("zero sample rate") {
+        auto res = AudioOutput::create({0, 2, &ring, 1.0f});
+        REQUIRE(!res.has_value());
+        REQUIRE(res.error().code == StatusCode::InvalidArg);
+    }
+    SECTION("zero channels") {
+        auto res = AudioOutput::create({48000, 0, &ring, 1.0f});
+        REQUIRE(!res.has_value());
+        REQUIRE(res.error().code == StatusCode::InvalidArg);
+    }
+    SECTION("unsupported channel count") {
+        kanariv::utils::SpscRing<float> wide{1024, 33};
+        auto res = AudioOutput::create({48000, 33, &wide, 1.0f});
+        REQUIRE(!res.has_value());
+        REQUIRE(res.error().code == StatusCode::Unsupported);
+    }
+}
+
+TEST_CASE("output rejects double init", "[output][validation]") {
+    using kanariv::player::AudioOutput;
+    using kanariv::utils::StatusCode;
+    kanariv::utils::SpscRing<float> ring{1024, 2};
+    AudioOutput::Config cfg;
+    cfg.sampleRate = 48000;
+    cfg.channels = 2;
+    cfg.ring = &ring;
+    cfg.nullBackend = true;
+
+    auto res = AudioOutput::create(cfg);
+    REQUIRE(res.has_value());
+
+    auto again = (*res)->init(cfg);
+    REQUIRE(!again.has_value());
+    REQUIRE(again.error().code == StatusCode::InvalidArg);
+}
+
+TEST_CASE("output null backend start stop lifecycle", "[output][null]") {
+    using kanariv::player::AudioOutput;
+    using kanariv::utils::StatusCode;
+    kanariv::utils::SpscRing<float> ring{4096, 2};
+    AudioOutput::Config cfg;
+    cfg.sampleRate = 48000;
+    cfg.channels = 2;
+    cfg.ring = &ring;
+    cfg.nullBackend = true;
+
+    auto res = AudioOutput::create(cfg);
+    REQUIRE(res.has_value());
+    auto& out = *res.value();
+
+    REQUIRE(out.start().has_value());
+    REQUIRE(out.start().has_value()); // idempotent
+    REQUIRE(out.stop().has_value());
+    REQUIRE(out.stop().has_value()); // idempotent
+
+    out.shutdown();
+    auto afterShutdown = out.start();
+    REQUIRE(!afterShutdown.has_value());
+    REQUIRE(afterShutdown.error().code == StatusCode::State);
+}
+
+TEST_CASE("output null backend drives the callback", "[output][null]") {
+    using kanariv::player::AudioOutput;
+    kanariv::utils::SpscRing<float> ring{4096, 2};
+    AudioOutput::Config cfg;
+    cfg.sampleRate = 48000;
+    cfg.channels = 2;
+    cfg.ring = &ring;
+    cfg.nullBackend = true;
+
+    auto res = AudioOutput::create(cfg);
+    REQUIRE(res.has_value());
+    auto& out = *res.value();
+
+    std::vector<float> frames(2 * 1000, 0.25f);
+    REQUIRE(ring.write(std::span<const float>(frames.data(), frames.size())) == 1000);
+    REQUIRE(ring.availableRead() == 1000);
+
+    REQUIRE(out.start().has_value());
+    kanariv::test_helpers::busyWaitUntil([&] { return ring.availableRead() == 0; },
+                                         std::chrono::milliseconds(2000),
+                                         std::chrono::milliseconds(5));
+    REQUIRE(ring.availableRead() == 0);
+    REQUIRE(out.stop().has_value());
 }
