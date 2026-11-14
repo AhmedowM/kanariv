@@ -74,7 +74,6 @@ if(KANARIV_ENABLE_TESTS)
   kanariv_add_catch_test(test_ffmpeg tests/test_ffmpeg.cpp LIBS kanariv::player kanariv::media kanariv::utils WITH_TEST_DATA)
 
   kanariv_add_catch_test(test_db tests/test_db.cpp LIBS kanariv::db kanariv::utils kanariv::sqlite3)
-  kanariv_add_catch_test(test_write_thread tests/test_write_thread.cpp LIBS kanariv::db kanariv::utils kanariv::sqlite3)
   kanariv_add_catch_test(test_output tests/test_output.cpp LIBS kanariv::player kanariv::utils)
 
   kanariv_add_catch_test(test_engine_queue tests/test_engine_queue.cpp LIBS kanariv::engine kanariv::db kanariv::player kanariv::utils kanariv::sqlite3)

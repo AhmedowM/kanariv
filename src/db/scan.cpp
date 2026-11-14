@@ -12,12 +12,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <db/database_access.hpp>
-#include <db/stmt_helpers.hpp>
+#include <db/transaction.hpp>
 #include <expected>
 #include <filesystem>
 #include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
@@ -59,58 +60,41 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
     int64_t failed = 0;
     constexpr size_t batchSize = 500;
     size_t batchPending = 0;
+    // RAII: the lock is released and an open batch rolled back on every exit
+    // path, including a failed BEGIN. No error path re-enters the mutex.
     std::unique_lock<std::shared_mutex> batchLock;
-    bool inTx = false;
+    std::optional<DbTransaction> batchTx;
     auto beginBatch = [&]() -> std::expected<void, kanariv::utils::Error> {
-        if (inTx)
+        if (batchTx)
             return {};
         batchLock = std::unique_lock<std::shared_mutex>(DatabaseAccess::mutex(db));
-        if (!DatabaseAccess::handleLocked(db))
+        if (!DatabaseAccess::handleLocked(db)) {
+            batchLock.unlock();
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
-        char* err = nullptr;
-        internal::SqliteErrGuard guard{err};
-        int rc = sqlite3_exec(DatabaseAccess::handleLocked(db), "BEGIN IMMEDIATE", nullptr, nullptr,
-                              &err);
-        if (rc != SQLITE_OK) {
-            batchLock.unlock();
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::Busy, err ? std::string(err) : "BEGIN failed")};
         }
-        inTx = true;
+        auto tx = DbTransaction::begin(DatabaseAccess::handleLocked(db));
+        if (!tx) {
+            batchLock.unlock();
+            return std::unexpected{
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Busy, tx.error().message)};
+        }
+        batchTx.emplace(std::move(*tx));
         batchPending = 0;
         return {};
     };
     auto commitBatch = [&]() -> std::expected<void, kanariv::utils::Error> {
-        if (!inTx)
+        if (!batchTx)
             return {};
-        char* err = nullptr;
-        internal::SqliteErrGuard guard{err};
-        int rc = sqlite3_exec(DatabaseAccess::handleLocked(db), "COMMIT", nullptr, nullptr, &err);
-        if (rc != SQLITE_OK) {
-            sqlite3_exec(DatabaseAccess::handleLocked(db), "ROLLBACK", nullptr, nullptr, nullptr);
-            batchLock.unlock();
-            inTx = false;
-            batchPending = 0;
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::Internal, err ? std::string(err) : "commit failed")};
-        }
+        auto committed = batchTx->commit();
+        batchTx.reset(); // rolls back on COMMIT failure
         batchLock.unlock();
-        inTx = false;
         batchPending = 0;
-        return {};
-    };
-    auto rollbackBatch = [&]() {
-        if (!inTx)
-            return;
-        sqlite3_exec(DatabaseAccess::handleLocked(db), "ROLLBACK", nullptr, nullptr, nullptr);
-        batchLock.unlock();
-        inTx = false;
-        batchPending = 0;
+        return committed;
     };
 
     for (auto trk : kanariv::media::scanTracks(root, mode)) {
-        if (!inTx) {
+        if (!batchTx) {
             auto b = beginBatch();
             if (!b)
                 return std::unexpected{b.error()};
@@ -123,10 +107,8 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
                 progress(scanned, 0, trk.path);
             if (batchPending >= batchSize) {
                 auto c = commitBatch();
-                if (!c) {
-                    rollbackBatch();
+                if (!c)
                     return std::unexpected{c.error()};
-                }
             }
             continue;
         }
@@ -331,18 +313,14 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             progress(scanned, 0, trk.path);
         if (batchPending >= batchSize) {
             auto c = commitBatch();
-            if (!c) {
-                rollbackBatch();
+            if (!c)
                 return std::unexpected{c.error()};
-            }
         }
     }
-    if (inTx) {
+    if (batchTx) {
         auto c = commitBatch();
-        if (!c) {
-            rollbackBatch();
+        if (!c)
             return std::unexpected{c.error()};
-        }
     }
     if (auto* lg = db.logger())
         lg->info("scan finished root={} scanned={} added={} updated={} failed={}", libPath, scanned,
@@ -352,18 +330,21 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
     // name, then write replay_gain_album back to each track.
     {
         std::unique_lock<std::shared_mutex> lk(DatabaseAccess::mutex(db));
-        if (DatabaseAccess::handleLocked(db)) {
-            char* err = nullptr;
-            internal::SqliteErrGuard guard{err};
-            int rc = sqlite3_exec(DatabaseAccess::handleLocked(db), "BEGIN IMMEDIATE",
-                                  nullptr, nullptr, &err);
-            if (rc == SQLITE_OK) {
+        sqlite3* handle = DatabaseAccess::handleLocked(db);
+        if (handle) {
+            auto tx = DbTransaction::begin(handle);
+            if (!tx) {
+                if (auto* lg = db.logger())
+                    lg->warn("scan: album gain skipped: {}", tx.error().message);
+            } else {
                 sqlite3_stmt* st = nullptr;
                 const char* sql =
                     "SELECT id, album, replay_gain_track FROM tracks "
                     "WHERE library_id=? AND album!='' AND replay_gain_track!=0";
-                if (sqlite3_prepare_v2(DatabaseAccess::handleLocked(db), sql, -1, &st,
-                                       nullptr) == SQLITE_OK) {
+                if (sqlite3_prepare_v2(handle, sql, -1, &st, nullptr) != SQLITE_OK) {
+                    if (auto* lg = db.logger())
+                        lg->warn("scan: album gain query failed: {}", sqlite3_errmsg(handle));
+                } else {
                     sqlite3_bind_int64(st, 1, libraryId);
                     struct AlbumGain { double sum; int count; };
                     std::map<std::string, AlbumGain> albums;
@@ -383,10 +364,11 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
                             continue;
                         double avg = ag.sum / (double)ag.count;
                         sqlite3_stmt* ust = nullptr;
-                        if (sqlite3_prepare_v2(DatabaseAccess::handleLocked(db),
-                                               "UPDATE tracks SET replay_gain_album=? "
-                                               "WHERE library_id=? AND album=? AND replay_gain_track!=0",
-                                               -1, &ust, nullptr) == SQLITE_OK) {
+                        if (sqlite3_prepare_v2(
+                                handle,
+                                "UPDATE tracks SET replay_gain_album=? "
+                                "WHERE library_id=? AND album=? AND replay_gain_track!=0",
+                                -1, &ust, nullptr) == SQLITE_OK) {
                             sqlite3_bind_double(ust, 1, avg);
                             sqlite3_bind_int64(ust, 2, libraryId);
                             sqlite3_bind_text(ust, 3, album.c_str(), -1, SQLITE_TRANSIENT);
@@ -394,8 +376,12 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
                             sqlite3_finalize(ust);
                         }
                     }
+                    if (auto committed = tx->commit(); !committed) {
+                        if (auto* lg = db.logger())
+                            lg->warn("scan: album gain commit failed: {}",
+                                     committed.error().message);
+                    }
                 }
-                sqlite3_exec(DatabaseAccess::handleLocked(db), "COMMIT", nullptr, nullptr, nullptr);
             }
         }
     }
@@ -409,21 +395,12 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
                                      .count();
                 {
                     std::unique_lock<std::shared_mutex> lk(DatabaseAccess::mutex(db));
-                    char* err = nullptr;
-                    internal::SqliteErrGuard guard{err};
-                    int rc = sqlite3_exec(DatabaseAccess::handleLocked(db), "BEGIN IMMEDIATE",
-                                          nullptr, nullptr, &err);
-                    if (rc == SQLITE_OK) {
-                        (void)DatabaseAccess::libraryUpdateLocked(db, l);
-                        char* cErr = nullptr;
-                        internal::SqliteErrGuard cGuard{cErr};
-                        rc = sqlite3_exec(DatabaseAccess::handleLocked(db), "COMMIT", nullptr,
-                                          nullptr, &cErr);
-                        if (rc != SQLITE_OK)
-                            sqlite3_exec(DatabaseAccess::handleLocked(db), "ROLLBACK", nullptr,
-                                         nullptr, nullptr);
-                    } else {
-                        (void)db.libraryUpdate(l);
+                    // Single UPDATE, no explicit transaction: a failed write is
+                    // reported without re-entering the (non-recursive) mutex.
+                    if (auto stored = DatabaseAccess::libraryUpdateLocked(db, l); !stored) {
+                        if (auto* lg = db.logger())
+                            lg->warn("scan: recording last_scanned failed: {}",
+                                     stored.error().message);
                     }
                 }
                 break;

@@ -1,3 +1,5 @@
+#include <sqlite3.h>
+
 #include <catch2/catch_test_macros.hpp>
 #include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
@@ -11,6 +13,7 @@
 #include <common.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <db/database_access.hpp>
 #include <filesystem>
 #include <fstream>
 #include <ios>
@@ -19,6 +22,7 @@
 #include <system_error>
 #include <thread>
 #include <utility>
+#include <utils/path_utf8.hpp>
 #include <vector>
 using namespace kanariv::db;
 using namespace kanariv::utils;
@@ -472,4 +476,84 @@ TEST_CASE("scanLibrary reports start/finish summary", "[db_scan]") {
     REQUIRE(finished);
     std::error_code ec;
     std::filesystem::remove_all(dir, ec);
+}
+
+TEST_CASE("maintenance reports non-ASCII paths without pruning representable rows",
+          "[db_scan][utf8]") {
+    const auto root = tempDirPath("utf8_maintenance");
+    const auto present = root / kanariv::utils::detail::pathFromUtf8("İ present.mp3");
+    std::ofstream(present, std::ios::binary) << "present";
+    REQUIRE(std::filesystem::is_regular_file(present));
+
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    auto library = db->libraryAdd(kanariv::utils::detail::pathToUtf8(root), "utf8 maintenance");
+    REQUIRE(library.has_value());
+
+    kanariv::types::Track presentTrack;
+    presentTrack.path = kanariv::utils::detail::pathToUtf8(present);
+    presentTrack.library_id = *library;
+    presentTrack.fingerprint.fill(0x44);
+    auto presentId = db->insertTrack(presentTrack);
+    REQUIRE(presentId.has_value());
+
+    kanariv::types::Track missingTrack = presentTrack;
+    missingTrack.path = kanariv::utils::detail::pathToUtf8(
+        root / kanariv::utils::detail::pathFromUtf8("İ missing.mp3"));
+    missingTrack.fingerprint.fill(0x55);
+    auto missingId = db->insertTrack(missingTrack);
+    REQUIRE(missingId.has_value());
+
+    auto report = libraryReport(*db, *library);
+    REQUIRE(report.has_value());
+    CHECK(report->tracks_checked == 2);
+    REQUIRE(report->missing_tracks.size() == 1);
+    CHECK(report->missing_tracks[0].id == *missingId);
+
+    auto pruned = libraryPruneMissing(*db, *report);
+    REQUIRE(pruned.has_value());
+    CHECK(*pruned == 1);
+    CHECK(db->getTrack(*presentId).has_value());
+    auto gone = db->getTrack(*missingId);
+    REQUIRE(!gone.has_value());
+    CHECK(gone.error().code == StatusCode::NotFound);
+
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST_CASE("scanLibrary BEGIN failure returns Busy promptly instead of deadlocking",
+          "[db_scan][scan]") {
+    auto root = tempDirPath("scan_busy");
+    std::ofstream(root / "track.mp3", std::ios::binary) << "fingerprint input";
+    auto dbPath = tempDbPath("scan_busy");
+
+    auto dbRes = Database::open(dbPath.string());
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    auto library = db->libraryAdd(kanariv::utils::detail::pathToUtf8(root), "busy scan");
+    REQUIRE(library.has_value());
+
+    sqlite3* handle = DatabaseAccess::handle(*db);
+    REQUIRE(handle != nullptr);
+    // Bound the wait so a regression that blocks on the lock fails fast.
+    REQUIRE(sqlite3_busy_timeout(handle, 100) == SQLITE_OK);
+
+    sqlite3* blocker = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &blocker) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(blocker, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) == SQLITE_OK);
+
+    const auto started = std::chrono::steady_clock::now();
+    auto result = scanLibrary(*db, *library);
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+
+    CHECK(!result.has_value());
+    CHECK(result.error().code == StatusCode::Busy);
+    CHECK(elapsed < std::chrono::seconds(2));
+
+    sqlite3_exec(blocker, "ROLLBACK", nullptr, nullptr, nullptr);
+    sqlite3_close(blocker);
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
 }

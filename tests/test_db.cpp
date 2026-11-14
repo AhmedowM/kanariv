@@ -2,6 +2,7 @@
 
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <common.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/smart.hpp>
 #include <kanariv/types/db.hpp>
@@ -10,7 +11,9 @@
 #include <kanariv/utils/result.hpp>
 #include <cstdint>
 #include <db/database_access.hpp>
+#include <db/migration.hpp>
 #include <expected>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -30,6 +33,28 @@ static kanariv::types::Track makeTrack(int idx, const std::string& pathOverride 
     t.library_id = 1;
     return t;
 }
+
+namespace {
+
+bool tableExists(sqlite3* db, std::string_view name) {
+    sqlite3_stmt* raw = nullptr;
+    if (sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", -1,
+                           &raw, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_text(raw, 1, name.data(), static_cast<int>(name.size()), SQLITE_TRANSIENT);
+    const bool found = sqlite3_step(raw) == SQLITE_ROW;
+    sqlite3_finalize(raw);
+    return found;
+}
+
+struct SqliteHandleCloser {
+    void operator()(sqlite3* h) const noexcept {
+        if (h)
+            sqlite3_close(h);
+    }
+};
+
+} // namespace
 
 TEST_CASE("insertTrack duplicate AlreadyExists", "[db]") {
     auto dbRes = Database::open(":memory:");
@@ -586,4 +611,208 @@ TEST_CASE("queue repeat mode round-trips through the DB", "[db][queue][repeat]")
     auto fallback = db->getQueue(*id);
     REQUIRE(fallback.has_value());
     REQUIRE(fallback->repeat_mode == kanariv::types::RepeatMode::Off);
+}
+
+TEST_CASE("schema user_version reaches current after open and reopen is a no-op",
+          "[db][migration]") {
+    auto path = kanariv::test_helpers::tempDbPath("schema_version");
+    {
+        auto db = Database::open(path.string());
+        REQUIRE(db.has_value());
+        auto version = internal::readUserVersion(DatabaseAccess::handle(**db));
+        REQUIRE(version.has_value());
+        CHECK(*version == internal::kSchemaVersion);
+
+        auto steps = internal::schemaMigrations();
+        REQUIRE(!steps.empty());
+        CHECK(steps.front().version == 1);
+        CHECK(steps.back().version == internal::kSchemaVersion);
+        for (std::size_t i = 1; i < steps.size(); ++i)
+            CHECK(steps[i - 1].version < steps[i].version);
+    }
+    // Reopening a current database skips every step and keeps the version.
+    {
+        auto db = Database::open(path.string());
+        REQUIRE(db.has_value());
+        auto version = internal::readUserVersion(DatabaseAccess::handle(**db));
+        REQUIRE(version.has_value());
+        CHECK(*version == internal::kSchemaVersion);
+    }
+}
+
+TEST_CASE("failing schema migration rolls back and reports the step", "[db][migration]") {
+    auto raw = std::unique_ptr<sqlite3, SqliteHandleCloser>{};
+    sqlite3* handle = nullptr;
+    REQUIRE(sqlite3_open(":memory:", &handle) == SQLITE_OK);
+    raw.reset(handle);
+    const std::array<internal::MigrationStep, 3> steps{{
+        {1, "base", internal::schemaMigrations().front().sql, nullptr},
+        {2, "committed probe", "CREATE TABLE probe_committed(x INTEGER)", nullptr},
+        {3, "broken probe",
+         "CREATE TABLE probe_rolled_back(y INTEGER);"
+         "INSERT INTO table_that_does_not_exist VALUES (1)",
+         nullptr},
+    }};
+    auto result = internal::applyMigrations(handle, steps);
+    REQUIRE(!result.has_value());
+    CHECK(result.error().message.find("schema migration 3") != std::string::npos);
+
+    // The failing step rolled back; the previous step stayed committed.
+    auto version = internal::readUserVersion(handle);
+    REQUIRE(version.has_value());
+    CHECK(*version == 2);
+    CHECK(tableExists(handle, "probe_committed"));
+    CHECK(!tableExists(handle, "probe_rolled_back"));
+}
+
+TEST_CASE("legacy user_version 0 database migrates without data loss", "[db][migration]") {
+    auto path = kanariv::test_helpers::tempDbPath("legacy_schema");
+    sqlite3* handle = nullptr;
+    REQUIRE(sqlite3_open(path.string().c_str(), &handle) == SQLITE_OK);
+    {
+        auto raw = std::unique_ptr<sqlite3, SqliteHandleCloser>{handle};
+        // Pre-source-identity tracks table: no source_* or replay_gain_* columns.
+        const char* legacyDdl =
+            "CREATE TABLE tracks ("
+            "id INTEGER PRIMARY KEY, fingerprint BLOB(32) NOT NULL UNIQUE, path TEXT NOT NULL, "
+            "deleted_at DATETIME, size INTEGER, mtime INTEGER, duration REAL, "
+            "sample_rate INTEGER, channels INTEGER, bitrate INTEGER, title TEXT, artist TEXT, "
+            "album TEXT, album_artist TEXT, genre TEXT, year INTEGER, track_num INTEGER, "
+            "disc_num INTEGER, cover_art_path TEXT, rating INTEGER DEFAULT 0, "
+            "play_count INTEGER DEFAULT 0, last_played DATETIME, "
+            "date_added DATETIME DEFAULT CURRENT_TIMESTAMP, last_scanned DATETIME, "
+            "dirty BOOLEAN DEFAULT 0, library_id INTEGER DEFAULT 1);"
+            "INSERT INTO tracks (fingerprint, path, title, artist, album, album_artist, genre) "
+            "VALUES (zeroblob(32), 'legacy/path.mp3', 'Legacy', 'Artist', 'Album', "
+            "'Artist', 'Rock');";
+        char* err = nullptr;
+        REQUIRE(sqlite3_exec(handle, legacyDdl, nullptr, nullptr, &err) == SQLITE_OK);
+        if (err)
+            sqlite3_free(err);
+        auto version = internal::readUserVersion(handle);
+        REQUIRE(version.has_value());
+        REQUIRE(*version == 0);
+    }
+
+    auto opened = Database::open(path.string());
+    REQUIRE(opened.has_value());
+    auto db = std::move(*opened);
+    auto tracks = db->listTracks();
+    REQUIRE(tracks.has_value());
+    REQUIRE(tracks->size() == 1);
+    CHECK((*tracks)[0].path == "legacy/path.mp3");
+    CHECK((*tracks)[0].title == "Legacy");
+    CHECK((*tracks)[0].source.key == "legacy/path.mp3");
+    auto version = internal::readUserVersion(DatabaseAccess::handle(*db));
+    REQUIRE(version.has_value());
+    CHECK(*version == internal::kSchemaVersion);
+}
+
+TEST_CASE("queue positions are stored ordering values and APIs take indices",
+          "[db][queue][position]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    const auto a = db->insertTrack(makeTrack(1));
+    const auto b = db->insertTrack(makeTrack(2));
+    const auto c = db->insertTrack(makeTrack(3));
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    REQUIRE(c.has_value());
+
+    // qid 0 selects the default queue; -1 appends.
+    REQUIRE(db->queueEnqueue(0, *a, -1).has_value());
+    REQUIRE(db->queueEnqueue(0, *b, -1).has_value());
+    // Insert at index 0.
+    REQUIRE(db->queueEnqueue(0, *c, 0).has_value());
+
+    auto items = db->listQueueItems(0);
+    REQUIRE(items.has_value());
+    REQUIRE(items->size() == 3);
+    CHECK((*items)[0].track_id == *c);
+    CHECK((*items)[1].track_id == *a);
+    CHECK((*items)[2].track_id == *b);
+    // position is the gap-based ordering value, not the index.
+    CHECK((*items)[0].position < (*items)[1].position);
+    CHECK((*items)[1].position < (*items)[2].position);
+    CHECK((*items)[1].position - (*items)[0].position > 1);
+
+    auto atZero = db->queueTrackAt(0, 0);
+    REQUIRE(atZero.has_value());
+    CHECK(atZero->id == *c);
+    auto pastEnd = db->queueTrackAt(0, 3);
+    REQUIRE(!pastEnd.has_value());
+    CHECK(pastEnd.error().code == StatusCode::NotFound);
+
+    auto tooFar = db->queueEnqueue(0, *a, 4);
+    REQUIRE(!tooFar.has_value());
+    CHECK(tooFar.error().code == StatusCode::InvalidArg);
+    auto belowAppend = db->queueEnqueue(0, *a, -2);
+    REQUIRE(!belowAppend.has_value());
+    CHECK(belowAppend.error().code == StatusCode::InvalidArg);
+}
+
+TEST_CASE("queue remove takes a zero-based index", "[db][queue][position]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    const auto a = db->insertTrack(makeTrack(1));
+    const auto b = db->insertTrack(makeTrack(2));
+    const auto c = db->insertTrack(makeTrack(3));
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    REQUIRE(c.has_value());
+    REQUIRE(db->queueEnqueueBatch(0, std::vector<int64_t>{*a, *b, *c}).has_value());
+
+    // Removing stored positions directly would be wrong: index 1 is b.
+    REQUIRE(db->queueRemove(0, 1).has_value());
+    auto items = db->listQueueItems(0);
+    REQUIRE(items.has_value());
+    REQUIRE(items->size() == 2);
+    CHECK((*items)[0].track_id == *a);
+    CHECK((*items)[1].track_id == *c);
+
+    auto negative = db->queueRemove(0, -1);
+    REQUIRE(!negative.has_value());
+    CHECK(negative.error().code == StatusCode::InvalidArg);
+    auto pastEnd = db->queueRemove(0, 2);
+    REQUIRE(!pastEnd.has_value());
+    CHECK(pastEnd.error().code == StatusCode::NotFound);
+}
+
+TEST_CASE("queue insertion renormalizes exhausted gaps without changing order",
+          "[db][queue][position]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    const auto first = db->insertTrack(makeTrack(1));
+    const auto last = db->insertTrack(makeTrack(2));
+    REQUIRE(first.has_value());
+    REQUIRE(last.has_value());
+    REQUIRE(db->queueEnqueue(0, *first).has_value());
+    REQUIRE(db->queueEnqueue(0, *last).has_value());
+
+    // >30 midpoint insertions between the same pair exhausts the gap and
+    // forces renormalization.
+    std::vector<int64_t> inserted;
+    for (int i = 0; i < 40; ++i) {
+        auto id = db->insertTrack(makeTrack(100 + i));
+        REQUIRE(id.has_value());
+        REQUIRE(db->queueEnqueue(0, *id, 1).has_value());
+        inserted.push_back(*id);
+    }
+
+    auto items = db->listQueueItems(0);
+    REQUIRE(items.has_value());
+    REQUIRE(items->size() == 42);
+    CHECK((*items)[0].track_id == *first);
+    CHECK((*items)[1].track_id == inserted.back());
+    CHECK((*items)[2].track_id == inserted[inserted.size() - 2]);
+    CHECK((*items)[41].track_id == *last);
+    for (std::size_t i = 1; i < items->size(); ++i)
+        CHECK((*items)[i - 1].position < (*items)[i].position);
+
+    auto middle = db->queueTrackAt(0, 1);
+    REQUIRE(middle.has_value());
+    CHECK(middle->id == inserted.back());
 }

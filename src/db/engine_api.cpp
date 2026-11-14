@@ -4,6 +4,7 @@
 #include <kanariv/utils/error.hpp>
 #include <cstring>
 #include <db/database_access.hpp>
+#include <db/queue.hpp>
 #include <db/stmt_helpers.hpp>
 #include <db/transaction.hpp>
 #include <expected>
@@ -40,9 +41,11 @@ bool Database::isOpen() const noexcept {
 }
 
 std::expected<kanariv::types::Track, kanariv::utils::Error> Database::queueTrackAt(int64_t qid,
-                                                                                 int64_t position) {
-    if (qid == 0)
-        qid = 1;
+                                                                                   int64_t index) {
+    qid = normalizeQueueId(qid);
+    if (index < 0)
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "not found"));
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
@@ -54,11 +57,11 @@ std::expected<kanariv::types::Track, kanariv::utils::Error> Database::queueTrack
         const char* sql =
             "SELECT track_id FROM queue WHERE queue_id=? ORDER BY position LIMIT 1 OFFSET ?";
         if (sqlite3_prepare_v2(handle, sql, -1, &raw, nullptr) != SQLITE_OK)
-            return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                            sqlite3_errmsg(handle)));
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                             sqlite3_errmsg(handle))};
         internal::StmtGuard statement(raw);
         sqlite3_bind_int64(raw, 1, qid);
-        sqlite3_bind_int64(raw, 2, position);
+        sqlite3_bind_int64(raw, 2, index);
         if (sqlite3_step(raw) != SQLITE_ROW)
             return std::unexpected(
                 kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "not found"));

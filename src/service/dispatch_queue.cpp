@@ -438,30 +438,25 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "invalid idOrIndex")};
     }
-    // try as position first
-    auto rm = db_->queueRemove(qid, val);
-    if (!rm) {
-        // if not found as position, try as track_id lookup
-        if (rm.error().code == kanariv::utils::StatusCode::NotFound) {
-            auto items = db_->listQueueItems(qid);
-            if (!items)
-                return std::unexpected{items.error()};
-            bool found = false;
-            int64_t pos = -1;
-            for (auto& it : *items)
-                if (it.track_id == val) {
-                    pos = it.position;
-                    found = true;
-                    break;
-                }
-            if (!found)
-                return std::unexpected{rm.error()};
-            auto rm2 = db_->queueRemove(qid, pos);
-            if (!rm2)
-                return std::unexpected{rm2.error()};
-        } else {
-            return std::unexpected{rm.error()};
+    // Try a zero-based index first, then a track id. Negative values can only
+    // name a track id, so they bypass the index attempt.
+    bool removed = false;
+    if (val >= 0) {
+        auto byIndex = db_->queueRemove(qid, val);
+        if (byIndex) {
+            removed = true;
+        } else if (byIndex.error().code != kanariv::utils::StatusCode::NotFound) {
+            return std::unexpected{byIndex.error()};
         }
+    }
+    if (!removed) {
+        auto index = db_->queueIndexOf(qid, val);
+        if (!index)
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
+                                                             "queue item not found")};
+        auto byTrack = db_->queueRemove(qid, static_cast<int64_t>(*index));
+        if (!byTrack)
+            return std::unexpected{byTrack.error()};
     }
     auto items = db_->listQueueItems(qid);
     if (!items)

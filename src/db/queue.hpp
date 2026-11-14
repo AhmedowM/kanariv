@@ -19,12 +19,21 @@
  * @details All helpers are `*Locked` -- the caller must hold the
  * Database mutex (dbMutex_) exclusively for mutating ops and at least
  * shared for reads. The `queue` table enforces UNIQUE(queue_id, position)
- * (see schema.hpp). Positions use gap-based indexing: enqueue computes a
- * midpoint between neighbours instead of shifting all subsequent items,
- * and dequeue/remove leave gaps (ordering is by position value, so gaps
- * are harmless). A rare renormalization restores full gaps when midpoint
- * space is exhausted (~30 insertions between the same two items).
- * Every function normalizes qid == 0 to 1 (default queue).
+ * (see migration.hpp).
+ *
+ * Position contract: `kanariv::types::QueueItem::position` is the stored,
+ * gap-based ordering value (0, GAP, 2*GAP, ... with holes after removals). It
+ * is an implementation detail and is only valid for ordering the listing.
+ * Every public parameter or return value named `index`/`ordinal` is a
+ * zero-based index into that ordering. `kAppendIndex` (-1) is accepted only by
+ * insertion helpers and means "append after the last item".
+ *
+ * Positions use gap-based indexing: enqueue computes a midpoint between
+ * neighbours instead of shifting all subsequent items, and dequeue/remove
+ * leave gaps (ordering is by position value, so gaps are harmless). A rare
+ * renormalization restores full gaps when midpoint space is exhausted
+ * (~30 insertions between the same two items). Every function normalizes
+ * qid == 0 to `kDefaultQueueId` (the default queue).
  */
 
 // Forward declarations for SQLite handles (sqlite3.h stays in .cpp files).
@@ -33,25 +42,48 @@ struct sqlite3_stmt;
 
 namespace kanariv::db {
 
+/// Queue used when a caller passes 0 (the `queues` table's default row).
+inline constexpr int64_t kDefaultQueueId = 1;
+
+/// Insertion index meaning "after the last item".
+inline constexpr int64_t kAppendIndex = -1;
+
+/**
+ * @brief Maps a caller-supplied queue id to the default queue when 0.
+ * @ingroup kanariv_db
+ */
+[[nodiscard]] inline constexpr int64_t normalizeQueueId(int64_t qid) noexcept {
+    return qid == 0 ? kDefaultQueueId : qid;
+}
+
+/**
+ * @brief Reports whether an insertion index requests an append.
+ * @ingroup kanariv_db
+ */
+[[nodiscard]] inline constexpr bool isAppendIndex(int64_t index) noexcept {
+    return index == kAppendIndex;
+}
+
 /**
  * @brief Enqueues a track (caller holds DB mutex).
  * @ingroup kanariv_db
  * @param db SQLite handle.
- * @param qid kanariv::types::Queue id (0 -> 1).
+ * @param qid kanariv::types::Queue id (0 -> kDefaultQueueId).
  * @param tid Track id (must be non-zero).
- * @param pos Position (-1 = append at MAX+1, else shift + insert).
- * @return Success or Error with StatusCode::InvalidArg if tid==0,
- * StatusCode::Internal if no handle or SQLite error.
- * @details If pos < 0, computes MAX(position)+GAP; otherwise finds the
- * items at indices pos-1 and pos (ORDER BY position) and inserts at their
- * midpoint. No existing positions are shifted -- gaps are intentional.
- * Renormalizes (renumbers 0, GAP, 2*GAP, ...) when midpoint space runs out.
+ * @param index Zero-based insertion index in `[0, count]`, or `kAppendIndex`
+ * (-1) to append after the last item.
+ * @return Success or Error with StatusCode::InvalidArg if tid==0 or the index
+ * is out of range, StatusCode::Internal if no handle or a SQLite error.
+ * @details The stored position is computed from the neighbours at indices
+ * `index-1` and `index`: midpoint insertion, append after the predecessor, or
+ * prepend before the successor. No existing positions are shifted -- gaps are
+ * intentional. Renormalizes (0, GAP, 2*GAP, ...) when midpoint space runs out.
  * The UNIQUE invariant requires exclusive lock (caller must hold dbMutex_).
  * @par Thread safety
  * Caller must hold Database::mutex().
  */
 std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64_t qid, int64_t tid,
-                                                             int64_t pos = -1);
+                                                              int64_t index = kAppendIndex);
 
 /**
  * @brief Dequeues the head item (caller holds DB mutex).
@@ -68,18 +100,21 @@ std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLock
                                                                                  int64_t qid);
 
 /**
- * @brief Removes item at position (caller holds DB mutex).
+ * @brief Removes the item at a zero-based index (caller holds DB mutex).
  * @ingroup kanariv_db
  * @param db SQLite handle.
- * @param qid kanariv::types::Queue id (0 -> 1).
- * @param pos Position to remove.
- * @return Success or Error NotFound/Internal.
- * @details Deletes WHERE queue_id=? AND position=?. Remaining positions
- * are left as-is (gaps are intentional; ordering is by value).
+ * @param qid kanariv::types::Queue id (0 -> kDefaultQueueId).
+ * @param index Zero-based index of the item to remove (must be >= 0).
+ * @return Success or Error InvalidArg for a negative index, NotFound when the
+ * index is outside the queue, Internal for SQLite errors.
+ * @details Resolves the index to its stored position, then deletes that row.
+ * Remaining positions are left as-is (gaps are intentional; ordering is by
+ * value).
  * @par Thread safety
  * Caller must hold Database::mutex() exclusively.
  */
-std::expected<void, kanariv::utils::Error> queueRemoveLocked(sqlite3* db, int64_t qid, int64_t pos);
+std::expected<void, kanariv::utils::Error> queueRemoveLocked(sqlite3* db, int64_t qid,
+                                                             int64_t index);
 
 /**
  * @brief Clears all items in a queue (caller holds DB mutex).

@@ -13,10 +13,10 @@
 #include <cstring>
 #include <db/database_access.hpp>
 #include <db/fts.hpp>
+#include <db/migration.hpp>
 #include <db/queue.hpp>
 #include <db/statement.hpp>
 #include <db/stmt_helpers.hpp>
-#include <db/write_thread.hpp>
 #include <expected>
 #include <map>
 #include <memory>
@@ -40,155 +40,6 @@ struct SqliteCloser {
     void operator()(sqlite3* db) const noexcept;
 };
 
-inline constexpr std::string_view schema =
-    "PRAGMA journal_mode=WAL;"
-    "PRAGMA synchronous=NORMAL;"
-    "PRAGMA cache_size=-8000;"
-    "PRAGMA busy_timeout=5000;"
-    "PRAGMA page_size=4096;"
-    "PRAGMA foreign_keys=ON;"
-    "CREATE TABLE IF NOT EXISTS libraries ("
-    "id INTEGER PRIMARY KEY,"
-    "path TEXT NOT NULL UNIQUE,"
-    "name TEXT,"
-    "date_added DATETIME DEFAULT CURRENT_TIMESTAMP,"
-    "last_scanned DATETIME,"
-    "auto_scan BOOLEAN DEFAULT 1,"
-    "recursive BOOLEAN DEFAULT 1,"
-    "extensions TEXT DEFAULT 'mp3,flac,ogg,wav,m4a'"
-    ");"
-    "CREATE TABLE IF NOT EXISTS tracks ("
-    "id INTEGER PRIMARY KEY,"
-    "fingerprint BLOB(32) NOT NULL UNIQUE,"
-    "path TEXT NOT NULL,"
-    "deleted_at DATETIME,"
-    "size INTEGER,"
-    "mtime INTEGER,"
-    "duration REAL,"
-    "sample_rate INTEGER,"
-    "channels INTEGER,"
-    "bitrate INTEGER,"
-    "title TEXT,"
-    "artist TEXT,"
-    "album TEXT,"
-    "album_artist TEXT,"
-    "genre TEXT,"
-    "year INTEGER,"
-    "track_num INTEGER,"
-    "disc_num INTEGER,"
-    "cover_art_path TEXT,"
-    "rating INTEGER DEFAULT 0,"
-    "play_count INTEGER DEFAULT 0,"
-    "last_played DATETIME,"
-    "date_added DATETIME DEFAULT CURRENT_TIMESTAMP,"
-    "last_scanned DATETIME,"
-    "dirty BOOLEAN DEFAULT 0,"
-    "library_id INTEGER DEFAULT 1 REFERENCES libraries(id),"
-    "source_kind INTEGER NOT NULL DEFAULT 0,"
-    "source_key TEXT NOT NULL DEFAULT '',"
-    "source_available BOOLEAN NOT NULL DEFAULT 1,"
-    "source_display_name TEXT,"
-    "replay_gain_track REAL DEFAULT 0,"
-    "replay_gain_album REAL DEFAULT 0"
-    ");"
-    "CREATE INDEX IF NOT EXISTS idx_tracks_fingerprint ON tracks(fingerprint);"
-    "CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path);"
-    "CREATE INDEX IF NOT EXISTS idx_tracks_artist_album ON tracks(artist, album);"
-    "CREATE INDEX IF NOT EXISTS idx_tracks_library ON tracks(library_id);"
-    "CREATE TABLE IF NOT EXISTS playlists ("
-    "id INTEGER PRIMARY KEY,"
-    "name TEXT NOT NULL,"
-    "type INTEGER NOT NULL DEFAULT 0,"
-    "smart_query TEXT,"
-    "created DATETIME DEFAULT CURRENT_TIMESTAMP,"
-    "modified DATETIME DEFAULT CURRENT_TIMESTAMP,"
-    "library_id INTEGER DEFAULT 1 REFERENCES libraries(id)"
-    ");"
-    "CREATE TABLE IF NOT EXISTS playlist_items ("
-    "playlist_id INTEGER REFERENCES playlists(id) ON DELETE CASCADE,"
-    "track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,"
-    "position INTEGER NOT NULL,"
-    "added DATETIME DEFAULT CURRENT_TIMESTAMP,"
-    "PRIMARY KEY (playlist_id, track_id)"
-    ");"
-    "CREATE INDEX IF NOT EXISTS idx_playlist_items_pos ON playlist_items(playlist_id, position);"
-    "CREATE TABLE IF NOT EXISTS queue ("
-    "id INTEGER PRIMARY KEY,"
-    "queue_id INTEGER NOT NULL DEFAULT 1,"
-    "track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,"
-    "position INTEGER NOT NULL,"
-    "added DATETIME DEFAULT CURRENT_TIMESTAMP,"
-    "UNIQUE(queue_id, position)"
-    ");"
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_queue_queue_pos ON queue(queue_id, position);"
-    "INSERT OR IGNORE INTO libraries (id, path, name) VALUES (1, '', 'default');"
-    "CREATE TABLE IF NOT EXISTS queues ("
-    "id INTEGER PRIMARY KEY,"
-    "name TEXT NOT NULL,"
-    "repeat_mode INTEGER DEFAULT 0,"
-    "temp INTEGER DEFAULT 0,"
-    "library_id INTEGER DEFAULT 1 REFERENCES libraries(id)"
-    ");"
-    "INSERT OR IGNORE INTO queues (id, name, repeat_mode, library_id) VALUES (1, 'default', 0, 1);"
-    "CREATE TABLE IF NOT EXISTS history ("
-    "id INTEGER PRIMARY KEY,"
-    "track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,"
-    "started_at DATETIME NOT NULL,"
-    "completed_at DATETIME,"
-    "position_ms INTEGER,"
-    "completion_pct REAL,"
-    "queue_id INTEGER DEFAULT 1"
-    ");"
-    "CREATE INDEX IF NOT EXISTS idx_history_track_started ON history(track_id, started_at);"
-    "CREATE TABLE IF NOT EXISTS bookmarks ("
-    "id INTEGER PRIMARY KEY,"
-    "track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,"
-    "position_ms INTEGER NOT NULL,"
-    "note TEXT,"
-    "created DATETIME DEFAULT CURRENT_TIMESTAMP"
-    ");"
-    "CREATE TABLE IF NOT EXISTS lyrics ("
-    "id INTEGER PRIMARY KEY,"
-    "track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,"
-    "lrc_text TEXT,"
-    "is_synced BOOLEAN DEFAULT 0,"
-    "source TEXT,"
-    "fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP"
-    ");"
-    "CREATE TABLE IF NOT EXISTS eq_presets ("
-    "id INTEGER PRIMARY KEY,"
-    "name TEXT NOT NULL UNIQUE,"
-    "bands_json TEXT NOT NULL"
-    ");"
-    "CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts USING fts5("
-    "title, artist, album, album_artist, genre,"
-    "content='tracks', content_rowid='id', tokenize='porter unicode61'"
-    ");"
-    "CREATE TRIGGER IF NOT EXISTS tracks_ai AFTER INSERT ON tracks BEGIN "
-    "INSERT INTO tracks_fts(rowid, title, artist, album, album_artist, genre) "
-    "VALUES (new.id, new.title, new.artist, new.album, new.album_artist, new.genre);"
-    "END;"
-    "CREATE TRIGGER IF NOT EXISTS tracks_ad AFTER DELETE ON tracks BEGIN "
-    "INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album, album_artist, genre) "
-    "VALUES ('delete', old.id, old.title, old.artist, old.album, old.album_artist, old.genre);"
-    "END;"
-    "CREATE TRIGGER IF NOT EXISTS tracks_au AFTER UPDATE ON tracks BEGIN "
-    "INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album, album_artist, genre) "
-    "VALUES ('delete', old.id, old.title, old.artist, old.album, old.album_artist, old.genre);"
-    "INSERT INTO tracks_fts(rowid, title, artist, album, album_artist, genre) "
-    "VALUES (new.id, new.title, new.artist, new.album, new.album_artist, new.genre);"
-    "END;"
-    "CREATE TABLE IF NOT EXISTS engine_state (id INTEGER PRIMARY KEY CHECK(id=1), "
-    "shuffle_enabled INTEGER DEFAULT 0, repeat_mode INTEGER DEFAULT 0, shuffle_perm BLOB, "
-    "cursor_pos INTEGER DEFAULT 0, current_track_id INTEGER DEFAULT 0, volume REAL DEFAULT 1.0, "
-    "active_queue_id INTEGER DEFAULT 1, pre_mute_volume REAL DEFAULT 0.5, "
-    "position_ms INTEGER DEFAULT 0, "
-    "updated DATETIME DEFAULT CURRENT_TIMESTAMP);"
-    "INSERT OR IGNORE INTO engine_state(id) VALUES (1);";
-
-inline constexpr std::string_view schemaDefaultLibrary =
-    "INSERT OR IGNORE INTO libraries (id, path, name) VALUES (1, '', 'default');";
-
 inline constexpr std::string_view insertTrackSql =
     "INSERT INTO tracks (fingerprint, path, size, mtime, duration, sample_rate, channels, "
     "bitrate, title, artist, album, album_artist, genre, year, track_num, disc_num, "
@@ -202,13 +53,10 @@ inline constexpr std::string_view updateTrackSql =
     "date_added=?, last_scanned=?, dirty=?, library_id=?, source_kind=?, source_key=?, "
     "source_available=?, source_display_name=?, deleted_at=? WHERE id=?";
 
-// Private implementation: the SQLite handle, statement cache, locks and the
-// background writer live here so the public header stays include-light.
-// Declaration order is load-bearing: reverse destruction stops the writer
-// before the handle is closed and finalizes cached statements first.
+// Private implementation: the SQLite handle, statement cache and locks live
+// here so the public header stays include-light. Member order is load-bearing:
+// cached statements are finalized before the handle is closed.
 struct Database::Impl {
-    explicit Impl(std::size_t batchSize = 256) : writer_(batchSize) {}
-
     std::unique_ptr<sqlite3, SqliteCloser> db_;
     /// Non-owning log sink from DatabaseOptions (null = silent). See DatabaseOptions::logger.
     kanariv::utils::Logger* logger_{nullptr};
@@ -216,7 +64,6 @@ struct Database::Impl {
     mutable std::shared_mutex dbMutex_;
     mutable std::unordered_map<std::string, std::unique_ptr<SqliteStatement>> stmtCache_;
     mutable std::mutex cacheMutex_;
-    WriterThread writer_;
 
     // Raw locking surface
     std::expected<SqliteStatement*, kanariv::utils::Error>
@@ -245,7 +92,7 @@ struct Database::Impl {
     std::expected<void, kanariv::utils::Error> playlistAddTrackLocked(int64_t pid, int64_t tid,
                                                                      int64_t pos = -1);
     std::expected<void, kanariv::utils::Error> queueEnqueueLocked(int64_t qid, int64_t tid,
-                                                                 int64_t pos = -1);
+                                                                  int64_t index = kAppendIndex);
     std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLocked(int64_t qid);
     std::size_t queueCountLocked(int64_t qid);
 };
@@ -261,13 +108,10 @@ void SqliteCloser::operator()(sqlite3* db) const noexcept {
 
 Database::Database() : impl_(std::make_unique<Impl>()) {}
 
-Database::Database(const DatabaseOptions& opts)
-    : impl_(std::make_unique<Impl>(opts.writeBatchSize)) {
+Database::Database(const DatabaseOptions& opts) : impl_(std::make_unique<Impl>()) {
     impl_->logger_ = opts.logger;
 }
 
-// Impl's declaration order stops the writer before the handle closes and
-// finalizes cached statements before the connection goes away.
 Database::~Database() = default;
 
 Database::Database(Database&& o) noexcept : impl_(std::move(o.impl_)) {}
@@ -311,94 +155,21 @@ Database::open(std::string_view path, const DatabaseOptions& opts) {
             sqlite3_close(raw);
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, msg)};
     }
-    char* err = nullptr;
-    internal::SqliteErrGuard errGuard{err};
-    rc = sqlite3_exec(raw, std::string(schema).c_str(), nullptr, nullptr, &err);
-    if (rc != SQLITE_OK) {
-        std::string msg = err ? std::string(err) : sqlite3_errmsg(raw);
-        // Gracefully handle existing duplicate queue positions on migration:
-        // UNIQUE(queue_id, position) creation may fail if old DB has duplicates.
-        // Treat as non-fatal -- open still succeeds; queue ops will normalize positions.
-        bool isQueueUniqueMigration = msg.find("idx_queue_queue_pos") != std::string::npos ||
-                                      msg.find("queue") != std::string::npos;
-        bool isUniqueConstraint =
-            msg.find("UNIQUE") != std::string::npos || msg.find("unique") != std::string::npos;
-        if (!(isQueueUniqueMigration && isUniqueConstraint)) {
-            sqlite3_close(raw);
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::Corrupt, std::string("schema init failed: ") + msg)};
-        }
-        // else: non-fatal migration duplicate -- clear err for next exec
-        if (err) {
-            sqlite3_free(err);
-            err = nullptr;
-        }
+    if (auto configured = internal::configureConnection(raw); !configured) {
+        sqlite3_close(raw);
+        return std::unexpected{
+            kanariv::utils::makeError(configured.error().code, "database configuration failed: " +
+                                                                   configured.error().message)};
     }
-    rc = sqlite3_exec(raw, std::string(schemaDefaultLibrary).c_str(), nullptr, nullptr, &err);
-    if (rc != SQLITE_OK) {
-        std::string msg = err ? std::string(err) : sqlite3_errmsg(raw);
-        if (opts.logger)
-            opts.logger->warn("schema default-library pass failed (non-fatal): {}", msg);
-        if (err) {
-            sqlite3_free(err);
-            err = nullptr;
-        }
-    }
-    // Migration: add active_queue_id column if missing (for existing DBs)
-    // Migration: add pre_mute_volume column if missing (for existing DBs)
-    // Migration: add position_ms column if missing (for existing DBs)
-    // Migration: add queues.temp column if missing (for existing DBs)
-    for (const char* mig :
-         {"ALTER TABLE engine_state ADD COLUMN active_queue_id INTEGER DEFAULT 1",
-          "ALTER TABLE engine_state ADD COLUMN pre_mute_volume REAL DEFAULT 0.5",
-          "ALTER TABLE engine_state ADD COLUMN position_ms INTEGER DEFAULT 0",
-          "ALTER TABLE queues ADD COLUMN temp INTEGER DEFAULT 0",
-          "ALTER TABLE tracks ADD COLUMN source_kind INTEGER NOT NULL DEFAULT 0",
-          "ALTER TABLE tracks ADD COLUMN source_key TEXT NOT NULL DEFAULT ''",
-          "ALTER TABLE tracks ADD COLUMN source_available BOOLEAN NOT NULL DEFAULT 1",
-          "ALTER TABLE tracks ADD COLUMN source_display_name TEXT",
-          "ALTER TABLE tracks ADD COLUMN replay_gain_track REAL DEFAULT 0",
-          "ALTER TABLE tracks ADD COLUMN replay_gain_album REAL DEFAULT 0"}) {
-        char* migErr = nullptr;
-        int migRc = sqlite3_exec(raw, mig, nullptr, nullptr, &migErr);
-        if (migErr) {
-            sqlite3_free(migErr);
-            migErr = nullptr;
-        }
-        (void)migRc;
-    }
-    // Existing rows were path-only. Give them an explicit source identity so
-    // (source_kind, source_key) deduplication works without rewriting paths.
-    // Non-fatal when the columns already hold normalized values.
-    {
-        char* migErr = nullptr;
-        int migRc = sqlite3_exec(raw,
-                                 "UPDATE tracks SET source_key=path, source_display_name=path "
-                                 "WHERE source_kind=0 AND source_key=''",
-                                 nullptr, nullptr, &migErr);
-        if (migErr) {
-            sqlite3_free(migErr);
-            migErr = nullptr;
-        }
-        (void)migRc;
-    }
-    // The source index is created only after the migration columns exist on
-    // legacy databases; CREATE TABLE above covers fresh databases.
-    {
-        char* migErr = nullptr;
-        int migRc = sqlite3_exec(raw,
-                                 "CREATE INDEX IF NOT EXISTS idx_tracks_source ON "
-                                 "tracks(source_kind, source_key)",
-                                 nullptr, nullptr, &migErr);
-        if (migErr) {
-            sqlite3_free(migErr);
-            migErr = nullptr;
-        }
-        (void)migRc;
+    // Versioned schema ladder: each step runs in its own transaction and a
+    // failure is returned to the caller instead of being tolerated.
+    if (auto migrated = internal::applyMigrations(raw, internal::schemaMigrations()); !migrated) {
+        sqlite3_close(raw);
+        return std::unexpected{kanariv::utils::makeError(
+            migrated.error().code, "database migration failed: " + migrated.error().message)};
     }
     auto db = std::make_unique<Database>(opts);
     db->impl_->db_.reset(raw);
-    db->impl_->writer_.open(raw);
     if (db->impl_->logger_)
         db->impl_->logger_->info("database opened path={}", dbPath);
     return db;
@@ -416,14 +187,9 @@ sqlite3* Database::Impl::handleLocked() const noexcept {
     return db_.get();
 }
 
-std::expected<void, kanariv::utils::Error> Database::flush() {
-    return impl_->writer_.flush();
-}
-
 std::expected<void, kanariv::utils::Error>
 Database::queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) {
-    if (qid == 0)
-        qid = 1;
+    qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
@@ -459,8 +225,7 @@ Database::queueEnqueueBatch(int64_t qid, const std::vector<int64_t>& tids) {
 
 std::expected<void, kanariv::utils::Error> Database::queueReplaceAll(int64_t qid,
                                                                     std::span<const int64_t> ids) {
-    if (qid == 0)
-        qid = 1;
+    qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
@@ -1485,14 +1250,14 @@ Database::playlistGetTracks(int64_t pid) {
 }
 
 std::expected<void, kanariv::utils::Error> Database::queueEnqueue(int64_t qid, int64_t tid,
-                                                                 int64_t pos) {
+                                                                  int64_t index) {
     std::unique_lock lk{impl_->dbMutex_};
-    return impl_->queueEnqueueLocked(qid, tid, pos);
+    return impl_->queueEnqueueLocked(qid, tid, index);
 }
 
 std::expected<void, kanariv::utils::Error>
-Database::Impl::queueEnqueueLocked(int64_t qid, int64_t tid, int64_t pos) {
-    return kanariv::db::queueEnqueueLocked(db_.get(), qid, tid, pos);
+Database::Impl::queueEnqueueLocked(int64_t qid, int64_t tid, int64_t index) {
+    return kanariv::db::queueEnqueueLocked(db_.get(), qid, tid, index);
 }
 
 std::expected<kanariv::types::QueueItem, kanariv::utils::Error> Database::queueDequeue(int64_t qid) {
@@ -1505,31 +1270,27 @@ Database::Impl::queueDequeueLocked(int64_t qid) {
     return kanariv::db::queueDequeueLocked(db_.get(), qid);
 }
 
-std::expected<void, kanariv::utils::Error> Database::queueRemove(int64_t qid, int64_t pos) {
-    if (qid == 0)
-        qid = 1;
+std::expected<void, kanariv::utils::Error> Database::queueRemove(int64_t qid, int64_t index) {
+    qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
-    return kanariv::db::queueRemoveLocked(impl_->db_.get(), qid, pos);
+    return kanariv::db::queueRemoveLocked(impl_->db_.get(), qid, index);
 }
 
 std::expected<void, kanariv::utils::Error> Database::queueClear(int64_t qid) {
-    if (qid == 0)
-        qid = 1;
+    qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
     return kanariv::db::queueClearLocked(impl_->db_.get(), qid);
 }
 
 std::expected<std::vector<kanariv::types::QueueItem>, kanariv::utils::Error>
 Database::listQueueItems(int64_t qid) {
-    if (qid == 0)
-        qid = 1;
+    qid = kanariv::db::normalizeQueueId(qid);
     std::shared_lock lk{impl_->dbMutex_};
     return kanariv::db::queueListLocked(impl_->db_.get(), qid);
 }
 
 std::expected<kanariv::types::Queue, kanariv::utils::Error> Database::getQueue(int64_t qid) {
-    if (qid == 0)
-        qid = 1;
+    qid = kanariv::db::normalizeQueueId(qid);
     std::shared_lock lk{impl_->dbMutex_};
     return kanariv::db::getQueueLocked(impl_->db_.get(), qid);
 }
@@ -1548,29 +1309,25 @@ std::expected<int64_t, kanariv::utils::Error> Database::createQueue(std::string_
 }
 
 std::expected<void, kanariv::utils::Error> Database::deleteQueue(int64_t qid) {
-    if (qid == 0)
-        qid = 1;
+    qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
     return kanariv::db::deleteQueueLocked(impl_->db_.get(), qid);
 }
 
 std::expected<void, kanariv::utils::Error> Database::setQueueRepeat(int64_t qid, int repeat_mode) {
-    if (qid == 0)
-        qid = 1;
+    qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
     return kanariv::db::setQueueRepeatLocked(impl_->db_.get(), qid, repeat_mode);
 }
 
 std::expected<void, kanariv::utils::Error> Database::setQueueTemp(int64_t qid, bool temp) {
-    if (qid == 0)
-        qid = 1;
+    qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
     return kanariv::db::setQueueTempLocked(impl_->db_.get(), qid, temp);
 }
 
 std::size_t Database::queueCount(int64_t qid) {
-    if (qid == 0)
-        qid = 1;
+    qid = kanariv::db::normalizeQueueId(qid);
     std::shared_lock lk{impl_->dbMutex_};
     return impl_->queueCountLocked(qid);
 }
@@ -1580,8 +1337,7 @@ std::size_t Database::Impl::queueCountLocked(int64_t qid) {
 }
 
 std::optional<size_t> Database::queueIndexOf(int64_t qid, int64_t trackId) {
-    if (qid == 0)
-        qid = 1;
+    qid = kanariv::db::normalizeQueueId(qid);
     if (trackId == 0)
         return std::nullopt;
     std::shared_lock lk{impl_->dbMutex_};
@@ -2234,8 +1990,8 @@ DatabaseAccess::playlistAddTrackLocked(Database& db, int64_t pid, int64_t tid, i
 }
 
 std::expected<void, kanariv::utils::Error>
-DatabaseAccess::queueEnqueueLocked(Database& db, int64_t qid, int64_t tid, int64_t pos) {
-    return db.impl_->queueEnqueueLocked(qid, tid, pos);
+DatabaseAccess::queueEnqueueLocked(Database& db, int64_t qid, int64_t tid, int64_t index) {
+    return db.impl_->queueEnqueueLocked(qid, tid, index);
 }
 
 std::expected<kanariv::types::QueueItem, kanariv::utils::Error>

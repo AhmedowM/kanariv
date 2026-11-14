@@ -1,7 +1,10 @@
+#include <sqlite3.h>
+
 #include <catch2/catch_test_macros.hpp>
 #include <common.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <db/database_access.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -238,4 +241,71 @@ TEST_CASE("trackFromJson invalid fingerprint falls back", "[db_json]") {
         if (b != 0)
             allZero = false;
     REQUIRE(!allZero);
+}
+
+TEST_CASE("importJson reports the failing row and imports nothing", "[db_json]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+
+    kanariv::types::Track t;
+    t.path = "/tmp/good.mp3";
+    t.title = "Good";
+    for (int b = 0; b < 32; ++b)
+        t.fingerprint[b] = static_cast<uint8_t>(0x70 + b);
+
+    Json root;
+    root["tracks"] = Json::array();
+    root["tracks"].push_back(kanariv::utils::trackToJson(t));
+    Json notATrack;
+    notATrack = 42;
+    root["tracks"].push_back(notATrack); // not a track object
+    auto path = tempDbPath("json_bad_row");
+    path.replace_extension(".json");
+    registerTempPath(path);
+    std::ofstream(path, std::ios::binary) << root.dump();
+
+    auto result = importJson(*db, path);
+    REQUIRE(!result.has_value());
+    CHECK(result.error().code == StatusCode::Corrupt);
+    CHECK(result.error().message.find("import row 1") != std::string::npos);
+    // The valid row before the failure was rolled back with the transaction.
+    auto tracks = db->listTracks(nullptr);
+    REQUIRE(tracks.has_value());
+    CHECK(tracks->empty());
+}
+
+TEST_CASE("importJson surfaces update failures", "[db_json]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    kanariv::types::Track t;
+    t.path = "/tmp/upsert.mp3";
+    t.title = "Upsert";
+    for (int b = 0; b < 32; ++b)
+        t.fingerprint[b] = static_cast<uint8_t>(0x80 + b);
+    REQUIRE(db->insertTrack(t).has_value());
+
+    auto path = tempDbPath("json_update_fail");
+    path.replace_extension(".json");
+    registerTempPath(path);
+    REQUIRE(exportJson(*db, path).has_value());
+
+    sqlite3* handle = DatabaseAccess::handle(*db);
+    REQUIRE(handle != nullptr);
+    REQUIRE(sqlite3_exec(handle,
+                         "CREATE TRIGGER deny_track_update BEFORE UPDATE ON tracks "
+                         "BEGIN SELECT RAISE(ABORT, 'denied'); END;",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+
+    auto result = importJson(*db, path);
+    REQUIRE(!result.has_value());
+    CHECK(result.error().code == StatusCode::Corrupt);
+    CHECK(result.error().message.find("import row 0") != std::string::npos);
+    CHECK(result.error().message.find("denied") != std::string::npos);
+
+    auto tracks = db->listTracks(nullptr);
+    REQUIRE(tracks.has_value());
+    REQUIRE(tracks->size() == 1);
+    CHECK((*tracks)[0].title == "Upsert");
 }

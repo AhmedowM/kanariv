@@ -39,13 +39,16 @@ KANARIV_API std::expected<void, kanariv::utils::Error> exportJson(contracts::IDa
  * @param db Database to import into.
  * @param inPath Source file path.
  * @return Success, or `Error` with `StatusCode::Io` if file cannot be opened,
- * `StatusCode::Corrupt` if JSON is invalid or missing `tracks` array, or
- * `StatusCode::Internal` on DB errors. On `Corrupt`, the transaction is rolled back.
+ * `StatusCode::Corrupt` when the JSON is invalid, when `tracks` is not an
+ * array, or when any row fails (the message carries its row index), or
+ * `StatusCode::Internal` on DB errors.
  * @details Reads the entire file, parses JSON, validates `tracks` is an array,
  * then inserts each track inside a single `DbTransaction` (`BEGIN IMMEDIATE`).
- * On `SQLITE_CONSTRAINT` (duplicate fingerprint), looks up the existing row
- * and updates it; path collisions are silently ignored. Holds `db.mutex()`
- * exclusively for the transaction duration.
+ * On `SQLITE_CONSTRAINT` (duplicate fingerprint), the import updates the
+ * existing row in place; an update failure aborts the import. No row is
+ * skipped silently: the first failing row rolls the whole import back and is
+ * named in the returned error. Holds `db.mutex()` exclusively for the
+ * transaction duration.
  * @par Thread safety
  * Thread-safe: acquires `db.mutex()` as `unique_lock`.
  * @par Lock ordering

@@ -1,3 +1,5 @@
+#include <sqlite3.h>
+
 #include <catch2/catch_test_macros.hpp>
 #include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
@@ -5,6 +7,7 @@
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <cstdint>
+#include <db/database_access.hpp>
 #include <string>
 #include <utility>
 #include <vector>
@@ -272,4 +275,55 @@ TEST_CASE("search COLLATE NOCASE variation", "[db_search]") {
     } else {
         REQUIRE(found);
     }
+}
+
+TEST_CASE("FTS update trigger only fires for searchable columns", "[db_search][fts]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    kanariv::types::Track t;
+    t.path = "/tmp/fts_scope.mp3";
+    t.title = "Original Ballad";
+    t.artist = "Artist";
+    t.album = "Album";
+    t.genre = "Rock";
+    for (int b = 0; b < 32; ++b)
+        t.fingerprint[b] = static_cast<uint8_t>(0x60 + b);
+    auto id = db->insertTrack(t);
+    REQUIRE(id.has_value());
+
+    sqlite3* handle = DatabaseAccess::handle(*db);
+    REQUIRE(handle != nullptr);
+
+    // The trigger must be scoped to the columns tracks_fts indexes.
+    {
+        sqlite3_stmt* raw = nullptr;
+        REQUIRE(sqlite3_prepare_v2(
+                    handle,
+                    "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='tracks_au'", -1,
+                    &raw, nullptr) == SQLITE_OK);
+        REQUIRE(sqlite3_step(raw) == SQLITE_ROW);
+        const auto* sql = reinterpret_cast<const char*>(sqlite3_column_text(raw, 0));
+        REQUIRE(sql != nullptr);
+        const std::string triggerSql = sql;
+        sqlite3_finalize(raw);
+        CHECK(triggerSql.find("AFTER UPDATE OF") != std::string::npos);
+        CHECK(triggerSql.find("title") != std::string::npos);
+    }
+
+    // A non-search column update changes one row and leaves FTS untouched
+    // (an unscoped trigger would also write the FTS delete+insert rows).
+    const int changesBefore = sqlite3_total_changes(handle);
+    const std::string ratingOnly = "UPDATE tracks SET rating=5 WHERE id=" + std::to_string(*id);
+    REQUIRE(sqlite3_exec(handle, ratingOnly.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK);
+    CHECK(sqlite3_total_changes(handle) - changesBefore == 1);
+
+    // A searchable column update still refreshes the index.
+    const std::string rename =
+        "UPDATE tracks SET title='Renamed Ballad' WHERE id=" + std::to_string(*id);
+    REQUIRE(sqlite3_exec(handle, rename.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK);
+    auto found = search(*db, "Renamed", 10);
+    REQUIRE(found.has_value());
+    REQUIRE(found->size() == 1);
+    CHECK((*found)[0].title == "Renamed Ballad");
 }

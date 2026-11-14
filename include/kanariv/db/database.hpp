@@ -4,10 +4,10 @@
  * @file database.hpp
  * @brief Main SQLite database handle with thread-safe CRUD.
  * @ingroup kanariv_db
- * @details Implements `Database` with a shared_mutex for the SQLite handle,
- * a mutex for the prepared-statement cache, and a background writer thread
- * for batching writes. All public methods are thread-safe; see each method
- * for locking requirements. Move operations are not thread-safe after open.
+ * @details Implements `Database` with a shared_mutex for the SQLite handle and
+ * a mutex for the prepared-statement cache. All public methods are thread-safe;
+ * see each method for locking requirements. Move operations are not thread-safe
+ * after open.
  */
 
 #include <array>
@@ -31,8 +31,6 @@ namespace kanariv::db {
  * @ingroup kanariv_db
  */
 struct DatabaseOptions {
-    std::size_t writeBatchSize =
-        256; ///< Queue capacity / batch size for the background writer (default 256).
     /// Non-owning logger (may be null = silent). Must outlive the Database;
     /// never emitted from destructors. Set from opts at open().
     kanariv::utils::Logger* logger{nullptr};
@@ -58,14 +56,14 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      */
     Database();
     /**
-     * @brief Constructs with options (sets the writer batch size).
+     * @brief Constructs with options.
      * @ingroup kanariv_db
-     * @param opts Options; writeBatchSize forwarded to the background writer.
+     * @param opts Options; the logger is borrowed.
      */
     // Out-of-line (core.cpp): Impl is defined there.
     explicit Database(const DatabaseOptions& opts);
     /**
-     * @brief Closes the writer, clears the statement cache and resets the handle.
+     * @brief Clears the statement cache and resets the handle.
      * @ingroup kanariv_db
      */
     ~Database() override;
@@ -79,12 +77,13 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @brief Opens (or creates) a database.
      * @ingroup kanariv_db
      * @param path Filesystem path (empty => :memory:).
-     * @param opts Options (writeBatchSize).
+     * @param opts Options (logger).
      * @return Owning Database pointer or Error Io/Corrupt.
-     * @details Executes schema, handles the queue UNIQUE migration gracefully
-     * (ignores duplicate-position errors), ensures the default library row and
-     * migrates engine_state.active_queue_id if missing. Starts the background
-     * writer thread.
+     * @details Applies connection pragmas, then the ordered `PRAGMA
+     * user_version` migration ladder. Every step runs in one transaction and a
+     * failing step rolls back and fails open() with StatusCode::Corrupt; no
+     * schema error is tolerated silently. A database whose version is newer
+     * than this build is rejected.
      * @par Lifetime
      * The returned `unique_ptr` owns the database and must remain alive while
      * callers use the handle or any value-producing operation that depends on
@@ -109,14 +108,6 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * no logger of their own. Never null-dereference; check before use.
      */
     kanariv::utils::Logger* logger() const noexcept override;
-    /**
-     * @brief Flushes the background writer queue.
-     * @ingroup kanariv_db
-     * @return Success or Error with StatusCode::Busy on 200 ms timeout.
-     * @par Thread safety
-     * Thread-safe; delegates to the writer's flush().
-     */
-    std::expected<void, kanariv::utils::Error> flush();
 
     /**
      * @brief Enqueues multiple tracks atomically (single transaction).
@@ -400,21 +391,28 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
     /**
      * @brief Queue operations -- forwarded to queue partition (see queue.cppm).
      * @ingroup kanariv_db
-     * @details All queue methods normalize qid == 0 to 1 and enforce the
-     * UNIQUE(queue_id, position) invariant via dbMutex_ serialization.
+     * @details All queue methods normalize qid == 0 to the default queue and
+     * enforce the UNIQUE(queue_id, position) invariant via dbMutex_
+     * serialization.
+     *
+     * Position contract: `QueueItem::position` is the stored, gap-based
+     * ordering value. It is an implementation detail and only meaningful for
+     * ordering `listQueueItems()` results. Every parameter or return value
+     * named `index` is a zero-based index into that ordering; `-1` requests an
+     * append only on `queueEnqueue`.
      */
     /**
      * @brief Enqueues a track.
      * @ingroup kanariv_db
-     * @param qid Queue id (0 -> 1).
+     * @param qid Queue id (0 selects the default queue).
      * @param tid Track id.
-     * @param pos Position (-1 = append).
-     * @return Success or Error.
+     * @param index Zero-based insertion index, or -1 to append.
+     * @return Success or Error InvalidArg (bad index), NotFound, Busy, Internal.
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
     std::expected<void, kanariv::utils::Error> queueEnqueue(int64_t qid, int64_t tid,
-                                                           int64_t pos = -1) override;
+                                                            int64_t index = -1) override;
 
     /**
      * @brief Dequeues the head item.
@@ -427,15 +425,15 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
     std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeue(int64_t qid);
 
     /**
-     * @brief Removes item at position.
+     * @brief Removes the item at a zero-based index.
      * @ingroup kanariv_db
-     * @param qid Queue id (0 -> 1).
-     * @param pos Position to remove.
-     * @return Success or Error NotFound.
+     * @param qid Queue id (0 selects the default queue).
+     * @param index Zero-based index to remove (must be >= 0).
+     * @return Success or Error InvalidArg/NotFound/Internal.
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> queueRemove(int64_t qid, int64_t pos) override;
+    std::expected<void, kanariv::utils::Error> queueRemove(int64_t qid, int64_t index) override;
 
     /**
      * @brief Clears a queue.
@@ -459,16 +457,16 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
     listQueueItems(int64_t qid) override;
 
     /**
-     * @brief Loads the track at a queue position.
+     * @brief Loads the track at a zero-based queue index.
      * @param qid Queue identifier; zero selects the default queue.
-     * @param position Zero-based queue position.
-     * @return Track, or `NotFound` when the position is absent.
+     * @param index Zero-based index into the ORDER BY position listing.
+     * @return Track, or `NotFound` when the index is beyond the queue.
      * @par Thread safety
      * Thread-safe; takes a shared database lock.
      * @ingroup kanariv_db
      */
     std::expected<kanariv::types::Track, kanariv::utils::Error>
-    queueTrackAt(int64_t qid, int64_t position) override;
+    queueTrackAt(int64_t qid, int64_t index) override;
 
     /**
      * @brief Loads a queue container by identifier.

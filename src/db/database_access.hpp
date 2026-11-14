@@ -21,6 +21,7 @@
 #include <kanariv/db/database.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <db/queue.hpp>
 #include <expected>
 #include <shared_mutex>
 #include <string_view>
@@ -167,13 +168,14 @@ struct DatabaseAccess {
      * @brief Forwards to Database::queueEnqueueLocked().
      * @ingroup kanariv_db
      * @param db Database instance.
-     * @param qid kanariv::types::Queue id (0 -> 1).
+     * @param qid kanariv::types::Queue id (0 -> kDefaultQueueId).
      * @param tid Track id.
-     * @param pos Position (-1 = append).
+     * @param index Zero-based insertion index, or kAppendIndex (-1) to append.
      * @return Success or Error.
      */
     static std::expected<void, kanariv::utils::Error>
-    queueEnqueueLocked(Database& db, int64_t qid, int64_t tid, int64_t pos = -1);
+    queueEnqueueLocked(Database& db, int64_t qid, int64_t tid,
+                       int64_t index = kanariv::db::kAppendIndex);
     /**
      * @brief Forwards to Database::queueDequeueLocked().
      * @ingroup kanariv_db

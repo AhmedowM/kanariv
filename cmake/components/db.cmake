@@ -1,9 +1,8 @@
 # db.cmake -- kanariv::db (SQLite library/engine-state persistence).
-# NOTE: statement/transaction/queue/schema/detail/fts/stmt_helpers and the
-# background writer (src/db/write_thread.hpp) live in src/db/ (NOT installed)
-# and have no module partitions. Fingerprinting moved to the media component
-# (src/media/fingerprint.cpp) with the scan discovery half, so db no longer
-# links blake3.
+# NOTE: statement/transaction/queue/migration/detail/fts/stmt_helpers live in
+# src/db/ (NOT installed) and have no module partitions. Fingerprinting moved
+# to the media component (src/media/fingerprint.cpp) with the scan discovery
+# half, so db no longer links blake3.
 set(KANARIV_DB_MODULE_SOURCES
   modules/kanariv/db.cppm
   modules/kanariv/db/core.cppm
@@ -23,7 +22,7 @@ set(KANARIV_DB_SOURCES
   src/db/smart.cpp
   src/db/json.cpp
   src/db/maintenance.cpp
-  src/db/write_thread.cpp
+  src/db/migration.cpp
   src/db/statement.cpp
   src/db/transaction.cpp
   src/db/fts.cpp

@@ -151,20 +151,26 @@ class IDatabase {
      */
     virtual std::size_t queueCount(int64_t qid) = 0;
     /**
-     * @brief Finds a track's zero-based position in a queue.
-     * @return Position of the first matching item, or `std::nullopt` when absent.
+     * @brief Finds a track's zero-based index in a queue.
+     * @return Zero-based index of the first matching item, or `std::nullopt`
+     * when absent. Queue indices are always positions in the ordered listing,
+     * not `QueueItem::position` (the stored ordering value).
      */
     virtual std::optional<std::size_t> queueIndexOf(int64_t qid, int64_t trackId) = 0;
     /**
-     * @brief Loads the track at a queue position.
-     * @return Track on success, or NotFound for an invalid position or missing row.
+     * @brief Loads the track at a zero-based queue index.
+     * @param qid Queue identifier; zero selects the default queue.
+     * @param index Zero-based index into the ordered listing.
+     * @return Track on success, or NotFound when the index is beyond the queue
+     * or the row is missing.
      */
     virtual std::expected<kanariv::types::Track, kanariv::utils::Error>
-    queueTrackAt(int64_t qid, int64_t position) = 0;
+    queueTrackAt(int64_t qid, int64_t index) = 0;
     /**
      * @brief Lists queue items in ascending position order.
      * @param qid Queue identifier; zero selects the default queue.
-     * @return Queue items, or a backend error.
+     * @return Queue items, or a backend error. Each item's `position` is the
+     * stored gap-based ordering value, not its zero-based index.
      */
     virtual std::expected<std::vector<kanariv::types::QueueItem>, kanariv::utils::Error>
     listQueueItems(int64_t qid) = 0;
@@ -214,21 +220,23 @@ class IDatabase {
     virtual std::expected<void, kanariv::utils::Error>
     queueEnqueueBatch(int64_t qid, const std::vector<int64_t>& tids) = 0;
     /**
-     * @brief Enqueues one track at a position.
+     * @brief Enqueues one track at a zero-based insertion index.
      * @param qid Queue identifier; zero selects the default queue.
      * @param tid Track identifier.
-     * @param pos Zero-based insertion position, or `-1` to append.
-     * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
+     * @param index Zero-based insertion index in `[0, count]`, or `-1` to append.
+     * @return Success, or `InvalidArg` for an out-of-range index, `NotFound`,
+     * or a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> queueEnqueue(int64_t qid, int64_t tid,
-                                                                   int64_t pos = -1) = 0;
+                                                                    int64_t index = -1) = 0;
     /**
-     * @brief Removes the item at a queue position.
+     * @brief Removes the item at a zero-based queue index.
      * @param qid Queue identifier; zero selects the default queue.
-     * @param pos Zero-based position to remove.
-     * @return Success, or `NotFound` when no item has that position.
+     * @param index Zero-based index to remove (must be >= 0).
+     * @return Success, or `InvalidArg` for a negative index, `NotFound` when
+     * the index is beyond the queue, or a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> queueRemove(int64_t qid, int64_t pos) = 0;
+    virtual std::expected<void, kanariv::utils::Error> queueRemove(int64_t qid, int64_t index) = 0;
     /**
      * @brief Replaces all items in a queue from an ordered span of identifiers.
      * @param qid Queue identifier; zero selects the default queue.

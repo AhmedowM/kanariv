@@ -187,9 +187,10 @@ struct QueueItem {
     int64_t id{};        ///< Row id (PK).
     int64_t queue_id{1}; ///< Owning queue id (FK -> queues.id).
     int64_t track_id{};  ///< Referenced track id (FK -> tracks.id).
-    int64_t position{};  ///< Zero-based position within the queue (UNIQUE per queue_id).
-    int64_t added{};     ///< Timestamp when enqueued.
-
+    /// Stored gap-based ordering value (UNIQUE per queue_id). Not a zero-based
+    /// index: use the item's index in listQueueItems() for public APIs.
+    int64_t position{};
+    int64_t added{}; ///< Timestamp when enqueued.
 };
 
 /**
