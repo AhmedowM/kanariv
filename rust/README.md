@@ -166,9 +166,16 @@ result sets for nine queries (FTS, prefix, LIKE fallback, literal `%`, operator
 stripping, quoted phrase, empty/blank, no match), full field equality for
 lookup, and the error mappings. It runs as CTest case `test_rust_db_ffi`.
 
-The harness also prints a timing line, but treat it as illustrative only: the
-C++ side is a Debug build while the Rust side is `--release`, so it does not
-isolate FFI overhead. A release C++ build is required before drawing cost
+The harness also prints a timing line. Measured with both sides in Release
+(`release` intent, clang, 2000 iterations of `search("Abb", 10)` on a
+four-track database), the medians were ~320 us for the C++ `searchTracks`
+call and ~590 us for `search_json`, with ~10% of the Rust number coming from
+JSON plus ABI marshaling (the crate alone measured ~540 us). Most of the
+remaining time sits in SQLite statement handling on both sides, not at the
+boundary. Treat these as ballpark figures: the corpus is tiny, run-to-run
+noise is around 20% on a desktop Windows host, both sides prepare statements
+per call, and Rust links bundled SQLite 3.54.1 while C++ uses the system
+3.49.1. A realistic-size library benchmark is needed before drawing cost
 conclusions.
 
 Deliberately not done: implementing `IDatabase`, sharing an open connection or
