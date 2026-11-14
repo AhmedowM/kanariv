@@ -1,12 +1,12 @@
 #include <array>
+#include <cstdint>
+#include <exception>
+#include <expected>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/math.hpp>
 #include <kanariv/utils/record_json.hpp>
 #include <kanariv/utils/result.hpp>
-#include <cstdint>
-#include <exception>
-#include <expected>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -37,6 +37,8 @@ Json trackToJson(const kanariv::types::Track& t) {
     j["size"] = t.size;
     j["mtime"] = t.mtime;
     j["duration"] = t.duration;
+    j["replay_gain_track"] = t.replayGainTrack;
+    j["replay_gain_album"] = t.replayGainAlbum;
     j["sample_rate"] = t.sample_rate;
     j["channels"] = t.channels;
     j["bitrate"] = t.bitrate;
@@ -104,6 +106,8 @@ std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
         getI64("size", t.size, 0);
         getI64("mtime", t.mtime, 0);
         getDbl("duration", t.duration, 0);
+        getDbl("replay_gain_track", t.replayGainTrack, 0);
+        getDbl("replay_gain_album", t.replayGainAlbum, 0);
         {
             int64_t v;
             getI64("sample_rate", v, 0);
@@ -127,10 +131,18 @@ std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
         getI64("last_played", t.last_played, 0);
         getI64("date_added", t.date_added, 0);
         getI64("last_scanned", t.last_scanned, 0);
-        {
-            int dirtyTmp = 0;
-            getInt("dirty", dirtyTmp, 0);
-            t.dirty = dirtyTmp != 0;
+        // `dirty` is written as a JSON boolean; older exports stored 0/1, so
+        // accept the integer form as a fallback instead of dropping the flag.
+        if (j.contains("dirty") && !j["dirty"].isNull()) {
+            const Json dirty = j["dirty"];
+            if (dirty.isBoolean())
+                t.dirty = dirty.get<bool>();
+            else if (dirty.isNumber())
+                t.dirty = dirty.get<int64_t>() != 0;
+            else
+                t.dirty = false;
+        } else {
+            t.dirty = false;
         }
         getI64("library_id", t.library_id, 1);
         if (t.library_id == 0)

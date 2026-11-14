@@ -1,15 +1,22 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
+#include <cstddef>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
-#include <chrono>
 #include <stop_token>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "../src/utils/mpsc_queue.hpp"
 
 namespace kanariv::utils::test {
+
+// size()/empty() lock a mutex, so they must not be noexcept (lock failure
+// would terminate instead of propagating std::system_error).
+static_assert(!noexcept(std::declval<MpscQueue<int>&>().size()));
+static_assert(!noexcept(std::declval<MpscQueue<int>&>().empty()));
 
 bool queue_busy_on_full() {
     MpscQueue<int> q{2};

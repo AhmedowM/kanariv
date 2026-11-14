@@ -32,7 +32,7 @@ class Generator {
     /// @brief Coroutine promise. @ingroup kanariv_utils
     struct promise_type {
         std::optional<T> value_; ///< Most recently yielded value.
-        std::exception_ptr ex_; ///< Exception captured from the coroutine body.
+        std::exception_ptr ex_;  ///< Exception captured from the coroutine body.
 
         /** @brief Creates the owning Generator for this promise. */
         Generator get_return_object() {
@@ -86,6 +86,8 @@ class Generator {
 
         /** @brief Resumes the coroutine and advances to the next value. */
         iterator& operator++() {
+            if (!handle_)
+                return *this;
             handle_.promise().value_.reset();
             handle_.resume();
             if (handle_.promise().ex_)
@@ -98,7 +100,9 @@ class Generator {
         }
         /** @brief Compares this iterator with the end sentinel. */
         bool operator==(sentinel) const {
-            return handle_.done();
+            // A moved-from Generator owns no frame: treat it as an empty range
+            // instead of calling done() on a null coroutine handle.
+            return !handle_ || handle_.done();
         }
     };
 

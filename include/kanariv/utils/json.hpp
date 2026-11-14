@@ -16,10 +16,10 @@
  * preserved (ordered backend).
  */
 
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/utils/error.hpp>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -56,9 +56,16 @@ class KANARIV_API Json {
     Json(const Json& other);
     /// @brief Deep copy-assign. @ingroup kanariv_utils
     Json& operator=(const Json& other);
-    /// @brief Move (defined in .cpp: pimpl). @ingroup kanariv_utils
+    /**
+     * @brief Move (defined in .cpp: pimpl).
+     * @ingroup kanariv_utils
+     * @note `noexcept`, so `other` is left with a null pimpl. That is a valid
+     * empty/null JSON value: reads behave like JSON null and writes
+     * materialise a fresh backing value.
+     */
     Json(Json&& other) noexcept;
-    /// @brief Move-assign (defined in .cpp: pimpl). @ingroup kanariv_utils
+    /// @brief Move-assign (defined in .cpp: pimpl), same moved-from contract.
+    /// @ingroup kanariv_utils
     Json& operator=(Json&& other) noexcept;
     /// @brief Replace content with text. @ingroup kanariv_utils
     Json& operator=(std::string_view v);
@@ -104,8 +111,10 @@ class KANARIV_API Json {
      * @ingroup kanariv_utils
      * @param text UTF-8 JSON text.
      * @return Parsed value, or `Corrupt` Error on syntax failure.
+     * @note Not `noexcept`: the failure path allocates the error message, so a
+     * `std::bad_alloc` must propagate instead of terminating.
      */
-    static std::expected<Json, Error> tryParse(std::string_view text) noexcept;
+    static std::expected<Json, Error> tryParse(std::string_view text);
 
     /**
      * @brief Serializes to text.
@@ -159,18 +168,21 @@ class KANARIV_API Json {
     /**
      * @brief Non-throwing read access.
      * @ingroup kanariv_utils
+     * @note Not `noexcept`: the failure path allocates the error message.
      */
-    std::expected<Json, Error> at(std::string_view key) const noexcept;
+    std::expected<Json, Error> at(std::string_view key) const;
     /**
      * @brief Non-throwing array element access.
      * @ingroup kanariv_utils
+     * @note Not `noexcept`: the failure path allocates the error message.
      */
-    std::expected<Json, Error> at(std::size_t index) const noexcept;
+    std::expected<Json, Error> at(std::size_t index) const;
     /**
      * @brief Key of the object member at position `index` (for index loops).
      * @ingroup kanariv_utils
+     * @note Not `noexcept`: the failure path allocates the error message.
      */
-    std::expected<std::string, Error> keyAt(std::size_t index) const noexcept;
+    std::expected<std::string, Error> keyAt(std::size_t index) const;
 
     /**
      * @brief Typed read; strings, bools, integers, floats supported.
@@ -211,6 +223,9 @@ class KANARIV_API Json {
     std::unique_ptr<Impl> impl_;
     friend class JsonRef;
 
+    /// Materialises the pimpl after a move left it null. Not called from
+    /// `noexcept` operations, so allocation failure propagates normally.
+    void ensureImpl();
     std::string getString() const;
     bool getBool() const;
     int64_t getInt64() const;

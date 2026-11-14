@@ -78,12 +78,16 @@ inline bool fromHex(std::string_view hexStr, std::array<std::uint8_t, 32>& out) 
 /**
  * @brief Formats seconds as mm:ss or hh:mm:ss.
  * @ingroup kanariv_utils
- * @param secs Position or duration in seconds (negative clamps to 0).
+ * @param secs Position or duration in seconds. Negative and non-finite values
+ * clamp to 0; values above 1e9 seconds clamp to 1e9 (long is 32-bit on
+ * Windows, so the cast must stay inside its range).
  * @return Formatted time string.
  */
 [[nodiscard]] inline std::string formatClock(double secs) {
-    if (secs < 0)
-        secs = 0;
+    constexpr double maxSeconds = 1e9; // safely inside a 32-bit long
+    if (!std::isfinite(secs))
+        secs = 0.0;
+    secs = std::clamp(secs, 0.0, maxSeconds);
     long total = static_cast<long>(secs);
     if (long h = total / 3600; h > 0)
         return std::format("{:02}:{:02}:{:02}", h, (total % 3600) / 60, total % 60);

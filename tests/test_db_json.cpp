@@ -1,4 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
+#include <common.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/json.hpp>
@@ -6,11 +12,6 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/record_json.hpp>
-#include <common.hpp>
-#include <cstdint>
-#include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -65,6 +66,7 @@ TEST_CASE("exportJson and importJson roundtrip", "[db_json]") {
     t.path = "/tmp/j.mp3";
     t.title = "JsonTrack";
     t.artist = "JsonArtist";
+    t.dirty = true;
     for (int b = 0; b < 32; ++b)
         t.fingerprint[b] = (uint8_t)(0x11 + b);
     auto ins = db->insertTrack(t);
@@ -90,6 +92,8 @@ TEST_CASE("exportJson and importJson roundtrip", "[db_json]") {
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->size() == 1);
     REQUIRE((*tracks)[0].title == "JsonTrack");
+    // dirty is exported as a JSON boolean and must survive the import.
+    REQUIRE((*tracks)[0].dirty);
     {
         std::error_code ec;
         std::filesystem::remove(outPath, ec);
@@ -119,6 +123,105 @@ TEST_CASE("importJson handles duplicate fingerprint upsert", "[db_json]") {
         std::error_code ec;
         std::filesystem::remove(outPath, ec);
     }
+}
+
+TEST_CASE("track JSON roundtrip preserves every field", "[db_json]") {
+    kanariv::types::Track t;
+    t.id = 7;
+    t.size = 1001;
+    t.mtime = 1002;
+    t.duration = 123.25;
+    t.replayGainTrack = -6.5;
+    t.replayGainAlbum = -5.25;
+    t.sample_rate = 48000;
+    t.channels = 2;
+    t.bitrate = 320000;
+    t.year = 1999;
+    t.track_num = 5;
+    t.disc_num = 2;
+    t.rating = 4;
+    t.play_count = 13;
+    t.last_played = 14;
+    t.date_added = 15;
+    t.last_scanned = 16;
+    t.dirty = true;
+    t.library_id = 3;
+    t.deleted_at = 17;
+    t.path = "/music/roundtrip.mp3";
+    t.title = "Title X";
+    t.artist = "Artist X";
+    t.album = "Album X";
+    t.album_artist = "Album Artist X";
+    t.genre = "Genre X";
+    t.cover_art_path = "/covers/x.jpg";
+    for (int b = 0; b < 32; ++b)
+        t.fingerprint[static_cast<std::size_t>(b)] = static_cast<uint8_t>(0x40 + b);
+    t.source.kind = kanariv::types::SourceKind::external;
+    t.source.key = "content://track/7";
+    t.source.display_name = "Display X";
+    t.source.available = false;
+
+    const Json j = kanariv::utils::trackToJson(t);
+    REQUIRE(j["dirty"].isBoolean());
+    REQUIRE(j["replay_gain_track"].get<double>() == t.replayGainTrack);
+    REQUIRE(j["replay_gain_album"].get<double>() == t.replayGainAlbum);
+
+    auto parsed = kanariv::utils::trackFromJson(j);
+    REQUIRE(parsed.has_value());
+    const auto& r = *parsed;
+    REQUIRE(r.id == t.id);
+    REQUIRE(r.size == t.size);
+    REQUIRE(r.mtime == t.mtime);
+    REQUIRE(r.duration == t.duration);
+    REQUIRE(r.replayGainTrack == t.replayGainTrack);
+    REQUIRE(r.replayGainAlbum == t.replayGainAlbum);
+    REQUIRE(r.sample_rate == t.sample_rate);
+    REQUIRE(r.channels == t.channels);
+    REQUIRE(r.bitrate == t.bitrate);
+    REQUIRE(r.year == t.year);
+    REQUIRE(r.track_num == t.track_num);
+    REQUIRE(r.disc_num == t.disc_num);
+    REQUIRE(r.rating == t.rating);
+    REQUIRE(r.play_count == t.play_count);
+    REQUIRE(r.last_played == t.last_played);
+    REQUIRE(r.date_added == t.date_added);
+    REQUIRE(r.last_scanned == t.last_scanned);
+    REQUIRE(r.dirty == t.dirty);
+    REQUIRE(r.library_id == t.library_id);
+    REQUIRE(r.deleted_at == t.deleted_at);
+    REQUIRE(r.path == t.path);
+    REQUIRE(r.title == t.title);
+    REQUIRE(r.artist == t.artist);
+    REQUIRE(r.album == t.album);
+    REQUIRE(r.album_artist == t.album_artist);
+    REQUIRE(r.genre == t.genre);
+    REQUIRE(r.cover_art_path == t.cover_art_path);
+    REQUIRE(r.fingerprint == t.fingerprint);
+    REQUIRE(r.source.kind == t.source.kind);
+    REQUIRE(r.source.key == t.source.key);
+    REQUIRE(r.source.display_name == t.source.display_name);
+    REQUIRE(r.source.available == t.source.available);
+}
+
+TEST_CASE("trackFromJson accepts legacy integer dirty and missing gains", "[db_json]") {
+    Json j;
+    j["path"] = "/tmp/legacy.mp3";
+    j["library_id"] = 1;
+    j["dirty"] = 1;
+    auto dirtyOne = kanariv::utils::trackFromJson(j);
+    REQUIRE(dirtyOne.has_value());
+    REQUIRE(dirtyOne->dirty);
+    j["dirty"] = 0;
+    auto dirtyZero = kanariv::utils::trackFromJson(j);
+    REQUIRE(dirtyZero.has_value());
+    REQUIRE(!dirtyZero->dirty);
+    j["dirty"] = true;
+    auto dirtyBool = kanariv::utils::trackFromJson(j);
+    REQUIRE(dirtyBool.has_value());
+    REQUIRE(dirtyBool->dirty);
+    // Older exports have no ReplayGain keys: both default to 0 dB.
+    REQUIRE(dirtyBool->replayGainTrack == 0.0);
+    REQUIRE(dirtyBool->replayGainAlbum == 0.0);
 }
 
 TEST_CASE("trackFromJson invalid fingerprint falls back", "[db_json]") {

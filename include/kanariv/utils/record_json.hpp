@@ -8,14 +8,15 @@
  * export/import path and the IPC wire codec. It lives in `utils` (below both
  * `db` and `ipc`) so neither component has to link the other. Keys keep
  * insertion order; deserialization tolerates missing keys and normalizes
- * `library_id == 0` to 1. A missing or invalid `fingerprint` hex falls back to
- * a deterministic path-derived digest.
+ * `library_id == 0` to 1. `dirty` is read as a boolean with a legacy integer
+ * (0/1) fallback. A missing or invalid `fingerprint` hex falls back to a
+ * deterministic path-derived digest.
  */
 
+#include <expected>
 #include <kanariv/types/record.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
-#include <expected>
 
 namespace kanariv::utils {
 

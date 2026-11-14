@@ -1,11 +1,11 @@
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/json.hpp>
-#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <expected>
 #include <iterator>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/result.hpp>
 #include <limits>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -30,8 +30,12 @@ namespace {
 
 Json::Impl& Json::resolveImpl(Json* owner, [[maybe_unused]] std::string_view key, std::size_t index,
                               bool byIndex) {
-    if (!owner || !owner->impl_)
+    if (!owner)
         throwJson("json: null reference");
+    // Mutable access materialises storage: a moved-from Json has a null pimpl
+    // and writes to it must work like writes to an empty/null value.
+    if (!owner->impl_)
+        owner->impl_ = std::make_unique<Impl>();
     auto& impl = *owner->impl_;
     auto& v = impl.v;
     if (byIndex) {
@@ -84,44 +88,64 @@ struct JsonSlots {
 
 Json::Json() : impl_(std::make_unique<Impl>()) {}
 Json::~Json() = default;
-Json::Json(const Json& other) : impl_(std::make_unique<Impl>(*other.impl_)) {}
+
+void Json::ensureImpl() {
+    if (!impl_)
+        impl_ = std::make_unique<Impl>();
+}
+
+// Copy operations allocate, so they may not live in a noexcept move. Instead
+// they treat a null source pimpl (moved-from Json) as a JSON null value.
+Json::Json(const Json& other) : impl_(std::make_unique<Impl>()) {
+    if (other.impl_)
+        impl_->v = other.impl_->v;
+}
 Json& Json::operator=(const Json& other) {
-    if (this != &other)
-        *impl_ = *other.impl_;
+    if (this != &other) {
+        ensureImpl();
+        impl_->v = other.impl_ ? other.impl_->v : nlohmann::ordered_json(nullptr);
+    }
     return *this;
 }
 Json::Json(Json&& other) noexcept = default;
 Json& Json::operator=(Json&& other) noexcept = default;
 
 Json& Json::operator=(std::string_view v) {
+    ensureImpl();
     impl_->v = std::string(v);
     return *this;
 }
 
 Json& Json::operator=(const char* v) {
+    ensureImpl();
     impl_->v = v ? std::string(v) : std::string();
     return *this;
 }
 
 Json& Json::operator=(bool v) {
+    ensureImpl();
     impl_->v = v;
     return *this;
 }
 
 Json& Json::operator=(std::nullptr_t) {
+    ensureImpl();
     impl_->v = nullptr;
     return *this;
 }
 
 void Json::assignInt(int64_t v) {
+    ensureImpl();
     impl_->v = v;
 }
 
 void Json::assignUInt(uint64_t v) {
+    ensureImpl();
     impl_->v = v;
 }
 
 void Json::assignDouble(double v) {
+    ensureImpl();
     impl_->v = v;
 }
 
@@ -153,7 +177,7 @@ Json Json::parse(std::string_view text) {
     }
 }
 
-std::expected<Json, Error> Json::tryParse(std::string_view text) noexcept {
+std::expected<Json, Error> Json::tryParse(std::string_view text) {
     try {
         return parse(text);
     } catch (const JsonError& e) {
@@ -222,7 +246,7 @@ Json Json::operator[](std::string_view key) const {
     return out;
 }
 
-std::expected<Json, Error> Json::at(std::string_view key) const noexcept {
+std::expected<Json, Error> Json::at(std::string_view key) const {
     try {
         Json out;
         out.impl_->v = JsonSlots::get(resolveConstImpl(this, key, 0, false), key, 0, false);
@@ -232,7 +256,7 @@ std::expected<Json, Error> Json::at(std::string_view key) const noexcept {
     }
 }
 
-std::expected<Json, Error> Json::at(std::size_t index) const noexcept {
+std::expected<Json, Error> Json::at(std::size_t index) const {
     try {
         Json out;
         out.impl_->v = JsonSlots::get(resolveConstImpl(this, {}, index, true), {}, index, true);
@@ -242,7 +266,7 @@ std::expected<Json, Error> Json::at(std::size_t index) const noexcept {
     }
 }
 
-std::expected<std::string, Error> Json::keyAt(std::size_t index) const noexcept {
+std::expected<std::string, Error> Json::keyAt(std::size_t index) const {
     try {
         if (!impl_ || !impl_->v.is_object() || index >= impl_->v.size())
             throwJson("json: key index out of range");

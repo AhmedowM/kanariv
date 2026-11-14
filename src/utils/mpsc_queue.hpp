@@ -8,11 +8,11 @@
  * engine event queue and the database writer thread.
  */
 
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
 #include <condition_variable>
 #include <cstddef>
 #include <expected>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <mutex>
 #include <optional>
 #include <stop_token>
@@ -73,7 +73,9 @@ class MpscQueue {
      * @ingroup kanariv_utils
      * @return `wr_ - rd_` (computed under lock).
      */
-    [[nodiscard]] std::size_t size() const noexcept {
+    // Not noexcept: locking may throw std::system_error, and a noexcept
+    // function would turn that into an immediate terminate.
+    [[nodiscard]] std::size_t size() const {
         std::lock_guard<std::mutex> lk(mutex_);
         return wr_ - rd_;
     }
@@ -83,7 +85,7 @@ class MpscQueue {
      * @ingroup kanariv_utils
      * @return true if `wr_ == rd_` (under lock).
      */
-    [[nodiscard]] bool empty() const noexcept {
+    [[nodiscard]] bool empty() const {
         std::lock_guard<std::mutex> lk(mutex_);
         return wr_ == rd_;
     }

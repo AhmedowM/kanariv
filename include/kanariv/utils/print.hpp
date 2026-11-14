@@ -50,7 +50,9 @@ void println(std::ostream& os, std::format_string<A...> fmt, A&&... args) {
  */
 template <typename... A>
 void print(std::FILE* f, std::format_string<A...> fmt, A&&... args) {
-    std::fputs(std::format(fmt, std::forward<A>(args)...).c_str(), f);
+    // fwrite with the real length: formatted output may contain embedded NULs.
+    const std::string s = std::format(fmt, std::forward<A>(args)...);
+    std::fwrite(s.data(), 1, s.size(), f);
 }
 
 /**
@@ -63,7 +65,7 @@ template <typename... A>
 void println(std::FILE* f, std::format_string<A...> fmt, A&&... args) {
     std::string s = std::format(fmt, std::forward<A>(args)...);
     s.push_back('\n');
-    std::fputs(s.c_str(), f);
+    std::fwrite(s.data(), 1, s.size(), f);
 }
 
 /**
