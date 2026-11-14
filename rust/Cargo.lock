@@ -121,6 +121,14 @@ name = "kanariv-cli"
 version = "2.0.0"
 dependencies = [
  "clap",
+ "kanariv-ipc",
+ "serde_json",
+]
+
+[[package]]
+name = "kanariv-ipc"
+version = "2.0.0"
+dependencies = [
  "serde",
  "serde_json",
 ]

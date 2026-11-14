@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::client::{self, DEFAULT_TIMEOUT};
 use crate::config::Config;
 use crate::error::{Result, StatusCode};
-use crate::ipc::protocol::{Command, Payload, Status};
+use crate::ipc::{Command, Payload, RepeatMode, Reply, Status};
 use crate::outcome::Outcome;
 
 pub struct App {
@@ -265,10 +265,8 @@ impl App {
         let payload = self.send(&Command::QueueCreate {
             name: name.to_string(),
         })?;
-        let line = match &payload.kind {
-            crate::ipc::protocol::PayloadKind::QueueCreated { id, name } => {
-                Some(format!("Created queue {id} '{name}'"))
-            }
+        let line = match &payload.reply {
+            Reply::QueueCreated { id, name } => Some(format!("Created queue {id} '{name}'")),
             _ => None,
         };
         Ok(Outcome::confirm(payload, line))
@@ -312,9 +310,9 @@ impl App {
 
     pub fn queue_repeat(&self, mode: Option<&str>) -> Result<Outcome> {
         let wire = match mode {
-            Some("off") => Some("Off"),
-            Some("one") => Some("One"),
-            Some("all") => Some("All"),
+            Some("off") => Some(RepeatMode::Off),
+            Some("one") => Some(RepeatMode::One),
+            Some("all") => Some(RepeatMode::All),
             Some(other) => {
                 return Ok(Outcome::fail(format!(
                     "repeat: invalid mode '{other}' (expected off|one|all)"
@@ -324,11 +322,11 @@ impl App {
                 let current = self
                     .send(&Command::StatusReq)
                     .ok()
-                    .and_then(|payload| payload.status().map(|status| status.repeat.clone()));
-                match current.as_deref() {
-                    Some("Off") => Some("All"),
-                    Some("All") => Some("One"),
-                    Some("One") => Some("Off"),
+                    .and_then(|payload| payload.status().map(|status| status.repeat));
+                match current {
+                    Some(RepeatMode::Off) => Some(RepeatMode::All),
+                    Some(RepeatMode::All) => Some(RepeatMode::One),
+                    Some(RepeatMode::One) => Some(RepeatMode::Off),
                     _ => return Ok(Outcome::fail("repeat: could not read current mode")),
                 }
             }
@@ -336,10 +334,10 @@ impl App {
         let payload = self.send(&Command::QueueRepeat { mode: wire })?;
         let final_mode = payload
             .status()
-            .map_or_else(|| wire.unwrap_or("Off"), |status| status.repeat.as_str());
+            .map_or_else(|| wire.unwrap_or(RepeatMode::Off), |status| status.repeat);
         let label = match final_mode {
-            "All" => "all",
-            "One" => "one",
+            RepeatMode::All => "all",
+            RepeatMode::One => "one",
             _ => "off",
         };
         Ok(Outcome::confirm(payload, Some(format!("Repeat: {label}"))))

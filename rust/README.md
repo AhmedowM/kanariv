@@ -1,12 +1,34 @@
 # kanariv-rs (experimental Rust CLI)
 
-Phase 1 of the Rust integration exploration: a **frontend-only CLI** that talks
-to the existing C++ daemon over the existing IPC wire. It links no C++ code,
-uses no FFI, and never touches decoding or the audio thread — the audio path
-stays entirely C++ by design.
+An isolated Rust exploration in two layers:
 
-The C++ `kanariv` binary remains canonical. This crate builds `kanariv-rs`
-alongside it and is disabled unless explicitly enabled.
+1. `kanariv-ipc` — a reusable, FFI-free codec and transport for the existing
+   IPC wire. It models all 65 commands and all 26 result kinds key-for-key
+   against `src/ipc/protocol.cpp`, with a hardened frame parser and mutation
+   tests.
+2. `kanariv-cli` (binary `kanariv-rs`) — a frontend-only CLI that talks to the
+   existing C++ daemon over that wire.
+
+Neither crate links C++ code, uses FFI, or touches decoding or the audio
+thread — the audio path stays entirely C++ by design.
+
+The C++ `kanariv` binary remains canonical. The Rust target builds alongside
+it and is disabled unless explicitly enabled.
+
+## Workspace layout
+
+```
+rust/
+  Cargo.toml          # workspace (kanariv-ipc + kanariv-cli)
+  kanariv-ipc/        # wire codec + transport (no CLI policy)
+    src/frame.rs      # [u32 BE length][JSON], 16 MiB cap
+    src/command.rs    # typed Command, exact C++ JSON
+    src/reply.rs      # typed Reply/Payload parsing
+    src/model.rs      # Track, Playlist, Status records, wire enums
+    tests/            # golden schema, reply fixtures, mutation/fuzz
+  kanariv-cli/        # CLI, config discovery, daemon lifecycle
+  CMakeLists.txt      # optional KANARIV_ENABLE_RUST_CLI integration
+```
 
 ## Scope
 
@@ -30,9 +52,9 @@ API is the planned successor.
 
 ```sh
 cargo build --release            # from rust/
-cargo test
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
+cargo test --workspace
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 Via CMake (off by default; the C++ build is untouched when disabled):
@@ -57,14 +79,26 @@ CARGO_BUILD_JOBS=2 cmake --build build/rust-cli-clang --target kanariv_rs_check
 
 ## Talking to the daemon
 
-The Rust CLI is a client only:
+`kanariv-ipc` is a client-side codec only:
 
 - It speaks the 4-byte big-endian length + JSON wire protocol
-  (`rust/kanariv-cli/src/ipc/`), with the same 16 MB frame cap.
-- It locates the socket/pid files exactly like `kanariv::config`, including
-  the `std::hash`-derived `kanariv-<hex8>` name.
+  (`rust/kanariv-ipc/src/frame.rs`), with the same 16 MiB frame cap enforced
+  before allocation.
+- `Command` covers every variant of `ipc::toJson(const Command&)`, including
+  C++'s explicit `null` optionals and `idOrIndex`/`newName`/`deltaPct`
+  spellings.
+- `Reply` covers every variant of `ipc::toJson(const Result&)` plus
+  `LibraryStatsDetailed`; unknown future types become `Reply::Other` and keep
+  their raw JSON.
+- The CLI locates the socket/pid files exactly like `kanariv::config`,
+  including the `std::hash`-derived `kanariv-<hex8>` name.
 - `start` spawns the C++ daemon: `KANARIV_DAEMON_BIN` when set, otherwise a
   `kanariv`/`kanariv.exe` sibling of the running executable.
+
+The codec tests are the executable schema contract: golden JSON for every
+command, fixtures for every reply kind, and deterministic random/mutation
+tests that assert the frame and reply parsers never panic on arbitrary input
+(no nightly or libFuzzer required).
 
 The socket name embeds `std::hash<std::string>` of the database path, which is
 implementation-defined. The port covers the MSVC STL (FNV-1a 64, used by

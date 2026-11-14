@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["kanariv-cli"]
+members = ["kanariv-ipc", "kanariv-cli"]
 
 [workspace.package]
 version = "2.0.0"

@@ -57,7 +57,7 @@ pub fn start(config: &Config, foreground: bool) -> Result<Outcome> {
     for _ in 0..50 {
         match client::send(
             &config.socket_path,
-            &ipc::protocol::Command::StatusReq,
+            &ipc::Command::StatusReq,
             Duration::from_millis(500),
         ) {
             Ok(payload) if payload.status().is_some() => {
@@ -85,7 +85,7 @@ pub fn start(config: &Config, foreground: bool) -> Result<Outcome> {
 pub fn shutdown(config: &Config) -> Outcome {
     let result = client::send(
         &config.socket_path,
-        &ipc::protocol::Command::Shutdown,
+        &ipc::Command::Shutdown,
         Duration::from_millis(2000),
     );
     if let Err(err) = result {

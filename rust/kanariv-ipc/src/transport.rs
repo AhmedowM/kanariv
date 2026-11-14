@@ -39,22 +39,36 @@ mod imp {
     }
 }
 
+/// A durably connected IPC endpoint.
 pub struct Connection {
     stream: imp::Raw,
 }
 
 impl Connection {
+    /// Connects to a named pipe (`\\.\pipe\...`) or Unix socket path.
+    ///
+    /// # Errors
+    /// Propagates the platform connect error.
     pub fn connect(path: &str) -> io::Result<Self> {
         Ok(Self {
             stream: imp::connect(path)?,
         })
     }
 
+    /// Sends raw bytes (callers normally pass a framed payload).
+    ///
+    /// # Errors
+    /// Propagates the platform write error.
     pub fn send_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.stream.write_all(bytes)?;
         self.stream.flush()
     }
 
+    /// Reads exactly one framed payload.
+    ///
+    /// # Errors
+    /// Propagates read errors and refuses frames above
+    /// [`crate::frame::MAX_FRAME`].
     pub fn recv_bytes(&mut self) -> io::Result<Vec<u8>> {
         super::frame::decode_from(&mut self.stream)
     }

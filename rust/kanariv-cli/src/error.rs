@@ -1,89 +1,13 @@
-//! Error model mirroring `kanariv::utils::Error`.
+//! CLI error type on top of the shared wire error model.
 //!
-//! The wire carries both a symbolic code and a numeric value; the CLI uses
-//! the symbolic form for display and the numeric form only as a fallback.
+//! `StatusCode` and wire parsing live in `kanariv-ipc`; this module adds the
+//! CLI's exit-code contract and stderr rendering.
 
 use std::fmt;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StatusCode {
-    Ok,
-    InvalidArg,
-    NotFound,
-    Unsupported,
-    Io,
-    Device,
-    State,
-    NoMem,
-    Internal,
-    AlreadyExists,
-    Busy,
-    Corrupt,
-    NoSpace,
-    Unknown,
-}
+pub use kanariv_ipc::StatusCode;
 
-impl StatusCode {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Ok => "Ok",
-            Self::InvalidArg => "InvalidArg",
-            Self::NotFound => "NotFound",
-            Self::Unsupported => "Unsupported",
-            Self::Io => "Io",
-            Self::Device => "Device",
-            Self::State => "State",
-            Self::NoMem => "NoMem",
-            Self::Internal => "Internal",
-            Self::AlreadyExists => "AlreadyExists",
-            Self::Busy => "Busy",
-            Self::Corrupt => "Corrupt",
-            Self::NoSpace => "NoSpace",
-            Self::Unknown => "Unknown",
-        }
-    }
-
-    #[must_use]
-    pub fn from_wire(name: &str) -> Self {
-        match name {
-            "Ok" => Self::Ok,
-            "InvalidArg" => Self::InvalidArg,
-            "NotFound" => Self::NotFound,
-            "Unsupported" => Self::Unsupported,
-            "Io" => Self::Io,
-            "Device" => Self::Device,
-            "State" => Self::State,
-            "NoMem" => Self::NoMem,
-            "Internal" => Self::Internal,
-            "AlreadyExists" => Self::AlreadyExists,
-            "Busy" => Self::Busy,
-            "Corrupt" => Self::Corrupt,
-            "NoSpace" => Self::NoSpace,
-            _ => Self::Unknown,
-        }
-    }
-
-    #[must_use]
-    pub fn from_value(value: u8) -> Self {
-        match value {
-            0 => Self::Ok,
-            1 => Self::InvalidArg,
-            2 => Self::NotFound,
-            3 => Self::Unsupported,
-            4 => Self::Io,
-            5 => Self::Device,
-            6 => Self::State,
-            7 => Self::NoMem,
-            8 => Self::Internal,
-            9 => Self::AlreadyExists,
-            10 => Self::Busy,
-            11 => Self::Corrupt,
-            12 => Self::NoSpace,
-            _ => Self::Unknown,
-        }
-    }
-}
+use kanariv_ipc::WireError;
 
 #[derive(Clone, Debug)]
 pub struct Error {
@@ -129,6 +53,12 @@ impl Error {
             text.push_str("\nhint: run `kanariv start` to start the daemon");
         }
         text
+    }
+}
+
+impl From<WireError> for Error {
+    fn from(err: WireError) -> Self {
+        Self::new(err.code, err.message)
     }
 }
 

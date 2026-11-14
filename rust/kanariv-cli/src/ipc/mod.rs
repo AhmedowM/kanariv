@@ -1,9 +1,6 @@
-//! Wire protocol compatible with `kanariv::ipc` (serde models + framing).
+//! Wire codec re-exports from the shared `kanariv-ipc` crate.
 
-pub mod frame;
-pub mod protocol;
-pub mod transport;
-
-pub use frame::encode;
-pub use protocol::{Payload, QueueEntry};
-pub use transport::Connection;
+pub use kanariv_ipc::{
+    encode, encode_request, parse_reply, Command, Connection, Payload, QueueEntry, RepeatMode,
+    Reply, Status, Track,
+};

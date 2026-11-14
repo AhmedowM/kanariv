@@ -3,7 +3,7 @@
 //! String widths are measured in bytes, like `std::format` on `std::string`,
 //! so table alignment matches the C++ output exactly for byte-oriented text.
 
-use crate::ipc::protocol::{Payload, PayloadKind, Status, Track};
+use crate::ipc::{Payload, Reply, Status, Track};
 
 #[must_use]
 pub fn format_time(seconds: f64) -> String {
@@ -60,18 +60,18 @@ pub fn print_json(payload: &Payload) {
 /// Renders a result in human form. `highlight` is the id to mark in a queue
 /// listing (0 = none), matching the C++ formatter's `> ` marker.
 pub fn print_payload(payload: &Payload, highlight: i64, color: bool) {
-    match &payload.kind {
-        PayloadKind::Status(status) => print_status(status),
-        PayloadKind::QueueTracks(tracks) => print_queue_tracks(tracks, highlight, color),
-        PayloadKind::Queues(entries) => print_queues(entries),
-        PayloadKind::QueueCreated { id, name } => println!("Created queue {id} '{name}'"),
-        PayloadKind::VolumeInfo { vol, muted } => print_volume(*vol, *muted),
-        PayloadKind::Info {
+    match &payload.reply {
+        Reply::Status(status) => print_status(status),
+        Reply::QueueTracks(tracks) => print_queue_tracks(tracks, highlight, color),
+        Reply::Queues(entries) => print_queues(entries),
+        Reply::QueueCreated { id, name } => println!("Created queue {id} '{name}'"),
+        Reply::VolumeInfo { vol, muted } => print_volume(*vol, *muted),
+        Reply::TrackInfo {
             track,
             play_count,
             last_played,
         } => print_track_info(track, *play_count, *last_played),
-        PayloadKind::Other => print_json(payload),
+        _ => print_json(payload),
     }
 }
 
