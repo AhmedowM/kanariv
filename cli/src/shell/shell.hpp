@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <memory>
 #include <ostream>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -41,7 +42,13 @@ using detail::parseVolume;
 
 class Shell {
   public:
-    explicit Shell(kanariv::config::Config cfg);
+    /**
+     * @brief Binds the shell to a config and the process stop token.
+     * @param cfg Resolved config (pre-parse; refreshed in run()).
+     * @param stop Process stop token observed by every long-running loop;
+     *             empty when no signal handling is installed.
+     */
+    explicit Shell(kanariv::config::Config cfg, std::stop_token stop = {});
     ~Shell();
     int run(int argc, char** argv);
 
@@ -49,6 +56,7 @@ class Shell {
     kanariv::config::Config config_;
     kanariv::app::App app_;
     std::unique_ptr<CLI::App> cli_;
+    std::stop_token stop_;
 };
 
 } // namespace kanariv::app::cli

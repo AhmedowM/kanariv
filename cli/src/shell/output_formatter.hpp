@@ -87,7 +87,8 @@ class OutputFormatter {
      * @param r Result to print.
      * @param out Output stream for success (default stdout).
      * @param err Output stream for errors (default stderr).
-     * @return 0 on success, 1 if Result holds Error variant.
+     * @return 0 on success; for an embedded error, the shared exit-code
+     *         table's value (1/105/106/109), never a re-derived 0/1.
      *
      * Routes Error variants to err stream, others to out stream.
      * Suitable for CLI main() to return appropriate exit code.

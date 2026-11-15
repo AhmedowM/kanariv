@@ -58,6 +58,14 @@ std::string readFile(const std::filesystem::path& p) {
     return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 }
 
+std::size_t countOf(const std::string& hay, const std::string& needle) {
+    std::size_t n = 0;
+    for (auto pos = hay.find(needle); pos != std::string::npos;
+         pos = hay.find(needle, pos + needle.size()))
+        ++n;
+    return n;
+}
+
 RunResult runCli(const std::vector<std::string>& args) {
     namespace fs = std::filesystem;
     static std::atomic<int> ctr{9000};
@@ -305,6 +313,39 @@ TEST_CASE("cli status watch validates interval", "[cli]") {
     REQUIRE(contains(r.err, "positive"));
 }
 
+TEST_CASE("cli status watch and follow are aliases", "[cli]") {
+    // Both flags bound the same bool before, so passing both was silently
+    // accepted. They are distinct now and the contradictory pair is rejected
+    // before any daemon interaction.
+    auto both = runCli(withCfg("gold_wf1", {"status", "--watch", "--follow"}));
+    REQUIRE(both.exitCode == 1);
+    REQUIRE(contains(both.err, "--watch"));
+    REQUIRE(contains(both.err, "--follow"));
+    // Each flag alone still reaches the shared interval validation.
+    auto follow = runCli(withCfg("gold_wf2", {"status", "--follow", "--interval", "0"}));
+    REQUIRE(follow.exitCode == 1);
+    REQUIRE(contains(follow.err, "positive"));
+}
+
+TEST_CASE("cli first run writes config only for mutating commands", "[cli]") {
+    namespace fs = std::filesystem;
+    fs::path dir = tempDirPath("gold_firstrun");
+    fs::path cfg = dir / "config.json";
+    std::string cfgS = cfg.generic_string();
+    // Read-only command with no config file: answered from defaults and must
+    // not create the file (it made every invocation a mutating one).
+    auto ro = runCli({"--config", cfgS, "config", "get", "logLevel"});
+    REQUIRE(ro.exitCode == 109);
+    REQUIRE(contains(ro.err, "config not found"));
+    REQUIRE_FALSE(fs::exists(cfg));
+    // Mutating command persists defaults for the next run. The command itself
+    // needs a daemon (105 here), but the first-run config is still written;
+    // the exit code is not asserted because a developer may have a daemon.
+    auto rw = runCli({"--config", cfgS, "config", "set", "golden_key", "v"});
+    REQUIRE(fs::exists(cfg));
+    REQUIRE(contains(readFile(cfg), "\"dbPath\""));
+}
+
 TEST_CASE("cli enum options reject out-of-set values", "[cli]") {
     auto e = runCli(withCfg(
         "gold_exp", {"playlist", "export", "--pid", "1", "--path", "x", "--format", "bogus"}));
@@ -320,6 +361,9 @@ TEST_CASE("cli no-daemon errors point at start", "[cli]") {
         REQUIRE(r.exitCode == 105);
         REQUIRE(contains(r.err, "daemon not running"));
         REQUIRE(contains(r.err, "kanariv start"));
+        // The hint belongs to the error message; re-wrapping it per render
+        // path printed it twice.
+        REQUIRE(countOf(r.err, "hint:") == 1);
     }
     auto q = runCli(withCfg("gold_nd2", {"queue", "list"}));
     REQUIRE(q.exitCode == 105);
@@ -541,6 +585,13 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     auto addMissing = run({"queue", "add", (music / "nope.mp3").generic_string()});
     REQUIRE(addMissing.exitCode == 1);
     REQUIRE(contains(addMissing.err, "no such file"));
+    // JSON mode must not mask the batch status: a failed add still emits its
+    // JSON payload on stdout and exits non-zero (it used to exit 0 because a
+    // QueueTracks payload was present).
+    auto addMissingJson = run({"queue", "add", (music / "nope.mp3").generic_string(), "--json"});
+    REQUIRE(addMissingJson.exitCode == 1);
+    REQUIRE(contains(addMissingJson.out, "\"QueueTracks\""));
+    REQUIRE(contains(addMissingJson.err, "no such file"));
     auto addEmpty = run({"queue", "add", (music / "*.xyz").generic_string()});
     REQUIRE(addEmpty.exitCode == 0);
     REQUIRE(contains(addEmpty.err, "No files matched"));

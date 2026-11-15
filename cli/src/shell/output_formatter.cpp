@@ -1,5 +1,6 @@
 #include "output_formatter.hpp"
 
+#include "cli_helpers.hpp"
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/types/format.hpp>
@@ -505,13 +506,15 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
 
 int OutputFormatter::printWithStatus(const kanariv::ipc::Result& r, std::ostream& out,
                                      std::ostream& err) const {
-    bool isError = std::holds_alternative<kanariv::utils::Error>(r);
-    if (isError) {
+    // Status comes from the shared exit-code table, never from re-deriving
+    // 0/1 out of the embedded error alternative: two sources disagreed
+    // (105/106/109 vs 1) depending on the render path.
+    if (const auto* e = std::get_if<kanariv::utils::Error>(&r)) {
         print(r, err);
-        return 1;
+        return detail::exitCodeForError(*e);
     }
     print(r, out);
-    return 0;
+    return detail::exitOk;
 }
 
 } // namespace kanariv::app::cli

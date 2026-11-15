@@ -94,6 +94,12 @@ if(KANARIV_ENABLE_TESTS)
   kanariv_add_catch_test(test_config tests/test_config.cpp LIBS kanariv::config kanariv::utils)
   kanariv_add_catch_test(test_app_render tests/test_app_render.cpp LIBS kanariv::app kanariv::ipc kanariv::utils)
 
+  # CLI policy helpers (exit-code table, retry backoff, ANSI gate, stop-flag
+  # polling): pure logic from cli/src/shell/cli_helpers.hpp, exercised without
+  # spawning the CLI or a daemon.
+  kanariv_add_catch_test(test_cli_logic tests/test_cli_logic.cpp LIBS kanariv::utils)
+  target_include_directories(test_cli_logic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cli/src/shell)
+
   kanariv_add_catch_test(test_media_source tests/test_media_source.cpp LIBS kanariv::media kanariv::player kanariv::utils)
   kanariv_add_catch_test(test_db_source tests/test_db_source.cpp LIBS kanariv::db kanariv::utils kanariv::sqlite3)
   kanariv_add_catch_test(test_service_host tests/test_service_host.cpp LIBS kanariv::service kanariv::config kanariv::db kanariv::utils kanariv::sqlite3)

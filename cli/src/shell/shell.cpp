@@ -59,6 +59,7 @@
 #include <variant>
 #include <vector>
 
+#include "cli_helpers.hpp"
 #include "output_formatter.hpp"
 #include "parse.hpp"
 #include "preview.hpp"
@@ -117,21 +118,9 @@ std::string statusLine(const kanariv::ipc::Status& st) {
     return s;
 }
 
-// Map StatusCode to a finer exit code (F-13).
-// 0 = success, 1 = general error, 105 = daemon not running / bad state,
-// 106 = invalid argument, 109 = not found.
-int exitCodeForError(const kanariv::utils::Error& e) {
-    switch (e.code) {
-        case kanariv::utils::StatusCode::InvalidArg:
-            return 106;
-        case kanariv::utils::StatusCode::NotFound:
-            return 109;
-        case kanariv::utils::StatusCode::State:
-            return 105;
-        default:
-            return 1;
-    }
-}
+// Exit codes come from the one table in cli_helpers.hpp (0 success, 1
+// runtime, 105 daemon down/bad state, 106 invalid argument, 109 not found).
+// No render path may re-derive status from an embedded ipc::Result error.
 
 int renderError(const kanariv::utils::Error& e) {
     std::string text;
@@ -140,22 +129,60 @@ int renderError(const kanariv::utils::Error& e) {
     return exitCodeForError(e);
 }
 
-int renderJson(const kanariv::ipc::Result& r) {
+// Prints a result as JSON on stdout. Never returns a status: the caller
+// decides it, so JSON mode cannot mask a failed batch with exit 0.
+void renderJson(const kanariv::ipc::Result& r) {
     OutputFormatter fmt{true};
     fmt.print(r, std::cout);
-    return 0;
 }
 
-// Terminal color detection for renderers (NO_COLOR honored).
-bool useColor() {
-    if (std::getenv("NO_COLOR") != nullptr)
-        return false;
+// True when stdout is an interactive terminal (input for the ANSI gate).
+bool stdoutIsTty() {
 #ifdef _WIN32
     return ::_isatty(::_fileno(stdout)) != 0;
 #else
     return ::isatty(STDOUT_FILENO) != 0;
 #endif
 }
+
+// Terminal/ANSI detection for renderers (NO_COLOR honored). Gates colour and
+// the carriage-return/erase-line escapes so piped output stays clean.
+bool useColor() {
+    return ansiEnabled(stdoutIsTty(), std::getenv("NO_COLOR") != nullptr);
+}
+
+/**
+ * @brief Persists first-run defaults at scope exit for mutating commands.
+ * @details A config that did not exist before this invocation is written
+ * after a mutating command (or a daemon start) so the next run sees the same
+ * defaults. Read-only commands stay read-only. A failed write is a warning,
+ * not a command failure: the command already ran, and a read-only config
+ * location must not turn `queue add` into an error.
+ */
+class PersistDefaultsGuard {
+  public:
+    PersistDefaultsGuard(const kanariv::config::Config& cfg, bool enabled)
+        : cfg_(cfg), enabled_(enabled) {}
+    PersistDefaultsGuard(const PersistDefaultsGuard&) = delete;
+    PersistDefaultsGuard& operator=(const PersistDefaultsGuard&) = delete;
+    ~PersistDefaultsGuard() {
+        if (!enabled_ || cfg_.configPath.empty())
+            return;
+        std::error_code ec;
+        auto parent = cfg_.configPath.parent_path();
+        if (!parent.empty())
+            std::filesystem::create_directories(parent, ec);
+        auto saved = kanariv::config::saveConfig(cfg_);
+        if (!saved) {
+            kanariv::println(std::cerr, "warning: could not write config file '{}': {}",
+                             cfg_.configPath.generic_string(), saved.error().message);
+        }
+    }
+
+  private:
+    const kanariv::config::Config& cfg_;
+    bool enabled_;
+};
 
 // Renders a Phase-1 outcome: errors (with hint), JSON results, human
 // lines, bare results, or silent success, in that order.
@@ -166,18 +193,20 @@ int render(kanariv::app::AppResult res, bool asJson, std::string_view columns = 
     if (outcome.failed) {
         if (outcome.line)
             kanariv::println(std::cerr, "{}", *outcome.line);
-        return 1;
+        return exitRuntime;
     }
     if (outcome.quiet && !asJson)
-        return 0;
-    if (asJson && outcome.result)
-        return renderJson(*outcome.result);
+        return exitOk;
+    if (asJson && outcome.result) {
+        renderJson(*outcome.result);
+        return exitOk;
+    }
     if (outcome.line) {
         if (outcome.toStderr)
             kanariv::println(std::cerr, "{}", *outcome.line);
         else
             kanariv::println(std::cout, "{}", *outcome.line);
-        return 0;
+        return exitOk;
     }
     if (outcome.result) {
         OutputFormatter fmt{false};
@@ -185,11 +214,12 @@ int render(kanariv::app::AppResult res, bool asJson, std::string_view columns = 
             fmt.setColumns(columns);
         fmt.print(*outcome.result, std::cout);
     }
-    return 0;
+    return exitOk;
 }
 
 // Flushes a batch report: stderr blob, JSON payload under --json,
-// stdout blob in text mode, then the recorded exit code.
+// stdout blob in text mode, then the recorded exit code. JSON mode keeps the
+// exit code: a failed/partial batch emits JSON on stdout *and* exits non-zero.
 int renderBatch(kanariv::app::BatchResult res, bool asJson) {
     if (!res)
         return renderError(res.error());
@@ -197,10 +227,8 @@ int renderBatch(kanariv::app::BatchResult res, bool asJson) {
     if (!rep.err.empty())
         kanariv::println(std::cerr, "{}", rep.err);
     if (asJson) {
-        if (rep.json) {
+        if (rep.json)
             renderJson(*rep.json);
-            return 0;
-        }
         return rep.exitCode;
     }
     if (!rep.out.empty())
@@ -337,45 +365,87 @@ static std::vector<LrcLine> parseLrc(const std::string& lrc_text) {
     return lines;
 }
 
-int renderLyricsLive(const kanariv::ipc::Lyrics& ly,
-                     const std::filesystem::path& dbPath,
-                     const std::filesystem::path& socketPath) {
+/**
+ * @brief Streams time-coded lyrics until a bounded exit condition fires.
+ * @details Exits 0 on: stop requested (Ctrl+C), playback Stopped, the track
+ * changing, or the last line plus a grace window elapsing. Transient transport
+ * failures retry with bounded backoff (one stderr notice per outage) instead of
+ * aborting; a persistent outage exits 1. ANSI line-clearing is only emitted on
+ * a terminal (NO_COLOR/user redirects get one plain line per lyric change).
+ */
+int renderLyricsLive(const kanariv::ipc::Lyrics& ly, const std::filesystem::path& dbPath,
+                     const std::filesystem::path& socketPath, std::stop_token stop, bool ansi) {
     auto lines = parseLrc(ly.lrc_text);
     if (lines.empty()) {
         kanariv::println(std::cerr,
                         "lyrics get --live: no time-coded lyrics found");
-        return 1;
+        return exitRuntime;
     }
 
     using namespace std::chrono;
-    while (true) {
-        kanariv::client::Client client{dbPath, socketPath.string()};
-        auto pres =
-            client.waitForStatus(milliseconds{500});
+    // Persistent-outage bound: ~20 retries with capped backoff is roughly 30 s.
+    constexpr int maxRetries = 20;
+    constexpr double tailGrace = 10.0; // seconds after the last timestamp
+    kanariv::client::Client client{dbPath, socketPath.string()};
+    std::size_t shown = lines.size(); // last printed line index (size = none)
+    int failures = 0;
+    while (!stop.stop_requested()) {
+        auto pres = client.waitForStatus(milliseconds{500});
         if (!pres) {
-            kanariv::println(std::cerr,
-                            "lyrics get --live: lost connection to daemon");
-            return 1;
-        }
-        if (auto* st = std::get_if<kanariv::ipc::Status>(&*pres)) {
-            if (st->state == kanariv::types::PlaybackState::Playing) {
-                double pos = st->pos;
-                const LrcLine* current = nullptr;
-                for (const auto& line : lines) {
-                    if (line.seconds <= pos)
-                        current = &line;
-                    else
-                        break;
-                }
-                if (current && !current->text.empty())
-                    kanariv::print(std::cout, "\r\33[2K{}", current->text);
-                else
-                    kanariv::print(std::cout, "\r\33[2K");
-                std::cout.flush();
+            ++failures;
+            if (failures == 1)
+                kanariv::println(std::cerr,
+                                "lyrics get --live: lost connection to daemon ({}); retrying",
+                                pres.error().message);
+            if (failures > maxRetries) {
+                kanariv::println(std::cerr, "lyrics get --live: lost connection to daemon");
+                return exitRuntime;
             }
-            // If not playing, just keep polling silently.
+            if (interruptibleSleep(stop, retryBackoff(failures - 1)))
+                break;
+            continue;
         }
+        failures = 0;
+        if (const auto* werr = std::get_if<kanariv::utils::Error>(&*pres)) {
+            kanariv::ipc::Result errRes{*werr};
+            OutputFormatter fmt{false};
+            fmt.print(errRes, std::cerr);
+            return exitCodeForError(*werr);
+        }
+        auto* st = std::get_if<kanariv::ipc::Status>(&*pres);
+        if (st == nullptr)
+            continue;
+        // A different track means these lyrics no longer apply.
+        if (st->track_id != 0 && ly.track_id != 0 && st->track_id != ly.track_id)
+            return exitOk;
+        if (st->state == kanariv::types::PlaybackState::Stopped)
+            return exitOk;
+        if (st->state != kanariv::types::PlaybackState::Playing)
+            continue; // paused: leave the last line on screen
+        const double pos = st->pos;
+        std::size_t idx = 0;
+        bool found = false;
+        for (std::size_t i = 0; i < lines.size(); ++i) {
+            if (lines[i].seconds > pos)
+                break;
+            idx = i;
+            found = true;
+        }
+        if (found && idx != shown) {
+            shown = idx;
+            if (ansi) {
+                kanariv::print(std::cout, "\r\33[2K{}", lines[idx].text);
+                std::cout.flush();
+            } else {
+                kanariv::println(std::cout, "{}", lines[idx].text);
+            }
+        }
+        // Lyrics exhausted: the last line is displayed and playback has moved
+        // past its timestamp by the grace window with no track change.
+        if (shown + 1 == lines.size() && pos > lines.back().seconds + tailGrace)
+            return exitOk;
     }
+    return exitOk;
 }
 
 } // namespace detail
@@ -383,9 +453,9 @@ using detail::parseSeek;
 using detail::parseTime;
 using detail::parseVolume;
 
-Shell::Shell(kanariv::config::Config cfg)
+Shell::Shell(kanariv::config::Config cfg, std::stop_token stop)
     : config_(cfg), app_(std::move(cfg)),
-      cli_(std::make_unique<CLI::App>("kanariv - terminal player")) {
+      cli_(std::make_unique<CLI::App>("kanariv - terminal player")), stop_(stop) {
     cli_->set_version_flag("--version", std::string(kanariv::version::version()));
 }
 
@@ -440,11 +510,12 @@ int Shell::run(int argc, char** argv) {
     seekCmd->add_flag("--json", seekJson, "JSON output");
     bool jsonFlag = false;
     bool statusWatch = false;
+    bool statusFollow = false;
     int statusInterval = 1000;
     auto* statusCmd = cli_->add_subcommand("status", "Show status");
     statusCmd->add_flag("--json", jsonFlag, "JSON output");
-    statusCmd->add_flag("--watch", statusWatch, "Continuous polling");
-    statusCmd->add_flag("--follow", statusWatch, "Alias for --watch");
+    statusCmd->add_flag("--watch", statusWatch, "Continuous status stream (alias: --follow)");
+    statusCmd->add_flag("--follow", statusFollow, "Continuous status stream (alias: --watch)");
     statusCmd->add_option("--interval", statusInterval, "Poll interval in ms");
     std::string volumeArg;
     bool volumeJson = false;
@@ -853,21 +924,18 @@ int Shell::run(int argc, char** argv) {
         return detail::renderVersion(versionJson);
     if (!configPathStr.empty())
         config_.configPath = std::filesystem::path(configPathStr);
+    bool configMissing = false;
     {
         auto loaded = kanariv::config::loadConfig(config_.configPath);
         if (loaded) {
             config_ = *loaded;
             if (!configPathStr.empty())
                 config_.configPath = std::filesystem::path(configPathStr);
-            // If config file didn't exist, persist defaults for next run
+            // First-run detection only: defaults are persisted by mutating
+            // commands (see PersistDefaultsGuard below), never by read-only
+            // ones -- `kanariv status` must not create files.
             std::error_code ec2;
-            if (!std::filesystem::exists(config_.configPath, ec2)) {
-                std::error_code ec3;
-                auto parent = config_.configPath.parent_path();
-                if (!parent.empty())
-                    std::filesystem::create_directories(parent, ec3);
-                (void)kanariv::config::saveConfig(config_);
-            }
+            configMissing = !std::filesystem::exists(config_.configPath, ec2);
         } else {
             // loadConfig failed (e.g. corrupt); keep current config_ which has robust defaults
             // ensure directories exist for db and config
@@ -908,8 +976,11 @@ int Shell::run(int argc, char** argv) {
     // daemon interaction below must observe these paths.
     app_.setConfig(config_);
     // Inject the local preview host: the CLI (not app) owns the player-backed
-    // preview, so the app layer stays free of the player dependency.
-    app_.attachPreviewHost(detail::runLocalPreview);
+    // preview, so the app layer stays free of the player dependency. The
+    // process stop token lets Ctrl+C end a preview cleanly.
+    app_.attachPreviewHost([this](const std::string& file) {
+        return detail::runLocalPreview(file, stop_);
+    });
     // Inject the foreground daemon host: the CLI (not app) owns service startup.
     app_.attachDaemonHost([this](bool foreground) -> kanariv::app::AppResult {
         kanariv::service::ServiceConfig scfg;
@@ -929,17 +1000,42 @@ int Shell::run(int argc, char** argv) {
             return kanariv::app::Outcome::fail(std::format(
                 "start failed: {} (db: {})", svc.error().message, config_.dbPath.generic_string()));
         }
-        auto starting = std::format("starting daemon foreground at {} db={}", config_.socketPath,
-                                    config_.dbPath.generic_string());
-        std::stop_source ss;
-        auto res = svc.value()->run(ss.get_token());
+        // Announce before run() blocks: the line used to be returned only
+        // after the daemon exited, so users never saw it while it started.
+        kanariv::println(std::cout, "starting daemon foreground at {} db={}",
+                         config_.socketPath, config_.dbPath.generic_string());
+        std::cout.flush();
+        // The process stop token makes Ctrl+C a graceful shutdown: run()
+        // observes it, tears down (pid/socket/lock cleanup) and returns.
+        auto res = svc.value()->run(stop_);
         if (!res) {
             return kanariv::app::Outcome::fail(std::format("daemon error: {} (dbPath={})",
                                                           res.error().message,
                                                           config_.dbPath.generic_string()));
         }
-        return kanariv::app::Outcome{std::nullopt, std::move(starting), false, false};
+        return kanariv::app::Outcome{std::nullopt, std::string("daemon stopped"), false, false};
     });
+    // Read-only commands must not write the config file on first run (it makes
+    // `status`/`config get` mutating, races concurrent invocations and fails
+    // on read-only homes). Persist defaults only when the invoked command
+    // mutates state; the guard warns instead of silently dropping a failure.
+    const bool mutating =
+        daemonFlag || startCmd->parsed() || !posPaths.empty() || posSave ||
+        (cfgCmd->parsed() && (cfgSet->parsed() || cfgImport->parsed() || cfgReset->parsed())) ||
+        (libCmd->parsed() &&
+         (libScan->parsed() || libAdd->parsed() || libRemove->parsed() || libMaint->parsed())) ||
+        (tagCmd->parsed() && (tagEdit->parsed() || tagBatch->parsed())) ||
+        (trackCmd->parsed() && trRate->parsed()) ||
+        (queueCmd->parsed() && (qAdd->parsed() || qRemove->parsed() || qClear->parsed() ||
+                                qCreate->parsed() || qDelete->parsed() || qMove->parsed() ||
+                                qShuffle->parsed() || qRepeat->parsed() || qSwitch->parsed())) ||
+        (plCmd->parsed() && (plCreate->parsed() || plAdd->parsed() || plLoad->parsed() ||
+                             plDelete->parsed() || plRename->parsed() || plImport->parsed())) ||
+        (bookmarkCmd->parsed() && (bmAdd->parsed() || bmRemove->parsed() || bmGoto->parsed())) ||
+        (lyricsCmd->parsed() && (lyricsSet->parsed() || lyricsRemove->parsed())) ||
+        (historyCmd->parsed() && historyClear->parsed()) ||
+        (deviceCmd->parsed() && devSet->parsed());
+    detail::PersistDefaultsGuard persistGuard{config_, configMissing && mutating};
     // Internal daemon mode: if --daemon present, run Service foreground immediately (child process)
     if (daemonFlag) {
         return detail::render(app_.startDaemon(true), false);
@@ -1026,28 +1122,51 @@ int Shell::run(int argc, char** argv) {
         // NOTE: the watch loop stays in the shell on purpose: carriage-return
         // timestamps and ANSI output are terminal rendering, not reusable
         // behavior. Phase 1 will replace it with a status-stream API.
-        if (statusWatch) {
+        const bool follow = statusWatch || statusFollow;
+        if (statusWatch && statusFollow) {
+            kanariv::println(std::cerr,
+                            "status: --watch and --follow are aliases; pass only one");
+            return detail::exitRuntime;
+        }
+        if (follow) {
             if (statusInterval <= 0) {
                 kanariv::println(std::cerr, "status: --interval must be positive (got {})",
                                 statusInterval);
-                return 1;
+                return detail::exitRuntime;
             }
             using namespace std::chrono;
+            const bool ansi = detail::useColor();
             OutputFormatter fmt{jsonFlag};
-            while (true) {
-                kanariv::client::Client client{config_.dbPath, config_.socketPath};
+            // One client (and its connection policy) for the whole stream.
+            kanariv::client::Client client{config_.dbPath, config_.socketPath};
+            int failures = 0;
+            while (!stop_.stop_requested()) {
                 // waitForStatus blocks until the status changes or the
-                // interval elapses, avoiding wasteful polling.
-                auto res =
-                    client.waitForStatus(milliseconds{statusInterval});
+                // interval elapses, avoiding wasteful polling. The transport
+                // budget follows the interval (client adds its margin), so
+                // long intervals are not capped by the 2 s default timeout.
+                auto res = client.waitForStatus(milliseconds{statusInterval});
                 if (!res) {
-                    kanariv::ipc::Result errRes{res.error()};
-                    if (jsonFlag) {
+                    // Transient transport failures (daemon restart, timeout)
+                    // are retried with bounded backoff instead of ending the
+                    // stream; one notice per outage keeps stderr readable.
+                    ++failures;
+                    if (failures == 1)
+                        kanariv::println(std::cerr,
+                                        "status: waiting for daemon ({}); retrying",
+                                        res.error().message);
+                    if (detail::interruptibleSleep(stop_, detail::retryBackoff(failures - 1)))
+                        break;
+                    continue;
+                }
+                failures = 0;
+                if (const auto* werr = std::get_if<kanariv::utils::Error>(&*res)) {
+                    kanariv::ipc::Result errRes{*werr};
+                    if (jsonFlag)
                         kanariv::println(std::cerr, "{}", kanariv::ipc::toJson(errRes).dump());
-                    } else {
+                    else
                         fmt.print(errRes, std::cerr);
-                    }
-                    return 1;
+                    return detail::exitCodeForError(*werr);
                 }
                 if (!jsonFlag) {
                     auto now = system_clock::now();
@@ -1060,9 +1179,13 @@ int Shell::run(int argc, char** argv) {
 #endif
                     char buf[32];
                     std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
-                    // kanariv::print(std::cout, output);
                     if (auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
-                        kanariv::print(std::cout, "\r\33[2K[{}] {}", buf, detail::statusLine(*st));
+                        if (ansi) {
+                            kanariv::print(std::cout, "\r\33[2K[{}] {}", buf,
+                                           detail::statusLine(*st));
+                        } else {
+                            kanariv::println(std::cout, "[{}] {}", buf, detail::statusLine(*st));
+                        }
                         std::cout.flush();
                     } else {
                         kanariv::println(std::cout, "[{}]", buf);
@@ -1073,9 +1196,8 @@ int Shell::run(int argc, char** argv) {
                     kanariv::println(std::cout, "{}", kanariv::ipc::toJson(*res).dump());
                 }
                 std::cout << std::flush;
-                if (std::holds_alternative<kanariv::utils::Error>(*res))
-                    return 1;
             }
+            return detail::exitOk;
         }
         return detail::render(app_.status(), jsonFlag);
     }
@@ -1095,8 +1217,10 @@ int Shell::run(int argc, char** argv) {
             auto qr = app_.queueTracks(qTracksOrder);
             if (!qr)
                 return detail::renderError(qr.error());
-            if (qTracksJson)
-                return detail::renderJson(qr->result);
+            if (qTracksJson) {
+                detail::renderJson(qr->result);
+                return detail::exitOk;
+            }
             OutputFormatter fmt{false, detail::useColor()};
             fmt.setHighlightTrackId(qr->highlightId);
             fmt.print(qr->result, std::cout);
@@ -1175,8 +1299,10 @@ int Shell::run(int argc, char** argv) {
                 return detail::renderError(sr.error());
             if (!sr->result)
                 return 0;
-            if (libSearchJson)
-                return detail::renderJson(*sr->result);
+            if (libSearchJson) {
+                detail::renderJson(*sr->result);
+                return detail::exitOk;
+            }
             OutputFormatter fmt{false, detail::useColor()};
             fmt.setHighlightNeedle(libSearchQuery);
             fmt.print(*sr->result, std::cout);
@@ -1492,7 +1618,8 @@ int Shell::run(int argc, char** argv) {
             auto& ipc_res = *outcome->result;
             if (lyricsGetLive) {
                 if (auto* ly = std::get_if<kanariv::ipc::Lyrics>(&ipc_res)) {
-                    return detail::renderLyricsLive(*ly, config_.dbPath, config_.socketPath);
+                    return detail::renderLyricsLive(*ly, config_.dbPath, config_.socketPath,
+                                                    stop_, detail::useColor());
                 }
                 kanariv::println(std::cerr, "lyrics get --live: no lyrics data");
                 return 1;

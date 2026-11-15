@@ -54,7 +54,9 @@ kanariv [options] <command> [command options]
 | `resume` | Resume playback |
 | `stop` | Stop playback |
 | `seek <seconds>` | Seek to position |
-| `status [--json] [--watch]` | Show playback status |
+| `status [--json] [--watch \| --follow] [--interval <ms>]` | Show playback status |
+| `preview <file> [--keep-playing]` | Play a file locally without queueing it |
+| `lyrics get --live` | Follow lyrics as playback advances |
 
 ### Daemon
 
@@ -85,6 +87,38 @@ kanariv [options] <command> [command options]
 |---|---|
 | `bookmark add --track-id <id> --position <ms>` | Add bookmark |
 | `bookmark list --track-id <id>` | List bookmarks |
+
+## Continuous status
+
+`status --watch` and `status --follow` are aliases; pass at most one. The stream
+reconnects automatically when the daemon restarts: each outage prints one notice
+on stderr and retries with bounded exponential backoff (200 ms doubling up to
+2 s). `--interval <ms>` sets the poll interval and is not capped. With `--json`,
+one compact status object is printed per line, so the stream can be piped into
+`jq` or other line-oriented tools.
+
+`status --watch`, `lyrics get --live`, `preview`, and `start --foreground` all
+stop cleanly on Ctrl+C (also SIGTERM on POSIX) and exit with status 0. `preview`
+and `lyrics get --live` print what they are doing before playback starts and a
+closing line when they finish.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success, including a stream stopped with Ctrl+C |
+| `1` | Runtime failure, including a failed or partial multi-track batch |
+| `105` | Daemon is not running, is in a state that rejects the command, or failed to start |
+| `106` | Invalid argument rejected by command validation |
+| `109` | Requested track, queue entry, playlist, or config key not found |
+
+The exit code is the same with and without `--json`: JSON never changes process
+status. In `--json` mode a failed or partial batch still writes its JSON
+document to stdout and diagnostics to stderr, and exits with code `1`.
+
+Read-only commands never create a configuration file. Defaults are persisted
+only by commands that mutate state (including an explicit daemon start); if
+saving fails the CLI prints a warning and continues.
 
 ## Examples
 

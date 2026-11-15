@@ -3,25 +3,26 @@
  * @brief Ephemeral local file preview (no daemon).
  * @details The CLI owns the player-backed preview (the app layer stays free
  * of the player dependency): opens a file in a throwaway player and blocks
- * until it finishes. Frontends reuse this for quick audition without
- * touching the queue.
+ * until it finishes or the process stop token is requested. Frontends reuse
+ * this for quick audition without touching the queue.
  */
 
 #include "preview.hpp"
 
 #include <kanariv/player/player.hpp>
 #include <kanariv/utils/error.hpp>
+#include <kanariv/utils/print.hpp>
 #include <chrono>
 #include <filesystem>
 #include <format>
+#include <iostream>
 #include <string>
 #include <system_error>
 #include <thread>
-#include <utility>
 
 namespace kanariv::app::cli::detail {
 
-kanariv::app::AppResult runLocalPreview(const std::string& file) {
+kanariv::app::AppResult runLocalPreview(const std::string& file, std::stop_token stop) {
     std::filesystem::path p{file};
     std::error_code ec;
     if (!std::filesystem::exists(p, ec)) {
@@ -40,17 +41,29 @@ kanariv::app::AppResult runLocalPreview(const std::string& file) {
                                                       kanariv::utils::toString(openRes.error().code),
                                                       openRes.error().message));
     }
+    // Announce before playback: the line used to be returned only after the
+    // file had finished, so a preview looked like a silent hang.
+    kanariv::println(std::cout, "preview playing {}", file);
+    std::cout.flush();
     auto playRes = player.play();
     if (!playRes) {
         return kanariv::app::Outcome::fail(std::format("preview: play failed ({}): {}",
                                                       kanariv::utils::toString(playRes.error().code),
                                                       playRes.error().message));
     }
-    std::string done = std::format("preview playing {}\npreview done", file);
+    bool interrupted = false;
     while (player.state() == kanariv::player::State::Playing) {
+        if (stop.stop_requested()) {
+            interrupted = true;
+            (void)player.stop();
+            break;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    return kanariv::app::Outcome{std::nullopt, std::move(done), false, false};
+    return kanariv::app::Outcome{std::nullopt,
+                                 interrupted ? std::string("preview stopped")
+                                             : std::string("preview done"),
+                                 false, false};
 }
 
 } // namespace kanariv::app::cli::detail
