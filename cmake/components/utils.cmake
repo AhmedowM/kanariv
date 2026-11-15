@@ -32,7 +32,7 @@ kanariv_add_component(utils SOURCES ${KANARIV_UTILS_SOURCES} MODULE_SOURCES ${KA
 ca_set_module_warnings(utils)
 target_include_directories(utils PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>)
 if(KANARIV_BUILD_SHARED)
-  kanariv_add_shared_variant(utils EXTRA_DEPS Threads::Threads)
+  kanariv_add_shared_variant(utils)
   if(KANARIV_BUILD_STATIC)
     target_include_directories(utils_shared PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>)
   else()

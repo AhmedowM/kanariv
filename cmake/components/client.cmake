@@ -11,8 +11,6 @@ set(KANARIV_CLIENT_SOURCES
 kanariv_add_component(client SOURCES ${KANARIV_CLIENT_SOURCES} MODULE_SOURCES ${KANARIV_CLIENT_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::utils Threads::Threads)
 ca_set_module_warnings(client)
 if(KANARIV_BUILD_SHARED)
-  # config_shared is explicit: client PUBLIC-depends on config and its sources
-  # call config::socketPathFor. It used to arrive through ipc_shared, which was
-  # the spurious ipc -> config dependency removed in W3.
-  kanariv_add_shared_variant(client EXTRA_DEPS kanariv::config_shared kanariv::ipc_shared kanariv::utils_shared Threads::Threads)
+  # config is a declared DEPS entry: the shared flavour derives it.
+  kanariv_add_shared_variant(client)
 endif()

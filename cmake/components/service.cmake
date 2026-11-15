@@ -33,10 +33,11 @@ elseif(UNIX)
 endif()
 
 # INCLUDES vendor: src/service/service_status.cpp includes <blake3.h>.
-# TagLib headers arrive through KANARIV_TAGLIB_BUILD_INCLUDES below, not from
-# the vendor root.
-kanariv_add_component(service SOURCES ${KANARIV_SERVICE_SOURCES} MODULE_SOURCES ${KANARIV_SERVICE_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::utils Threads::Threads INCLUDES vendor PRIVATE_DEPS kanariv::engine kanariv::db kanariv::media kanariv::player)
-target_link_libraries(service PRIVATE tag)
+# INCLUDES KANARIV_TAGLIB_BUILD_INCLUDES: tag_writer.cpp needs TagLib headers
+# (a private implementation detail; they never enter the installed tree).
+# PRIVATE_DEPS tag: the tag writer links TagLib, so the shared flavour derives
+# the same dependency instead of repeating it below.
+kanariv_add_component(service SOURCES ${KANARIV_SERVICE_SOURCES} MODULE_SOURCES ${KANARIV_SERVICE_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::engine kanariv::db kanariv::media kanariv::player tag INCLUDES vendor ${KANARIV_TAGLIB_BUILD_INCLUDES})
 if(WIN32)
   # runtimeobject.lib (RoGetActivationFactory, WindowsCreateString, ...) ships
   # with the Windows SDK and the selected SDK's um/ directory is already on the
@@ -80,7 +81,13 @@ elseif(UNIX)
       "to activate at runtime (install libdbus-1-dev)")
   endif()
 endif()
-target_include_directories(service SYSTEM PRIVATE ${KANARIV_TAGLIB_BUILD_INCLUDES})
+
+# STATIC is a per-target definition, not an include path: the amalgamation is
+# linked directly in static builds, so TagLib must not expand its dllimport
+# branch. The include dirs themselves arrive through INCLUDES above.
+if(NOT KANARIV_BUILD_SHARED)
+  target_compile_definitions(service_objects PRIVATE TAGLIB_STATIC)
+endif()
 
 if(WIN32)
   # cppwinrt headers live in the Windows SDK the toolchain actually targets.
@@ -136,16 +143,6 @@ if(WIN32)
   unset(_KANARIV_CPPWINRT_INCLUDE_DIR)
 endif()
 
-# Propagate TagLib include dirs to the object library so it can compile
-# service's .cpp files against TagLib headers. The object library is not a
-# link target, so target_link_libraries would not give it compile-time
-# includes. Needed in both static and shared builds because service_objects
-# compiles the same sources as the static service library.
-target_include_directories(service_objects SYSTEM PRIVATE ${KANARIV_TAGLIB_BUILD_INCLUDES})
-if(NOT KANARIV_BUILD_SHARED)
-  target_compile_definitions(service_objects PRIVATE TAGLIB_STATIC)
-endif()
-
 # Link rt by name PRIVATE: a find_library() absolute path would be copied into
 # the installed kanarivTargets.cmake and break relocation. glibc >= 2.34 has the
 # shm/clock symbols in libc; older Linux still needs -lrt, which stays a
@@ -158,13 +155,9 @@ endfunction()
 _kanariv_service_link_rt(service)
 ca_set_module_warnings(service)
 if(KANARIV_BUILD_SHARED)
-  # config_shared is explicit: service PUBLIC-depends on config (its dispatch
-  # layer reads it) and config used to arrive only through ipc_shared, the
-  # spurious ipc -> config dependency removed in W3.
-  kanariv_add_shared_variant(service EXTRA_DEPS kanariv::config_shared kanariv::ipc_shared kanariv::engine_shared kanariv::db_shared kanariv::media_shared kanariv::player_shared kanariv::utils_shared Threads::Threads)
+  kanariv_add_shared_variant(service)
   if(KANARIV_BUILD_STATIC)
     _kanariv_service_link_rt(service_shared)
-    target_link_libraries(service_shared PRIVATE tag)
     # A real service_shared target only exists when static libraries are
     # built too. In a shared-only build kanariv_add_shared_variant() aliases
     # service_shared to service, and CMake rejects target_* commands on ALIAS

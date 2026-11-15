@@ -30,12 +30,13 @@ separate_arguments(FFMPEG_TRIM_FLAGS NATIVE_COMMAND "${_trim_flags_raw}")
 unset(_trim_flags_raw)
 set(KANARIV_FFMPEG_TRIM_FLAGS "${FFMPEG_TRIM_FLAGS}")
 
-# Honors a prebuilt trimmed tree via FFmpeg_ROOT. CMake never builds FFmpeg
-# itself; the producer script handles that out of tree.
-function(kanariv_setup_trimmed_ffmpeg)
+# Locates the prebuilt trimmed tree at ${trim_root}. The root is passed in as a
+# normal variable (resolved by the caller from FFmpeg_ROOT / KANARIV_TRIMMED_ROOT
+# / the default prefix) so no user-facing cache entry is rewritten (W18).
+function(kanariv_setup_trimmed_ffmpeg trim_root)
   # Drop stale hits: find_library/include results persist in cache across
-  # reconfigures, so a previous system/Gyan hit would shadow the trimmed
-  # tree even after FFmpeg_ROOT moves.
+  # reconfigures, so a previous system/Gyan hit would shadow the trimmed tree
+  # even after the root moves.
   foreach(_ff_var IN ITEMS FFmpeg_AVCODEC_INCLUDE_DIR FFmpeg_AVCODEC_LIBRARY
       FFmpeg_AVFORMAT_LIBRARY FFmpeg_AVUTIL_LIBRARY FFmpeg_SWRESAMPLE_LIBRARY)
     unset(${_ff_var} CACHE)
@@ -43,34 +44,22 @@ function(kanariv_setup_trimmed_ffmpeg)
   unset(FFmpeg_FOUND)
   unset(FFmpeg_FOUND CACHE)
 
-  if(FFmpeg_ROOT OR DEFINED ENV{FFmpeg_ROOT})
-    find_package(FFmpeg QUIET)
-    if(FFmpeg_FOUND)
-      message(STATUS "Trimmed FFmpeg found: ${FFmpeg_AVCODEC_LIBRARY}")
-      set(FFmpeg_FOUND TRUE PARENT_SCOPE)
-      return()
-    endif()
-    message(STATUS "FFmpeg_ROOT holds no complete trimmed tree")
-  else()
-    set(_trim_prefix "${KANARIV_FFMPEG_TRIM_PREFIX}")
-    if(EXISTS "${_trim_prefix}/lib")
-      set(FFmpeg_ROOT "${_trim_prefix}" CACHE PATH "FFmpeg root from trimmed build" FORCE)
-      find_package(FFmpeg QUIET)
-      if(FFmpeg_FOUND)
-        message(STATUS "Trimmed FFmpeg found: ${FFmpeg_AVCODEC_LIBRARY}")
-        set(FFmpeg_FOUND TRUE PARENT_SCOPE)
-        return()
-      endif()
-    endif()
-  endif()
-
   if(MSVC)
     message(FATAL_ERROR "KANARIV_USE_TRIMMED_FFMPEG needs a prebuilt trimmed tree "
       "under FFmpeg_ROOT with MSVC (upstream FFmpeg has no native MSVC build) -- "
       "use MinGW or the default provider")
   endif()
 
-  message(FATAL_ERROR "Trimmed FFmpeg not found. Build it first with "
+  # Function-local variable: FindFFmpeg prefers it over its default search.
+  set(FFmpeg_ROOT "${trim_root}")
+  find_package(FFmpeg QUIET)
+  if(FFmpeg_FOUND)
+    message(STATUS "Trimmed FFmpeg found: ${FFmpeg_AVCODEC_LIBRARY}")
+    set(FFmpeg_FOUND TRUE PARENT_SCOPE)
+    return()
+  endif()
+
+  message(FATAL_ERROR "Trimmed FFmpeg not found under '${trim_root}'. Build it first with "
     "scripts/build-ffmpeg.py (default prefix ./build/ffmpeg), then configure "
     "with -DKANARIV_TRIMMED_ROOT=./build/ffmpeg, or disable with "
     "-DKANARIV_USE_TRIMMED_FFMPEG=OFF to use system FFmpeg.")

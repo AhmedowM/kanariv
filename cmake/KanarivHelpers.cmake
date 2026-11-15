@@ -122,9 +122,22 @@ function(kanariv_add_component NAME)
     endif()
   endif()
 
+  # Record both dependency lists so the shared flavour can be derived from the
+  # same declaration (W6): a dependency added here can never drift from the one
+  # the shared variant links.
+  set_property(GLOBAL PROPERTY KANARIV_COMPONENT_DEPS_${NAME} "${ARG_DEPS}")
+  set_property(GLOBAL PROPERTY KANARIV_COMPONENT_PRIVATE_DEPS_${NAME} "${ARG_PRIVATE_DEPS}")
+
   # --- Component library ---
   if(KANARIV_BUILD_STATIC)
-    add_library(${NAME} STATIC ${ARG_SOURCES})
+    # Archive the object files the shared and combined flavours already
+    # compile: one compilation per configuration (W4). KANARIV_BUILDING_DLL and
+    # hidden visibility only shape the dynamic symbol table, so a static
+    # consumer still resolves internal symbols from the archive.
+    add_library(${NAME} STATIC)
+    if(ARG_SOURCES)
+      target_sources(${NAME} PRIVATE $<TARGET_OBJECTS:${NAME}_objects>)
+    endif()
     set_target_properties(${NAME} PROPERTIES OUTPUT_NAME ${NAME}_static)
   else()
     add_library(${NAME} SHARED)
@@ -228,8 +241,38 @@ function(kanariv_add_header_self_containment)
   endforeach()
 endfunction()
 
+# Map a component dependency list onto its shared flavour: every
+# kanariv::<x> whose <x>_shared target exists becomes kanariv::<x>_shared.
+# Header-only carriers (types/contracts in headers mode) are expanded into
+# their own dependencies: linking the INTERFACE target would drag the static
+# flavour of the components it names into this DLL (two copies in one process).
+# Everything else (Threads, FFmpeg, vendor libs, module carriers) keeps its
+# declared name.
+function(_kanariv_map_shared_deps out)
+  set(_mapped "")
+  foreach(_dep IN LISTS ARGN)
+    if(_dep MATCHES "^kanariv::([^:]+)$")
+      set(_plain "${CMAKE_MATCH_1}")
+      if(TARGET kanariv::${_plain}_shared)
+        set(_dep kanariv::${_plain}_shared)
+      elseif(TARGET kanariv::${_plain})
+        get_target_property(_type kanariv::${_plain} TYPE)
+        if(_type STREQUAL "INTERFACE_LIBRARY")
+          get_target_property(_iface kanariv::${_plain} INTERFACE_LINK_LIBRARIES)
+          if(_iface)
+            _kanariv_map_shared_deps(_iface_mapped ${_iface})
+            list(APPEND _mapped ${_iface_mapped})
+          endif()
+          continue()
+        endif()
+      endif()
+    endif()
+    list(APPEND _mapped "${_dep}")
+  endforeach()
+  set(${out} "${_mapped}" PARENT_SCOPE)
+endfunction()
+
 function(kanariv_add_shared_variant NAME)
-  cmake_parse_arguments(PARSE_ARGV 1 ARG "" "" "EXTRA_DEPS")
   if(NOT KANARIV_BUILD_STATIC)
     add_library(${NAME}_shared ALIAS ${NAME})
     add_library(kanariv::${NAME}_shared ALIAS ${NAME})
@@ -263,12 +306,21 @@ function(kanariv_add_shared_variant NAME)
   # Add the PIC-compiled object files without inheriting their link interface:
   # the object library records its own (static) component deps as
   # $<LINK_ONLY:...>, so linking the target would pull a second, static copy of
-  # every dependency into this DLL. The shared deps are listed in EXTRA_DEPS.
+  # every dependency into this DLL. Dependencies are linked explicitly below.
   target_sources(${NAME}_shared PRIVATE $<TARGET_OBJECTS:${NAME}_objects>)
-  # Link the shared component flavour (EXTRA_DEPS) so the linker resolves
-  # cross-component symbols once, through the import libraries.
-  if(ARG_EXTRA_DEPS)
-    target_link_libraries(${NAME}_shared PUBLIC ${ARG_EXTRA_DEPS})
+  # Link the shared component flavour so the linker resolves cross-component
+  # symbols once, through the import libraries. The lists come from
+  # kanariv_add_component's DEPS/PRIVATE_DEPS (recorded above), so the shared
+  # variant cannot drift from the static one.
+  get_property(_deps GLOBAL PROPERTY KANARIV_COMPONENT_DEPS_${NAME})
+  get_property(_private_deps GLOBAL PROPERTY KANARIV_COMPONENT_PRIVATE_DEPS_${NAME})
+  _kanariv_map_shared_deps(_shared_deps ${_deps})
+  _kanariv_map_shared_deps(_shared_private_deps ${_private_deps})
+  if(_shared_deps)
+    target_link_libraries(${NAME}_shared PUBLIC ${_shared_deps})
+  endif()
+  if(_shared_private_deps)
+    target_link_libraries(${NAME}_shared PRIVATE ${_shared_private_deps})
   endif()
   # Versioned soname for every shared target, not just combined.
   set_target_properties(${NAME}_shared PROPERTIES

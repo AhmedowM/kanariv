@@ -13,5 +13,5 @@ kanariv_add_component(engine SOURCES ${KANARIV_ENGINE_SOURCES} MODULE_SOURCES ${
 ca_set_module_warnings(engine)
 
 if(KANARIV_BUILD_SHARED)
-  kanariv_add_shared_variant(engine EXTRA_DEPS kanariv::player_shared kanariv::utils_shared Threads::Threads)
+  kanariv_add_shared_variant(engine)
 endif()

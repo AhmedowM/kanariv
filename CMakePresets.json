@@ -34,6 +34,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "KANARIV_BUILD_DOCS": "ON",
+        "KANARIV_BUILD_LIBRARIES": "OFF",
         "KANARIV_BUILD_CLI": "OFF",
         "KANARIV_ENABLE_TESTS": "OFF",
         "KANARIV_ENABLE_EXAMPLES": "OFF"

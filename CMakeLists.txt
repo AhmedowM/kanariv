@@ -82,6 +82,11 @@ unset(_kanariv_build_static_default)
 # Default ON keeps the shipped SDK shape; OFF builds only the per-component
 # shared libraries.
 option(KANARIV_BUILD_COMBINED "build the combined libkanariv umbrella library" ON)
+# OFF skips the whole library/executable surface (components, vendor libraries,
+# CLI, install/packaging) and keeps only the documentation target. Doxygen
+# reads the sources directly, so a docs-only configure needs no FFmpeg (W12).
+# Enabling any buildable surface with this OFF is rejected below.
+option(KANARIV_BUILD_LIBRARIES "build the library and executable targets (OFF: docs-only configure)" ON)
 # White-box tests include src/ headers, so they need symbols that are not part
 # of the DLL ABI. They link the static component flavour; the CLI and daemon
 # link the shared one, so both paths are exercised. Forced rather than
@@ -149,64 +154,88 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 find_package(Threads REQUIRED)
 
-# Trimmed FFmpeg selection: KANARIV_USE_TRIMMED_FFMPEG=ON selects the trimmed
-# provider. FFmpeg_ROOT (cache or env) takes precedence; otherwise
-# KANARIV_TRIMMED_ROOT; otherwise the default ./build/ffmpeg. CMake never builds
-# FFmpeg itself -- scripts/build-ffmpeg.py produces the trimmed tree out of tree.
-if(KANARIV_USE_TRIMMED_FFMPEG)
-  set(_trim_candidate "")
-  if(FFmpeg_ROOT)
-    set(_trim_candidate "${FFmpeg_ROOT}")
-  elseif(DEFINED ENV{FFmpeg_ROOT})
-    set(_trim_candidate "$ENV{FFmpeg_ROOT}")
-  elseif(DEFINED KANARIV_TRIMMED_ROOT AND EXISTS "${KANARIV_TRIMMED_ROOT}/lib")
-    set(_trim_candidate "${KANARIV_TRIMMED_ROOT}")
-  elseif(DEFINED ENV{KANARIV_TRIMMED_ROOT} AND EXISTS "$ENV{KANARIV_TRIMMED_ROOT}/lib")
-    set(_trim_candidate "$ENV{KANARIV_TRIMMED_ROOT}")
-  elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/build/ffmpeg/lib")
-    set(_trim_candidate "${CMAKE_CURRENT_SOURCE_DIR}/build/ffmpeg")
+# FFmpeg is the sole decode backend and everything above `ipc` reaches it, so
+# a configure that builds code requires it. A docs-only configure
+# (KANARIV_BUILD_LIBRARIES=OFF) builds no library or executable and therefore
+# needs neither the headers nor the libraries (W12).
+set(KANARIV_FFMPEG_SOURCE "" CACHE STRING
+    "FFmpeg provider this build directory was configured with (system|trimmed); recorded automatically")
+
+if(KANARIV_BUILD_LIBRARIES)
+  # Provider selection is recorded and re-validated: FFmpeg_* paths are cached,
+  # so flipping the provider in an existing build directory would keep linking
+  # the previous tree (W18). Fail instead of silently mixing.
+  set(_kanariv_ffmpeg_provider "system")
+  if(KANARIV_USE_TRIMMED_FFMPEG)
+    set(_kanariv_ffmpeg_provider "trimmed")
   endif()
-  if(_trim_candidate)
-    set(FFmpeg_ROOT "${_trim_candidate}" CACHE PATH "FFmpeg root (trimmed)" FORCE)
+  if(KANARIV_FFMPEG_SOURCE AND NOT KANARIV_FFMPEG_SOURCE STREQUAL _kanariv_ffmpeg_provider)
+    message(FATAL_ERROR
+      "FFmpeg provider changed for this build directory (${KANARIV_FFMPEG_SOURCE} -> "
+      "${_kanariv_ffmpeg_provider}); cached FFmpeg_* paths would keep linking the old "
+      "tree. Configure a clean build directory or reset the cache.")
+  endif()
+
+  function(kanariv_ffmpeg_fatal)
+    message(FATAL_ERROR "FFmpeg is required -- install FFmpeg (tools + dev packages) or set FFmpeg_ROOT")
+  endfunction()
+
+  # Trimmed provider: FFmpeg_ROOT (cache or env) takes precedence, then
+  # KANARIV_TRIMMED_ROOT, then the default ./build/ffmpeg. The resolved root is
+  # a normal variable for this configure only -- the user's FFmpeg_ROOT cache
+  # entry is theirs (W18). CMake never builds FFmpeg itself:
+  # scripts/build-ffmpeg.py produces the trimmed tree out of tree.
+  if(KANARIV_USE_TRIMMED_FFMPEG)
+    set(_trim_candidate "")
+    if(FFmpeg_ROOT)
+      set(_trim_candidate "${FFmpeg_ROOT}")
+    elseif(DEFINED ENV{FFmpeg_ROOT})
+      set(_trim_candidate "$ENV{FFmpeg_ROOT}")
+    elseif(DEFINED KANARIV_TRIMMED_ROOT AND EXISTS "${KANARIV_TRIMMED_ROOT}/lib")
+      set(_trim_candidate "${KANARIV_TRIMMED_ROOT}")
+    elseif(DEFINED ENV{KANARIV_TRIMMED_ROOT} AND EXISTS "$ENV{KANARIV_TRIMMED_ROOT}/lib")
+      set(_trim_candidate "$ENV{KANARIV_TRIMMED_ROOT}")
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/build/ffmpeg/lib")
+      set(_trim_candidate "${CMAKE_CURRENT_SOURCE_DIR}/build/ffmpeg")
+    endif()
+    if(NOT _trim_candidate)
+      kanariv_ffmpeg_fatal()
+    endif()
     message(STATUS "Trimmed FFmpeg root: ${_trim_candidate}")
+    include(cmake/FFmpegTrimmed.cmake)
+    kanariv_setup_trimmed_ffmpeg("${_trim_candidate}")
+    if(NOT FFmpeg_FOUND)
+      kanariv_ffmpeg_fatal()
+    endif()
+    message(STATUS "FFmpeg found (trimmed): ${FFmpeg_AVCODEC_LIBRARY}")
+    unset(_trim_candidate)
+  else()
+    find_package(FFmpeg QUIET)
+    if(NOT FFmpeg_FOUND)
+      kanariv_ffmpeg_fatal()
+    endif()
+    message(STATUS "FFmpeg found (system): ${FFmpeg_AVCODEC_LIBRARY}")
   endif()
-  unset(_trim_candidate)
+  set(KANARIV_FFMPEG_SOURCE "${_kanariv_ffmpeg_provider}" CACHE STRING
+      "FFmpeg provider this build directory was configured with (system|trimmed); recorded automatically" FORCE)
+  unset(_kanariv_ffmpeg_provider)
+
+  # Record the ABI floor for the installed config so downstream consumers link
+  # against the same FFmpeg major instead of silently re-finding another one.
+  function(kanariv_detect_ffmpeg_avcodec_major out)
+    set(_header "${FFmpeg_AVCODEC_INCLUDE_DIR}/libavcodec/version_major.h")
+    if(NOT EXISTS "${_header}")
+      set(_header "${FFmpeg_AVCODEC_INCLUDE_DIR}/libavcodec/version.h")
+    endif()
+    set(_major "")
+    if(EXISTS "${_header}")
+      file(STRINGS "${_header}" _line REGEX "^#define[ \t]+LIBAVCODEC_VERSION_MAJOR[ \t]+[0-9]+")
+      string(REGEX MATCH "[0-9]+" _major "${_line}")
+    endif()
+    set(${out} "${_major}" PARENT_SCOPE)
+  endfunction()
+  kanariv_detect_ffmpeg_avcodec_major(KANARIV_FFMPEG_AVCODEC_MAJOR)
 endif()
-
-function(kanariv_ffmpeg_fatal)
-  message(FATAL_ERROR "FFmpeg is required -- install FFmpeg (tools + dev packages) or set FFmpeg_ROOT")
-endfunction()
-
-if(KANARIV_USE_TRIMMED_FFMPEG)
-  include(cmake/FFmpegTrimmed.cmake)
-  kanariv_setup_trimmed_ffmpeg()
-  if(NOT FFmpeg_FOUND)
-    kanariv_ffmpeg_fatal()
-  endif()
-  message(STATUS "FFmpeg found (trimmed): ${FFmpeg_AVCODEC_LIBRARY}")
-else()
-  find_package(FFmpeg QUIET)
-  if(NOT FFmpeg_FOUND)
-    kanariv_ffmpeg_fatal()
-  endif()
-  message(STATUS "FFmpeg found (system): ${FFmpeg_AVCODEC_LIBRARY}")
-endif()
-
-# Record the ABI floor for the installed config so downstream consumers link
-# against the same FFmpeg major instead of silently re-finding another one.
-function(kanariv_detect_ffmpeg_avcodec_major out)
-  set(_header "${FFmpeg_AVCODEC_INCLUDE_DIR}/libavcodec/version_major.h")
-  if(NOT EXISTS "${_header}")
-    set(_header "${FFmpeg_AVCODEC_INCLUDE_DIR}/libavcodec/version.h")
-  endif()
-  set(_major "")
-  if(EXISTS "${_header}")
-    file(STRINGS "${_header}" _line REGEX "^#define[ \t]+LIBAVCODEC_VERSION_MAJOR[ \t]+[0-9]+")
-    string(REGEX MATCH "[0-9]+" _major "${_line}")
-  endif()
-  set(${out} "${_major}" PARENT_SCOPE)
-endfunction()
-kanariv_detect_ffmpeg_avcodec_major(KANARIV_FFMPEG_AVCODEC_MAJOR)
 
 function(kanariv_apply_sanitizers tgt)
   if(MSVC)
@@ -234,6 +263,40 @@ configure_file(
   ${CMAKE_CURRENT_BINARY_DIR}/include/kanariv/version_config.hpp
   @ONLY
 )
+
+# CLI11 is private to the kanariv executable: skip entirely with KANARIV_BUILD_CLI=OFF.
+# Declared outside the library gate so docs-only configures validate it too.
+option(KANARIV_BUILD_CLI "build the kanariv executable (requires CLI11)" ON)
+# KANARIV_BUILD_LIBRARIES exists only for docs-only configures: any surface that
+# needs a compiled target contradicts it, and a configure that creates no target
+# at all is a mistake.
+if(NOT KANARIV_BUILD_LIBRARIES)
+  if(KANARIV_BUILD_CLI OR KANARIV_ENABLE_TESTS OR KANARIV_ENABLE_EXAMPLES OR KANARIV_ENABLE_MODULES)
+    message(FATAL_ERROR
+      "KANARIV_BUILD_LIBRARIES=OFF configures the documentation target only; "
+      "KANARIV_BUILD_CLI, KANARIV_ENABLE_TESTS, KANARIV_ENABLE_EXAMPLES and "
+      "KANARIV_ENABLE_MODULES must be OFF")
+  endif()
+  if(NOT KANARIV_BUILD_DOCS)
+    message(FATAL_ERROR
+      "KANARIV_BUILD_LIBRARIES=OFF without KANARIV_BUILD_DOCS=ON would create no targets")
+  endif()
+endif()
+
+# Documentation (Doxygen) -- see cmake/Docs.cmake. Deliberately outside the
+# library gate: Doxygen reads include/ and src/, so docs-only configures work.
+if(KANARIV_BUILD_DOCS)
+  include(cmake/Docs.cmake)
+  kanariv_add_docs()
+endif()
+
+# ---------------------------------------------------------------------------
+# Everything below builds and installs the library surface: vendor libraries,
+# fetched dependencies, components, install/packaging and examples. A docs-only
+# configure (KANARIV_BUILD_LIBRARIES=OFF) skips it wholesale -- Doxygen reads
+# the sources directly, so it needs neither FFmpeg nor the fetched deps (W12).
+# ---------------------------------------------------------------------------
+if(KANARIV_BUILD_LIBRARIES)
 
 # Vendor: sqlite3 (sqlite3 amalgamation, SQLITE_ENABLE_FTS5=1). Built STATIC
 # for static builds; in shared mode it is a DLL so the process has exactly one
@@ -310,16 +373,17 @@ include(FetchContent)
 # Consumed by utils only: INCLUDES ${KANARIV_NLOHMANN_PRIVATE_INCLUDE}.
 set(KANARIV_NLOHMANN_PRIVATE_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/vendor)
 
-# CLI11 is private to the kanariv executable: skip entirely with KANARIV_BUILD_CLI=OFF.
-option(KANARIV_BUILD_CLI "build the kanariv executable (requires CLI11)" ON)
+# FetchContent dependencies are pinned to commits, not tags, so a moved tag
+# cannot change what a build produces (W20). GIT_SHALLOW is incompatible with an
+# arbitrary SHA, hence the full clones. For offline builds configure once, then
+# pass -DFETCHCONTENT_FULLY_DISCONNECTED=ON to reuse _deps without network.
 if(KANARIV_BUILD_CLI)
   find_package(CLI11 QUIET)
   if(NOT CLI11_FOUND)
     FetchContent_Declare(
       CLI11
       GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
-      GIT_TAG v2.7.2
-      GIT_SHALLOW TRUE
+      GIT_TAG cbd58a3696887b34c70949aef21a71735a0c2ad5 # v2.7.2
     )
     FetchContent_MakeAvailable(CLI11)
   else()
@@ -331,11 +395,11 @@ endif()
 # TagLib is vendored like sqlite3/blake3 (always fetched, never system):
 # private file-tag implementation detail, installed as kanariv::tag next to
 # them so install(EXPORT) resolves. Headers never enter installed headers.
+# Commit-pinned for the same reason as CLI11 above (W20).
 FetchContent_Declare(
   TagLib
   GIT_REPOSITORY https://github.com/taglib/taglib.git
-  GIT_TAG v2.3.2
-  GIT_SHALLOW TRUE
+  GIT_TAG deadc2990767dfbda0701e0ab35fdeea653db08f # v2.3.2
 )
   set(BUILD_TESTS OFF)
   set(BUILD_EXAMPLES OFF)
@@ -447,12 +511,6 @@ if(KANARIV_ENABLE_MODULES)
   endif()
 endif()
 
-# Documentation (Doxygen) -- see cmake/Docs.cmake
-if(KANARIV_BUILD_DOCS)
-  include(cmake/Docs.cmake)
-  kanariv_add_docs()
-endif()
-
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/kanarivConfig.cmake.in"
@@ -507,3 +565,5 @@ if(KANARIV_ENABLE_RUST_CLI OR KANARIV_ENABLE_RUST_DB OR KANARIV_ENABLE_RUST_DB_F
 endif()
 
 include(cmake/Tests.cmake)
+
+endif() # KANARIV_BUILD_LIBRARIES

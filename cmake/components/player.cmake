@@ -51,5 +51,5 @@ if(KANARIV_ENABLE_MODULES)
 endif()
 
 if(KANARIV_BUILD_SHARED)
-  kanariv_add_shared_variant(player EXTRA_DEPS kanariv::utils_shared kanariv::media_shared)
+  kanariv_add_shared_variant(player)
 endif()
