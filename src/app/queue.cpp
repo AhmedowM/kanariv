@@ -49,7 +49,7 @@ std::expected<TrackList, kanariv::utils::Error> App::queueTracks(const std::stri
     if (!res)
         return std::unexpected{res.error()};
     int64_t curId = 0;
-    kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
+    auto probe = impl_->makeClient();
     if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}})) {
         if (auto* st = std::get_if<kanariv::ipc::Status>(&*ps))
             curId = st->track_id;
@@ -110,7 +110,7 @@ BatchResult App::queueAdd(const std::vector<std::string>& paths, const std::stri
     // Seed the known-id set so re-adds warn instead of duplicating.
     std::set<int64_t> seen;
     {
-        kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
+        auto probe = impl_->makeClient();
         if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::QueueList{"added"}})) {
             if (auto* qt = std::get_if<kanariv::ipc::QueueTracks>(&*ps)) {
                 for (auto& t : qt->tracks)
@@ -230,7 +230,7 @@ BatchResult App::queueRemove(const std::string& id, const std::string& pos,
     };
     std::vector<RemTarget> all;
     {
-        kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
+        auto probe = impl_->makeClient();
         auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::QueueList{"added"}});
         if (!ps)
             return std::unexpected{ps.error()};
@@ -413,7 +413,7 @@ AppResult App::queueRepeat(const std::string& mode) {
         return Outcome::fail(std::format("repeat: invalid mode '{}' (expected off|one|all)", mode));
     else {
         // Bare repeat cycles off -> all -> one -> off.
-        kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
+        auto probe = impl_->makeClient();
         if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}})) {
             if (auto* st = std::get_if<kanariv::ipc::Status>(&*ps)) {
                 if (st->repeat == RM::Off)

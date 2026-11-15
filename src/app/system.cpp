@@ -47,17 +47,15 @@ AppResult App::bookmarkAdd(std::optional<double> position, std::string note,
     if (position.has_value()) {
         pos = *position;
     } else {
-        kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
-        auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
+        // sendRaw normalizes an embedded server-side Error (I8), so the
+        // reply variant is the only thing left to inspect here.
+        auto ps = impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
         if (!ps)
             return std::unexpected{ps.error()};
         auto* st = std::get_if<kanariv::ipc::Status>(&*ps);
-        if (!st) {
-            if (auto* e = std::get_if<kanariv::utils::Error>(&*ps))
-                return std::unexpected{*e};
+        if (!st)
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::State, "status unavailable")};
-        }
         pos = st->pos;
     }
     if (pos < 0.0)
@@ -129,17 +127,15 @@ AppResult App::lyricsSet(std::string lrc_text, bool is_synced, std::string sourc
                     "track not found for '" + t + "'")};
         }
     } else {
-        kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
-        auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
+        // sendRaw normalizes an embedded server-side Error (I8), so the
+        // reply variant is the only thing left to inspect here.
+        auto ps = impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
         if (!ps)
             return std::unexpected{ps.error()};
         auto* st = std::get_if<kanariv::ipc::Status>(&*ps);
-        if (!st) {
-            if (auto* e = std::get_if<kanariv::utils::Error>(&*ps))
-                return std::unexpected{*e};
+        if (!st)
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::State, "status unavailable")};
-        }
         tid = st->track_id;
     }
     if (tid == 0)
@@ -187,17 +183,15 @@ AppResult App::lyricsGet(std::optional<std::string> track) {
                     "track not found for '" + t + "'")};
         }
     } else {
-        kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
-        auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
+        // sendRaw normalizes an embedded server-side Error (I8), so the
+        // reply variant is the only thing left to inspect here.
+        auto ps = impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
         if (!ps)
             return std::unexpected{ps.error()};
         auto* st = std::get_if<kanariv::ipc::Status>(&*ps);
-        if (!st) {
-            if (auto* e = std::get_if<kanariv::utils::Error>(&*ps))
-                return std::unexpected{*e};
+        if (!st)
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::State, "status unavailable")};
-        }
         tid = st->track_id;
     }
     if (tid == 0)
@@ -251,17 +245,15 @@ AppResult App::lyricsRemove(std::optional<std::string> track) {
                     "track not found for '" + t + "'")};
         }
     } else {
-        kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
-        auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
+        // sendRaw normalizes an embedded server-side Error (I8), so the
+        // reply variant is the only thing left to inspect here.
+        auto ps = impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
         if (!ps)
             return std::unexpected{ps.error()};
         auto* st = std::get_if<kanariv::ipc::Status>(&*ps);
-        if (!st) {
-            if (auto* e = std::get_if<kanariv::utils::Error>(&*ps))
-                return std::unexpected{*e};
+        if (!st)
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::State, "status unavailable")};
-        }
         tid = st->track_id;
     }
     if (tid == 0)

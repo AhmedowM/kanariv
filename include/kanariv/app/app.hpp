@@ -15,8 +15,13 @@
  * render. Exit-code convention is CLI-compatible throughout: 0 ok, 1
  * runtime failure.
  *
- * Thread safety: thread-safe for concurrent calls; daemon interactions go
- * through the IPC client, which serializes per connection.
+ * Thread safety: command methods may be called concurrently. The bound
+ * config and the daemon re-spawn path are read as one immutable snapshot per
+ * call, so `setConfig`/`setArgv0` may run while commands are in flight: a
+ * call observes either the old or the new state in full, never a mix.
+ * `attachDaemonHost`/`attachPreviewHost` are setup-only -- inject both before
+ * any command runs concurrently. Daemon interactions go through the IPC
+ * client, which serializes per connection.
  */
 
 #include <array>
@@ -42,15 +47,21 @@ namespace kanariv::app {
  * result themselves (bare/JSON), print `line`, or stay silent:
  * result plus line is a confirmation, result alone is rendered by the
  * frontend, line
- * alone with toStderr is a warning (exit still 0), failed lines go to
- * stderr with exit 1, quiet skips human rendering of a carried result,
- * neither is silent success.
+ * alone with toStderr is a warning (exit still 0), `failed` marks a final
+ * failure line emitted with exit code 1, quiet skips human rendering of a
+ * carried result, neither is silent success.
+ *
+ * Failures have one channel: transport, daemon and server errors are the
+ * `unexpected` alternative of the returned result, never `failed`. `failed`
+ * is reserved for conditions App detects itself whose message is final
+ * without an underlying `Error` (argument/policy validation, transient
+ * busy-retry hints). Callers may rely on `!result` to detect a real failure.
  */
 struct KANARIV_API Outcome {
     std::optional<kanariv::ipc::Result> result; ///< Structured result for frontend rendering.
     std::optional<std::string> line;           ///< Human-readable line, when applicable.
     bool toStderr = false;                     ///< Render `line` on stderr instead of stdout.
-    bool failed = false;                       ///< Indicates a runtime failure (exit code 1).
+    bool failed = false;                       ///< Final failure line: stderr, exit code 1.
     bool quiet = false;                        ///< Suppresses human rendering of `result`.
     /** @brief Creates a successful warning outcome written to stderr. */
     static std::expected<Outcome, kanariv::utils::Error> warn(std::string message);
@@ -128,7 +139,9 @@ class KANARIV_API App {
      * @details Frontends construct App before parsing their own flags, so
      * the bound config is stale until they call this once parsing plus
      * config-file reload plus socket derivation are done. Every daemon
-     * interaction below must observe the final config.
+     * interaction below must observe the final config. Safe to call while
+     * commands run: each command reads one immutable snapshot, so it sees
+     * either the previous or the new config in full.
      */
     void setConfig(kanariv::config::Config cfg);
 
@@ -137,7 +150,8 @@ class KANARIV_API App {
      * @ingroup kanariv_app
      * @param argv0 Executable path as invoked (POSIX fallback only).
      * @details Frontends call this once from their entry point before any
-     * spawn; on Windows the module path is used instead.
+     * spawn; on Windows the module path is used instead. A spawn snapshots
+     * the path before forking, so concurrent updates are race-free.
      */
     void setArgv0(std::string argv0);
 
@@ -163,11 +177,15 @@ class KANARIV_API App {
      * @brief Starts the daemon (foreground service or background spawn).
      * @ingroup kanariv_app
      * @param foreground Run the service in-process and block (child path).
-     * @return Outcome data; success chatter is a line frontends skip in
-     * JSON mode, failures are failed lines.
+     * @return Outcome data on success (an "already running" or "started"
+     * line frontends skip in JSON mode), or std::unexpected for a real start
+     * failure: no foreground host configured, the host returning a failure,
+     * spawning failing, or the readiness round-trip not completing within
+     * its budget. Failures never use `Outcome::failed`, so callers can test
+     * `!result` instead of inspecting the outcome.
      * @details Background path waits out a previous daemon's teardown,
      * spawns once, then requires a full StatusReq round-trip (not just a
-     * connect) within budget before reporting success.
+     * connect) within a fixed 5 s absolute budget before reporting success.
      */
     AppResult startDaemon(bool foreground);
 

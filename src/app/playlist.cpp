@@ -211,15 +211,13 @@ BatchResult App::playlistExport(std::int64_t pid, const std::string& path,
                                 const std::string& format) {
     kanariv::ipc::Command cmd{
         kanariv::ipc::PlaylistExport{.pid = pid, .path = path, .format = format}};
-    kanariv::client::Client client{impl_->config_.dbPath, impl_->config_.socketPath};
+    auto client = impl_->makeClient();
     auto timeout = std::chrono::milliseconds{5000};
-    auto cliRes = client.send(cmd, timeout);
+    // normalizeResult folds the embedded Error alternative (I8) into the
+    // unexpected channel, so one check covers both failure shapes.
+    auto cliRes = detail::normalizeResult(client.send(cmd, timeout));
     if (!cliRes)
         return BatchReport::fail(std::format("export: {}", cliRes.error().message));
-    if (std::holds_alternative<kanariv::utils::Error>(*cliRes)) {
-        return BatchReport::fail(
-            std::format("export: {}", std::get<kanariv::utils::Error>(*cliRes).message));
-    }
     BatchReport rep;
     if (std::holds_alternative<kanariv::ipc::PlaylistData>(*cliRes)) {
         auto& pd = std::get<kanariv::ipc::PlaylistData>(*cliRes);

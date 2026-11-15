@@ -42,7 +42,7 @@ AppResult App::play() {
     double priorPos = 0;
     int64_t priorTrack = 0;
     {
-        kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
+        auto probe = impl_->makeClient();
         if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}})) {
             if (auto* st = std::get_if<kanariv::ipc::Status>(&*ps)) {
                 wasPaused = (st->state == kanariv::types::PlaybackState::Paused);
@@ -111,7 +111,10 @@ AppResult App::pause() {
     auto res = impl_->sendRaw(cmd);
     if (!res) {
         const auto& e = res.error();
-        if (e.code == kanariv::utils::StatusCode::State && e.message == "not playing")
+        // Engine::pause and Player::pause report State only when playback is
+        // not Playing; against a reachable daemon that is the idle no-op.
+        // An unreachable daemon's transport error must surface unchanged.
+        if (e.code == kanariv::utils::StatusCode::State && impl_->daemonReachable())
             return Outcome::warn("pause: nothing playing");
         return std::unexpected{e};
     }
@@ -132,11 +135,14 @@ AppResult App::resume() {
     auto res = impl_->sendRaw(cmd);
     if (!res) {
         const auto& e = res.error();
-        if (e.code == kanariv::utils::StatusCode::State && e.message == "not paused") {
+        // Engine::resume reports State only when playback is not Paused; the
+        // status probe then separates "already playing" (warn) from Stopped
+        // (play from cursor). A failed probe surfaces the original error.
+        if (e.code == kanariv::utils::StatusCode::State) {
             // Forgiving resume: playing -> warn; stopped -> play from cursor.
             bool playing = false;
             bool probed = false;
-            kanariv::client::Client probe{impl_->config_.dbPath, impl_->config_.socketPath};
+            auto probe = impl_->makeClient();
             if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}})) {
                 if (auto* st = std::get_if<kanariv::ipc::Status>(&*ps)) {
                     probed = true;
@@ -218,8 +224,16 @@ AppResult App::prev() {
         const auto& e = res.error();
         if (e.code == kanariv::utils::StatusCode::Busy)
             return Outcome::fail("prev: engine busy, retry");
-        if (e.code == kanariv::utils::StatusCode::NotFound && e.message == "at start")
-            return Outcome::warn("prev: at queue start");
+        if (e.code == kanariv::utils::StatusCode::NotFound) {
+            // queuePrevLocked reports NotFound at queue start and for an
+            // empty queue ("empty queue"); only a non-empty queue makes the
+            // warning correct, so ask the daemon for its size (structural).
+            if (auto st = impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::StatusReq{}})) {
+                if (auto* status = std::get_if<kanariv::ipc::Status>(&*st);
+                    status != nullptr && status->q_size > 0)
+                    return Outcome::warn("prev: at queue start");
+            }
+        }
         return std::unexpected{e};
     }
     // Hoisted: read before Outcome moves *res (see resume()).
@@ -232,7 +246,7 @@ AppResult App::prev() {
 
 AppResult App::seek(double target, bool isRelative) {
     if (isRelative) {
-        kanariv::client::Client client{impl_->config_.dbPath, impl_->config_.socketPath};
+        auto client = impl_->makeClient();
         auto sres = client.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
         double pos = 0;
         bool hasPos = false;

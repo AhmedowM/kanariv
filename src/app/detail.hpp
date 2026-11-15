@@ -1,8 +1,10 @@
 #pragma once
 
+#include <chrono>
+#include <cstdint>
+#include <expected>
 #include <kanariv/fwd.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <cstdint>
 #include <set>
 #include <string>
 
@@ -13,6 +15,26 @@
  * and must use the public `kanariv/app/` headers.
  */
 namespace kanariv::app::detail {
+
+/**
+ * @brief Total wall-clock budget for detecting a freshly spawned daemon.
+ * @details Both the loop deadline and the per-attempt timeout derive from
+ * this one value, so the documented budget and the code cannot drift.
+ */
+inline constexpr std::chrono::milliseconds daemonReadyBudget{5000};
+
+/** @brief Upper bound for one readiness status round-trip. */
+inline constexpr std::chrono::milliseconds daemonReadyAttempt{500};
+
+/** @brief Pause between readiness attempts. */
+inline constexpr std::chrono::milliseconds daemonReadyPoll{100};
+
+/**
+ * @brief Timeout for a readiness attempt started with `remaining` budget.
+ * @param remaining Budget left before the readiness deadline (may be <= 0).
+ * @return min(daemonReadyAttempt, remaining), clamped at zero.
+ */
+std::chrono::milliseconds readinessAttemptTimeout(std::chrono::milliseconds remaining);
 
 /**
  * @brief Appends one line to a blob (newline-joined, no trailing newline).
@@ -43,10 +65,31 @@ int printAddedText(const kanariv::ipc::Result& res, std::set<int64_t>& seen, std
 void countLineText(int added, std::string& out);
 
 /**
- * @brief Renders an error plus the start hint into a blob.
+ * @brief Renders an error into a blob.
  * @details Single implementation shared by batch loops and the shell
  * error path, so both render byte-identical text.
  */
 KANARIV_API void renderErrorInto(std::string& err, const kanariv::utils::Error& e);
+
+/**
+ * @brief Canonical error for an unreachable daemon, including the start hint.
+ * @details Produced structurally (a failed send followed by a failed
+ * liveness probe), never by matching a message. Frontends render the
+ * message verbatim, so the hint text lives here instead of in a renderer
+ * that would have to re-derive the cause.
+ */
+kanariv::utils::Error daemonDownError();
+
+/**
+ * @brief Normalizes a successful reply that carries an embedded Error.
+ * @details `ipc::Result` keeps the `CliError`/`Error` alternative for
+ * server-side failures (I8), so a successful transport reply may still be a
+ * failure. Every handler routes replies through this helper; when I8 is
+ * fixed only this function changes.
+ * @param res Client result to normalize.
+ * @return The result, or the transport/embedded error.
+ */
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+normalizeResult(std::expected<kanariv::ipc::Result, kanariv::utils::Error>&& res);
 
 } // namespace kanariv::app::detail

@@ -23,7 +23,8 @@ namespace kanariv::app {
 
 AppResult App::configGet(const std::string& key) {
     // Answered from the local file: no daemon needed.
-    auto v = kanariv::config::detail::configGetRaw(impl_->config_.configPath, key);
+    const auto cfg = impl_->config();
+    auto v = kanariv::config::detail::configGetRaw(cfg.configPath, key);
     if (!v)
         return std::unexpected{v.error()};
     return impl_->confirm(kanariv::ipc::Result{kanariv::ipc::ConfigValue{key, *v}});

@@ -6,8 +6,12 @@
  * same spelling for every variant so app and CLI output stay identical.
  */
 
+#include <algorithm>
 #include <app/detail.hpp>
 #include <app/format_internal.hpp>
+#include <cstdint>
+#include <expected>
+#include <format>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -16,14 +20,33 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/print.hpp>
-#include <cstdint>
-#include <format>
 #include <set>
 #include <sstream>
 #include <string>
 #include <variant>
 
 namespace kanariv::app::detail {
+
+std::chrono::milliseconds readinessAttemptTimeout(std::chrono::milliseconds remaining) {
+    if (remaining <= std::chrono::milliseconds::zero())
+        return std::chrono::milliseconds::zero();
+    return std::min(daemonReadyAttempt, remaining);
+}
+
+kanariv::utils::Error daemonDownError() {
+    return kanariv::utils::Error{
+        kanariv::utils::StatusCode::State,
+        "daemon not running\nhint: run `kanariv start` to start the daemon"};
+}
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+normalizeResult(std::expected<kanariv::ipc::Result, kanariv::utils::Error>&& res) {
+    if (!res)
+        return std::unexpected{res.error()};
+    if (const auto* e = std::get_if<kanariv::utils::Error>(&*res))
+        return std::unexpected{*e};
+    return std::move(*res);
+}
 
 namespace {
 
@@ -258,8 +281,6 @@ void renderErrorInto(std::string& err, const kanariv::utils::Error& e) {
     std::ostringstream os;
     kanariv::println(os, "Error: {} {}", kanariv::utils::toString(e.code), e.message);
     appendBlock(err, os.str());
-    if (e.code == kanariv::utils::StatusCode::State && e.message == "daemon not running")
-        emitLine(err, "hint: run `kanariv start` to start the daemon");
 }
 
 } // namespace kanariv::app::detail

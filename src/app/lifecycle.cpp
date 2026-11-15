@@ -38,13 +38,9 @@
 #endif
 #endif
 
+#include <algorithm>
 #include <app/app_impl.hpp>
-#include <kanariv/app/app.hpp>
-#include <kanariv/client/client.hpp>
-#include <kanariv/config.hpp>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/ipc/result.hpp>
-#include <kanariv/utils/error.hpp>
+#include <app/detail.hpp>
 #include <chrono>
 #include <cstdint>
 #include <expected>
@@ -52,6 +48,13 @@
 #include <format>
 #include <fstream>
 #include <functional>
+#include <kanariv/app/app.hpp>
+#include <kanariv/client/client.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <mutex>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -93,17 +96,17 @@ bool pidFileAlive(const std::filesystem::path& pidPath) {
 } // namespace
 
 App::App(kanariv::config::Config cfg) : impl_(std::make_unique<Impl>()) {
-    impl_->config_ = std::move(cfg);
+    impl_->setConfig(std::move(cfg));
 }
 
 App::~App() = default;
 
 void App::setConfig(kanariv::config::Config cfg) {
-    impl_->config_ = std::move(cfg);
+    impl_->setConfig(std::move(cfg));
 }
 
 void App::setArgv0(std::string argv0) {
-    impl_->argv0_ = std::move(argv0);
+    impl_->setArgv0(std::move(argv0));
 }
 
 void App::attachDaemonHost(std::function<AppResult(bool foreground)> host) {
@@ -114,13 +117,44 @@ void App::attachPreviewHost(std::function<AppResult(const std::string& file)> ho
     impl_->previewHost_ = std::move(host);
 }
 
+kanariv::config::Config App::Impl::config() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return config_;
+}
+
+void App::Impl::setConfig(kanariv::config::Config cfg) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    config_ = std::move(cfg);
+}
+
+std::string App::Impl::argv0() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return argv0_;
+}
+
+void App::Impl::setArgv0(std::string argv0) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    argv0_ = std::move(argv0);
+}
+
+kanariv::client::Client App::Impl::makeClient() const {
+    // One snapshot: dbPath and socketPath always come from the same config.
+    const auto cfg = config();
+    return kanariv::client::Client{cfg.dbPath, cfg.socketPath};
+}
+
+bool App::Impl::daemonReachable() const {
+    return makeClient().probe();
+}
+
 std::filesystem::path App::Impl::pidPathForConfig() const {
+    const auto cfg = config();
     // Canonical pid path -- single source via kanariv.config (hash of dbPath + XDG/LOCALAPPDATA)
-    auto r = kanariv::config::pidPathFor(config_.dbPath);
+    auto r = kanariv::config::pidPathFor(cfg.dbPath);
     if (r)
         return *r;
     // Fallback when canonical derivation fails: pid file next to the database.
-    auto pp = config_.dbPath.parent_path();
+    auto pp = cfg.dbPath.parent_path();
     if (pp.empty())
         pp = std::filesystem::current_path();
     return pp / "kanariv.pid";
@@ -167,6 +201,9 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const kanariv::config:
     CloseHandle(pi.hThread);
     return {};
 #else
+    // Snapshot before fork(): taking the state mutex or copying a string in
+    // the child could deadlock against a lock held by another thread.
+    const std::string fallbackExe = argv0();
     pid_t pid = fork();
     if (pid < 0) {
         return std::unexpected{static_cast<std::uint32_t>(errno)};
@@ -190,7 +227,7 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const kanariv::config:
             linkBuf[n] = '\0';
             exePath = linkBuf;
         } else {
-            exePath = argv0_.empty() ? "/proc/self/exe" : argv0_;
+            exePath = fallbackExe.empty() ? "/proc/self/exe" : fallbackExe;
         }
     }
 #elif defined(__APPLE__)
@@ -203,8 +240,8 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const kanariv::config:
             std::vector<char> dyn(size);
             if (_NSGetExecutablePath(dyn.data(), &size) == 0) {
                 exePath = dyn.data();
-            } else if (!argv0_.empty()) {
-                exePath = argv0_;
+            } else if (!fallbackExe.empty()) {
+                exePath = fallbackExe;
             } else {
                 exePath = "./kanariv";
             }
@@ -223,8 +260,8 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const kanariv::config:
             if (n > 0) {
                 linkBuf[n] = '\0';
                 exePath = linkBuf;
-            } else if (!argv0_.empty()) {
-                exePath = argv0_;
+            } else if (!fallbackExe.empty()) {
+                exePath = fallbackExe;
             } else {
                 exePath = "./kanariv";
             }
@@ -243,11 +280,12 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const kanariv::config:
 }
 
 AppResult App::Impl::startDaemon(bool foreground) {
-    kanariv::client::Client client{config_.dbPath, config_.socketPath};
+    // One config snapshot for the whole start (probe, spawn, readiness).
+    const auto cfg = config();
+    kanariv::client::Client client{cfg.dbPath, cfg.socketPath};
     if (client.probe()) {
-        return Outcome{std::nullopt,
-                       std::format("daemon already running at {}", config_.socketPath), false,
-                       false};
+        return Outcome{std::nullopt, std::format("daemon already running at {}", cfg.socketPath),
+                       false, false};
     }
     // Death-watch: a previous daemon may be mid-teardown (pipe already dead
     // but pid file present / lock still held while threads join). Spawning
@@ -273,55 +311,75 @@ AppResult App::Impl::startDaemon(bool foreground) {
     // Ensure db parent dirs exist before trying to start service (foreground)
     {
         std::error_code ec2;
-        auto parent = config_.dbPath.parent_path();
+        auto parent = cfg.dbPath.parent_path();
         if (!parent.empty())
             std::filesystem::create_directories(parent, ec2);
     }
     if (foreground) {
-        if (daemonHost_) {
-            return daemonHost_(foreground);
+        if (!daemonHost_)
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                             "daemon host not configured")};
+        auto started = daemonHost_(foreground);
+        if (!started)
+            return started;
+        if (started->failed) {
+            // The injected host reports its own failures as a failed
+            // Outcome; lift them onto the single error channel so callers
+            // can detect a failed start structurally.
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::State, started->line.value_or("daemon start failed"))};
         }
-        return Outcome::fail("daemon host not configured");
-    } else {
-        auto spawnRes = spawnDaemon(config_);
-        if (!spawnRes) {
-            std::uint32_t err = spawnRes.error();
-            std::string what;
-            try {
-                what = std::system_category().message(err);
-            } catch (...) {
-                what = "unknown error";
-            }
-            return Outcome::fail(
-                std::format("start failed: couldn't start daemon ({}: {})", err, what));
-        }
-        // Readiness = full StatusReq round-trip (proves the accept loop and the
-        // dispatcher are alive, not just that a pipe object exists -- a bare
-        // connect can succeed against a dying daemon's draining instance).
-        // Budget 5 s: a fresh spawn on a slow/Debug box can exceed the old
-        // 1.5 s connect-only budget.
-        std::string lastDetail;
-        for (int i = 0; i < 50; ++i) {
-            kanariv::client::Client probe{config_.dbPath, config_.socketPath};
-            if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}},
-                                     std::chrono::milliseconds{500})) {
-                if (std::get_if<kanariv::ipc::Status>(&*ps)) {
-                    return Outcome{std::nullopt,
-                                   std::format("daemon started at {}", config_.socketPath), false,
-                                   false};
-                }
-                lastDetail = "unexpected reply";
-            } else {
-                lastDetail = ps.error().message;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        std::string msg =
-            std::format("daemon start failed: socket not reachable at {}", config_.socketPath);
-        if (!lastDetail.empty())
-            msg += std::format("\nlast error: {}", lastDetail);
-        return Outcome::fail(std::move(msg));
+        return started;
     }
+    auto spawnRes = spawnDaemon(cfg);
+    if (!spawnRes) {
+        std::uint32_t err = spawnRes.error();
+        std::string what;
+        try {
+            what = std::system_category().message(err);
+        } catch (...) {
+            what = "unknown error";
+        }
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::State,
+            std::format("start failed: couldn't start daemon ({}: {})", err, what))};
+    }
+    // Readiness = full StatusReq round-trip (proves the accept loop and the
+    // dispatcher are alive, not just that a pipe object exists -- a bare
+    // connect can succeed against a dying daemon's draining instance).
+    // The whole wait is bounded by one absolute budget (detail::
+    // daemonReadyBudget, 5 s): each attempt times out at whatever remains,
+    // so a slow spawn cannot stretch the documented deadline.
+    const auto deadline = std::chrono::steady_clock::now() + detail::daemonReadyBudget;
+    std::string lastDetail;
+    while (true) {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        const auto attempt = detail::readinessAttemptTimeout(remaining);
+        if (attempt <= std::chrono::milliseconds::zero())
+            break;
+        kanariv::client::Client probe{cfg.dbPath, cfg.socketPath};
+        if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}}, attempt)) {
+            if (std::get_if<kanariv::ipc::Status>(&*ps)) {
+                return Outcome{std::nullopt, std::format("daemon started at {}", cfg.socketPath),
+                               false, false};
+            }
+            lastDetail = "unexpected reply";
+        } else {
+            lastDetail = ps.error().message;
+        }
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        if (left <= std::chrono::milliseconds::zero())
+            break;
+        std::this_thread::sleep_for(std::min(detail::daemonReadyPoll, left));
+    }
+    std::string msg =
+        std::format("daemon start failed: socket not reachable at {}", cfg.socketPath);
+    if (!lastDetail.empty())
+        msg += std::format("\nlast error: {}", lastDetail);
+    return std::unexpected{
+        kanariv::utils::makeError(kanariv::utils::StatusCode::State, std::move(msg))};
 }
 
 AppResult App::startDaemon(bool foreground) {
@@ -329,16 +387,15 @@ AppResult App::startDaemon(bool foreground) {
 }
 
 AppResult App::shutdownDaemon() {
-    kanariv::client::Client client{impl_->config_.dbPath, impl_->config_.socketPath};
+    const auto cfg = impl_->config();
+    kanariv::client::Client client{cfg.dbPath, cfg.socketPath};
     auto cmd = kanariv::ipc::Command{kanariv::ipc::Shutdown{}};
     auto res = client.send(cmd, std::chrono::milliseconds{2000});
-    if (!res) {
-        // if daemon not running, report
-        if (res.error().code == kanariv::utils::StatusCode::State) {
-            return Outcome::fail("shutdown: daemon not running");
-        }
-        // even if send failed, attempt to poll pid file
+    if (!res && !client.probe()) {
+        // Structurally unreachable: there is nothing to shut down.
+        return Outcome::fail("shutdown: daemon not running");
     }
+    // Even if send failed against a reachable daemon, attempt to poll pid file.
     // poll pid file and socket until daemon exits
     auto pidPath = impl_->pidPathForConfig();
     for (int i = 0; i < 20; ++i) {
@@ -356,38 +413,39 @@ AppResult App::shutdownDaemon() {
     }
     bool conn = client.probe();
     if (conn) {
-        return Outcome::fail(
-            std::format("shutdown: daemon still running at {}", impl_->config_.socketPath));
+        return Outcome::fail(std::format("shutdown: daemon still running at {}", cfg.socketPath));
     }
     return Outcome{std::nullopt, "daemon stopped", false, false};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 App::Impl::sendRaw(const kanariv::ipc::Command& cmd, std::chrono::milliseconds timeout) {
-    kanariv::client::Client client{config_.dbPath, config_.socketPath};
+    kanariv::client::Client client = makeClient();
     auto res = client.send(cmd, timeout);
-    if (!res)
+    if (!res) {
+        // Classify the failure structurally: a failed liveness probe means the
+        // daemon is gone, so report the canonical unreachable-daemon error.
+        // A reachable daemon's error is propagated untouched.
+        if (!client.probe())
+            return std::unexpected{detail::daemonDownError()};
         return std::unexpected{res.error()};
-    if (std::holds_alternative<kanariv::utils::Error>(*res))
-        return std::unexpected{std::get<kanariv::utils::Error>(*res)};
-    return std::move(*res);
+    }
+    return detail::normalizeResult(std::move(res));
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 App::Impl::sendPlay(const kanariv::ipc::Command& cmd) {
     auto res = sendRaw(cmd);
-    if (!res) {
-        const auto& e = res.error();
-        if (e.code == kanariv::utils::StatusCode::State && e.message == "daemon not running") {
-            if (!startDaemon(false)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                auto retry = sendRaw(cmd);
-                if (retry)
-                    return retry;
-                return std::unexpected{retry.error()};
-            }
+    if (!res && !daemonReachable()) {
+        // Autostart only when the daemon is actually down; a reachable
+        // daemon's error is propagated untouched.
+        if (!startDaemon(false)) {
+            // A failed start gets one 500 ms grace period before the single
+            // retry; the retry's error is what the caller sees.
+            std::this_thread::sleep_for(std::chrono::milliseconds{500});
             return sendRaw(cmd);
         }
+        return sendRaw(cmd);
     }
     return res;
 }

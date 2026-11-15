@@ -8,15 +8,17 @@
  * (not installed) so downstream consumers never see them.
  */
 
-#include <kanariv/app/app.hpp>
-#include <kanariv/config.hpp>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/ipc/result.hpp>
-#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <expected>
 #include <filesystem>
 #include <functional>
+#include <kanariv/app/app.hpp>
+#include <kanariv/client/client.hpp>
+#include <kanariv/config.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,10 +28,42 @@ namespace kanariv::app {
 
 struct App::Impl {
     /**
+     * @brief Returns a consistent snapshot of the bound config.
+     * @details Handlers take exactly one snapshot per call, so a concurrent
+     * setConfig() either applies to the whole call or not at all; no handler
+     * can observe a mixed (torn) config.
+     */
+    kanariv::config::Config config() const;
+
+    /** @brief Replaces the config snapshot atomically. */
+    void setConfig(kanariv::config::Config cfg);
+
+    /** @brief Returns the configured daemon re-spawn executable path. */
+    std::string argv0() const;
+
+    /** @brief Replaces the daemon re-spawn executable path atomically. */
+    void setArgv0(std::string argv0);
+
+    /**
+     * @brief Builds a client from one config snapshot.
+     * @return Client bound to the snapshot's db/socket paths.
+     */
+    kanariv::client::Client makeClient() const;
+
+    /**
+     * @brief One-shot, bounded daemon liveness probe.
+     * @return True when a connection can be established right now.
+     * @details Only used on error paths; the success path never pays for it.
+     */
+    bool daemonReachable() const;
+
+    /**
      * @brief Sends a command and normalizes server-side errors.
      * @param cmd IPC command to send.
      * @param timeout Per-attempt timeout (default 2 s).
-     * @return Server result, or the transport/server error.
+     * @return Server result, or the transport/server error. A transport
+     * failure followed by a failed liveness probe is reported as the
+     * canonical unreachable-daemon error.
      */
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     sendRaw(const kanariv::ipc::Command& cmd,
@@ -67,8 +101,9 @@ struct App::Impl {
     /**
      * @brief Starts the daemon (foreground service or background spawn).
      * @param foreground Run the service in-process and block (child path).
-     * @return Outcome data; success chatter is a line frontends skip in
-     *         JSON mode, failures are failed lines.
+     * @return Outcome data on success; std::unexpected for real start
+     *         failures (no host, host failure, spawn failure, readiness
+     *         timeout).
      */
     AppResult startDaemon(bool foreground);
 
@@ -78,11 +113,14 @@ struct App::Impl {
      */
     std::string transportWho(const std::expected<kanariv::ipc::Result, kanariv::utils::Error>& res);
 
-    kanariv::config::Config config_; ///< Bound config (db/socket/log paths).
-    std::string argv0_;             ///< Executable path for POSIX re-spawn.
     std::function<AppResult(bool foreground)> daemonHost_{}; ///< Injected foreground daemon host.
     std::function<AppResult(const std::string& file)>
         previewHost_{}; ///< Injected local preview host.
+
+  private:
+    mutable std::mutex stateMutex_;  ///< Guards config_ and argv0_.
+    kanariv::config::Config config_; ///< Bound config (db/socket/log paths).
+    std::string argv0_;              ///< Executable path for POSIX re-spawn.
 };
 
 } // namespace kanariv::app
