@@ -17,6 +17,7 @@
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
+#include <kanariv/utils/parse.hpp>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
@@ -69,13 +70,11 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
         return BatchReport::fail("playlist add: need --id ID or PATH");
     std::vector<int64_t> resolved;
     for (auto& s : ids) {
-        if (!kanariv::app::isNumeric(s))
-            return BatchReport::fail("playlist add: --id needs numeric ids");
-        try {
-            resolved.push_back(std::stoll(s));
-        } catch (...) {
-            return BatchReport::fail(std::format("playlist add: id out of range: {}", s));
-        }
+        const auto id = kanariv::utils::parseId(s);
+        if (!id)
+            return BatchReport::fail(
+                std::format("playlist add: --id needs a non-negative numeric id: {}", s));
+        resolved.push_back(*id);
     }
     // PATHs: expand, ensure library rows, resolve exact ids.
     std::vector<std::string> files;

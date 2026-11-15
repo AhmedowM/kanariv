@@ -151,17 +151,17 @@ struct QueueAdd final {
  * @brief Remove a track from the active queue by position or track ID.
  * @ingroup kanariv_ipc
  *
- * @json_example {"type": "QueueRemove", "idOrIndex": "5"}
+ * @json_example {"type": "QueueRemove", "idOrIndex": "#pos:5"}
  *
- * @param idOrIndex Explicit selector: a bare number or `#pos:<n>` is a
- * zero-based queue position, `#id:<n>` is a track ID. The two spaces are never
- * guessed from the value, so a removal can only affect the row the client
- * named.
+ * @param idOrIndex Explicit selector: `#pos:<n>` is a zero-based queue
+ * position and `#id:<n>` is a track ID. The prefix is mandatory -- a bare
+ * number is rejected, because guessing the space it belongs to silently
+ * removes a different row when the client meant the other one.
  * @return QueueTracks object with updated queue contents.
  */
 struct QueueRemove final {
     /**
-     * @brief `<pos>`, `#pos:<n>` (zero-based position) or `#id:<n>` (track ID).
+     * @brief `#pos:<n>` (zero-based position) or `#id:<n>` (track ID).
      */
     std::string idOrIndex{};
 };

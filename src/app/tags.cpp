@@ -7,14 +7,16 @@
 
 #include <algorithm>
 #include <app/app_impl.hpp>
+#include <cstdint>
+#include <expected>
+#include <format>
 #include <kanariv/app/app.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
-#include <cstdint>
-#include <expected>
-#include <format>
+#include <kanariv/utils/parse.hpp>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -25,22 +27,15 @@ bool isTagField(std::string_view field) {
     return std::find(tagFields.begin(), tagFields.end(), field) != tagFields.end();
 }
 
-// Returns true if s consists entirely of decimal digits (a numeric track id).
-bool isNumericId(std::string_view s) {
-    if (s.empty())
-        return false;
-    for (char c : s) {
-        if (c < '0' || c > '9')
-            return false;
-    }
-    return true;
+// Returns the track id encoded in idOrPath, if it is one.
+std::optional<int64_t> numericId(std::string_view s) {
+    return kanariv::utils::parseId(s);
 }
 
-AppResult App::tagEdit(std::string idOrPath, const std::string& field,
-                       const std::string& value) {
+AppResult App::tagEdit(std::string idOrPath, const std::string& field, const std::string& value) {
     int64_t id = 0;
-    if (isNumericId(idOrPath)) {
-        id = std::stoll(idOrPath);
+    if (const auto parsed = numericId(idOrPath)) {
+        id = *parsed;
     } else {
         // Resolve path to track id via TagGet{path}.
         kanariv::ipc::Command tgCmd{kanariv::ipc::TagGet{.path = idOrPath}};
@@ -50,28 +45,25 @@ AppResult App::tagEdit(std::string idOrPath, const std::string& field,
         if (auto* st = std::get_if<kanariv::ipc::SingleTrack>(&*tgRes))
             id = st->track.id;
         else
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::NotFound,
-                "track not found for path '" + idOrPath + "'")};
+            return std::unexpected{
+                kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
+                                          "track not found for path '" + idOrPath + "'")};
     }
     kanariv::ipc::Command cmd{kanariv::ipc::TagEdit{id, field, value}};
-    return impl_->confirm(impl_->sendRaw(cmd),
-                          std::format("Updated {} for track {}", field, id));
+    return impl_->confirm(impl_->sendRaw(cmd), std::format("Updated {} for track {}", field, id));
 }
 
-AppResult App::tagBatchEdit(std::vector<kanariv::ipc::TagBatchEditEntry> entries,
-                            bool dry_run) {
+AppResult App::tagBatchEdit(std::vector<kanariv::ipc::TagBatchEditEntry> entries, bool dry_run) {
     std::size_t count = entries.size();
     kanariv::ipc::Command cmd{kanariv::ipc::TagBatchEdit{std::move(entries), dry_run}};
-    return impl_->confirm(impl_->sendRaw(cmd),
-                          std::format("Batch tag edit: {} entries{}", count,
-                                      dry_run ? " (dry-run)" : ""));
+    return impl_->confirm(impl_->sendRaw(cmd), std::format("Batch tag edit: {} entries{}", count,
+                                                           dry_run ? " (dry-run)" : ""));
 }
 
 AppResult App::tagGet(std::string idOrPath, bool cover) {
     kanariv::ipc::TagGet tg{.cover = cover};
-    if (isNumericId(idOrPath)) {
-        tg.id = std::stoll(idOrPath);
+    if (const auto parsed = numericId(idOrPath)) {
+        tg.id = *parsed;
     } else {
         tg.path = idOrPath;
     }
@@ -80,15 +72,15 @@ AppResult App::tagGet(std::string idOrPath, bool cover) {
 }
 
 std::expected<TagValue, kanariv::utils::Error> App::tagValue(std::string idOrPath,
-                                                            const std::string& field) {
+                                                             const std::string& field) {
     if (!isTagField(field)) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                        "unknown tag field '" + field + "'")};
+                                                         "unknown tag field '" + field + "'")};
     }
 
     int64_t id = 0;
-    if (isNumericId(idOrPath)) {
-        id = std::stoll(idOrPath);
+    if (const auto parsed = numericId(idOrPath)) {
+        id = *parsed;
     } else {
         kanariv::ipc::Command tgCmd{kanariv::ipc::TagGet{.path = idOrPath}};
         auto tgRes = impl_->sendRaw(tgCmd);
@@ -97,9 +89,9 @@ std::expected<TagValue, kanariv::utils::Error> App::tagValue(std::string idOrPat
         if (auto* st = std::get_if<kanariv::ipc::SingleTrack>(&*tgRes))
             id = st->track.id;
         else
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::NotFound,
-                "track not found for path '" + idOrPath + "'")};
+            return std::unexpected{
+                kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
+                                          "track not found for path '" + idOrPath + "'")};
     }
 
     // Cover art needs its own IPC round-trip with cover=true; for all other
@@ -126,7 +118,7 @@ std::expected<TagValue, kanariv::utils::Error> App::tagValue(std::string idOrPat
     auto* st = std::get_if<kanariv::ipc::SingleTrack>(&*res);
     if (!st)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        "tag get: no track in result")};
+                                                         "tag get: no track in result")};
     const auto& t = st->track;
     bool numeric = false;
     std::string value;

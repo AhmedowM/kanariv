@@ -8,6 +8,7 @@
 #include <kanariv/media/reader.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/utils/error.hpp>
+#include <kanariv/utils/parse.hpp>
 #include <kanariv/utils/result.hpp>
 #include <cctype>
 #include <cstddef>
@@ -41,22 +42,6 @@ inline std::string_view trimAscii(std::string_view s) {
     while (!s.empty() && isSpace(s.back()))
         s.remove_suffix(1);
     return s;
-}
-
-/**
- * @brief Parses a bare non-negative decimal integer.
- * @return The value, or nullopt for signs, garbage or overflow-sized input.
- */
-inline std::optional<int64_t> parseQueueOrdinal(std::string_view text) {
-    if (text.empty() || text.size() > 18)
-        return std::nullopt;
-    int64_t value = 0;
-    for (char c : text) {
-        if (c < '0' || c > '9')
-            return std::nullopt;
-        value = value * 10 + (c - '0');
-    }
-    return value;
 }
 
 inline std::expected<kanariv::types::Track, kanariv::utils::Error>
@@ -359,31 +344,10 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
                                                             "no matches for: " + qa.query)};
         }
     } else {
-        // try parse as int id
-        bool parsed = false;
-        int64_t id = 0;
-        try {
-            std::string s = qa.query;
-            // trim
-            s.erase(0, s.find_first_not_of(" \t\n\r"));
-            s.erase(s.find_last_not_of(" \t\n\r") + 1);
-            if (!s.empty()) {
-                // check if all digits (allow leading -)
-                bool isNum = true;
-                for (std::size_t i = (s[0] == '-' ? 1 : 0); i < s.size(); ++i)
-                    if (!std::isdigit((unsigned char)s[i])) {
-                        isNum = false;
-                        break;
-                    }
-                if (isNum) {
-                    id = std::stoll(s);
-                    parsed = true;
-                }
-            }
-        } catch (...) {
-        }
-        if (parsed && id != 0) {
-            auto tr = db_->getTrack(id);
+        // A numeric query is a library id (paths are resolved below).
+        const auto id = kanariv::utils::parseId(detail::trimAscii(qa.query));
+        if (id && *id != 0) {
+            auto tr = db_->getTrack(*id);
             if (!tr)
                 return std::unexpected{tr.error()};
             toAdd.push_back(std::move(*tr));
@@ -440,11 +404,10 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
     auto q = db_->getQueue(qid);
     if (!q)
         return std::unexpected{q.error()};
-    // Resolve idOrIndex with an explicit discriminator (S6):
-    //   "#pos:<n>" = zero-based queue position, "#id:<n>" = track id, and a
-    //   bare number is a position (the D4 contract makes db::queueRemove take
-    //   an ordinal index, which is what clients send). Never guess between the
-    //   two spaces: a wrong guess silently removes a different track.
+    // Resolve idOrIndex with a mandatory discriminator (A2a):
+    //   "#pos:<n>" = zero-based queue position, "#id:<n>" = track id. A bare
+    //   number used to mean "position", which silently removed a different row
+    //   when the client meant an id; it is now rejected instead of guessed.
     std::string_view spec = detail::trimAscii(qr.idOrIndex);
     bool byTrackId = false;
     if (spec.starts_with("#id:")) {
@@ -452,12 +415,16 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
         spec.remove_prefix(4);
     } else if (spec.starts_with("#pos:")) {
         spec.remove_prefix(5);
+    } else {
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg,
+            "queue remove: ambiguous idOrIndex (use #pos:<n> or #id:<n>)")};
     }
-    const auto number = detail::parseQueueOrdinal(spec);
+    const auto number = kanariv::utils::parseId(spec);
     if (!number) {
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::InvalidArg,
-            "queue remove: invalid idOrIndex (use <pos>, #pos:<n> or #id:<n>)")};
+            "queue remove: invalid idOrIndex (use #pos:<n> or #id:<n>)")};
     }
     int64_t index = *number;
     if (byTrackId) {

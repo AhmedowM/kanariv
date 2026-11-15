@@ -33,6 +33,7 @@
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/math.hpp>
+#include <kanariv/utils/parse.hpp>
 #include <kanariv/utils/print.hpp>
 #include <kanariv/utils/result.hpp>
 #include <kanariv/version.hpp>
@@ -1473,16 +1474,9 @@ int Shell::run(int argc, char** argv) {
                         return 1;
                     }
                     kanariv::ipc::TagBatchEditEntry e{};
-                    // First part: numeric id or path
-                    bool isId = true;
-                    for (char c : parts[0]) {
-                        if (c < '0' || c > '9') {
-                            isId = false;
-                            break;
-                        }
-                    }
-                    if (isId && !parts[0].empty())
-                        e.id = std::stoll(parts[0]);
+                    // First part: numeric id or path.
+                    if (const auto id = kanariv::utils::parseId(parts[0]))
+                        e.id = *id;
                     else
                         e.path = parts[0];
                     e.field = parts[1];

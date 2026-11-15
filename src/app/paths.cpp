@@ -9,6 +9,7 @@
 #include <app/paths_internal.hpp>
 #include <kanariv/app/paths.hpp>
 #include <kanariv/media/audio_ext.hpp>
+#include <kanariv/utils/parse.hpp>
 #include <cctype>
 #include <cstddef>
 #include <filesystem>
@@ -136,13 +137,8 @@ std::string pathKey(const std::string& p) {
 }
 
 bool isNumeric(const std::string& s) {
-    if (s.empty())
-        return false;
-    for (char c : s) {
-        if (!std::isdigit((unsigned char)c))
-            return false;
-    }
-    return true;
+    // Same rule as every id/position boundary: digits only, no overflow.
+    return kanariv::utils::parseId(s).has_value();
 }
 
 } // namespace kanariv::app

@@ -9,6 +9,7 @@
  * - error: Error, Expected, makeError
  * - log: LogLevel, Logger
  * - math: clampVolume, toHex, fromHex
+ * - parse: parseId (the one decimal id/position rule)
  * - ring: SpscRing
  * - thread: sleepFor, sleepForMs, setThreadName
  * - print: portable print/println facade (see print.hpp)
@@ -25,6 +26,7 @@
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/math.hpp>
+#include <kanariv/utils/parse.hpp>
 #include <kanariv/utils/print.hpp>
 #include <kanariv/utils/record_json.hpp>
 #include <kanariv/utils/result.hpp>

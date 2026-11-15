@@ -686,8 +686,15 @@ TEST_CASE("queue remove distinguishes positions from track ids", "[service][queu
         return out;
     };
 
-    // Bare number = zero-based position (D4 contract), never a guessed id.
-    auto first = remove("1");
+    // A bare number is ambiguous and must be rejected, never guessed (A2a):
+    // interpreting a track id as a slot used to remove the wrong row.
+    auto bare = remove("1");
+    REQUIRE_FALSE(bare.has_value());
+    REQUIRE(bare.error().code == kanariv::utils::StatusCode::InvalidArg);
+
+    // Zero-based position removes the named slot; the rejected command above
+    // left the queue untouched, so position 1 is still ids[1].
+    auto first = remove("#pos:1");
     REQUIRE(first.has_value());
     REQUIRE(remaining(first) == std::vector<int64_t>{ids[0], ids[2]});
 

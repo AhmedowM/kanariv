@@ -14,6 +14,7 @@
 #include <kanariv/utils/base64.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/log.hpp>
+#include <kanariv/utils/parse.hpp>
 #include <kanariv/utils/result.hpp>
 #include <cctype>
 #include <chrono>
@@ -524,24 +525,15 @@ Service::Impl::handle(const kanariv::ipc::LibraryRemove& cmd) {
     // trim
     q.erase(0, q.find_first_not_of(" \t\r\n"));
     q.erase(q.find_last_not_of(" \t\r\n") + 1);
-    // try numeric id
-    bool isNum = !q.empty();
-    for (size_t i = (q[0] == '-' ? 1 : 0); i < q.size() && isNum; ++i)
-        if (!std::isdigit((unsigned char)q[i]))
-            isNum = false;
-    if (isNum) {
-        try {
-            int64_t id = std::stoll(q);
-            if (id != 0) {
-                auto r = db_->deleteTrack(id);
-                if (r)
-                    return Result{Empty{}};
-                if (r.error().code != kanariv::utils::StatusCode::NotFound)
-                    return std::unexpected{r.error()};
-                // fallthrough to path lookup
-            }
-        } catch (...) {
-        }
+    // A digits-only query is a library id; anything else falls through to a
+    // path lookup, as before.
+    if (const auto id = kanariv::utils::parseId(q); id && *id != 0) {
+        auto r = db_->deleteTrack(*id);
+        if (r)
+            return Result{Empty{}};
+        if (r.error().code != kanariv::utils::StatusCode::NotFound)
+            return std::unexpected{r.error()};
+        // fallthrough to path lookup
     }
     // try by path (separator-insensitive: stored rows mix native and
     // generic forms depending on which command added them)

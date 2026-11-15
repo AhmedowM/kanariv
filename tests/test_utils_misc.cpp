@@ -1,9 +1,11 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <kanariv/utils/generator.hpp>
 #include <kanariv/utils/math.hpp>
+#include <kanariv/utils/parse.hpp>
 #include <kanariv/utils/print.hpp>
 #include <limits>
 #include <string>
@@ -109,4 +111,21 @@ TEST_CASE("print(FILE*) writes embedded NUL bytes", "[utils][print]") {
 
 TEST_CASE("println(FILE*) writes embedded NUL bytes", "[utils][print]") {
     REQUIRE(println_file_preserves_embedded_nul());
+}
+
+TEST_CASE("parseId accepts only non-negative decimal ids", "[utils][parse]") {
+    using kanariv::utils::parseId;
+    REQUIRE(parseId("0") == 0);
+    REQUIRE(parseId("42") == 42);
+    REQUIRE(parseId("9223372036854775807") == std::numeric_limits<std::int64_t>::max());
+    // One rule for every boundary: signs, whitespace, trailing garbage and
+    // overflow are all rejected rather than partially parsed.
+    CHECK_FALSE(parseId("").has_value());
+    CHECK_FALSE(parseId("+5").has_value());
+    CHECK_FALSE(parseId("-1").has_value());
+    CHECK_FALSE(parseId(" 5").has_value());
+    CHECK_FALSE(parseId("5 ").has_value());
+    CHECK_FALSE(parseId("5x").has_value());
+    CHECK_FALSE(parseId("0x10").has_value());
+    CHECK_FALSE(parseId("9223372036854775808").has_value());
 }

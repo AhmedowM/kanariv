@@ -23,6 +23,7 @@
 #include <kanariv/types/record.hpp>
 #include <kanariv/types/wire.hpp>
 #include <kanariv/utils/error.hpp>
+#include <kanariv/utils/parse.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -248,13 +249,12 @@ BatchResult App::queueRemove(const std::string& id, const std::string& pos,
     std::vector<RemTarget> targets;
     bool hardFail = false;
     auto parseNum = [&](const std::string& s, long long& out) {
-        try {
-            out = std::stoll(s);
+        if (const auto parsed = kanariv::utils::parseId(s)) {
+            out = *parsed;
             return true;
-        } catch (...) {
-            detail::emitLine(rep.err, std::format("queue remove: value out of range: {}", s));
-            return false;
         }
+        detail::emitLine(rep.err, std::format("queue remove: invalid number: {}", s));
+        return false;
     };
     if (hasPos) {
         long long p = 0;
@@ -332,9 +332,14 @@ BatchResult App::queueRemove(const std::string& id, const std::string& pos,
     int removed = 0;
     std::vector<kanariv::types::Track> removedTracks;
     for (auto& t : targets) {
-        // QueueRemove accepts a zero-based index; descending order keeps the
-        // remaining indices valid as earlier items are removed.
-        kanariv::ipc::Command cmd{kanariv::ipc::QueueRemove{std::to_string(t.pos)}};
+        // Always send the discriminator (A2a): a bare number would be resolved
+        // as a position and could delete a different row. `#id:` is resolved
+        // server-side under the queue lock, so an --id removal cannot be
+        // retargeted by a concurrent change; `#pos:` targets stay valid because
+        // targets are removed in descending position order.
+        const std::string selector =
+            hasId ? std::format("#id:{}", t.track.id) : std::format("#pos:{}", t.pos);
+        kanariv::ipc::Command cmd{kanariv::ipc::QueueRemove{selector}};
         auto res = impl_->sendRaw(cmd);
         if (!res) {
             detail::renderErrorInto(rep.err, res.error());

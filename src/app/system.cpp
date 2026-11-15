@@ -6,13 +6,14 @@
 
 #include <app/app_impl.hpp>
 #include <app/format_internal.hpp>
+#include <cmath>
+#include <format>
 #include <kanariv/app/app.hpp>
 #include <kanariv/client/client.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/math.hpp>
-#include <cmath>
-#include <format>
+#include <kanariv/utils/parse.hpp>
 #include <optional>
 #include <string>
 #include <variant>
@@ -101,19 +102,8 @@ AppResult App::lyricsSet(std::string lrc_text, bool is_synced, std::string sourc
     int64_t tid = 0;
     if (track.has_value()) {
         const auto& t = *track;
-        bool numeric = !t.empty();
-        for (char c : t) {
-            if (!std::isdigit((unsigned char)c)) {
-                numeric = false;
-                break;
-            }
-        }
-        if (numeric) {
-            try {
-                tid = std::stoll(t);
-            } catch (...) {
-                tid = 0;
-            }
+        if (const auto parsed = kanariv::utils::parseId(t)) {
+            tid = *parsed;
         } else {
             kanariv::ipc::Command cmd{kanariv::ipc::TagGet{.path = t}};
             auto tgRes = impl_->sendRaw(cmd);
@@ -123,8 +113,7 @@ AppResult App::lyricsSet(std::string lrc_text, bool is_synced, std::string sourc
                 tid = st->track.id;
             else
                 return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::NotFound,
-                    "track not found for '" + t + "'")};
+                    kanariv::utils::StatusCode::NotFound, "track not found for '" + t + "'")};
         }
     } else {
         // sendRaw normalizes an embedded server-side Error (I8), so the
@@ -141,35 +130,23 @@ AppResult App::lyricsSet(std::string lrc_text, bool is_synced, std::string sourc
     if (tid == 0)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "no current track")};
-    kanariv::ipc::Command cmd{kanariv::ipc::LyricsSet{std::move(lrc_text), is_synced,
-                                                      std::move(source), tid}};
+    kanariv::ipc::Command cmd{
+        kanariv::ipc::LyricsSet{std::move(lrc_text), is_synced, std::move(source), tid}};
     auto res = impl_->sendRaw(cmd);
     if (!res)
         return std::unexpected{res.error()};
-    return Outcome{
-        .result = std::move(*res),
-        .line = std::format("Lyrics set for track {}", tid),
-        .toStderr = false,
-        .failed = false};
+    return Outcome{.result = std::move(*res),
+                   .line = std::format("Lyrics set for track {}", tid),
+                   .toStderr = false,
+                   .failed = false};
 }
 
 AppResult App::lyricsGet(std::optional<std::string> track) {
     int64_t tid = 0;
     if (track.has_value()) {
         const auto& t = *track;
-        bool numeric = !t.empty();
-        for (char c : t) {
-            if (!std::isdigit((unsigned char)c)) {
-                numeric = false;
-                break;
-            }
-        }
-        if (numeric) {
-            try {
-                tid = std::stoll(t);
-            } catch (...) {
-                tid = 0;
-            }
+        if (const auto parsed = kanariv::utils::parseId(t)) {
+            tid = *parsed;
         } else {
             kanariv::ipc::Command cmd{kanariv::ipc::TagGet{.path = t}};
             auto tgRes = impl_->sendRaw(cmd);
@@ -179,8 +156,7 @@ AppResult App::lyricsGet(std::optional<std::string> track) {
                 tid = st->track.id;
             else
                 return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::NotFound,
-                    "track not found for '" + t + "'")};
+                    kanariv::utils::StatusCode::NotFound, "track not found for '" + t + "'")};
         }
     } else {
         // sendRaw normalizes an embedded server-side Error (I8), so the
@@ -219,19 +195,8 @@ AppResult App::lyricsRemove(std::optional<std::string> track) {
     int64_t tid = 0;
     if (track.has_value()) {
         const auto& t = *track;
-        bool numeric = !t.empty();
-        for (char c : t) {
-            if (!std::isdigit((unsigned char)c)) {
-                numeric = false;
-                break;
-            }
-        }
-        if (numeric) {
-            try {
-                tid = std::stoll(t);
-            } catch (...) {
-                tid = 0;
-            }
+        if (const auto parsed = kanariv::utils::parseId(t)) {
+            tid = *parsed;
         } else {
             kanariv::ipc::Command cmd{kanariv::ipc::TagGet{.path = t}};
             auto tgRes = impl_->sendRaw(cmd);
@@ -241,8 +206,7 @@ AppResult App::lyricsRemove(std::optional<std::string> track) {
                 tid = st->track.id;
             else
                 return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::NotFound,
-                    "track not found for '" + t + "'")};
+                    kanariv::utils::StatusCode::NotFound, "track not found for '" + t + "'")};
         }
     } else {
         // sendRaw normalizes an embedded server-side Error (I8), so the
@@ -263,11 +227,10 @@ AppResult App::lyricsRemove(std::optional<std::string> track) {
     auto res = impl_->sendRaw(cmd);
     if (!res)
         return std::unexpected{res.error()};
-    return Outcome{
-        .result = std::move(*res),
-        .line = std::format("Lyrics removed for track {}", tid),
-        .toStderr = false,
-        .failed = false};
+    return Outcome{.result = std::move(*res),
+                   .line = std::format("Lyrics removed for track {}", tid),
+                   .toStderr = false,
+                   .failed = false};
 }
 
 AppResult App::deviceList() {

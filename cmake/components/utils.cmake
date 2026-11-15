@@ -6,6 +6,7 @@ set(KANARIV_UTILS_MODULE_SOURCES
   modules/kanariv/utils/log.cppm
   modules/kanariv/utils/json.cppm
   modules/kanariv/utils/math.cppm
+  modules/kanariv/utils/parse.cppm
   modules/kanariv/utils/ring.cppm
   modules/kanariv/utils/print.cppm
   modules/kanariv/utils/thread.cppm
