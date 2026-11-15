@@ -299,8 +299,9 @@ int main() {
         return 1;
     }
 
-    if (auto result = engine.value()->attachDatabase(
-            std::shared_ptr<kanariv::db::Database>(std::move(database.value())));
+    if (auto result = engine.value()->attachStorage(
+            kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(
+                std::move(database.value()))));
         !result) {
         std::println(stderr, "database attach failed: {}", result.error().message);
         return 1;

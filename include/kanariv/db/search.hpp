@@ -11,8 +11,8 @@
  * All stages are under a single `shared_lock` to avoid unlock gaps.
  */
 
-#include <kanariv/fwd.hpp>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -38,7 +38,7 @@ namespace kanariv::db {
  * @see searchLike
  */
 KANARIV_API std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
-searchFts(contracts::IDatabase& db, std::string_view query, int limit = 50);
+searchFts(db::Database& db, std::string_view query, int limit = 50);
 
 /**
  * @brief LIKE-only search (no FTS).
@@ -52,7 +52,7 @@ searchFts(contracts::IDatabase& db, std::string_view query, int limit = 50);
  * Thread-safe: acquires `shared_lock`.
  */
 KANARIV_API std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
-searchLike(contracts::IDatabase& db, std::string_view query, int limit = 50);
+searchLike(db::Database& db, std::string_view query, int limit = 50);
 
 /**
  * @brief Sanitizes a raw FTS5 query term.
@@ -75,6 +75,6 @@ KANARIV_API std::string sanitizeFtsTerm(std::string_view term);
  * @see searchFts
  */
 KANARIV_API std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
-search(contracts::IDatabase& db, std::string_view query, int limit = 50);
+search(db::Database& db, std::string_view query, int limit = 50);
 
 } // namespace kanariv::db

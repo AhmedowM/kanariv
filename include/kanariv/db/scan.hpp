@@ -12,12 +12,12 @@
  *   of the discovered tracks under the database mutex).
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/media/audio_ext.hpp>
-#include <kanariv/media/scan.hpp>
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <kanariv/fwd.hpp>
+#include <kanariv/media/audio_ext.hpp>
+#include <kanariv/media/scan.hpp>
 #include <string_view>
 
 namespace kanariv::db {
@@ -50,7 +50,7 @@ namespace kanariv::db {
  * @see Database::findByFingerprintLocked
  */
 KANARIV_API std::expected<void, kanariv::utils::Error>
-scanLibrary(contracts::IDatabase& db, int64_t libraryId,
+scanLibrary(db::Database& db, int64_t libraryId,
             std::function<void(int64_t, int64_t, std::string_view)> progress = {},
             kanariv::media::ScanMode mode = kanariv::media::ScanMode::Sampled);
 

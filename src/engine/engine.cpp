@@ -1,17 +1,4 @@
 ﻿#include <atomic>
-#include <kanariv/contracts/database.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/engine/engine.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/media/decoder.hpp>
-#include <kanariv/media/reader.hpp>
-#include <kanariv/player/output.hpp>
-#include <kanariv/player/player.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/log.hpp>
-#include <kanariv/utils/math.hpp>
-#include <kanariv/utils/result.hpp>
-#include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -22,6 +9,19 @@
 #include <engine/queue_next.hpp>
 #include <engine/shuffle.hpp>
 #include <expected>
+#include <kanariv/contracts/storage.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/player/output.hpp>
+#include <kanariv/player/player.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/math.hpp>
+#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -125,9 +125,9 @@ struct Engine::Impl {
     std::optional<kanariv::utils::Error> init();
     void shutdown();
 
-    // database / persistence
+    // persistence
     bool hasDb() const noexcept;
-    ExpectedVoid attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db);
+    ExpectedVoid attachStorage(kanariv::contracts::Storage storage);
     std::optional<kanariv::utils::Error> loadState();
     /**
      * @brief Persists `state_` (and the live position) to the engine_state row.
@@ -141,14 +141,14 @@ struct Engine::Impl {
     std::expected<void, kanariv::utils::Error> persistShuffleBlobLocked();
     std::expected<void, kanariv::utils::Error> persistCursorLocked();
     std::expected<kanariv::types::Track, kanariv::utils::Error> fetchTrackByPosLocked(int64_t qid,
-                                                                                    int64_t pos);
+                                                                                      int64_t pos);
 
     // queue locking
     bool tryLockQueue() noexcept;
     bool tryLockQueueFor(std::chrono::milliseconds wait) noexcept;
     void unlockQueue() noexcept;
     std::unexpected<kanariv::utils::Error> queueBusy(std::string_view op,
-                                                    std::string_view msg) const;
+                                                     std::string_view msg) const;
 
     // transport
     ExpectedVoid play(int64_t queueId);
@@ -229,7 +229,7 @@ struct Engine::Impl {
     /// @pre `queueMutex_` held by the caller.
     QueueFingerprint queueFingerprintLocked() const;
     std::expected<void, kanariv::utils::Error> doPlayTrack(kanariv::types::Track& t,
-                                                          double startSec = 0.0);
+                                                           double startSec = 0.0);
     void preroll();
 
     // callbacks / events
@@ -310,7 +310,8 @@ struct Engine::Impl {
     double duration_{0}; ///< decodeMtx_ only.
     std::atomic<float> volume_{1.0f};
     std::atomic<float> preMute_{0.5f};
-    std::atomic<kanariv::types::PlaybackState> playbackState_{kanariv::types::PlaybackState::Stopped};
+    std::atomic<kanariv::types::PlaybackState> playbackState_{
+        kanariv::types::PlaybackState::Stopped};
     std::chrono::steady_clock::time_point playStart_{}; ///< decodeMtx_ only.
     double pausePos_{0};                                ///< decodeMtx_ only.
     std::atomic<uint64_t> accumulatedPlaybackMs_{0};
@@ -319,7 +320,7 @@ struct Engine::Impl {
     std::atomic<int64_t> startedMs_{0}; ///< Atomic mirror of the queue-locked start time.
     std::string lastErr_{};             ///< Transport-thread only (diagnostics).
 
-    std::shared_ptr<kanariv::contracts::IDatabase> db_{};
+    kanariv::contracts::Storage storage_{};
 
     // player (decodeMtx_ only)
     std::unique_ptr<kanariv::media::Reader> reader_{};
@@ -386,8 +387,8 @@ struct Engine::Impl {
 
 Engine::Engine(const kanariv::types::EngineConfig& cfg) : impl_(std::make_unique<Impl>(cfg)) {}
 
-Engine::ExpectedVoid Engine::attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db) {
-    return impl_->attachDatabase(std::move(db));
+Engine::ExpectedVoid Engine::attachStorage(kanariv::contracts::Storage storage) {
+    return impl_->attachStorage(std::move(storage));
 }
 
 void Engine::shutdown() {
@@ -542,16 +543,15 @@ Engine::ExpectedEngine Engine::create(const kanariv::types::EngineConfig& cfg) {
     return e;
 }
 
-Engine::ExpectedVoid
-Engine::Impl::attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db) {
-    if (!db || !db->isOpen())
+Engine::ExpectedVoid Engine::Impl::attachStorage(kanariv::contracts::Storage storage) {
+    if (!storage.complete() || !storage.queues->isOpen())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "null db"));
     // loadState() writes the queue-locked state_/queue_ fields, and publishing
-    // db_ first would let a monitor tick observe (and persist) a half-loaded
-    // state: take the queue lock across the attach.
+    // storage_ first would let a monitor tick observe (and persist) a
+    // half-loaded state: take the queue lock across the attach.
     std::lock_guard<std::timed_mutex> qlk(queueMutex_);
-    db_ = std::move(db);
+    storage_ = std::move(storage);
     if (auto ec = loadState())
         return std::unexpected(*ec);
     return {};
@@ -597,7 +597,8 @@ void Engine::Impl::shutdown() {
 
 Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
     if (!hasDb())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     if (queueId == 0)
         queueId = 1;
     auto s = playbackState_.load(std::memory_order_acquire);
@@ -644,9 +645,9 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
     kanariv::types::Track t;
     // Resume persisted track if config enabled and track available
     if (cfg_.autoResumeOnPlay && state_.currentTrackId != 0 && state_.positionMs > 0) {
-        auto idx = db_->queueIndexOf(queue_.queue_id, state_.currentTrackId);
-        if (idx) {
-            queue_.cursor = *idx;
+        auto idx = storage_.queues->queueIndexOf(queue_.queue_id, state_.currentTrackId);
+        if (idx && *idx) {
+            queue_.cursor = **idx;
             auto r = queueNextLocked(t);
             if (r) {
                 auto pr = doPlayTrack(t, (double)state_.positionMs / 1000.0);
@@ -679,19 +680,24 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
 
 Engine::ExpectedVoid Engine::Impl::playTrack(int64_t trackId) {
     if (!hasDb())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     if (trackId <= 0)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "bad track id"));
     if (!tryLockQueueFor(queueLockWait))
         return queueBusy("playTrack", "queue busy");
-    auto idx = db_->queueIndexOf(queue_.queue_id, trackId);
+    auto idx = storage_.queues->queueIndexOf(queue_.queue_id, trackId);
     if (!idx) {
         unlockQueue();
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                        "track not in active queue")};
+        return std::unexpected{idx.error()};
     }
-    size_t cursor = *idx;
+    if (!*idx) {
+        unlockQueue();
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
+                                                         "track not in active queue")};
+    }
+    size_t cursor = **idx;
     if (queue_.shuffle) {
         if (queue_.perm.empty()) {
             auto sr = setShuffleLocked(true);
@@ -702,7 +708,7 @@ Engine::ExpectedVoid Engine::Impl::playTrack(int64_t trackId) {
         }
         bool found = false;
         for (size_t i = 0; i < queue_.perm.size(); ++i) {
-            if (queue_.perm[i] == (int64_t)*idx) {
+            if (queue_.perm[i] == static_cast<int64_t>(**idx)) {
                 cursor = i;
                 found = true;
                 break;
@@ -711,7 +717,7 @@ Engine::ExpectedVoid Engine::Impl::playTrack(int64_t trackId) {
         if (!found) {
             unlockQueue();
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                            "track not in shuffle order")};
+                                                             "track not in shuffle order")};
         }
     }
     queue_.cursor = cursor;
@@ -803,13 +809,13 @@ Engine::ExpectedVoid Engine::Impl::stop() {
     if (hasDb() && stoppedId != 0) {
         const int64_t rawQid = queue_.queue_id.load(std::memory_order_relaxed);
         const int64_t qid = rawQid != 0 ? rawQid : 1;
-        if (auto idx = db_->queueIndexOf(qid, stoppedId); idx) {
-            size_t target = *idx;
+        if (auto idx = storage_.queues->queueIndexOf(qid, stoppedId); idx && *idx) {
+            size_t target = **idx;
             bool resolved = true;
             if (queue_.shuffle) {
                 resolved = false;
                 for (size_t i = 0; i < queue_.perm.size(); ++i) {
-                    if (queue_.perm[i] == static_cast<int64_t>(*idx)) {
+                    if (queue_.perm[i] == static_cast<int64_t>(**idx)) {
                         target = i;
                         resolved = true;
                         break;
@@ -1059,9 +1065,13 @@ void Engine::Impl::noteEnqueued(int64_t qid, std::size_t count) noexcept {
     if (count == 0 || !hasDb() || !tryLockQueue())
         return;
     if (queue_.queue_id == qid && queue_.shuffle && !queue_.perm.empty()) {
-        std::size_t n = db_->queueCount(qid);
-        std::size_t start = (n >= count) ? n - count : 0;
-        for (std::size_t i = start; i < n; ++i)
+        auto n = storage_.queues->queueCount(qid);
+        if (!n) {
+            unlockQueue();
+            return;
+        }
+        std::size_t start = (*n >= count) ? *n - count : 0;
+        for (std::size_t i = start; i < *n; ++i)
             queue_.perm.push_back((int64_t)i);
         (void)persistShuffleBlobLocked();
     }
@@ -1070,8 +1080,9 @@ void Engine::Impl::noteEnqueued(int64_t qid, std::size_t count) noexcept {
 
 std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Engine::Impl::stats() {
     if (!hasDb())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    auto ds = db_->playbackStats();
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+    auto ds = storage_.library->playbackStats();
     if (!ds)
         return std::unexpected(ds.error());
     return kanariv::types::PlaybackStats{
@@ -1083,15 +1094,17 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Engine::Impl
 std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
 Engine::Impl::listHistory(int limit) {
     if (!hasDb())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    kanariv::engine::History hist(db_);
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+    kanariv::engine::History hist(storage_.history);
     return hist.listHistory(limit);
 }
 
 std::expected<void, kanariv::utils::Error> Engine::Impl::clearHistory() {
     if (!hasDb())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    kanariv::engine::History hist(db_);
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+    kanariv::engine::History hist(storage_.history);
     return hist.clearHistory();
 }
 
@@ -1103,7 +1116,8 @@ std::string Engine::Impl::lastError() const {
 
 Engine::ExpectedVoid Engine::Impl::setShuffle(bool on) {
     if (!hasDb())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     if (!tryLockQueue())
         return queueBusy("setShuffle", "busy");
     auto r = setShuffleLocked(on);
@@ -1148,11 +1162,12 @@ Engine::ExpectedVoid Engine::Impl::switchQueue(int64_t qid) {
     if (qid == 0)
         qid = 1;
     if (!hasDb())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     if (!tryLockQueue())
         return queueBusy("switchQueue", "busy");
     // Validate the queue while holding queueMutex_.
-    auto exists = db_->queueExists(qid);
+    auto exists = storage_.queues->queueExists(qid);
     if (!exists || !*exists) {
         unlockQueue();
         if (!exists)
@@ -1175,7 +1190,7 @@ Engine::ExpectedVoid Engine::Impl::switchQueue(int64_t qid) {
     // The queue row's repeat_mode is the per-queue setting (written when a queue
     // is created from the configured default), so it wins on switch. A lookup
     // failure keeps the current mode: switching must not fail because of it.
-    if (auto target = db_->getQueue(qid); target) {
+    if (auto target = storage_.queues->getQueue(qid); target) {
         queue_.repeat = target->repeat_mode;
         state_.repeatMode = target->repeat_mode;
     }
@@ -1204,7 +1219,8 @@ Engine::ExpectedVoid Engine::Impl::autoNext() {
 
 Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs) {
     if (!hasDb())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     // handle repeat one without shuffle without queue lock? match C: if !shuffle && repeat==One
     // && hasCurrent => seek 0 and play - serialize with decodeLoop via decodeMtx_
     if (!queue_.shuffle.load(std::memory_order_relaxed) &&
@@ -1259,8 +1275,12 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs)
         if (queue_.shuffle.load(std::memory_order_relaxed)) {
             atEnd = queue_.cursor >= queue_.perm.size();
         } else {
-            size_t cnt = db_->queueCount(queue_.queue_id.load(std::memory_order_relaxed));
-            atEnd = queue_.cursor >= cnt;
+            auto cnt = storage_.queues->queueCount(queue_.queue_id.load(std::memory_order_relaxed));
+            if (!cnt) {
+                unlockQueue();
+                return std::unexpected(cnt.error());
+            }
+            atEnd = queue_.cursor >= *cnt;
         }
         if (atEnd) {
             // Natural end with repeat off: clear resume position so play()
@@ -1312,7 +1332,8 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs)
 
 Engine::ExpectedVoid Engine::Impl::prev() {
     if (!hasDb())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     if (!tryLockQueueFor(queueLockWait))
         return queueBusy("prev", "busy");
     kanariv::types::Track t;
@@ -1343,7 +1364,8 @@ std::expected<kanariv::types::EngineEvent, kanariv::utils::Error> Engine::Impl::
     return r.value();
 }
 
-Engine::ExpectedVoid Engine::Impl::drainEvents(kanariv::types::EngineEvent* buf, size_t cap, size_t* n) {
+Engine::ExpectedVoid Engine::Impl::drainEvents(kanariv::types::EngineEvent* buf, size_t cap,
+                                               size_t* n) {
     if (!n)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "null n"));
@@ -1416,7 +1438,7 @@ std::optional<kanariv::utils::Error> Engine::Impl::init() {
 }
 
 bool Engine::Impl::hasDb() const noexcept {
-    return db_ && db_->isOpen();
+    return storage_.complete() && storage_.queues->isOpen();
 }
 
 bool Engine::Impl::tryLockQueue() noexcept {
@@ -1432,7 +1454,7 @@ void Engine::Impl::unlockQueue() noexcept {
 }
 
 std::unexpected<kanariv::utils::Error> Engine::Impl::queueBusy(std::string_view op,
-                                                              std::string_view msg) const {
+                                                               std::string_view msg) const {
     if (cfg_.logger)
         cfg_.logger->debug("queue busy op={}", op);
     return std::unexpected{
@@ -1460,7 +1482,7 @@ double Engine::Impl::currentPositionLocked() const noexcept {
 std::optional<kanariv::utils::Error> Engine::Impl::loadState() {
     if (!hasDb())
         return kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "no db");
-    auto loaded = db_->loadEngineState();
+    auto loaded = storage_.state->load();
     if (!loaded)
         return loaded.error();
     state_.shuffleEnabled.store(loaded->shuffle_enabled, std::memory_order_relaxed);
@@ -1481,7 +1503,8 @@ std::optional<kanariv::utils::Error> Engine::Impl::loadState() {
     if (!queue_.perm.empty() && queue_.cursor >= queue_.perm.size())
         queue_.cursor = 0;
     queue_.queue_id.store(loaded->active_queue_id, std::memory_order_relaxed);
-    auto queueExists = db_->queueExists(queue_.queue_id.load(std::memory_order_relaxed));
+    auto queueExists =
+        storage_.queues->queueExists(queue_.queue_id.load(std::memory_order_relaxed));
     if (!queueExists || !*queueExists) {
         queue_.queue_id.store(1, std::memory_order_relaxed);
         state_.activeQueueId.store(1, std::memory_order_relaxed);
@@ -1517,7 +1540,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::saveStateLocked() {
     if (persisted.position_ms < 0)
         persisted.position_ms = 0;
     persisted.shuffle_perm = queue_.perm;
-    auto result = db_->saveEngineState(persisted);
+    auto result = storage_.state->save(persisted);
     if (result)
         state_.positionMs = persisted.position_ms;
     return result;
@@ -1528,7 +1551,8 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::persistShuffleBlobLocke
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "no db"));
     const bool shuffle = queue_.shuffle.load(std::memory_order_relaxed);
-    auto result = db_->saveEngineShuffle(shuffle, queue_.perm, static_cast<int64_t>(queue_.cursor));
+    auto result =
+        storage_.state->saveShuffle(shuffle, queue_.perm, static_cast<int64_t>(queue_.cursor));
     if (result) {
         state_.shuffleEnabled.store(shuffle ? 1 : 0, std::memory_order_relaxed);
         state_.cursorPos.store(static_cast<int64_t>(queue_.cursor), std::memory_order_relaxed);
@@ -1540,7 +1564,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::persistCursorLocked() {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "no db"));
-    auto result = db_->saveEngineCursor(static_cast<int64_t>(queue_.cursor));
+    auto result = storage_.state->saveCursor(static_cast<int64_t>(queue_.cursor));
     if (result)
         state_.cursorPos.store(static_cast<int64_t>(queue_.cursor), std::memory_order_relaxed);
     return result;
@@ -1551,7 +1575,7 @@ Engine::Impl::fetchTrackByPosLocked(int64_t qid, int64_t pos) {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "no db"));
-    return db_->queueTrackAt(qid, pos);
+    return storage_.queues->queueTrackAt(qid, pos);
 }
 
 std::expected<void, kanariv::utils::Error> Engine::Impl::setShuffleLocked(bool on) {
@@ -1562,8 +1586,10 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::setShuffleLocked(bool o
     if (want) {
         queue_.perm.clear();
         queue_.cursor = 0;
-        size_t cnt = db_->queueCount(queue_.queue_id.load(std::memory_order_relaxed));
-        if (cnt == 0) {
+        auto cnt = storage_.queues->queueCount(queue_.queue_id.load(std::memory_order_relaxed));
+        if (!cnt)
+            return std::unexpected(cnt.error());
+        if (*cnt == 0) {
             queue_.shuffle.store(true, std::memory_order_relaxed);
             queue_.perm.clear();
             queue_.cursor = 0;
@@ -1573,8 +1599,8 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::setShuffleLocked(bool o
             state_.shuffleEnabled.store(1, std::memory_order_relaxed);
             return {};
         }
-        queue_.perm.resize(cnt);
-        for (size_t i = 0; i < cnt; ++i)
+        queue_.perm.resize(*cnt);
+        for (size_t i = 0; i < *cnt; ++i)
             queue_.perm[i] = (int64_t)i;
         {
             std::mt19937 rng{std::random_device{}()};
@@ -1612,11 +1638,19 @@ QueueFingerprint Engine::Impl::queueFingerprintLocked() const {
 std::expected<Engine::Impl::PeekedNext, kanariv::utils::Error> Engine::Impl::peekNextLocked() {
     const int64_t rawQid = queue_.queue_id.load(std::memory_order_relaxed);
     const int64_t qid = rawQid != 0 ? rawQid : 1;
+    const bool shuffle = queue_.shuffle.load(std::memory_order_relaxed);
+    // planNext performs no I/O; resolve the one item count it may need here so
+    // a backend failure surfaces as its own error instead of a wrong plan.
+    std::size_t count = 0;
+    if (!shuffle || queue_.perm.empty()) {
+        auto counted = storage_.queues->queueCount(qid);
+        if (!counted)
+            return std::unexpected(counted.error());
+        count = *counted;
+    }
     auto plan = detail::planNext(
-        queue_.shuffle.load(std::memory_order_relaxed),
-        queue_.repeat.load(std::memory_order_relaxed), queue_.cursor,
-        std::span<const int64_t>(queue_.perm.data(), queue_.perm.size()),
-        [this, qid] { return db_->queueCount(qid); },
+        shuffle, queue_.repeat.load(std::memory_order_relaxed), queue_.cursor,
+        std::span<const int64_t>(queue_.perm.data(), queue_.perm.size()), [count] { return count; },
         [](std::size_t n) {
             std::vector<int64_t> perm(n);
             for (std::size_t i = 0; i < n; ++i)
@@ -1669,10 +1703,14 @@ Engine::Impl::queueNextLocked(kanariv::types::Track& out) {
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> Engine::Impl::queuePrevLocked(kanariv::types::Track& out) {
+std::expected<void, kanariv::utils::Error>
+Engine::Impl::queuePrevLocked(kanariv::types::Track& out) {
     const int64_t qid = queue_.queue_id.load(std::memory_order_relaxed);
     if (!queue_.shuffle.load(std::memory_order_relaxed)) {
-        size_t cnt = db_->queueCount(qid);
+        auto counted = storage_.queues->queueCount(qid);
+        if (!counted)
+            return std::unexpected(counted.error());
+        const size_t cnt = *counted;
         if (cnt == 0)
             return std::unexpected(
                 kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "empty queue"));
@@ -1718,7 +1756,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::queuePrevLocked(kanariv
 }
 
 std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::types::Track& t,
-                                                                    double startSec) {
+                                                                     double startSec) {
     // try to open decoder path
     std::string path = t.path;
     if (!std::isfinite(startSec) || startSec < 0.0)
@@ -1749,8 +1787,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
     if (!path.empty()) {
         // Track paths are stored UTF-8; decode them as UTF-8 rather than the
         // Windows ANSI code page so non-ASCII filenames resolve.
-        auto rRes = kanariv::media::FileReader::open(
-            kanariv::utils::detail::pathFromUtf8(path));
+        auto rRes = kanariv::media::FileReader::open(kanariv::utils::detail::pathFromUtf8(path));
         if (rRes) {
             reader_ = std::move(rRes.value());
             auto dRes = kanariv::media::Decoder::open(*reader_, cfg_.logger);
@@ -1982,7 +2019,8 @@ void Engine::Impl::pushEvent(const kanariv::types::EngineEvent& ev) {
                 pct = 100;
         }
         cbsCopy.on_track_ended(ev.track_id, pct);
-    } else if (ev.type == kanariv::types::EngineEventType::QueueChanged && cbsCopy.on_queue_changed) {
+    } else if (ev.type == kanariv::types::EngineEventType::QueueChanged &&
+               cbsCopy.on_queue_changed) {
         cbsCopy.on_queue_changed(ev.queue_id);
     } else if (ev.type == kanariv::types::EngineEventType::Error && cbsCopy.on_error) {
         cbsCopy.on_error(kanariv::utils::StatusCode::Internal, ev.msg);
@@ -2034,9 +2072,9 @@ void Engine::Impl::doHistoryMark(const TickSnapshot& snap) {
         if (completionPct > 100.0)
             completionPct = 100.0;
     }
-    auto result = db_->markPlayed(snap.trackId, snap.startedMs, completion,
-                                  static_cast<int64_t>(pos * 1000.0), completionPct,
-                                  snap.queueId ? snap.queueId : 1);
+    auto result = storage_.history->markPlayed(snap.trackId, snap.startedMs, completion,
+                                               static_cast<int64_t>(pos * 1000.0), completionPct,
+                                               snap.queueId ? snap.queueId : 1);
     if (!result)
         markedPlayed_.store(false, std::memory_order_release);
 }
@@ -2059,8 +2097,7 @@ Engine::Impl::TickSnapshot Engine::Impl::snapshotLocked() const {
 }
 
 void Engine::Impl::engineTick() {
-    if (playbackState_.load(std::memory_order_acquire) ==
-        kanariv::types::PlaybackState::Playing)
+    if (playbackState_.load(std::memory_order_acquire) == kanariv::types::PlaybackState::Playing)
         accountPlaybackTime();
     const uint64_t now = detail::nowMs();
     // One queue-lock section builds the snapshot and runs the 5 s checkpoint;
@@ -2227,7 +2264,8 @@ void Engine::Impl::monitorLoop(std::stop_token st) {
         lk.unlock();
         engineTick();
         int poll;
-        if (playbackState_.load(std::memory_order_acquire) == kanariv::types::PlaybackState::Playing)
+        if (playbackState_.load(std::memory_order_acquire) ==
+            kanariv::types::PlaybackState::Playing)
             poll = customPoll ? cfgPoll : 25;
         else
             poll = customPoll ? (cfgPoll > 100 ? cfgPoll : 100) : 100;

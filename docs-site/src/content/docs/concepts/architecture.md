@@ -35,7 +35,7 @@ client-daemon architecture.
 |---|---|
 | `kanariv::utils` | Errors, logging, JSON, queues, threads, versioning |
 | `kanariv::types` | Shared value types |
-| `kanariv::contracts` | Backend-neutral persistence interface (`IDatabase`) |
+| `kanariv::contracts` | Backend-neutral persistence ports (`Storage`, `ITrackStore`, ...) |
 | `kanariv::media` | Reading, decoding, metadata, library discovery |
 | `kanariv::player` | Audio output and playback primitives |
 | `kanariv::db` | SQLite storage and FTS5 search |

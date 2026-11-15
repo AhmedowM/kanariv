@@ -1,12 +1,5 @@
 #include <sqlite3.h>
 
-#include <kanariv/db/database.hpp>
-#include <kanariv/db/json.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/json.hpp>
-#include <kanariv/utils/log.hpp>
-#include <kanariv/utils/result.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <db/database_access.hpp>
@@ -18,6 +11,13 @@
 #include <fstream>
 #include <ios>
 #include <iterator>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/json.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
 #include <mutex>
 #include <span>
 #include <string>
@@ -27,10 +27,9 @@ namespace kanariv::db {
 
 using kanariv::utils::Json;
 
-std::expected<void, kanariv::utils::Error> exportJson(contracts::IDatabase& db_,
-                                                     const std::filesystem::path& outPath) {
-    Database& db = dynamic_cast<Database&>(db_);
-    auto tracks = db.listTracks(nullptr);
+std::expected<void, kanariv::utils::Error> exportJson(Database& db,
+                                                      const std::filesystem::path& outPath) {
+    auto tracks = db.listTracks();
     if (!tracks)
         return std::unexpected{tracks.error()};
     Json root;
@@ -49,9 +48,8 @@ std::expected<void, kanariv::utils::Error> exportJson(contracts::IDatabase& db_,
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> importJson(contracts::IDatabase& db_,
-                                                     const std::filesystem::path& inPath) {
-    Database& db = dynamic_cast<Database&>(db_);
+std::expected<void, kanariv::utils::Error> importJson(Database& db,
+                                                      const std::filesystem::path& inPath) {
     std::ifstream f(inPath, std::ios::binary);
     if (!f)
         return std::unexpected{
@@ -239,6 +237,16 @@ std::expected<void, kanariv::utils::Error> importJson(contracts::IDatabase& db_,
     if (auto* logger = db.logger())
         logger->info("json import complete inserted={} updated={}", inserted, updated);
     return {};
+}
+
+std::expected<void, kanariv::utils::Error>
+Database::exportJson(const std::filesystem::path& outPath) {
+    return kanariv::db::exportJson(*this, outPath);
+}
+
+std::expected<void, kanariv::utils::Error>
+Database::importJson(const std::filesystem::path& inPath) {
+    return kanariv::db::importJson(*this, inPath);
 }
 
 } // namespace kanariv::db

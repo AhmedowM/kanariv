@@ -55,8 +55,22 @@ class SqliteStatement;
 } // namespace kanariv::db
 
 namespace kanariv::contracts {
-/** @brief Abstract database contract used by the engine and service. */
-class IDatabase;
+/** @brief Health and diagnostics shared by the persistence ports. */
+class IStore;
+/** @brief Track rows and their per-track annotations. */
+class ITrackStore;
+/** @brief Playlist containers and membership. */
+class IPlaylistStore;
+/** @brief Queues and their ordered items. */
+class IQueueStore;
+/** @brief Libraries, catalogue queries and statistics. */
+class ILibraryStore;
+/** @brief Opt-in playback history. */
+class IHistoryStore;
+/** @brief Durable playback-engine state. */
+class IPlaybackStateStore;
+/** @brief Aggregate of the persistence ports handed to consumers. */
+struct Storage;
 } // namespace kanariv::contracts
 
 namespace kanariv::engine {

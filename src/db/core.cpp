@@ -1,13 +1,7 @@
 ﻿#include <sqlite3.h>
 
-#include <array>
 #include <algorithm>
-#include <kanariv/db/database.hpp>
-#include <kanariv/db/smart.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/log.hpp>
-#include <kanariv/utils/result.hpp>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -18,6 +12,12 @@
 #include <db/statement.hpp>
 #include <db/stmt_helpers.hpp>
 #include <expected>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/smart.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -84,13 +84,14 @@ struct Database::Impl {
     std::expected<void, kanariv::utils::Error> deleteTrackLocked(int64_t id);
     std::expected<kanariv::types::Track, kanariv::utils::Error> getTrackLocked(int64_t id);
     std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error> libraryListLocked();
-    std::expected<void, kanariv::utils::Error> libraryUpdateLocked(const kanariv::types::Library& l);
+    std::expected<void, kanariv::utils::Error>
+    libraryUpdateLocked(const kanariv::types::Library& l);
 
     // Playlist / queue locked helpers
     std::expected<int64_t, kanariv::utils::Error>
     createPlaylistLocked(std::string_view name, int type = 0, std::string_view smart_query = {});
     std::expected<void, kanariv::utils::Error> playlistAddTrackLocked(int64_t pid, int64_t tid,
-                                                                     int64_t pos = -1);
+                                                                      int64_t pos = -1);
     std::expected<void, kanariv::utils::Error> queueEnqueueLocked(int64_t qid, int64_t tid,
                                                                   int64_t index = kAppendIndex);
     std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLocked(int64_t qid);
@@ -203,7 +204,7 @@ Database::queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) {
     int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
     if (rc != SQLITE_OK)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
-                                                        err ? std::string(err) : "BEGIN failed")};
+                                                         err ? std::string(err) : "BEGIN failed")};
     for (int64_t tid : tids) {
         auto r = kanariv::db::queueEnqueueLocked(impl_->db_.get(), qid, tid, -1);
         if (!r) {
@@ -222,13 +223,8 @@ Database::queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) {
     return {};
 }
 
-std::expected<void, kanariv::utils::Error>
-Database::queueEnqueueBatch(int64_t qid, const std::vector<int64_t>& tids) {
-    return queueEnqueueBatch(qid, std::span<const int64_t>(tids.data(), tids.size()));
-}
-
 std::expected<void, kanariv::utils::Error> Database::queueReplaceAll(int64_t qid,
-                                                                    std::span<const int64_t> ids) {
+                                                                     std::span<const int64_t> ids) {
     qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
@@ -239,7 +235,7 @@ std::expected<void, kanariv::utils::Error> Database::queueReplaceAll(int64_t qid
     int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
     if (rc != SQLITE_OK)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
-                                                        err ? std::string(err) : "BEGIN failed")};
+                                                         err ? std::string(err) : "BEGIN failed")};
     auto clr = kanariv::db::queueClearLocked(impl_->db_.get(), qid);
     if (!clr) {
         sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
@@ -261,11 +257,6 @@ std::expected<void, kanariv::utils::Error> Database::queueReplaceAll(int64_t qid
             kanariv::utils::StatusCode::Internal, cErr ? std::string(cErr) : "commit failed")};
     }
     return {};
-}
-
-std::expected<void, kanariv::utils::Error>
-Database::queueReplaceAll(int64_t qid, const std::vector<int64_t>& ids) {
-    return queueReplaceAll(qid, std::span<const int64_t>(ids.data(), ids.size()));
 }
 
 std::expected<kanariv::types::Track, kanariv::utils::Error>
@@ -360,7 +351,7 @@ Database::Impl::insertTrackLocked(const kanariv::types::Track& t) {
             return std::unexpected{kanariv::utils::makeError(
                 kanariv::utils::StatusCode::AlreadyExists, sqlite3_errmsg(db_.get()))};
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(db_.get()))};
+                                                         sqlite3_errmsg(db_.get()))};
     }
     return sqlite3_last_insert_rowid(db_.get());
 }
@@ -383,7 +374,7 @@ Database::Impl::updateTrackLocked(const kanariv::types::Track& t) {
     st.reset();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(db_.get()))};
+                                                         sqlite3_errmsg(db_.get()))};
     if (sqlite3_changes(db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
@@ -406,7 +397,7 @@ std::expected<void, kanariv::utils::Error> Database::Impl::deleteTrackLocked(int
     st.reset();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(db_.get()))};
+                                                         sqlite3_errmsg(db_.get()))};
     if (sqlite3_changes(db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
@@ -464,7 +455,7 @@ Database::Impl::libraryUpdateLocked(const kanariv::types::Library& l) {
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(db_.get()))};
+                                                         sqlite3_errmsg(db_.get()))};
     if (sqlite3_changes(db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
@@ -546,7 +537,8 @@ void bindTrackForUpdate(SqliteStatement& st, const kanariv::types::Track& t) {
     st.bindInt(30, t.id);
 }
 
-std::expected<int64_t, kanariv::utils::Error> Database::insertTrack(const kanariv::types::Track& t) {
+std::expected<int64_t, kanariv::utils::Error>
+Database::insertTrack(const kanariv::types::Track& t) {
     std::unique_lock lk{impl_->dbMutex_};
     return impl_->insertTrackLocked(t);
 }
@@ -644,7 +636,7 @@ Database::findBySource(const kanariv::types::SourceRef& source) {
 }
 
 std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
-Database::listTracks(const kanariv::types::TrackQuery* q) {
+Database::listTracks(std::optional<kanariv::types::TrackQuery> q) {
     std::shared_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
@@ -791,7 +783,7 @@ std::expected<void, kanariv::utils::Error> Database::setDirty(int64_t id, int di
     st.reset();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     if (sqlite3_changes(impl_->db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
@@ -801,8 +793,8 @@ std::expected<void, kanariv::utils::Error> Database::setRating(int64_t id, int32
     if (id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     if (rating < 0 || rating > 5)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg, "rating must be 0..5")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "rating must be 0..5")};
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
@@ -819,7 +811,7 @@ std::expected<void, kanariv::utils::Error> Database::setRating(int64_t id, int32
     st.reset();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     if (sqlite3_changes(impl_->db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
@@ -847,7 +839,7 @@ Database::createPlaylist(std::string_view name, int type, std::string_view smart
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     return sqlite3_last_insert_rowid(impl_->db_.get());
 }
 
@@ -903,7 +895,7 @@ Database::updatePlaylist(const kanariv::types::Playlist& p) {
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     if (sqlite3_changes(impl_->db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
@@ -923,14 +915,14 @@ std::expected<void, kanariv::utils::Error> Database::deletePlaylist(int64_t id) 
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     if (sqlite3_changes(impl_->db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
 }
 
 std::expected<void, kanariv::utils::Error> Database::renamePlaylist(int64_t id,
-                                                                   std::string_view newName) {
+                                                                    std::string_view newName) {
     if (id == 0 || newName.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -947,7 +939,7 @@ std::expected<void, kanariv::utils::Error> Database::renamePlaylist(int64_t id,
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     if (sqlite3_changes(impl_->db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
@@ -966,7 +958,7 @@ Database::createPlaylistFromTracks(std::string_view name, std::span<const int64_
     int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
     if (rc != SQLITE_OK)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
-                                                        err ? std::string(err) : "BEGIN failed")};
+                                                         err ? std::string(err) : "BEGIN failed")};
     auto pidRes = impl_->createPlaylistLocked(name);
     if (!pidRes) {
         sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
@@ -1013,7 +1005,7 @@ Database::Impl::createPlaylistLocked(std::string_view name, int type,
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(db_.get()))};
+                                                         sqlite3_errmsg(db_.get()))};
     return sqlite3_last_insert_rowid(db_.get());
 }
 
@@ -1058,7 +1050,7 @@ Database::Impl::playlistAddTrackLocked(int64_t pid, int64_t tid, int64_t pos) {
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(db_.get()))};
+                                                         sqlite3_errmsg(db_.get()))};
     return {};
 }
 
@@ -1090,7 +1082,7 @@ Database::listPlaylists() {
 }
 
 std::expected<void, kanariv::utils::Error> Database::playlistAddTrack(int64_t pid, int64_t tid,
-                                                                     int64_t pos) {
+                                                                      int64_t pos) {
     if (pid == 0 || tid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -1132,7 +1124,7 @@ std::expected<void, kanariv::utils::Error> Database::playlistAddTrack(int64_t pi
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     return {};
 }
 
@@ -1153,14 +1145,14 @@ std::expected<void, kanariv::utils::Error> Database::playlistRemoveTrack(int64_t
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     if (sqlite3_changes(impl_->db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
 }
 
 std::expected<void, kanariv::utils::Error> Database::playlistReorder(int64_t pid, int64_t from,
-                                                                    int64_t to) {
+                                                                     int64_t to) {
     if (pid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     if (from == to)
@@ -1231,7 +1223,7 @@ Database::playlistGetTracks(int64_t pid) {
         auto q = parseSmartQuery(pl->smart_query);
         if (!q)
             return std::unexpected{q.error()};
-        return listTracks(&*q);
+        return listTracks(*q);
     }
     std::shared_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
@@ -1264,7 +1256,8 @@ Database::Impl::queueEnqueueLocked(int64_t qid, int64_t tid, int64_t index) {
     return kanariv::db::queueEnqueueLocked(db_.get(), qid, tid, index);
 }
 
-std::expected<kanariv::types::QueueItem, kanariv::utils::Error> Database::queueDequeue(int64_t qid) {
+std::expected<kanariv::types::QueueItem, kanariv::utils::Error>
+Database::queueDequeue(int64_t qid) {
     std::unique_lock lk{impl_->dbMutex_};
     return impl_->queueDequeueLocked(qid);
 }
@@ -1305,7 +1298,7 @@ std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error> Databas
 }
 
 std::expected<int64_t, kanariv::utils::Error> Database::createQueue(std::string_view name,
-                                                                   int64_t library_id) {
+                                                                    int64_t library_id) {
     if (name.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -1318,10 +1311,11 @@ std::expected<void, kanariv::utils::Error> Database::deleteQueue(int64_t qid) {
     return kanariv::db::deleteQueueLocked(impl_->db_.get(), qid);
 }
 
-std::expected<void, kanariv::utils::Error> Database::setQueueRepeat(int64_t qid, int repeat_mode) {
+std::expected<void, kanariv::utils::Error>
+Database::setQueueRepeat(int64_t qid, kanariv::types::RepeatMode mode) {
     qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
-    return kanariv::db::setQueueRepeatLocked(impl_->db_.get(), qid, repeat_mode);
+    return kanariv::db::setQueueRepeatLocked(impl_->db_.get(), qid, static_cast<int>(mode));
 }
 
 std::expected<void, kanariv::utils::Error> Database::setQueueTemp(int64_t qid, bool temp) {
@@ -1330,9 +1324,12 @@ std::expected<void, kanariv::utils::Error> Database::setQueueTemp(int64_t qid, b
     return kanariv::db::setQueueTempLocked(impl_->db_.get(), qid, temp);
 }
 
-std::size_t Database::queueCount(int64_t qid) {
+std::expected<std::size_t, kanariv::utils::Error> Database::queueCount(int64_t qid) {
     qid = kanariv::db::normalizeQueueId(qid);
     std::shared_lock lk{impl_->dbMutex_};
+    if (!impl_->db_)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     return impl_->queueCountLocked(qid);
 }
 
@@ -1340,11 +1337,15 @@ std::size_t Database::Impl::queueCountLocked(int64_t qid) {
     return kanariv::db::queueCountLocked(db_.get(), qid);
 }
 
-std::optional<size_t> Database::queueIndexOf(int64_t qid, int64_t trackId) {
+std::expected<std::optional<size_t>, kanariv::utils::Error>
+Database::queueIndexOf(int64_t qid, int64_t trackId) {
     qid = kanariv::db::normalizeQueueId(qid);
     if (trackId == 0)
         return std::nullopt;
     std::shared_lock lk{impl_->dbMutex_};
+    if (!impl_->db_)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     return kanariv::db::queueIndexOfLocked(impl_->db_.get(), qid, trackId);
 }
 
@@ -1374,7 +1375,7 @@ Database::historyAdd(const kanariv::types::HistoryEntry& e) {
     st.reset();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     return {};
 }
 
@@ -1430,7 +1431,7 @@ Database::queryHistory(const kanariv::types::HistoryQuery* q) {
     return out;
 }
 
-std::expected<void, kanariv::utils::Error> Database::historyClear() {
+std::expected<void, kanariv::utils::Error> Database::clearHistory() {
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
@@ -1441,7 +1442,8 @@ std::expected<void, kanariv::utils::Error> Database::historyClear() {
         std::string msg = err ? std::string(err) : "clear history failed";
         if (err)
             sqlite3_free(err);
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg)};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg)};
     }
     if (err)
         sqlite3_free(err);
@@ -1449,7 +1451,7 @@ std::expected<void, kanariv::utils::Error> Database::historyClear() {
 }
 
 std::expected<void, kanariv::utils::Error> Database::bookmarkAdd(int64_t tid, int64_t pos,
-                                                                std::string_view note) {
+                                                                 std::string_view note) {
     if (tid == 0 || pos < 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -1470,7 +1472,7 @@ std::expected<void, kanariv::utils::Error> Database::bookmarkAdd(int64_t tid, in
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     return {};
 }
 
@@ -1542,7 +1544,7 @@ std::expected<void, kanariv::utils::Error> Database::bookmarkRemove(int64_t id) 
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     if (sqlite3_changes(impl_->db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
@@ -1560,9 +1562,7 @@ std::expected<void, kanariv::utils::Error> Database::lyricsSet(int64_t tid,
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     // Upsert: delete any existing lyrics for this track, then insert.
     SqliteStatement st;
-    if (auto e = st.prepare(impl_->db_.get(),
-                            "DELETE FROM lyrics WHERE track_id=?");
-        !e)
+    if (auto e = st.prepare(impl_->db_.get(), "DELETE FROM lyrics WHERE track_id=?"); !e)
         return std::unexpected{e.error()};
     st.bindInt(1, tid);
     (void)st.stepDone();
@@ -1581,13 +1581,12 @@ std::expected<void, kanariv::utils::Error> Database::lyricsSet(int64_t tid,
         st.bindText(4, source);
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, sqlite3_errmsg(impl_->db_.get()))};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     return {};
 }
 
-std::expected<kanariv::types::Lyrics, kanariv::utils::Error>
-Database::lyricsGet(int64_t tid) {
+std::expected<kanariv::types::Lyrics, kanariv::utils::Error> Database::lyricsGet(int64_t tid) {
     if (tid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::shared_lock lk{impl_->dbMutex_};
@@ -1595,16 +1594,16 @@ Database::lyricsGet(int64_t tid) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
-    if (auto e = st.prepare(impl_->db_.get(),
-                            "SELECT id, track_id, lrc_text, is_synced, source, "
-                            "CAST(strftime('%s', fetched_at) AS INTEGER) FROM lyrics "
-                            "WHERE track_id=?");
+    if (auto e =
+            st.prepare(impl_->db_.get(), "SELECT id, track_id, lrc_text, is_synced, source, "
+                                         "CAST(strftime('%s', fetched_at) AS INTEGER) FROM lyrics "
+                                         "WHERE track_id=?");
         !e)
         return std::unexpected{e.error()};
     st.bindInt(1, tid);
     if (!st.step())
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::NotFound, "no lyrics for track")};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "no lyrics for track")};
     kanariv::types::Lyrics l;
     l.id = st.columnInt(0);
     l.track_id = st.columnInt(1);
@@ -1623,22 +1622,21 @@ std::expected<void, kanariv::utils::Error> Database::lyricsRemove(int64_t tid) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
-    if (auto e = st.prepare(impl_->db_.get(), "DELETE FROM lyrics WHERE track_id=?");
-        !e)
+    if (auto e = st.prepare(impl_->db_.get(), "DELETE FROM lyrics WHERE track_id=?"); !e)
         return std::unexpected{e.error()};
     st.bindInt(1, tid);
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, sqlite3_errmsg(impl_->db_.get()))};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     if (sqlite3_changes(impl_->db_.get()) == 0)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::NotFound, "no lyrics for track")};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "no lyrics for track")};
     return {};
 }
 
 std::expected<int64_t, kanariv::utils::Error> Database::libraryAdd(std::string_view path,
-                                                                  std::string_view name) {
+                                                                   std::string_view name) {
     if (path.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -1657,16 +1655,18 @@ std::expected<int64_t, kanariv::utils::Error> Database::libraryAdd(std::string_v
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     return sqlite3_last_insert_rowid(impl_->db_.get());
 }
 
-std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error> Database::listLibraries() {
+std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error>
+Database::listLibraries() {
     std::shared_lock lk{impl_->dbMutex_};
     return impl_->libraryListLocked();
 }
 
-std::expected<void, kanariv::utils::Error> Database::libraryUpdate(const kanariv::types::Library& l) {
+std::expected<void, kanariv::utils::Error>
+Database::libraryUpdate(const kanariv::types::Library& l) {
     std::unique_lock lk{impl_->dbMutex_};
     return impl_->libraryUpdateLocked(l);
 }
@@ -1685,7 +1685,7 @@ std::expected<void, kanariv::utils::Error> Database::libraryDelete(int64_t id) {
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        sqlite3_errmsg(impl_->db_.get()))};
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     if (sqlite3_changes(impl_->db_.get()) == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     return {};
@@ -1725,10 +1725,8 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::ge
 }
 
 std::expected<kanariv::types::LibraryStats, kanariv::utils::Error>
-Database::libraryStats(std::optional<int> topTracks,
-                       std::optional<int> topAlbums,
-                       std::optional<int> topGenres,
-                       std::optional<int> topArtists) {
+Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbums,
+                       std::optional<int> topGenres, std::optional<int> topArtists) {
     std::shared_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
@@ -1780,20 +1778,20 @@ Database::libraryStats(std::optional<int> topTracks,
         d.top_tracks.emplace();
         if (*topTracks > 0) {
             std::string sql =
-            std::string(internal::selectTracksCols) +
-            " WHERE deleted_at IS NULL AND play_count > 0 ORDER BY play_count DESC LIMIT " +
-            std::to_string(*topTracks);
-        auto sRes = impl_->getCachedForUse(sql);
-        if (sRes) {
-            SqliteStatement& st = *(*sRes);
-            while (st.step()) {
-                kanariv::types::Track t;
-                internal::fillTrackFromStmt(st.get(), t);
-                d.top_tracks->push_back(std::move(t));
+                std::string(internal::selectTracksCols) +
+                " WHERE deleted_at IS NULL AND play_count > 0 ORDER BY play_count DESC LIMIT " +
+                std::to_string(*topTracks);
+            auto sRes = impl_->getCachedForUse(sql);
+            if (sRes) {
+                SqliteStatement& st = *(*sRes);
+                while (st.step()) {
+                    kanariv::types::Track t;
+                    internal::fillTrackFromStmt(st.get(), t);
+                    d.top_tracks->push_back(std::move(t));
+                }
+                st.reset();
             }
-            st.reset();
         }
-    }
     }
 
     // Top albums by total plays (GROUP BY album).
@@ -1848,9 +1846,8 @@ Database::libraryStats(std::optional<int> topTracks,
     if (topArtists && *topArtists > 0) {
         d.top_artists.emplace();
         // Fetch all (artist, play_count) pairs for live tracks with play_count > 0.
-        std::string sql =
-            "SELECT artist, play_count FROM tracks WHERE deleted_at IS NULL "
-            "AND artist IS NOT NULL AND artist != '' AND play_count > 0";
+        std::string sql = "SELECT artist, play_count FROM tracks WHERE deleted_at IS NULL "
+                          "AND artist IS NOT NULL AND artist != '' AND play_count > 0";
         auto sRes = impl_->getCachedForUse(sql);
         if (sRes) {
             SqliteStatement& st = *(*sRes);
@@ -1901,14 +1898,13 @@ Database::libraryStats(std::optional<int> topTracks,
             st.reset();
 
             // Sort by total_plays DESC, then name ASC.
-            std::vector<std::pair<std::string, std::pair<std::size_t, std::int64_t>>>
-                sorted(artistStats.begin(), artistStats.end());
-            std::sort(sorted.begin(), sorted.end(),
-                      [](const auto& a, const auto& b) {
-                          if (a.second.second != b.second.second)
-                              return a.second.second > b.second.second;
-                          return a.first < b.first;
-                      });
+            std::vector<std::pair<std::string, std::pair<std::size_t, std::int64_t>>> sorted(
+                artistStats.begin(), artistStats.end());
+            std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+                if (a.second.second != b.second.second)
+                    return a.second.second > b.second.second;
+                return a.first < b.first;
+            });
 
             std::size_t limit = static_cast<std::size_t>(*topArtists);
             for (std::size_t i = 0; i < sorted.size() && i < limit; ++i) {
@@ -1968,7 +1964,7 @@ DatabaseAccess::updateTrackLocked(Database& db, const kanariv::types::Track& t) 
 }
 
 std::expected<void, kanariv::utils::Error> DatabaseAccess::deleteTrackLocked(Database& db,
-                                                                            int64_t id) {
+                                                                             int64_t id) {
     return db.impl_->deleteTrackLocked(id);
 }
 
@@ -2001,6 +1997,21 @@ DatabaseAccess::queueEnqueueLocked(Database& db, int64_t qid, int64_t tid, int64
 std::expected<kanariv::types::QueueItem, kanariv::utils::Error>
 DatabaseAccess::queueDequeueLocked(Database& db, int64_t qid) {
     return db.impl_->queueDequeueLocked(qid);
+}
+
+contracts::Storage makeStorage(std::shared_ptr<Database> db) {
+    if (!db)
+        return {};
+    // One control block shared by every port: a consumer that keeps any port
+    // alive keeps the database (and its connection) alive with it.
+    return contracts::Storage{
+        std::static_pointer_cast<contracts::ITrackStore>(db),
+        std::static_pointer_cast<contracts::IPlaylistStore>(db),
+        std::static_pointer_cast<contracts::IQueueStore>(db),
+        std::static_pointer_cast<contracts::ILibraryStore>(db),
+        std::static_pointer_cast<contracts::IHistoryStore>(db),
+        std::static_pointer_cast<contracts::IPlaybackStateStore>(db),
+    };
 }
 
 } // namespace kanariv::db

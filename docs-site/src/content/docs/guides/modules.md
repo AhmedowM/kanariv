@@ -31,7 +31,7 @@ cmake --build build/modules --parallel 4
 | `kanariv` | `<kanariv.hpp>` (umbrella) |
 | `kanariv.utils` | `<kanariv/utils.hpp>` |
 | `kanariv.types` | `<kanariv/types.hpp>` |
-| `kanariv.contracts` | `<kanariv/contracts/database.hpp>` |
+| `kanariv.contracts` | `<kanariv/contracts/storage.hpp>` |
 | `kanariv.media` | `<kanariv/media.hpp>` |
 | `kanariv.player` | `<kanariv/player.hpp>` |
 | `kanariv.db` | `<kanariv/db.hpp>` |

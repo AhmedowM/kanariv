@@ -63,9 +63,9 @@ int main() {
         return 1;
     }
 
-    if (auto result = engine.value()->attachDatabase(
-            std::shared_ptr<kanariv::db::Database>(
-                std::move(database.value())));
+    if (auto result = engine.value()->attachStorage(
+            kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(
+                std::move(database.value()))));
         !result) {
         std::println(stderr, "attach failed: {}", result.error().message);
         return 1;
@@ -108,7 +108,7 @@ Each component documents its own thread-safety guarantees. In general:
 
 - Public methods on `Player`, `Engine`, `Client` are thread-safe
 - `Service` is not thread-safe for concurrent method calls
-- `IDatabase` implementations must serialize their own access
+- `kanariv::contracts::IStore` implementations must serialize their own access
 - `Reader` interface is thread-compatible (single-threaded use expected)
 
 ## Next steps

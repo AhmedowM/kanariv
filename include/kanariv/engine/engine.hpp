@@ -18,11 +18,9 @@
  *   decodeCv_, wakes on Playing); monitorLoop runs on monitorThread_
  *   polling every pollMs (default 10 ms) via monMtx_/monCv_ and calling
  *   engineTick() (history + progress + gapless).
- * - Persistence: engine_state row id=1 stores shuffle_enabled,
- *   repeat_mode, cursor_pos, current_track_id, volume, shuffle_perm BLOB
- *   and active_queue_id. loadState/saveState handle the active_queue_id
- *   migration (try sqlNew, fallback to sqlOld). persistShuffleBlobLocked
- *   and persistCursorLocked update the blob/cursor transactionally.
+ * - Persistence: engine state (shuffle, repeat, cursor, current track, volume,
+ *   shuffle permutation, active queue) is loaded at attach and saved on
+ *   transport transitions through the `contracts::IPlaybackStateStore` port.
  * - History: doHistoryMark uses shouldMarkPlayed(historyThresholdPct/Secs)
  *   with atomic CAS on markedPlayed_ and a database-owned transaction.
  * Locking: two engine mutexes with a documented ownership split and a fixed
@@ -40,7 +38,7 @@
  * - Lock-free readers use only the atomics published by the owning writer
  *   (`playbackState_`, `hasCurrent_`, `state_.currentTrackId`, `volume_`,
  *   `markedPlayed_`, `gaplessArmed_`). Persistence and history operations go
- *   through the backend-neutral contracts::IDatabase and never hold
+ *   through the backend-neutral contracts::Storage ports and never hold
  *   `decodeMtx_` across a database write.
  * Events: a bounded event queue (64 slots) with drop-on-full, dispatched via
  * pushEvent to callbacks under cbMutex_.
@@ -49,13 +47,14 @@
  * cheap; the public API is unchanged.
  */
 
-#include <kanariv/types/db.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/fwd.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/contracts/storage.hpp>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -113,28 +112,29 @@ class KANARIV_API Engine final {
      * @param cfg Engine configuration (poll/gapless/history thresholds).
      * @return Owning Engine or Error from init().
      * @details Starts decodeThread_ and optionally monitorThread_ via init().
-     * No database is opened; optionally attach a store with attachDatabase().
+     * No database is opened; optionally attach persistence with
+     * attachStorage().
      * @par Thread safety
      * Thread-safe; constructs internal atomics/threads.
-     * @see attachDatabase
+     * @see attachStorage
      */
     static ExpectedEngine create(const kanariv::types::EngineConfig& cfg = {});
 
     /**
-     * @brief Attaches an already-open database implementation.
+     * @brief Attaches already-open persistence ports.
      * @ingroup kanariv_engine
-     * @param db Shared database contract (must be non-null and open).
+     * @param storage Complete port aggregate (every port populated and open).
      * @return Success or Error InvalidArg / loadState failure.
-     * @retval StatusCode::InvalidArg if db is null or not open.
+     * @retval StatusCode::InvalidArg if a port is missing or the store is closed.
      * @par Ownership
-     * The engine retains the shared pointer and keeps the database attached
-     * until shutdown or replacement; callers may release their own copy after
+     * The engine retains shared ownership of every port and keeps them attached
+     * until shutdown or replacement; callers may release their own copies after
      * this call returns.
      * @par Thread safety
-     * Thread-safe; calls the database implementation to load state.
+     * Thread-safe; loads persisted state under the queue lock.
      * @see loadState
      */
-    ExpectedVoid attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db);
+    ExpectedVoid attachStorage(kanariv::contracts::Storage storage);
 
     /** @brief Tears down threads and persists state. @ingroup kanariv_engine */
     ~Engine();
@@ -385,8 +385,8 @@ class KANARIV_API Engine final {
      * @return Success or Error State/Busy/NotFound.
      * @retval StatusCode::State if no db.
      * @retval StatusCode::Busy if queueMutex_ try_lock fails.
-     * @details Validates via db_->getQueue(qid) while holding
-     * queueMutex_ (then dbMutex_ shared). On switch: resets cursor to 0,
+     * @details Validates via `storage_.queues->getQueue(qid)` while holding
+     * queueMutex_ (then the store lock). On switch: resets cursor to 0,
      * clears perm (shuffle flag kept but perm regenerated on next shuffle),
      * updates state_.activeQueueId/cursorPos and persists via saveState().
      * Pushes QueueChanged event.
@@ -438,7 +438,8 @@ class KANARIV_API Engine final {
     /**
      * @brief Pops one event from the MPSC queue (non-blocking).
      * @ingroup kanariv_engine
-     * @return `std::expected<kanariv::types::EngineEvent, Error>` -- event on success, NotFound if queue empty.
+     * @return `std::expected<kanariv::types::EngineEvent, Error>` -- event on success, NotFound if
+     * queue empty.
      * @par Thread safety
      * Thread-safe; the event queue is a bounded MPSC.
      * @see drainEvents
@@ -564,7 +565,8 @@ class KANARIV_API Engine final {
     /**
      * @brief Constructs Engine with config defaults applied.
      * @ingroup kanariv_engine
-     * @param cfg kanariv::types::EngineConfig; zero poll/gapless/history values are replaced by defaults.
+     * @param cfg kanariv::types::EngineConfig; zero poll/gapless/history values are replaced by
+     * defaults.
      * @details Applies defaults: pollMs 10, gaplessMs 300, historyThresholdPct 60,
      * historyThresholdSecs 90; initializes atomics and copies callbacks.
      */

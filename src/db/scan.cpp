@@ -27,10 +27,16 @@
 namespace kanariv::db {
 
 std::expected<void, kanariv::utils::Error>
-scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
+Database::scanLibrary(int64_t libraryId,
+                      std::function<void(int64_t, int64_t, std::string_view)> progress,
+                      kanariv::media::ScanMode mode) {
+    return kanariv::db::scanLibrary(*this, libraryId, std::move(progress), mode);
+}
+
+std::expected<void, kanariv::utils::Error>
+scanLibrary(Database& db, int64_t libraryId,
             std::function<void(int64_t, int64_t, std::string_view)> progress,
             kanariv::media::ScanMode mode) {
-    Database& db = dynamic_cast<Database&>(db_);
     if (libraryId == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     auto libs = db.listLibraries();

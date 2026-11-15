@@ -2,16 +2,16 @@
 
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/db/database.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/engine/engine.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/utils/error.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <cstdint>
 #include <engine/history.hpp>
 #include <filesystem>
+#include <kanariv/db/database.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
 #include <memory>
 #include <string>
 #include <system_error>
@@ -92,7 +92,9 @@ TEST_CASE("history insert increments play_count and last_played", "[engine_histo
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     const int64_t wallLo = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
                                std::chrono::system_clock::now().time_since_epoch())
                                .count();
@@ -217,7 +219,9 @@ TEST_CASE("next() starts with fresh playback accounting", "[engine_history]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
 
     auto playCount = [&](int64_t id) -> int64_t {
         sqlite3* h = nullptr;

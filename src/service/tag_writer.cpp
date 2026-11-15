@@ -22,11 +22,11 @@
 #include <xiphcomment.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <kanariv/db/database.hpp>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/utils/error.hpp>
-#include <cctype>
-#include <cstdint>
 #include <media/fingerprint.hpp>
 #include <string>
 #include <system_error>
@@ -94,7 +94,7 @@ bool canWriteFileTags(const std::filesystem::path& p) {
 }
 
 kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
-                                            const kanariv::types::Track& t) {
+                                             const kanariv::types::Track& t) {
     if (!canWriteFileTags(p)) {
         return std::unexpected(kanariv::utils::makeError(
             kanariv::utils::StatusCode::InvalidArg,
@@ -103,7 +103,7 @@ kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
     TagLib::FileRef f(p.generic_string().c_str());
     if (f.isNull() || !f.file() || !f.tag()) {
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
-                                                        "taglib cannot open file for tag write"));
+                                                         "taglib cannot open file for tag write"));
     }
     auto* tag = f.tag();
     tag->setTitle(toTagString(t.title));
@@ -180,13 +180,13 @@ kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
     }
     if (!f.save()) {
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
-                                                        "taglib failed to save file tags"));
+                                                         "taglib failed to save file tags"));
     }
     return {};
 }
 
-kanariv::utils::Expected<kanariv::types::Track> reregisterTrackRow(kanariv::contracts::IDatabase& db,
-                                                                 kanariv::types::Track t) {
+kanariv::utils::Expected<kanariv::types::Track>
+reregisterTrackRow(kanariv::contracts::ITrackStore& tracks, kanariv::types::Track t) {
     auto fpRes = kanariv::media::internal::computeFingerprint(t.path);
     if (!fpRes)
         return std::unexpected{fpRes.error()};
@@ -203,7 +203,7 @@ kanariv::utils::Expected<kanariv::types::Track> reregisterTrackRow(kanariv::cont
         t.channels = static_cast<uint32_t>(meta->channels);
         t.bitrate = meta->bitrate;
     }
-    if (auto upd = db.updateTrack(t); !upd)
+    if (auto upd = tracks.updateTrack(t); !upd)
         return std::unexpected{upd.error()};
     return t;
 }

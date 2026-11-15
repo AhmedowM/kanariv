@@ -79,7 +79,7 @@ player.value()->play();
 #include <kanariv/engine/engine.hpp>
 
 auto engine = kanariv::engine::Engine::create();
-engine.value()->attachDatabase(database);
+engine.value()->attachStorage(storage);
 engine.value()->play();
 ```
 

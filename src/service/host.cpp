@@ -1,9 +1,9 @@
 #include <atomic>
+#include <chrono>
+#include <cstddef>
 #include <kanariv/service/host.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/utils/error.hpp>
-#include <chrono>
-#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -67,13 +67,12 @@ Host::~Host() {
     stop();
 }
 
-Host::ExpectedHost Host::create(ServiceConfig cfg,
-                                std::shared_ptr<kanariv::contracts::IDatabase> db) {
+Host::ExpectedHost Host::create(ServiceConfig cfg, kanariv::contracts::Storage storage) {
     // The host contract is in-process by definition; ignore any desktop mode
     // inherited from a shared configuration object.
     cfg.inProcess = true;
 
-    auto serviceResult = Service::create(cfg, std::move(db));
+    auto serviceResult = Service::create(cfg, std::move(storage));
     if (!serviceResult)
         return std::unexpected{serviceResult.error()};
 
@@ -95,7 +94,7 @@ Host::ExpectedHost Host::create(ServiceConfig cfg,
             if (err)
                 return std::unexpected{*err};
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::State,
-                                                            "service loop exited during startup")};
+                                                             "service loop exited during startup")};
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }

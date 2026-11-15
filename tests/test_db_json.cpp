@@ -8,7 +8,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/json.hpp>
 #include <kanariv/types/db.hpp>
@@ -91,7 +90,7 @@ TEST_CASE("exportJson and importJson roundtrip", "[db_json]") {
     auto db2 = std::move(db2Res.value());
     auto ir = importJson(*db2, outPath);
     REQUIRE(ir.has_value());
-    auto tracks = db2->listTracks(nullptr);
+    auto tracks = db2->listTracks();
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->size() == 1);
     REQUIRE((*tracks)[0].title == "JsonTrack");
@@ -119,7 +118,7 @@ TEST_CASE("importJson handles duplicate fingerprint upsert", "[db_json]") {
     REQUIRE(exportJson(*db, outPath).has_value());
     // import same file again should not duplicate
     REQUIRE(importJson(*db, outPath).has_value());
-    auto tracks = db->listTracks(nullptr);
+    auto tracks = db->listTracks();
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->size() == 1);
     {
@@ -270,7 +269,7 @@ TEST_CASE("importJson reports the failing row and imports nothing", "[db_json]")
     CHECK(result.error().code == StatusCode::Corrupt);
     CHECK(result.error().message.find("import row 1") != std::string::npos);
     // The valid row before the failure was rolled back with the transaction.
-    auto tracks = db->listTracks(nullptr);
+    auto tracks = db->listTracks();
     REQUIRE(tracks.has_value());
     CHECK(tracks->empty());
 }
@@ -304,7 +303,7 @@ TEST_CASE("importJson surfaces update failures", "[db_json]") {
     CHECK(result.error().message.find("import row 0") != std::string::npos);
     CHECK(result.error().message.find("denied") != std::string::npos);
 
-    auto tracks = db->listTracks(nullptr);
+    auto tracks = db->listTracks();
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->size() == 1);
     CHECK((*tracks)[0].title == "Upsert");

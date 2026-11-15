@@ -66,17 +66,15 @@ class KANARIV_API Host final {
      * @brief Creates and starts an in-process service.
      * @ingroup kanariv_service
      * @param cfg Service configuration. `inProcess` is forced to true.
-     * @param db Optional already-open database contract; when omitted the
-     *        service opens `cfg.runtime.database` (or `cfg.dbPath`, or an
-     *        in-memory database when both are empty).
+     * @param storage Optional already-open persistence ports; when omitted the
+     *        service runs without persistence.
      * @return Started Host, or Error from directory creation, database open,
      *         engine initialization, or the service loop.
      *
      * Returns only after the service loop reports running. If the loop fails
      * during startup, the Error is returned and no Host is created.
      */
-    static ExpectedHost create(ServiceConfig cfg,
-                               std::shared_ptr<kanariv::contracts::IDatabase> db = nullptr);
+    static ExpectedHost create(ServiceConfig cfg, kanariv::contracts::Storage storage = {});
 
     /**
      * @brief Requests cancellation and waits for the worker thread.

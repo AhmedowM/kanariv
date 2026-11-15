@@ -48,8 +48,9 @@ TEST_CASE("engine state save and load roundtrip", "[engine_state]") {
         auto eRes = Engine::create(cfg);
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
-        REQUIRE(
-            eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+        REQUIRE(eng->attachStorage(kanariv::db::makeStorage(
+                                       std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                    .has_value());
         REQUIRE(eng->setShuffle(true).has_value());
         REQUIRE(eng->setRepeat(kanariv::types::RepeatMode::All).has_value());
         REQUIRE(eng->setVolume(0.42f).has_value());
@@ -78,7 +79,8 @@ TEST_CASE("engine state save and load roundtrip", "[engine_state]") {
     sqlite3_finalize(st);
     sqlite3_close(h);
     // reopen via Engine::open and verify loaded
-    auto e2Res = openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
+    auto e2Res =
+        openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
     REQUIRE(e2Res.has_value());
     auto eng2 = std::move(e2Res.value());
     REQUIRE(eng2->volume() > 0.41f);
@@ -109,7 +111,8 @@ TEST_CASE("engine state save and load roundtrip", "[engine_state]") {
 
 TEST_CASE("engine state open without file creates default", "[engine_state]") {
     std::string dbPath = tempDbPath("eng_state_default").string();
-    auto eRes = openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
+    auto eRes =
+        openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
     REQUIRE(eng->volume() == 1.0f);
@@ -174,7 +177,9 @@ TEST_CASE("engine state shuffle toggle clears perm", "[engine_state]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->setShuffle(true).has_value());
     // verify blob exists
     sqlite3* h = nullptr;
@@ -230,8 +235,9 @@ TEST_CASE("engine persists resume position across restart", "[engine_state]") {
         auto eRes = Engine::create(cfg);
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
-        REQUIRE(
-            eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+        REQUIRE(eng->attachStorage(kanariv::db::makeStorage(
+                                       std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                    .has_value());
         REQUIRE(eng->play(1).has_value());
         REQUIRE(eng->seek(4.0).has_value());
         REQUIRE(eng->position() > 3.9);
@@ -252,7 +258,8 @@ TEST_CASE("engine persists resume position across restart", "[engine_state]") {
         sqlite3_close(h);
     }
     {
-        auto eRes = openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
+        auto eRes = openEngineWithDatabase(
+            dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
         REQUIRE(eng->state() == kanariv::types::PlaybackState::Stopped);
@@ -298,7 +305,7 @@ TEST_CASE("concurrent transport commands keep the engine usable", "[engine_state
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(sharedDb).has_value());
+    REQUIRE(eng->attachStorage(kanariv::db::makeStorage(sharedDb)).has_value());
 
     constexpr int kThreads = 4;
     constexpr int kIterations = 100;
@@ -393,8 +400,9 @@ TEST_CASE("explicit stop clears the resume position", "[engine_state]") {
         auto eRes = Engine::create(cfg);
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
-        REQUIRE(
-            eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+        REQUIRE(eng->attachStorage(kanariv::db::makeStorage(
+                                       std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                    .has_value());
         REQUIRE(eng->play(1).has_value());
         REQUIRE(eng->seek(4.0).has_value());
         REQUIRE(eng->stop().has_value());
@@ -402,7 +410,8 @@ TEST_CASE("explicit stop clears the resume position", "[engine_state]") {
         eng->shutdown();
     }
     {
-        auto eRes = openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
+        auto eRes = openEngineWithDatabase(
+            dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
         REQUIRE(eng->position() == 0.0);

@@ -177,9 +177,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     auto engine = std::move(engineRes.value());
-    auto att = engine->attachDatabase(dbShared);
+    auto att = engine->attachStorage(kanariv::db::makeStorage(dbShared));
     if (!att) {
-        std::cerr << "[engine_demo] attachDatabase failed: " << att.error().message << "\n";
+        std::cerr << "[engine_demo] attachStorage failed: " << att.error().message << "\n";
         return 1;
     }
 

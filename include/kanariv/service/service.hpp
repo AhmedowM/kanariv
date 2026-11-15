@@ -10,13 +10,14 @@
  * so this header exposes only the public daemon surface.
  */
 
-#include <kanariv/config.hpp>
-#include <kanariv/fwd.hpp>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/ipc/result.hpp>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <kanariv/config.hpp>
+#include <kanariv/contracts/storage.hpp>
+#include <kanariv/fwd.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
 #include <memory>
 #include <stop_token>
 #include <string>
@@ -60,8 +61,8 @@ struct ServiceConfig : public kanariv::config::Config {
  * @par Thread safety
  * Command dispatch is serialized internally: IPC connection threads, media-key
  * callbacks and dispatchCommand() all pass through one dispatch mutex, so
- * Engine/Database never see concurrent writers. The remaining Service methods
- * (destroy the instance, engine(), db()) are not synchronized and must not be
+ * Engine/store never see concurrent writers. The remaining Service methods
+ * (destroy the instance, engine(), storage()) are not synchronized and must not be
  * called concurrently with server->run().
  *
  * @par Lifetime
@@ -84,8 +85,9 @@ class KANARIV_API Service final {
      * @brief Factory method to create and initialize a Service instance.
      * @ingroup kanariv_service
      * @param cfg Service configuration (dbPath, optional socketPath, configPath, logLevel).
-     * @param db Optional already-open database contract; when omitted, Service
-     * works without one (Engine attaches whatever is supplied).
+     * @param storage Optional already-open persistence ports; when omitted, the
+     * service runs without persistence (commands that need it fail with
+     * StatusCode::State).
      * @return Expected unique_ptr to Service, or Error if initialization fails.
      *
      * Resolves host-supplied runtime paths first (`runtime.database`,
@@ -105,7 +107,7 @@ class KANARIV_API Service final {
      * @see Host
      */
     static ExpectedService create(const ServiceConfig& cfg,
-                                  std::shared_ptr<kanariv::contracts::IDatabase> db = nullptr);
+                                  kanariv::contracts::Storage storage = {});
 
     /**
      * @brief Destructor: ensures cleanup via shutdown().
@@ -144,12 +146,12 @@ class KANARIV_API Service final {
     [[nodiscard]] bool running() const noexcept;
 
     /**
-     * @brief Replaces the attached database and reloads engine state from it.
+     * @brief Replaces the attached persistence ports and reloads engine state.
      * @ingroup kanariv_service
-     * @param db Shared database contract (must be non-null and open).
-     * @return Success or Error InvalidArg if db is null or not open.
+     * @param storage Complete port aggregate (every port populated and open).
+     * @return Success or Error InvalidArg if a port is missing or closed.
      */
-    kanariv::utils::Expected<void> attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db);
+    kanariv::utils::Expected<void> attachStorage(kanariv::contracts::Storage storage);
 
     /**
      * @brief Dispatch an IPC command through the same path used by the socket
@@ -174,14 +176,13 @@ class KANARIV_API Service final {
     kanariv::engine::Engine& engine() noexcept;
 
     /**
-     * @brief Access the database instance.
-     * @return Pointer to the Database, or nullptr when the service was created
-     * without one.
+     * @brief Access the persistence ports the service was created with.
+     * @return Port aggregate; `complete()` is false when none was supplied.
      * @details Exposed for host integrations (e.g. Android foreground service)
-     * that need direct database access without going through IPC. Commands
-     * that require a database fail with StatusCode::State while it is null.
+     * that need direct storage access without going through IPC. Commands
+     * that require persistence fail with StatusCode::State while it is absent.
      */
-    [[nodiscard]] kanariv::contracts::IDatabase* db() noexcept;
+    [[nodiscard]] kanariv::contracts::Storage storage() noexcept;
 
     /**
      * @brief Gracefully shut down the service.
@@ -215,7 +216,7 @@ class KANARIV_API Service final {
     /**
      * @brief Private constructor used by create().
      */
-    Service(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts::IDatabase> db,
+    Service(const ServiceConfig& cfg, kanariv::contracts::Storage storage,
             std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
             std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
             std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,

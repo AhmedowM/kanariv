@@ -1,3 +1,3 @@
 export module kanariv.contracts;
 
-export import :database;
+export import :storage;

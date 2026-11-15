@@ -6,12 +6,12 @@
  * @ingroup kanariv_db
  */
 
-#include <kanariv/db/database.hpp>
-#include <kanariv/types/record.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/db/database.hpp>
+#include <kanariv/types/record.hpp>
+#include <kanariv/utils/error.hpp>
 #include <string>
 #include <vector>
 
@@ -20,8 +20,8 @@ namespace kanariv::db {
 /**
  * @brief Summary of a library reconciliation pass.
  * @ingroup kanariv_db
- * @details Alias of the neutral value type so the operations can also be
- * reached through `kanariv::contracts::IDatabase`.
+ * @details Alias of the neutral value type exposed by
+ * `kanariv::contracts::ILibraryStore`.
  */
 using LibraryMaintenanceReport = kanariv::types::LibraryMaintenanceReport;
 
@@ -52,7 +52,7 @@ libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report);
 /**
  * @brief Options for applying library maintenance actions.
  * @ingroup kanariv_db
- * @details Alias of the neutral value type used by `IDatabase`.
+ * @details Alias of the neutral value type used by `ILibraryStore`.
  */
 using LibraryMaintenanceOptions = kanariv::types::LibraryMaintenanceOptions;
 
@@ -69,6 +69,6 @@ using LibraryMaintenanceOptions = kanariv::types::LibraryMaintenanceOptions;
  */
 KANARIV_API std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
 libraryApplyMaintenance(Database& db, int64_t libraryId,
-                         const LibraryMaintenanceOptions& options = {});
+                        const LibraryMaintenanceOptions& options = {});
 
 } // namespace kanariv::db

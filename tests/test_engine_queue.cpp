@@ -1,17 +1,17 @@
 #include <sqlite3.h>
 
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/db/database.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/engine/engine.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
 #include <common.hpp>
 #include <cstdint>
 #include <engine/queue_next.hpp>
 #include <engine/shuffle.hpp>
 #include <filesystem>
+#include <kanariv/db/database.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <memory>
 #include <random>
 #include <set>
@@ -46,7 +46,9 @@ TEST_CASE("engine queue shuffle creates perm via mt19937", "[engine_queue]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->setShuffle(true).has_value());
     // after shuffle, perm should be size 4 and be a permutation of 0..3
     // verify by checking engine_state blob via raw sqlite
@@ -96,7 +98,9 @@ TEST_CASE("engine queue repeat Off stops at end", "[engine_queue]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->setRepeat(kanariv::types::RepeatMode::Off).has_value());
     REQUIRE(eng->play(1).has_value());
     {
@@ -155,7 +159,9 @@ TEST_CASE("engine queue repeat All loops", "[engine_queue]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->setRepeat(kanariv::types::RepeatMode::All).has_value());
     REQUIRE(eng->play(1).has_value());
     // queue persists via cursor, count stays 2 after play (not dequeued)
@@ -219,7 +225,9 @@ TEST_CASE("engine queue repeat One seek without dequeue", "[engine_queue]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->setRepeat(kanariv::types::RepeatMode::One).has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
@@ -253,15 +261,17 @@ TEST_CASE("engine queue perm persistence blob cursor qid", "[engine_queue]") {
         auto eRes = Engine::create(cfg);
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
-        REQUIRE(
-            eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+        REQUIRE(eng->attachStorage(kanariv::db::makeStorage(
+                                       std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                    .has_value());
         REQUIRE(eng->setShuffle(true).has_value());
         REQUIRE(eng->play(1).has_value());
         // cursor should have advanced to 1, queueId 1 persisted
         eng->shutdown();
     }
     // reopen and verify persisted
-    auto e2Res = openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
+    auto e2Res =
+        openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
     REQUIRE(e2Res.has_value());
     auto eng2 = std::move(e2Res.value());
     // after reopen shuffle should still be on (state shuffleEnabled=1)
@@ -352,7 +362,9 @@ TEST_CASE("engine play resumes when paused", "[engine_queue]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     REQUIRE(eng->pause().has_value());
@@ -390,7 +402,9 @@ TEST_CASE("engine prev non-shuffle", "[engine_queue]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     REQUIRE(eng->next().has_value());
@@ -428,8 +442,9 @@ TEST_CASE("engine queue persists via cursor non-shuffle", "[engine_queue]") {
         auto eRes = Engine::create(cfg);
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
-        REQUIRE(
-            eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+        REQUIRE(eng->attachStorage(kanariv::db::makeStorage(
+                                       std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                    .has_value());
         REQUIRE(eng->play(1).has_value());
         REQUIRE(eng->next().has_value());
         // queue count should still be 4 (cursor, not dequeue)
@@ -463,7 +478,8 @@ TEST_CASE("engine queue persists via cursor non-shuffle", "[engine_queue]") {
         sqlite3_close(ch);
     }
     auto e2Res = openEngineWithDatabase(
-        dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false, .allowSimulatedPlayback = true});
+        dbPath,
+        kanariv::types::EngineConfig{.enableMonitorThread = false, .allowSimulatedPlayback = true});
     REQUIRE(e2Res.has_value());
     auto eng2 = std::move(e2Res.value());
     // next should continue from cursor 2 -> third track
@@ -491,7 +507,9 @@ TEST_CASE("engine play missing file fails without simulation", "[engine_queue]")
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     auto pr = eng->play(1);
     REQUIRE(!pr.has_value());
     REQUIRE(pr.error().code == StatusCode::NotFound);
@@ -514,7 +532,7 @@ TEST_CASE("engine switchQueue adopts the queue's stored repeat mode", "[engine_q
 
         auto qid = db->createQueue("target_" + tag);
         REQUIRE(qid.has_value());
-        REQUIRE(db->setQueueRepeat(*qid, static_cast<int>(mode)).has_value());
+        REQUIRE(db->setQueueRepeat(*qid, mode).has_value());
 
         kanariv::types::EngineConfig cfg;
         cfg.allowSimulatedPlayback = true;
@@ -523,7 +541,7 @@ TEST_CASE("engine switchQueue adopts the queue's stored repeat mode", "[engine_q
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
         auto sharedDb = std::shared_ptr<kanariv::db::Database>(std::move(db));
-        REQUIRE(eng->attachDatabase(sharedDb).has_value());
+        REQUIRE(eng->attachStorage(kanariv::db::makeStorage(sharedDb)).has_value());
 
         // Start from a different mode so adoption is observable, including Off.
         const RepeatMode initial = mode == RepeatMode::One ? RepeatMode::Off : RepeatMode::One;
@@ -533,7 +551,7 @@ TEST_CASE("engine switchQueue adopts the queue's stored repeat mode", "[engine_q
         REQUIRE(eng->switchQueue(*qid).has_value());
         REQUIRE(eng->repeat() == mode);
 
-        auto persisted = sharedDb->loadEngineState();
+        auto persisted = sharedDb->load();
         REQUIRE(persisted.has_value());
         REQUIRE(persisted->repeat_mode == mode);
 
@@ -611,7 +629,9 @@ TEST_CASE("stop rewinds the cursor so play replays the stopped track", "[engine_
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     REQUIRE(eng->next().has_value());
@@ -654,7 +674,7 @@ TEST_CASE("stop with shuffle replays the stopped track and keeps the permutation
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(sharedDb).has_value());
+    REQUIRE(eng->attachStorage(kanariv::db::makeStorage(sharedDb)).has_value());
     REQUIRE(eng->setShuffle(true).has_value());
     REQUIRE(eng->play(1).has_value());
     const int64_t first = eng->currentTrackId();
@@ -673,9 +693,10 @@ TEST_CASE("stop with shuffle replays the stopped track and keeps the permutation
     // rewind to (not `cursor - 1`, which only coincides by accident).
     const auto listing = sharedDb->queueIndexOf(1, second);
     REQUIRE(listing.has_value());
+    REQUIRE(listing->has_value());
     size_t permIndex = permBefore.size();
     for (size_t i = 0; i < permBefore.size(); ++i)
-        if (permBefore[i] == static_cast<int64_t>(*listing))
+        if (permBefore[i] == static_cast<int64_t>(**listing))
             permIndex = i;
     REQUIRE(permIndex < permBefore.size());
     REQUIRE(persistedCursorPos(dbPath) == static_cast<int64_t>(permIndex) + 1);

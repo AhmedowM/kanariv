@@ -15,7 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <kanariv/config.hpp>
-#include <kanariv/contracts/database.hpp>
+#include <kanariv/contracts/storage.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -53,7 +53,7 @@ Service::~Service() {
 }
 
 Service::ExpectedService Service::create(const ServiceConfig& cfg,
-                                         std::shared_ptr<kanariv::contracts::IDatabase> db) {
+                                         kanariv::contracts::Storage storage) {
     // Host-supplied runtime paths are authoritative over the inherited fields.
     // Desktop callers leave RuntimePaths empty and keep the existing behavior.
     ServiceConfig resolved = cfg;
@@ -105,7 +105,7 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
                 detail::releaseLock(lockFd);
                 return std::unexpected{
                     kanariv::utils::makeError(kanariv::utils::StatusCode::AlreadyExists,
-                                             "service already running (pid alive)")};
+                                              "service already running (pid alive)")};
             }
             // Stale PID - remove it
             std::filesystem::remove(pidPath, ec);
@@ -118,7 +118,7 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
                 detail::releaseLock(lockFd);
                 return std::unexpected{
                     kanariv::utils::makeError(kanariv::utils::StatusCode::AlreadyExists,
-                                             "service already running (pipe alive)")};
+                                              "service already running (pipe alive)")};
             }
         } else
 #endif
@@ -129,7 +129,7 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
                     detail::releaseLock(lockFd);
                     return std::unexpected{
                         kanariv::utils::makeError(kanariv::utils::StatusCode::AlreadyExists,
-                                                 "service already running (socket alive)")};
+                                                  "service already running (socket alive)")};
                 } else {
                     // Stale socket - remove
                     std::filesystem::remove(sockP, ec);
@@ -190,8 +190,8 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
         return std::unexpected{engRes.error()};
     }
     std::unique_ptr<kanariv::engine::Engine> eng = std::move(engRes.value());
-    if (db) {
-        if (auto e = eng->attachDatabase(db); !e) {
+    if (storage.complete()) {
+        if (auto e = eng->attachStorage(storage); !e) {
             detail::releaseLock(lockFd);
             return std::unexpected{e.error()};
         }
@@ -242,8 +242,8 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
     }
 
     auto svc = std::unique_ptr<Service>(new Service(
-        resolved, std::move(db), std::move(eng), std::move(srvPtr), std::move(loggerPtr), pidPath,
-        lockPath, spStr, lockFd, std::move(shmWriter), shmName));
+        resolved, std::move(storage), std::move(eng), std::move(srvPtr), std::move(loggerPtr),
+        pidPath, lockPath, spStr, lockFd, std::move(shmWriter), shmName));
     if (inProcess) {
         svc->impl_->logger_->info("service started in-process version={} db={}",
                                   kanariv::version::version(), dbPath.generic_string());
@@ -255,22 +255,22 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
     return svc;
 }
 
-Service::Service(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts::IDatabase> db,
+Service::Service(const ServiceConfig& cfg, kanariv::contracts::Storage storage,
                  std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
                  std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
                  std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,
                  std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName)
-    : impl_(std::make_unique<Impl>(cfg, std::move(db), std::move(eng), std::move(srv),
+    : impl_(std::make_unique<Impl>(cfg, std::move(storage), std::move(eng), std::move(srv),
                                    std::move(logger), std::move(pidPath), std::move(lockPath),
                                    std::move(socketPath), lockFd, std::move(shmWriter),
                                    std::move(shmName))) {}
 
-Service::Impl::Impl(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts::IDatabase> db,
+Service::Impl::Impl(const ServiceConfig& cfg, kanariv::contracts::Storage storage,
                     std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
                     std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
                     std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,
                     std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName)
-    : config_(cfg), db_(std::move(db)), engine_(std::move(eng)), server_(std::move(srv)),
+    : config_(cfg), storage_(std::move(storage)), engine_(std::move(eng)), server_(std::move(srv)),
       logger_(std::move(logger)), pidPath_(std::move(pidPath)), lockPath_(std::move(lockPath)),
       socketPath_(std::move(socketPath)), lockFd_(lockFd), shmWriter_(std::move(shmWriter)),
       shmName_(std::move(shmName)) {
@@ -347,7 +347,9 @@ kanariv::utils::Expected<void> Service::Impl::run(std::stop_token st) {
     }
     // build dispatcher
     auto dispatcher = [this](const kanariv::ipc::Command& cmd)
-        -> std::expected<kanariv::ipc::Result, kanariv::utils::Error> { return this->dispatch(cmd); };
+        -> std::expected<kanariv::ipc::Result, kanariv::utils::Error> {
+        return this->dispatch(cmd);
+    };
     if (server_)
         server_->run(st, dispatcher);
     // block until stop requested
@@ -393,11 +395,11 @@ void Service::Impl::shutdown() {
     if (engine_)
         engine_->shutdown();
     // Drop ephemeral direct-play queues (their tracks stay in the library).
-    if (db_) {
-        if (auto qs = db_->listQueues()) {
+    if (storage_.queues) {
+        if (auto qs = storage_.queues->listQueues()) {
             for (auto& q : *qs) {
                 if (q.temp)
-                    (void)db_->deleteQueue(q.id);
+                    (void)storage_.queues->deleteQueue(q.id);
             }
         }
     }
@@ -434,18 +436,17 @@ void Service::Impl::shutdown() {
     // shm handle will be cleaned up via RAII
 }
 
-kanariv::contracts::IDatabase* Service::db() noexcept {
-    return impl_->db_.get();
+kanariv::contracts::Storage Service::storage() noexcept {
+    return impl_->storage_;
 }
 
-kanariv::utils::Expected<void>
-Service::attachDatabase(std::shared_ptr<kanariv::contracts::IDatabase> db) {
-    if (!db || !db->isOpen()) {
+kanariv::utils::Expected<void> Service::attachStorage(kanariv::contracts::Storage storage) {
+    if (!storage.complete() || !storage.queues->isOpen()) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "null db")};
     }
-    impl_->db_ = std::move(db);
-    return engine().attachDatabase(impl_->db_);
+    impl_->storage_ = std::move(storage);
+    return engine().attachStorage(impl_->storage_);
 }
 
 kanariv::utils::Expected<kanariv::ipc::Result>
@@ -491,8 +492,8 @@ void Service::Impl::updateShmStatus() {
     // A database-less service still publishes engine state (S4).
     std::string title, artist;
     double duration = 0.0;
-    if (db_ && track_id != 0) {
-        if (auto tr = db_->getTrack(track_id); tr) {
+    if (storage_.tracks && track_id != 0) {
+        if (auto tr = storage_.tracks->getTrack(track_id); tr) {
             title = tr->title;
             artist = tr->artist;
             duration = tr->duration;
@@ -501,9 +502,10 @@ void Service::Impl::updateShmStatus() {
     // O(1) queue size via COUNT(*) (C-2): the old listQueueItems() materialized
     // the full vector of items just for .size().
     size_t qSize = 0;
-    if (db_) {
+    if (storage_.queues) {
         int64_t aq = eng.activeQueueId();
-        qSize = db_->queueCount(aq);
+        if (auto cnt = storage_.queues->queueCount(aq); cnt)
+            qSize = *cnt;
     }
     kanariv::ipc::ShmStatusUpdate u{};
     u.position = eng.position();
@@ -537,7 +539,7 @@ void Service::Impl::waitForStatusChange(std::chrono::milliseconds timeout) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::statusResult() {
     // Pure read: does not bump the status sequence (S5).
-    auto st = detail::buildStatus(*engine_, db_.get());
+    auto st = detail::buildStatus(*engine_, storage_);
     if (!st)
         return std::unexpected{st.error()};
     return kanariv::ipc::Result{*st};
@@ -563,8 +565,8 @@ void Service::Impl::syncMediaSession() {
         std::string artworkMime;
         double duration = 0.0;
 
-        if (track_id != 0 && db_) {
-            if (auto tr = db_->getTrack(track_id); tr) {
+        if (track_id != 0 && storage_.tracks) {
+            if (auto tr = storage_.tracks->getTrack(track_id); tr) {
                 title = tr->title;
                 artist = tr->artist;
                 album = tr->album;
@@ -712,7 +714,7 @@ Service::Impl::dispatch(const kanariv::ipc::Command& cmd) {
         // matching the documented IPC model and keeping the status sequence a
         // single ordered stream for StatusWait.
         std::lock_guard<std::mutex> lk(dispatchMtx_);
-        if (!db_ && !commandRunsWithoutDatabase(cmd)) {
+        if (!storage_.complete() && !commandRunsWithoutDatabase(cmd)) {
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::State,
                                           "database unavailable: command requires a database")};
@@ -722,13 +724,12 @@ Service::Impl::dispatch(const kanariv::ipc::Command& cmd) {
         if (logger_)
             logger_->error("dispatch failed: {}", e.what());
         return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal,
-            std::string("dispatch failed: ") + e.what())};
+            kanariv::utils::StatusCode::Internal, std::string("dispatch failed: ") + e.what())};
     } catch (...) {
         if (logger_)
             logger_->error("dispatch failed with unknown exception");
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, "dispatch failed with unknown exception")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         "dispatch failed with unknown exception")};
     }
 }
 

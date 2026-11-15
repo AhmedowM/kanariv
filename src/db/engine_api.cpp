@@ -1,13 +1,13 @@
 #include <sqlite3.h>
 
-#include <kanariv/db/database.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cstring>
 #include <db/database_access.hpp>
 #include <db/queue.hpp>
 #include <db/stmt_helpers.hpp>
 #include <db/transaction.hpp>
 #include <expected>
+#include <kanariv/db/database.hpp>
+#include <kanariv/utils/error.hpp>
 #include <limits>
 #include <mutex>
 #include <shared_mutex>
@@ -70,7 +70,7 @@ std::expected<kanariv::types::Track, kanariv::utils::Error> Database::queueTrack
     return getTrack(trackId);
 }
 
-std::expected<kanariv::types::EngineState, kanariv::utils::Error> Database::loadEngineState() {
+std::expected<kanariv::types::EngineState, kanariv::utils::Error> Database::load() {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
@@ -152,7 +152,7 @@ std::expected<kanariv::types::EngineState, kanariv::utils::Error> Database::load
 }
 
 std::expected<void, kanariv::utils::Error>
-Database::saveEngineState(const kanariv::types::EngineState& state) {
+Database::save(const kanariv::types::EngineState& state) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
@@ -212,8 +212,7 @@ Database::saveEngineState(const kanariv::types::EngineState& state) {
 }
 
 std::expected<void, kanariv::utils::Error>
-Database::saveEngineShuffle(bool enabled, std::span<const int64_t> permutation,
-                            int64_t cursorPosition) {
+Database::saveShuffle(bool enabled, std::span<const int64_t> permutation, int64_t cursorPosition) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
@@ -246,7 +245,7 @@ Database::saveEngineShuffle(bool enabled, std::span<const int64_t> permutation,
     return transaction->commit();
 }
 
-std::expected<void, kanariv::utils::Error> Database::saveEngineCursor(int64_t cursorPosition) {
+std::expected<void, kanariv::utils::Error> Database::saveCursor(int64_t cursorPosition) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
@@ -302,7 +301,7 @@ Database::markPlayed(int64_t trackId, int64_t startedAt, int64_t completedAt, in
         sqlite3_bind_int64(update, 3, trackId);
         if (sqlite3_step(update) != SQLITE_DONE)
             return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                            "track update failed"));
+                                                             "track update failed"));
     }
     {
         sqlite3_stmt* insert = nullptr;
@@ -320,13 +319,13 @@ Database::markPlayed(int64_t trackId, int64_t startedAt, int64_t completedAt, in
         sqlite3_bind_int64(insert, 6, queueId > 0 ? queueId : 1);
         if (sqlite3_step(insert) != SQLITE_DONE)
             return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                            "history insert failed"));
+                                                             "history insert failed"));
     }
     return transaction->commit();
 }
 
 std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
-Database::historyList(int limit) {
+Database::listHistory(int limit) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
@@ -340,8 +339,8 @@ Database::historyList(int limit) {
         sql += " LIMIT ?";
     sqlite3_stmt* raw = nullptr;
     if (sqlite3_prepare_v2(handle, sql.c_str(), -1, &raw, nullptr) != SQLITE_OK)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, sqlite3_errmsg(handle)));
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         sqlite3_errmsg(handle)));
     internal::StmtGuard statement(raw);
     if (limit > 0)
         sqlite3_bind_int(raw, 1, limit);

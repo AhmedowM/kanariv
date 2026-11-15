@@ -10,10 +10,10 @@
  * preserve field order across export/import.
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/utils/record_json.hpp>
 #include <expected>
 #include <filesystem>
+#include <kanariv/fwd.hpp>
+#include <kanariv/utils/record_json.hpp>
 
 namespace kanariv::db {
 
@@ -23,15 +23,15 @@ namespace kanariv::db {
  * @param db Database to export from.
  * @param outPath Destination file path.
  * @return Success, or `Error` with `StatusCode::Internal`/`Io` on DB or file failure.
- * @details Calls `db.listTracks(nullptr)` and writes `{"tracks": [...]}` with
- * 2-space indentation. Holds a shared lock via `listTracks`.
+ * @details Calls `db.listTracks()` with no filter and writes
+ * `{"tracks": [...]}` with 2-space indentation. Holds a shared lock via `listTracks`.
  * @par Thread safety
  * Thread-safe (shared lock).
  * @see importJson
  * @see trackToJson
  */
-KANARIV_API std::expected<void, kanariv::utils::Error> exportJson(contracts::IDatabase& db,
-                                                     const std::filesystem::path& outPath);
+KANARIV_API std::expected<void, kanariv::utils::Error>
+exportJson(db::Database& db, const std::filesystem::path& outPath);
 
 /**
  * @brief Imports tracks from a JSON file (transactional upsert).
@@ -56,7 +56,7 @@ KANARIV_API std::expected<void, kanariv::utils::Error> exportJson(contracts::IDa
  * @see exportJson
  * @see trackFromJson
  */
-KANARIV_API std::expected<void, kanariv::utils::Error> importJson(contracts::IDatabase& db,
-                                                     const std::filesystem::path& inPath);
+KANARIV_API std::expected<void, kanariv::utils::Error>
+importJson(db::Database& db, const std::filesystem::path& inPath);
 
 } // namespace kanariv::db

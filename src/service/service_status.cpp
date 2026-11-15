@@ -18,7 +18,7 @@
 #endif
 
 #include <kanariv/config.hpp>
-#include <kanariv/contracts/database.hpp>
+#include <kanariv/contracts/storage.hpp>
 #include <kanariv/engine.hpp>
 #include <kanariv/ipc.hpp>
 #include <kanariv/player.hpp>
@@ -29,7 +29,7 @@
 
 namespace kanariv::service::detail {
 std::expected<kanariv::ipc::Status, kanariv::utils::Error>
-buildStatus(kanariv::engine::Engine& eng, kanariv::contracts::IDatabase* db) {
+buildStatus(kanariv::engine::Engine& eng, const kanariv::contracts::Storage& storage) {
     kanariv::ipc::Status s{};
     s.version = std::string(kanariv::version::version());
     s.state = eng.state();
@@ -40,11 +40,11 @@ buildStatus(kanariv::engine::Engine& eng, kanariv::contracts::IDatabase* db) {
     s.shuffle = eng.shuffle();
     s.repeat = eng.repeat();
     s.track_id = eng.currentTrackId();
-    // A database-less service (S4) still reports usable playback state.
-    if (!db)
+    // A storage-less service (S4) still reports usable playback state.
+    if (!storage.tracks || !storage.queues)
         return s;
     if (s.track_id != 0) {
-        auto tr = db->getTrack(s.track_id);
+        auto tr = storage.tracks->getTrack(s.track_id);
         if (tr) {
             s.title = tr->title;
             s.artist = tr->artist;
@@ -56,11 +56,12 @@ buildStatus(kanariv::engine::Engine& eng, kanariv::contracts::IDatabase* db) {
         // O(1) size via COUNT(*) + O(log n) position lookup (C-3): the old
         // code materialized the full queue vector and scanned it linearly
         // on every status call (including --watch each second).
-        s.q_size = db->queueCount(activeQ);
+        if (auto cnt = storage.queues->queueCount(activeQ); cnt)
+            s.q_size = *cnt;
         s.q_idx = 0;
         if (s.track_id != 0) {
-            if (auto idx = db->queueIndexOf(activeQ, s.track_id); idx)
-                s.q_idx = *idx;
+            if (auto idx = storage.queues->queueIndexOf(activeQ, s.track_id); idx && *idx)
+                s.q_idx = **idx;
         }
     } catch (...) {
     }

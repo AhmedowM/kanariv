@@ -1,15 +1,15 @@
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/db/database.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/engine/engine.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
 #include <common.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <kanariv/db/database.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <memory>
 #include <string>
 #include <system_error>
@@ -60,7 +60,9 @@ TEST_CASE("Engine pollEvent and drainEvents", "[engine_events]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->play(1).has_value());
     auto ev = eng->pollEvent();
     REQUIRE(ev.has_value());
@@ -109,7 +111,9 @@ TEST_CASE("Engine drainEvents batch", "[engine_events]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->play(1).has_value());
     REQUIRE(eng->next().has_value());
     // now we have 2 TrackStarted events
@@ -159,7 +163,9 @@ TEST_CASE("Engine callbacks dispatched outside lock", "[engine_events]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     // need to set callbacks via engine (attach copied empty, need setCallbacks)
     REQUIRE(eng->setCallbacks(cbs).has_value());
     REQUIRE(eng->play(1).has_value());
@@ -196,7 +202,9 @@ TEST_CASE("Engine callbacks dispatch when event queue is full", "[engine_events]
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->play(1).has_value());
     // Saturate the 64-slot diagnostic queue the way the daemon does: nothing
     // drains it, so Progress samples fill it during playback.
@@ -205,8 +213,7 @@ TEST_CASE("Engine callbacks dispatch when event queue is full", "[engine_events]
     // The next push must fail, but the callback still has to be dispatched.
     std::atomic<int> changes{0};
     REQUIRE(eng->setCallbacks(kanariv::types::EngineCallbacks{
-                                  .on_queue_changed =
-                                      [&](int64_t) { changes.fetch_add(1); }})
+                                  .on_queue_changed = [&](int64_t) { changes.fetch_add(1); }})
                 .has_value());
     REQUIRE(eng->setShuffle(true).has_value());
     REQUIRE(changes.load() == 1);

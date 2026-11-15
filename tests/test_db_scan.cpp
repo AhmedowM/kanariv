@@ -1,14 +1,7 @@
 #include <sqlite3.h>
 
-#include <catch2/catch_test_macros.hpp>
-#include <kanariv/contracts/database.hpp>
-#include <kanariv/db/database.hpp>
-#include <kanariv/db/maintenance.hpp>
-#include <kanariv/db/scan.hpp>
-#include <kanariv/media/scan.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/log.hpp>
 #include <array>
+#include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <cmath>
 #include <common.hpp>
@@ -18,6 +11,12 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/maintenance.hpp>
+#include <kanariv/db/scan.hpp>
+#include <kanariv/media/scan.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
 #include <media/fingerprint.hpp>
 #include <string>
 #include <string_view>
@@ -252,7 +251,7 @@ TEST_CASE("scan non-existent dir reports NotFound instead of an empty library", 
     // An empty vector must mean "no audio files", never "the root is missing":
     // a typo'd library path used to look like a successfully scanned empty dir.
     auto tracks = kanariv::media::scanTracksToVector("/nonexistent_path_xyz_12345",
-                                                    kanariv::media::ScanMode::Sampled);
+                                                     kanariv::media::ScanMode::Sampled);
     REQUIRE_FALSE(tracks.has_value());
     REQUIRE(tracks.error().code == StatusCode::NotFound);
 }
@@ -451,7 +450,7 @@ TEST_CASE("scanLibrary preserves play_count", "[db_scan]") {
     REQUIRE(libIdRes.has_value());
     int64_t libId = *libIdRes;
     REQUIRE(scanLibrary(*db, libId).has_value());
-    auto tracks = db->listTracks(nullptr);
+    auto tracks = db->listTracks();
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->size() == 1);
     int64_t tid = tracks->front().id;

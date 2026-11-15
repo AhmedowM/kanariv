@@ -100,7 +100,7 @@ Track makeTrack(std::string path, std::string title, std::string artist, uint8_t
     return track;
 }
 
-std::vector<Track> searchCpp(kanariv::contracts::IDatabase& db, const std::string& query) {
+std::vector<Track> searchCpp(kanariv::contracts::ILibraryStore& db, const std::string& query) {
     auto result = db.searchTracks(query, 10);
     if (!result) {
         check(false, "C++ search failed for \"" + query + "\": " + result.error().message);

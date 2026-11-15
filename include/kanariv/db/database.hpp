@@ -11,13 +11,19 @@
  */
 
 #include <array>
-#include <kanariv/contracts/database.hpp>
-#include <kanariv/fwd.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/contracts/history_store.hpp>
+#include <kanariv/contracts/library_store.hpp>
+#include <kanariv/contracts/playback_state_store.hpp>
+#include <kanariv/contracts/playlist_store.hpp>
+#include <kanariv/contracts/queue_store.hpp>
+#include <kanariv/contracts/storage.hpp>
+#include <kanariv/contracts/track_store.hpp>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -43,6 +49,9 @@ struct DatabaseOptions {
 /**
  * @brief Main SQLite database handle with thread-safe CRUD.
  * @ingroup kanariv_db
+ * @details Implements the persistence ports (tracks, playlists, queues,
+ * library, history, playback state) on one SQLite connection. Consumers
+ * receive the ports through `contracts::Storage`, not this type.
  * @details Thread safety: dbMutex_ (shared_mutex) guards the handle and all
  * table access; cacheMutex_ (mutex) guards stmtCache_. Lock order is
  * dbMutex_ -> cacheMutex_. Readers take shared_lock on dbMutex_, writers
@@ -51,7 +60,12 @@ struct DatabaseOptions {
  * @see DatabaseOptions
  * @see SqliteStatement
  */
-class KANARIV_API Database final : public kanariv::contracts::IDatabase {
+class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
+                                   public kanariv::contracts::IPlaylistStore,
+                                   public kanariv::contracts::IQueueStore,
+                                   public kanariv::contracts::ILibraryStore,
+                                   public kanariv::contracts::IHistoryStore,
+                                   public kanariv::contracts::IPlaybackStateStore {
   public:
     // Lifecycle and connection management
     /**
@@ -128,8 +142,6 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      */
     std::expected<void, kanariv::utils::Error>
     queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) override;
-    std::expected<void, kanariv::utils::Error>
-    queueEnqueueBatch(int64_t qid, const std::vector<int64_t>& tids) override;
 
     /**
      * @brief Replaces an entire queue atomically.
@@ -143,8 +155,6 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      */
     std::expected<void, kanariv::utils::Error>
     queueReplaceAll(int64_t qid, std::span<const int64_t> ids) override;
-    std::expected<void, kanariv::utils::Error>
-    queueReplaceAll(int64_t qid, const std::vector<int64_t>& ids) override;
 
   private:
     friend struct DatabaseAccess;
@@ -234,15 +244,16 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
     /**
      * @brief Lists tracks with optional filters.
      * @ingroup kanariv_db
-     * @param q Optional filter (nullptr = no filter, ordered by id).
+     * @param q Optional filter (empty = no filter, ordered by id).
      * @return Vector of tracks or Error Internal.
-     * @details Builds WHERE clauses from kanariv::types::TrackQuery fields; search uses LIKE ESCAPE.
+     * @details Builds WHERE clauses from kanariv::types::TrackQuery fields; search uses LIKE
+     * ESCAPE.
      * @par Thread safety
      * Thread-safe: shared_lock on dbMutex_.
      * @see kanariv::types::TrackQuery
      */
     std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
-    listTracks(const kanariv::types::TrackQuery* q = nullptr) override;
+    listTracks(std::optional<kanariv::types::TrackQuery> q = std::nullopt) override;
     /**
      * @brief Searches track metadata with FTS5 and a LIKE fallback.
      * @param query Raw user query.
@@ -326,7 +337,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * Thread-safe: unique_lock.
      */
     std::expected<void, kanariv::utils::Error> renamePlaylist(int64_t id,
-                                                             std::string_view newName) override;
+                                                              std::string_view newName) override;
     /**
      * @brief Creates a manual playlist and populates it in one operation.
      * @param name Playlist display name; must be non-empty.
@@ -358,7 +369,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @ingroup kanariv_db
      */
     std::expected<void, kanariv::utils::Error> playlistAddTrack(int64_t pid, int64_t tid,
-                                                               int64_t pos = -1) override;
+                                                                int64_t pos = -1) override;
     /**
      * @brief Removes a track from a playlist.
      * @param pid Playlist identifier.
@@ -369,7 +380,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @ingroup kanariv_db
      */
     std::expected<void, kanariv::utils::Error> playlistRemoveTrack(int64_t pid,
-                                                                  int64_t tid) override;
+                                                                   int64_t tid) override;
     /**
      * @brief Moves a playlist item between positions.
      * @param pid Playlist identifier.
@@ -381,7 +392,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @ingroup kanariv_db
      */
     std::expected<void, kanariv::utils::Error> playlistReorder(int64_t pid, int64_t from,
-                                                              int64_t to) override;
+                                                               int64_t to) override;
     /**
      * @brief Gets all tracks in a playlist ordered by position.
      * @ingroup kanariv_db
@@ -512,7 +523,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @ingroup kanariv_db
      */
     std::expected<int64_t, kanariv::utils::Error> createQueue(std::string_view name,
-                                                             int64_t library_id = 1) override;
+                                                              int64_t library_id = 1) override;
 
     /**
      * @brief Deletes a queue container.
@@ -527,13 +538,14 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
     /**
      * @brief Sets the repeat mode stored for a queue.
      * @param qid Queue identifier; zero selects the default queue.
-     * @param repeat_mode Stored repeat-mode value (0 = off, 1 = all, 2 = one).
-     * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
+     * @param mode Repeat mode to store.
+     * @return Success, or `NotFound`/a backend error.
      * @par Thread safety
      * Thread-safe; takes the database write lock.
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error> setQueueRepeat(int64_t qid, int repeat_mode) override;
+    std::expected<void, kanariv::utils::Error>
+    setQueueRepeat(int64_t qid, kanariv::types::RepeatMode mode) override;
 
     /**
      * @brief Sets the temporary flag for a queue.
@@ -550,25 +562,26 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @brief Returns the number of items in a queue.
      * @ingroup kanariv_db
      * @param qid Queue id (0 -> 1).
-     * @return Item count.
+     * @return Item count (zero for an empty queue), or a backend error.
      * @par Thread safety
      * Thread-safe: shared_lock on dbMutex_; delegates to queueCountLocked().
      */
-    std::size_t queueCount(int64_t qid) override;
+    std::expected<std::size_t, kanariv::utils::Error> queueCount(int64_t qid) override;
 
     /**
      * @brief Finds the 0-based index of a track in a queue.
      * @ingroup kanariv_db
      * @param qid Queue id (0 -> 1).
      * @param trackId Track id to locate (first occurrence by position).
-     * @return Index into the ORDER BY position listing, or std::nullopt if
-     * the track is not in the queue.
+     * @return Index into the ORDER BY position listing, `std::nullopt` if the
+     * track is not in the queue, or a backend error.
      * @details O(log n) via the queue position index (see
      * queueIndexOfLocked); O(1) extra memory vs listQueueItems().
      * @par Thread safety
      * Thread-safe: shared_lock on dbMutex_.
      */
-    std::optional<std::size_t> queueIndexOf(int64_t qid, int64_t trackId) override;
+    std::expected<std::optional<std::size_t>, kanariv::utils::Error>
+    queueIndexOf(int64_t qid, int64_t trackId) override;
 
     // History
     /**
@@ -585,7 +598,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @ingroup kanariv_db
      * @param q Optional filter.
      * @return Vector of entries or Error; track metadata is not populated.
-     * @details Use `historyList()` for the engine view, which joins tracks and
+     * @details Use `listHistory()` for the engine view, which joins tracks and
      * fills title/artist/path/duration.
      * @par Thread safety
      * Thread-safe: shared_lock.
@@ -605,7 +618,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * Thread-safe: unique_lock.
      */
     std::expected<void, kanariv::utils::Error> bookmarkAdd(int64_t tid, int64_t pos,
-                                                          std::string_view note = {}) override;
+                                                           std::string_view note = {}) override;
     /**
      * @brief Lists bookmarks for a track.
      * @ingroup kanariv_db
@@ -647,8 +660,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> lyricsSet(int64_t tid,
-                                                         std::string_view lrc_text,
+    std::expected<void, kanariv::utils::Error> lyricsSet(int64_t tid, std::string_view lrc_text,
                                                          bool is_synced,
                                                          std::string_view source) override;
     /**
@@ -681,7 +693,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * Thread-safe: unique_lock.
      */
     std::expected<int64_t, kanariv::utils::Error> libraryAdd(std::string_view path,
-                                                            std::string_view name = {});
+                                                             std::string_view name = {}) override;
     /**
      * @brief Lists all libraries.
      * @ingroup kanariv_db
@@ -771,6 +783,40 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
     std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
     libraryApplyMaintenance(int64_t libraryId,
                             const kanariv::types::LibraryMaintenanceOptions& options) override;
+    /**
+     * @brief Scans a library root and upserts the discovered tracks.
+     * @param libraryId Library identifier whose path is the scan root.
+     * @param progress Optional per-file progress callback.
+     * @param mode Discovery mode passed to the media scanner.
+     * @return Success, or `InvalidArg`/`NotFound`/`Busy`/`Internal`.
+     * @par Thread safety
+     * Thread-safe; takes the database write lock per batch only.
+     * @ingroup kanariv_db
+     */
+    std::expected<void, kanariv::utils::Error>
+    scanLibrary(int64_t libraryId,
+                std::function<void(int64_t, int64_t, std::string_view)> progress = {},
+                kanariv::media::ScanMode mode = kanariv::media::ScanMode::Sampled) override;
+    /**
+     * @brief Exports every track row to a JSON file.
+     * @param outPath Destination file path.
+     * @return Success, or `Internal`/`Io`.
+     * @par Thread safety
+     * Thread-safe (shared lock through `listTracks`).
+     * @ingroup kanariv_db
+     */
+    std::expected<void, kanariv::utils::Error>
+    exportJson(const std::filesystem::path& outPath) override;
+    /**
+     * @brief Imports track rows from a JSON file inside one transaction.
+     * @param inPath Source file path.
+     * @return Success, or `Io`/`Corrupt`/`Internal`; rolls back on any failure.
+     * @par Thread safety
+     * Thread-safe; takes the database write lock for the transaction.
+     * @ingroup kanariv_db
+     */
+    std::expected<void, kanariv::utils::Error>
+    importJson(const std::filesystem::path& inPath) override;
 
     // Persisted engine state and playback history
     /**
@@ -780,7 +826,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * Thread-safe; takes the database lock.
      * @ingroup kanariv_db
      */
-    std::expected<kanariv::types::EngineState, kanariv::utils::Error> loadEngineState() override;
+    std::expected<kanariv::types::EngineState, kanariv::utils::Error> load() override;
     /**
      * @brief Persists engine state.
      * @param state State snapshot to write.
@@ -790,7 +836,7 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @ingroup kanariv_db
      */
     std::expected<void, kanariv::utils::Error>
-    saveEngineState(const kanariv::types::EngineState& state) override;
+    save(const kanariv::types::EngineState& state) override;
     /**
      * @brief Persists shuffle state and its cursor.
      * @param enabled Whether shuffle is enabled.
@@ -798,15 +844,15 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @param cursor_position Current position in the permutation.
      * @return Success, or a backend error.
      */
-    std::expected<void, kanariv::utils::Error>
-    saveEngineShuffle(bool enabled, std::span<const int64_t> permutation,
-                      int64_t cursor_position) override;
+    std::expected<void, kanariv::utils::Error> saveShuffle(bool enabled,
+                                                           std::span<const int64_t> permutation,
+                                                           int64_t cursor_position) override;
     /**
      * @brief Persists the active queue cursor position.
      * @param cursor_position Zero-based cursor position.
      * @return Success, or a backend error.
      */
-    std::expected<void, kanariv::utils::Error> saveEngineCursor(int64_t cursor_position) override;
+    std::expected<void, kanariv::utils::Error> saveCursor(int64_t cursor_position) override;
     /**
      * @brief Records a completed or partially completed track play.
      * @param track_id Track identifier.
@@ -818,22 +864,30 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
      * @return Success, or a backend error.
      */
     std::expected<void, kanariv::utils::Error> markPlayed(int64_t track_id, int64_t started_at,
-                                                         int64_t completed_at, int64_t position_ms,
-                                                         double completion_pct,
-                                                         int64_t queue_id) override;
+                                                          int64_t completed_at, int64_t position_ms,
+                                                          double completion_pct,
+                                                          int64_t queue_id) override;
     /**
      * @brief Lists engine history entries, joined with track metadata.
      * @param limit Maximum number of entries; non-positive means no limit.
      * @return History entries, or a backend error.
      */
     std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
-    historyList(int limit) override;
+    listHistory(int limit) override;
     /**
      * @brief Clears playback history.
      * @return Success, or a backend error.
      */
-    std::expected<void, kanariv::utils::Error> historyClear() override;
+    std::expected<void, kanariv::utils::Error> clearHistory() override;
 
 }; // class Database
+
+/**
+ * @brief Builds the port aggregate for one database instance.
+ * @ingroup kanariv_db
+ * @param db Database to expose; every port shares ownership of it.
+ * @return Storage whose ports all view @p db.
+ */
+KANARIV_API kanariv::contracts::Storage makeStorage(std::shared_ptr<Database> db);
 
 } // namespace kanariv::db

@@ -1,11 +1,11 @@
 #pragma once
 
+#include <expected>
+#include <filesystem>
 #include <kanariv/db/database.hpp>
 #include <kanariv/engine/engine.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/utils/error.hpp>
-#include <expected>
-#include <filesystem>
 #include <memory>
 #include <string_view>
 #include <utility>
@@ -24,7 +24,9 @@ openEngineWithDatabase(std::string_view path, const kanariv::types::EngineConfig
 
     auto instance = std::move(engine.value());
     std::shared_ptr<kanariv::db::Database> sharedDatabase(std::move(database.value()));
-    if (auto attached = instance->attachDatabase(std::move(sharedDatabase)); !attached)
+    if (auto attached =
+            instance->attachStorage(kanariv::db::makeStorage(std::move(sharedDatabase)));
+        !attached)
         return std::unexpected(attached.error());
     return instance;
 }
@@ -34,8 +36,8 @@ openServiceWithDatabase(std::string_view path, const kanariv::service::ServiceCo
     if (!database)
         return std::unexpected(database.error());
 
-    std::shared_ptr<kanariv::contracts::IDatabase> sharedDatabase(std::move(database.value()));
-    return kanariv::service::Service::create(config, std::move(sharedDatabase));
+    return kanariv::service::Service::create(config,
+                                             kanariv::db::makeStorage(std::move(database.value())));
 }
 
 } // namespace kanariv::test_helpers

@@ -1,9 +1,8 @@
+#include <filesystem>
 #include <kanariv/db/maintenance.hpp>
-
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/utils/log.hpp>
-#include <filesystem>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -54,11 +53,11 @@ PathState classifyPath(std::string_view utf8Path) {
 
 } // namespace
 
-std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
-libraryReport(Database& db, int64_t libraryId) {
+std::expected<LibraryMaintenanceReport, kanariv::utils::Error> libraryReport(Database& db,
+                                                                             int64_t libraryId) {
     if (libraryId <= 0)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "invalid library id"));
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "invalid library id"));
 
     auto libraries = db.listLibraries();
     if (!libraries)
@@ -76,7 +75,7 @@ libraryReport(Database& db, int64_t libraryId) {
 
     kanariv::types::TrackQuery query{};
     query.library_id = libraryId;
-    auto tracks = db.listTracks(&query);
+    auto tracks = db.listTracks(query);
     if (!tracks)
         return std::unexpected(tracks.error());
 
@@ -129,8 +128,7 @@ libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report) {
 }
 
 std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
-libraryApplyMaintenance(Database& db, int64_t libraryId,
-                         const LibraryMaintenanceOptions& options) {
+libraryApplyMaintenance(Database& db, int64_t libraryId, const LibraryMaintenanceOptions& options) {
     auto report = libraryReport(db, libraryId);
     if (!report)
         return std::unexpected(report.error());

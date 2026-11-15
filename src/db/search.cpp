@@ -1,15 +1,15 @@
 #include <sqlite3.h>
 
-#include <kanariv/db/database.hpp>
-#include <kanariv/db/search.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
 #include <db/database_access.hpp>
 #include <db/fts.hpp>
 #include <db/statement.hpp>
 #include <db/stmt_helpers.hpp>
 #include <expected>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/search.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
@@ -50,8 +50,7 @@ tryFtsQuery(sqlite3* h, std::string_view query, int limit) {
 }
 
 std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
-searchFts(contracts::IDatabase& db_, std::string_view query, int limit) {
-    Database& db = dynamic_cast<Database&>(db_);
+searchFts(Database& db, std::string_view query, int limit) {
     if (query.empty())
         return std::vector<kanariv::types::Track>{};
     std::string sanitized = internal::sanitizeFtsTerm(query);
@@ -101,8 +100,7 @@ searchFts(contracts::IDatabase& db_, std::string_view query, int limit) {
 }
 
 std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
-searchLike(contracts::IDatabase& db_, std::string_view query, int limit) {
-    Database& db = dynamic_cast<Database&>(db_);
+searchLike(Database& db, std::string_view query, int limit) {
     if (query.empty())
         return std::vector<kanariv::types::Track>{};
     std::string esc = internal::escapeLike(query);
@@ -150,8 +148,7 @@ Database::searchTracks(std::string_view query, int limit) {
 }
 
 std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
-search(contracts::IDatabase& db_, std::string_view query, int limit) {
-    Database& db = dynamic_cast<Database&>(db_);
+search(Database& db, std::string_view query, int limit) {
     return searchFts(db, query, limit);
 }
 

@@ -9,13 +9,13 @@
  */
 #pragma once
 
+#include <filesystem>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
-#include <filesystem>
 
 namespace kanariv::contracts {
-// Defined in contracts/database.hpp (full Database API); reference params need only this.
-class IDatabase;
+// Reference params need only the declaration: the definition is the track port.
+class ITrackStore;
 } // namespace kanariv::contracts
 
 namespace kanariv::service::detail {
@@ -34,18 +34,18 @@ bool canWriteFileTags(const std::filesystem::path& p);
  * TagLib open/save failures).
  */
 kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
-                                            const kanariv::types::Track& t);
+                                             const kanariv::types::Track& t);
 
 /**
  * @brief Re-registers a track row after its file was tag-edited.
- * @param db Database.
+ * @param tracks Track store.
  * @param t Row carrying the merged tag fields, path, and id.
  * @return Updated row or Error.
  * @details Tag fields stay as merged (what was written); fingerprint, size,
  * mtime, and audio technicals refresh from the new bytes. The id is stable:
  * lookup is path-keyed, never fingerprint-keyed (the fingerprint changed).
  */
-kanariv::utils::Expected<kanariv::types::Track> reregisterTrackRow(kanariv::contracts::IDatabase& db,
-                                                                 kanariv::types::Track t);
+kanariv::utils::Expected<kanariv::types::Track>
+reregisterTrackRow(kanariv::contracts::ITrackStore& tracks, kanariv::types::Track t);
 
 } // namespace kanariv::service::detail

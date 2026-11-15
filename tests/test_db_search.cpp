@@ -1,13 +1,12 @@
 #include <sqlite3.h>
 
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/contracts/database.hpp>
+#include <cstdint>
+#include <db/database_access.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/search.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
-#include <cstdint>
-#include <db/database_access.hpp>
 #include <string>
 #include <utility>
 #include <vector>

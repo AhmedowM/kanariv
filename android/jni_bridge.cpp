@@ -2,7 +2,6 @@
 #include <media_session_android.hpp>
 
 #include <kanariv/config/runtime.hpp>
-#include <kanariv/contracts/database.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/engine/engine.hpp>
 #include <kanariv/ipc/command.hpp>
@@ -117,7 +116,8 @@ static jlong nativeStartDaemon(JNIEnv* env, jclass clazz,
         return 0;
     }
 
-    auto hostRes = kanariv::service::Host::create(cfg, std::move(dbRes.value()));
+    auto hostRes =
+        kanariv::service::Host::create(cfg, kanariv::db::makeStorage(std::move(dbRes.value())));
     if (!hostRes) {
         if (env) {
             jclass reCls = env->FindClass("java/lang/RuntimeException");

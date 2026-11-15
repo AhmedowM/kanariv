@@ -1,9 +1,9 @@
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
 #include <chrono>
 #include <cstdint>
 #include <engine/history.hpp>
 #include <expected>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <memory>
 #include <utility>
 
@@ -19,7 +19,8 @@ uint64_t wallMs() noexcept {
     return (uint64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
-bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr, int secsThr) noexcept {
+bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr,
+                      int secsThr) noexcept {
     if (marked)
         return false;
     double pct = pctThr > 0 ? (double)pctThr / 100.0 : 0.6;
@@ -35,18 +36,20 @@ bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr, i
 
 namespace kanariv::engine {
 
-History::History(std::shared_ptr<kanariv::contracts::IDatabase> db) : db_(std::move(db)) {}
+History::History(std::shared_ptr<kanariv::contracts::IHistoryStore> db) : db_(std::move(db)) {}
 
 History::ExpectedEntries History::listHistory(int limit) {
     if (!db_ || !db_->isOpen())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    return db_->historyList(limit);
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+    return db_->listHistory(limit);
 }
 
 History::ExpectedVoid History::clearHistory() {
     if (!db_ || !db_->isOpen())
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    return db_->historyClear();
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
+    return db_->clearHistory();
 }
 
 } // namespace kanariv::engine

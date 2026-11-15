@@ -995,7 +995,8 @@ int Shell::run(int argc, char** argv) {
             return kanariv::app::Outcome::fail(std::format(
                 "start failed: {} (db: {})", db.error().message, config_.dbPath.generic_string()));
         }
-        auto svc = kanariv::service::Service::create(scfg, std::move(db.value()));
+        auto svc = kanariv::service::Service::create(
+            scfg, kanariv::db::makeStorage(std::move(db.value())));
         if (!svc) {
             return kanariv::app::Outcome::fail(std::format(
                 "start failed: {} (db: {})", svc.error().message, config_.dbPath.generic_string()));

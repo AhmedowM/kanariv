@@ -55,7 +55,9 @@ TEST_CASE("gapless CAS arms once via Engine", "[engine_gapless]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     // gapless should arm once when remaining <=0.3 (pos>=0.5) and trigger next via engineTick
@@ -102,7 +104,9 @@ TEST_CASE("gapless 300ms lookahead triggers next once", "[engine_gapless]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     // duration 0.8, gap 0.3 -> when remaining <=0.3 (pos>=0.5) should arm and trigger next
@@ -148,7 +152,9 @@ TEST_CASE("gapless not triggered when remaining > gap", "[engine_gapless]") {
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
     REQUIRE(eng->play(1).has_value());
     int64_t first = eng->currentTrackId();
     // duration 5s, gap 0.3 -> remaining 4.8 > gap, should not trigger within 200ms
@@ -366,8 +372,8 @@ TEST_CASE("crossfade mixes incoming tracks with their own channel count", "[engi
         REQUIRE(out.canaryIntact());
         REQUIRE(in.canaryIntact());
         for (std::size_t f = 0; f < frames; ++f) {
-            const double expected = f < shortFrames ? 1.0 * outWeight + 0.5 * inWeight
-                                                    : 1.0 * outWeight;
+            const double expected =
+                f < shortFrames ? 1.0 * outWeight + 0.5 * inWeight : 1.0 * outWeight;
             for (std::uint32_t c = 0; c < outCh; ++c)
                 REQUIRE(out[f * outCh + c] == Catch::Approx(expected).margin(1e-6));
         }
@@ -474,7 +480,7 @@ TEST_CASE("failed crossfade preload keeps the cursor on the unreadable track",
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(sharedDb).has_value());
+    REQUIRE(eng->attachStorage(kanariv::db::makeStorage(sharedDb)).has_value());
     REQUIRE(eng->play(1).has_value());
     REQUIRE(eng->currentTrackId() == ids[0]);
     const double dur = eng->duration();
@@ -490,7 +496,7 @@ TEST_CASE("failed crossfade preload keeps the cursor on the unreadable track",
     // The preload failed, so nothing was committed: still on the outgoing
     // track and the persisted cursor still points at the unreadable entry.
     REQUIRE(eng->currentTrackId() == ids[0]);
-    auto persisted = sharedDb->loadEngineState();
+    auto persisted = sharedDb->load();
     REQUIRE(persisted.has_value());
     REQUIRE(persisted->cursor_pos == 1);
     REQUIRE(persisted->current_track_id == ids[0]);
@@ -566,7 +572,7 @@ TEST_CASE("crossfade completion publishes the incoming track", "[engine_gapless]
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(tracks.db).has_value());
+    REQUIRE(eng->attachStorage(kanariv::db::makeStorage(tracks.db)).has_value());
     REQUIRE(eng->play(1).has_value());
     REQUIRE(eng->currentTrackId() == ids[0]);
     const double dur = eng->duration();
@@ -585,12 +591,12 @@ TEST_CASE("crossfade completion publishes the incoming track", "[engine_gapless]
     }
     // The same publication persists the new current track and cursor.
     const auto persistedIncoming = [&]() {
-        auto st = tracks.db->loadEngineState();
+        auto st = tracks.db->load();
         return st && st->current_track_id == ids[1];
     };
     busyWaitUntil(persistedIncoming, std::chrono::milliseconds(3000),
                   std::chrono::milliseconds(20));
-    auto persisted = tracks.db->loadEngineState();
+    auto persisted = tracks.db->load();
     REQUIRE(persisted.has_value());
     REQUIRE(persisted->current_track_id == ids[1]);
     // The preload transaction already committed the cursor past the incoming
@@ -622,7 +628,7 @@ TEST_CASE("crossfade publishes when the incoming track ends before the overlap",
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(tracks.db).has_value());
+    REQUIRE(eng->attachStorage(kanariv::db::makeStorage(tracks.db)).has_value());
     REQUIRE(eng->play(1).has_value());
     REQUIRE(eng->currentTrackId() == ids[0]);
     const double dur = eng->duration();
@@ -694,7 +700,7 @@ TEST_CASE("a track change cancels an armed crossfade", "[engine_gapless][crossfa
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
-    REQUIRE(eng->attachDatabase(sharedDb).has_value());
+    REQUIRE(eng->attachStorage(kanariv::db::makeStorage(sharedDb)).has_value());
     REQUIRE(eng->play(1).has_value());
     REQUIRE(eng->currentTrackId() == ids[0]);
     // Remaining 2.5 s: an engine tick arms the overlap ~0.5 s from now.

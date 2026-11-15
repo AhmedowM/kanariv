@@ -7,7 +7,7 @@
 //!
 //! Not implemented here: engine-state persistence, smart-playlist evaluation,
 //! background write batching, and the C ABI adapter that would implement
-//! `kanariv::contracts::IDatabase`. The crate is a standalone library; the
+//! `kanariv::contracts` persistence ports. The crate is a standalone library; the
 //! daemon does not link it.
 //!
 //! The audio path is untouched: this crate stores rows only.

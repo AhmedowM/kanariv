@@ -3,16 +3,16 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <common.hpp>
+#include <cstdint>
+#include <db/database_access.hpp>
+#include <db/migration.hpp>
+#include <expected>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/smart.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/result.hpp>
-#include <cstdint>
-#include <db/database_access.hpp>
-#include <db/migration.hpp>
-#include <expected>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -140,33 +140,33 @@ TEST_CASE("listTracks pagination limit/offset", "[db]") {
     kanariv::types::TrackQuery q;
     q.limit = 2;
     q.offset = 0;
-    auto l1 = db->listTracks(&q);
+    auto l1 = db->listTracks(q);
     REQUIRE(l1.has_value());
     REQUIRE(l1->size() == 2);
     q.offset = 2;
-    auto l2 = db->listTracks(&q);
+    auto l2 = db->listTracks(q);
     REQUIRE(l2.has_value());
     REQUIRE(l2->size() == 2);
     REQUIRE((*l2)[0].id != (*l1)[0].id);
     q.offset = 4;
     q.limit = 2;
-    auto l3 = db->listTracks(&q);
+    auto l3 = db->listTracks(q);
     REQUIRE(l3.has_value());
     REQUIRE(l3->size() == 1);
     q.offset = 10;
-    auto l4 = db->listTracks(&q);
+    auto l4 = db->listTracks(q);
     REQUIRE(l4.has_value());
     REQUIRE(l4->empty());
     // limit 0 means no limit (all)
     q.limit = 0;
     q.offset = 0;
-    auto l5 = db->listTracks(&q);
+    auto l5 = db->listTracks(q);
     REQUIRE(l5.has_value());
     REQUIRE(l5->size() == 5);
     // offset only (no limit)
     q.limit = 0;
     q.offset = 3;
-    auto l6 = db->listTracks(&q);
+    auto l6 = db->listTracks(q);
     REQUIRE(l6.has_value());
     REQUIRE(l6->size() == 2);
 }
@@ -341,7 +341,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     // Exact rating filter.
     kanariv::types::TrackQuery q;
     q.rating = 5;
-    auto r5 = db->listTracks(&q);
+    auto r5 = db->listTracks(q);
     REQUIRE(r5.has_value());
     REQUIRE(r5->size() == 2);
     for (auto& t : *r5)
@@ -351,7 +351,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     q = kanariv::types::TrackQuery{};
     q.year_min = 1980;
     q.year_max = 2005;
-    auto ry = db->listTracks(&q);
+    auto ry = db->listTracks(q);
     REQUIRE(ry.has_value());
     REQUIRE(ry->size() == 2);
     for (auto& t : *ry) {
@@ -362,7 +362,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     // One-sided year max only.
     q = kanariv::types::TrackQuery{};
     q.year_max = 1975;
-    auto ry2 = db->listTracks(&q);
+    auto ry2 = db->listTracks(q);
     REQUIRE(ry2.has_value());
     REQUIRE(ry2->size() == 1);
     REQUIRE((*ry2)[0].year == 1970);
@@ -371,7 +371,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     q = kanariv::types::TrackQuery{};
     q.play_count_min = 10;
     q.play_count_max = 200;
-    auto rp = db->listTracks(&q);
+    auto rp = db->listTracks(q);
     REQUIRE(rp.has_value());
     REQUIRE(rp->size() == 2);
     for (auto& t : *rp) {
@@ -383,7 +383,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     q = kanariv::types::TrackQuery{};
     q.duration_min = 200.0;
     q.duration_max = 500.0;
-    auto rd = db->listTracks(&q);
+    auto rd = db->listTracks(q);
     REQUIRE(rd.has_value());
     REQUIRE(rd->size() == 2);
     for (auto& t : *rd) {
@@ -395,7 +395,7 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     q = kanariv::types::TrackQuery{};
     q.rating = 5;
     q.year_min = 2000;
-    auto rc = db->listTracks(&q);
+    auto rc = db->listTracks(q);
     REQUIRE(rc.has_value());
     REQUIRE(rc->size() == 1);
     REQUIRE((*rc)[0].rating == 5);
@@ -612,7 +612,7 @@ TEST_CASE("historyList joins track metadata and historyClear empties it", "[db][
     e.completion_pct = 75.0;
     REQUIRE(db->historyAdd(e).has_value());
 
-    auto listed = db->historyList(10);
+    auto listed = db->listHistory(10);
     REQUIRE(listed.has_value());
     REQUIRE(listed->size() == 1);
     CHECK((*listed)[0].track_id == *tr);
@@ -620,8 +620,8 @@ TEST_CASE("historyList joins track metadata and historyClear empties it", "[db][
     CHECK((*listed)[0].artist == "Artist9");
     CHECK((*listed)[0].duration == 10.0);
 
-    REQUIRE(db->historyClear().has_value());
-    auto empty = db->historyList(10);
+    REQUIRE(db->clearHistory().has_value());
+    auto empty = db->listHistory(10);
     REQUIRE(empty.has_value());
     CHECK(empty->empty());
 }
@@ -645,14 +645,14 @@ TEST_CASE("queue repeat mode round-trips through the DB", "[db][queue][repeat]")
 
     for (auto mode : {kanariv::types::RepeatMode::Off, kanariv::types::RepeatMode::All,
                       kanariv::types::RepeatMode::One}) {
-        REQUIRE(db->setQueueRepeat(*id, static_cast<int>(mode)).has_value());
+        REQUIRE(db->setQueueRepeat(*id, mode).has_value());
         auto stored = db->getQueue(*id);
         REQUIRE(stored.has_value());
         REQUIRE(stored->repeat_mode == mode);
     }
 
     // An out-of-range legacy value must read back as Off, never as a bogus mode.
-    REQUIRE(db->setQueueRepeat(*id, 99).has_value());
+    REQUIRE(db->setQueueRepeat(*id, static_cast<kanariv::types::RepeatMode>(99)).has_value());
     auto fallback = db->getQueue(*id);
     REQUIRE(fallback.has_value());
     REQUIRE(fallback->repeat_mode == kanariv::types::RepeatMode::Off);

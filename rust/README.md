@@ -14,8 +14,8 @@ An isolated Rust exploration in three layers:
    does not link it.
 4. `kanariv-db-ffi` — a read-only C ABI (`cdylib`) over `kanariv-db`, plus a
    standalone C++ parity executable. This measures cross-language cost and ABI
-   maintenance; it does not implement `IDatabase` and is never linked into the
-   daemon.
+   maintenance; it does not implement the kanariv persistence ports and is never
+   linked into the daemon.
 
 None of these crates links C++ code, uses FFI, or touches decoding or the
 audio thread — the audio path stays entirely C++ by design.
@@ -178,7 +178,8 @@ per call, and Rust links bundled SQLite 3.54.1 while C++ uses the system
 3.49.1. A realistic-size library benchmark is needed before drawing cost
 conclusions.
 
-Deliberately not done: implementing `IDatabase`, sharing an open connection or
+Deliberately not done: implementing the kanariv persistence ports, sharing an
+open connection or
 mutex across the boundary, and linking the ABI into the daemon. Those are the
 expensive, risky steps this pilot is meant to inform.
 

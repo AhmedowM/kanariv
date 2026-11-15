@@ -10,7 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <kanariv/config/runtime.hpp>
-#include <kanariv/contracts/database.hpp>
+#include <kanariv/contracts/storage.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
@@ -173,9 +173,9 @@ TEST_CASE("queue create maps repeatDefault to RepeatMode", "[service][queue][rep
 
         auto dbRes = kanariv::db::Database::open(dbPath.generic_string());
         REQUIRE(dbRes.has_value());
-        std::shared_ptr<kanariv::contracts::IDatabase> db(std::move(*dbRes));
+        std::shared_ptr<kanariv::db::Database> db(std::move(*dbRes));
 
-        auto svcRes = Service::create(cfg, db);
+        auto svcRes = Service::create(cfg, kanariv::db::makeStorage(db));
         REQUIRE(svcRes.has_value());
         auto svc = std::move(*svcRes);
 
@@ -568,7 +568,7 @@ TEST_CASE("service without a database reports status and rejects db commands", "
     auto svcRes = Service::create(cfg);
     REQUIRE(svcRes.has_value());
     auto svc = std::move(*svcRes);
-    REQUIRE(svc->db() == nullptr);
+    REQUIRE_FALSE(svc->storage().complete());
 
     // Status is a pure engine read and must work without a database (S4).
     auto statusRes = svc->dispatchCommand(kanariv::ipc::StatusReq{});
@@ -654,7 +654,7 @@ TEST_CASE("queue remove distinguishes positions from track ids", "[service][queu
     std::filesystem::create_directories(dir / "logs");
     auto dbRes = kanariv::db::Database::open((dir / "library.db").generic_string());
     REQUIRE(dbRes.has_value());
-    std::shared_ptr<kanariv::contracts::IDatabase> db(std::move(*dbRes));
+    std::shared_ptr<kanariv::db::Database> db(std::move(*dbRes));
 
     std::vector<int64_t> ids;
     for (int i = 0; i < 3; ++i) {
@@ -669,7 +669,8 @@ TEST_CASE("queue remove distinguishes positions from track ids", "[service][queu
         REQUIRE(db->queueEnqueue(1, *id, -1).has_value());
     }
 
-    auto svcRes = Service::create(inProcessConfig(dir / "library.db", dir / "logs"), db);
+    auto svcRes = Service::create(inProcessConfig(dir / "library.db", dir / "logs"),
+                                  kanariv::db::makeStorage(db));
     REQUIRE(svcRes.has_value());
     auto svc = std::move(*svcRes);
 

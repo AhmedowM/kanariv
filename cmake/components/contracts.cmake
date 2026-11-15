@@ -5,7 +5,7 @@
 # add the install prefix/modules to their C++ module search path.
 set(KANARIV_CONTRACTS_MODULE_SOURCES
   modules/kanariv/contracts.cppm
-  modules/kanariv/contracts/database.cppm
+  modules/kanariv/contracts/storage.cppm
 )
 if(KANARIV_ENABLE_MODULES)
   add_library(contracts STATIC)

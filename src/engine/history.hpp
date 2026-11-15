@@ -1,10 +1,10 @@
 #pragma once
 
-#include <kanariv/contracts/database.hpp>
-#include <kanariv/utils.hpp>
 #include <chrono>
 #include <cstdint>
 #include <expected>
+#include <kanariv/contracts/history_store.hpp>
+#include <kanariv/utils.hpp>
 #include <memory>
 #include <vector>
 
@@ -42,14 +42,15 @@ uint64_t wallMs() noexcept;
  * @param secsThr Absolute seconds threshold; 0 defaults to 90 s.
  * @return true if `played/duration >= pct` or `played >= secs` and not already marked.
  */
-bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr, int secsThr) noexcept;
+bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr,
+                      int secsThr) noexcept;
 
 } // namespace kanariv::engine::detail
 
 namespace kanariv::engine {
 
 /**
- * @brief Thin history query helper over an IDatabase implementation.
+ * @brief Thin history query helper over an IHistoryStore implementation.
  */
 class History final {
   public:
@@ -59,9 +60,9 @@ class History final {
 
     /**
      * @brief Constructs a History helper.
-     * @param db Shared database contract (must be open).
+     * @param db Shared history port (must be open).
      */
-    explicit History(std::shared_ptr<kanariv::contracts::IDatabase> db);
+    explicit History(std::shared_ptr<kanariv::contracts::IHistoryStore> db);
 
     /**
      * @brief Lists recent history entries joined with track metadata.
@@ -81,7 +82,7 @@ class History final {
     ExpectedVoid clearHistory();
 
   private:
-    std::shared_ptr<kanariv::contracts::IDatabase> db_; ///< Shared persistence contract.
+    std::shared_ptr<kanariv::contracts::IHistoryStore> db_; ///< Shared history port.
 };
 
 } // namespace kanariv::engine
