@@ -33,6 +33,7 @@
 #include <span>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -64,6 +65,14 @@ struct Service::Impl {
     std::expected<kanariv::ipc::Result, kanariv::utils::Error> statusResult();
     /** Status snapshot after a real state change: bumps the sequence, then reads. */
     std::expected<kanariv::ipc::Result, kanariv::utils::Error> statusAfterChange();
+    /**
+     * @brief Status snapshot after a real state change, tagged with a transition.
+     * @details Same as above, then stamps @p transition onto the Status result
+     * ("started", "resumed", "already_playing") so clients word their output
+     * from the reply instead of a second status probe.
+     */
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    statusAfterChange(std::string_view transition);
     /** Bumps the status change sequence and wakes StatusWait waiters. */
     void noteStateChanged();
     /** Blocks until the sequence changes or the timeout elapses. */
@@ -187,6 +196,8 @@ struct Service::Impl {
     std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Restart&);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Resume&);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Seek& s);
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    handle(const kanariv::ipc::SeekBy& s);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::Shutdown&);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>

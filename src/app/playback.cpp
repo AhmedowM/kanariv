@@ -10,8 +10,6 @@
 #include <app/app_impl.hpp>
 #include <app/format_internal.hpp>
 #include <kanariv/app/app.hpp>
-#include <kanariv/client/client.hpp>
-#include <kanariv/types/engine.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
@@ -36,52 +34,18 @@ App::Impl::transportWho(const std::expected<kanariv::ipc::Result, kanariv::utils
 
 // Shared play flow (used by `play`, and by `resume` when stopped).
 AppResult App::play() {
-    // Prior state decides the wording (resumed vs fresh); one extra roundtrip.
-    bool wasPaused = false;
-    bool wasStopped = false;
-    double priorPos = 0;
-    int64_t priorTrack = 0;
-    {
-        auto probe = impl_->makeClient();
-        if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}})) {
-            if (auto* st = std::get_if<kanariv::ipc::Status>(&*ps)) {
-                wasPaused = (st->state == kanariv::types::PlaybackState::Paused);
-                wasStopped = (st->state == kanariv::types::PlaybackState::Stopped);
-                priorPos = st->pos;
-                priorTrack = st->track_id;
-            }
-        }
-    }
     kanariv::ipc::Command cmd{kanariv::ipc::Play{}};
     auto res = impl_->sendPlay(cmd);
     if (!res)
         return std::unexpected{res.error()};
     if (auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
-        // Session restore: after a restart the persisted track/position is
-        // reported while stopped. The daemon seeks its decoder before output
-        // starts, so the status Play returned is already at the resume point;
-        // an explicit Seek then would only reset the ring a second time.
-        bool restored = false;
-        if (wasStopped && priorTrack != 0 && priorPos > 0.0 && st->track_id == priorTrack) {
-            restored = st->pos >= priorPos - 0.5 && st->pos <= priorPos + 0.5;
-            if (!restored) {
-                if (auto seekRes =
-                        impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::Seek{priorPos}})) {
-                    if (auto fresh =
-                            impl_->sendRaw(kanariv::ipc::Command{kanariv::ipc::StatusReq{}})) {
-                        if (std::holds_alternative<kanariv::ipc::Status>(*fresh))
-                            res = std::move(fresh);
-                    }
-                    restored = true;
-                }
-            }
-        }
-        std::string who = impl_->transportWho(res);
+        // The daemon classifies the transition, so the wording needs no
+        // status probe and no corrective re-seek: a pause resumes in place,
+        // and a restored session already starts at the persisted position.
+        std::string who = kanariv::app::trackWho(*st);
         std::string line =
-            wasPaused
-                ? std::format("Resuming {} from {}", who, kanariv::utils::formatClock(priorPos))
-            : restored
-                ? std::format("Resuming {} from {}", who, kanariv::utils::formatClock(priorPos))
+            st->transition == "resumed"
+                ? std::format("Resuming {} from {}", who, kanariv::utils::formatClock(st->pos))
                 : std::format("Playing {}", who);
         return Outcome{
             .result = std::move(*res), .line = std::move(line), .toStderr = false, .failed = false};
@@ -133,37 +97,23 @@ AppResult App::pause() {
 AppResult App::resume() {
     kanariv::ipc::Command cmd{kanariv::ipc::Resume{}};
     auto res = impl_->sendRaw(cmd);
-    if (!res) {
-        const auto& e = res.error();
-        // Engine::resume reports State only when playback is not Paused; the
-        // status probe then separates "already playing" (warn) from Stopped
-        // (play from cursor). A failed probe surfaces the original error.
-        if (e.code == kanariv::utils::StatusCode::State) {
-            // Forgiving resume: playing -> warn; stopped -> play from cursor.
-            bool playing = false;
-            bool probed = false;
-            auto probe = impl_->makeClient();
-            if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}})) {
-                if (auto* st = std::get_if<kanariv::ipc::Status>(&*ps)) {
-                    probed = true;
-                    playing = (st->state == kanariv::types::PlaybackState::Playing);
-                }
-            }
-            if (probed && playing)
-                return Outcome::warn("resume: already playing");
-            if (!probed)
-                return std::unexpected{e};
-            return play();
-        }
-        return std::unexpected{e};
-    }
+    if (!res)
+        return std::unexpected{res.error()};
     if (auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
+        // The daemon resolves every prior state: Playing comes back as
+        // "already_playing" (a warn, not an error), Paused as "resumed", and
+        // Stopped as "started" once it replays the persisted track.
+        if (st->transition == "already_playing")
+            return Outcome::warn("resume: already playing");
         // Hoisted: the line must be built before Outcome moves *res (the
         // braced list otherwise reads moved-from strings on some toolchains).
         std::string who = kanariv::app::trackWho(*st);
         std::string at = kanariv::utils::formatClock(st->pos);
+        std::string line = st->transition == "started"
+                               ? std::format("Playing {}", who)
+                               : std::format("Resuming {} from {}", who, at);
         return Outcome{.result = std::move(*res),
-                       .line = std::format("Resuming {} from {}", who, at),
+                       .line = std::move(line),
                        .toStderr = false,
                        .failed = false};
     }
@@ -245,27 +195,12 @@ AppResult App::prev() {
 }
 
 AppResult App::seek(double target, bool isRelative) {
-    if (isRelative) {
-        auto client = impl_->makeClient();
-        auto sres = client.send(kanariv::ipc::Command{kanariv::ipc::StatusReq{}});
-        double pos = 0;
-        bool hasPos = false;
-        if (sres) {
-            if (auto* ps = std::get_if<kanariv::ipc::Status>(&*sres)) {
-                pos = ps->pos;
-                hasPos = true;
-            }
-        }
-        if (hasPos) {
-            target = pos + target;
-            if (target < 0)
-                target = 0;
-        } else {
-            if (target < 0)
-                target = 0;
-        }
-    }
-    kanariv::ipc::Command cmd{kanariv::ipc::Seek{target}};
+    // A relative seek stays one command: the daemon resolves the base
+    // position and clamps at zero, so no client-side status read can race
+    // another transport command between the two roundtrips.
+    kanariv::ipc::Command cmd =
+        isRelative ? kanariv::ipc::Command{kanariv::ipc::SeekBy{target}}
+                   : kanariv::ipc::Command{kanariv::ipc::Seek{target}};
     auto res = impl_->sendRaw(cmd);
     if (!res)
         return std::unexpected{res.error()};

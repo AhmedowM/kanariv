@@ -695,7 +695,7 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     REQUIRE(contains(prevStart.err, "at queue start"));
     auto set = run({"config", "set", "cli_golden_key", "hello"});
     REQUIRE(set.exitCode == 0);
-    REQUIRE(set.out.empty());
+    REQUIRE(contains(set.out, "cli_golden_key = hello"));
     auto get = run({"config", "get", "cli_golden_key"});
     REQUIRE(get.exitCode == 0);
     REQUIRE(contains(get.out, "hello"));

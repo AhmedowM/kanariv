@@ -44,7 +44,7 @@ namespace kanariv::ipc {
  * request-building and transport code.
  */
 using Command =
-    std::variant<Play, Pause, Resume, Restart, Stop, Next, Prev, Seek, StatusReq, VolumeSet,
+    std::variant<Play, Pause, Resume, Restart, Stop, Next, Prev, Seek, SeekBy, StatusReq, VolumeSet,
                  QueueList, QueueQueues, QueueCreate, QueueDelete, PlayFiles, QueueSwitch, QueueAdd,
                  QueueRemove, QueueMove, QueueClear, QueueShuffle, QueueRepeat, PlaylistList,
                  PlaylistCreate, PlaylistAdd, PlaylistTracks, PlaylistLoad, PlaylistSave,
@@ -52,9 +52,8 @@ using Command =
                  LibrarySearch, LibraryStats, LibraryAdd, LibraryRemove, LibraryList, TagEdit,
                  TagGet, ConfigGet, ConfigSet, ConfigList, ConfigExport, ConfigImport, ConfigReset,
                  HistoryList, HistoryClear, BookmarkList, BookmarkAdd, BookmarkRemove, BookmarkGoto,
-                 LyricsGet, LyricsSet, LyricsRemove,
-                 Shutdown, Preview, DeviceList, DeviceSet, DeviceTest, Info, TrackRate,
-                 LibraryMaintenance, StatusWait, TagBatchEdit>;
+                 LyricsGet, LyricsSet, LyricsRemove, Shutdown, Preview, DeviceList, DeviceSet,
+                 DeviceTest, Info, TrackRate, LibraryMaintenance, StatusWait, TagBatchEdit>;
 
 // helper concepts
 namespace detail {

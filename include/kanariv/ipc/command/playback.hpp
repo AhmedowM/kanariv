@@ -96,6 +96,23 @@ struct Seek final {
 };
 
 /**
+ * @struct SeekBy
+ * @brief Seek relative to the current position of the current track.
+ *
+ * The daemon resolves the base position and clamps the result at zero, so a
+ * relative seek is one atomic command instead of a status read followed by an
+ * absolute seek (which races other clients).
+ * @ingroup kanariv_ipc
+ *
+ * @json_example {"type": "SeekBy", "delta": -10.0}
+ *
+ * @param delta Offset in seconds; negative rewinds, positive advances.
+ */
+struct SeekBy final {
+    double delta{0.0}; ///< Offset from the current position, in seconds.
+};
+
+/**
  * @struct StatusReq
  * @brief Request the current playback status.
  * @ingroup kanariv_ipc

@@ -2,8 +2,10 @@
  * @file config.cpp
  * @brief Configuration command handlers.
  * @ingroup kanariv_app
- * @details Phase 1: returns outcome data; the frontend renders. Reads
- * answer from the local file without a daemon; writes go through it.
+ * @details Phase 1: returns outcome data; the frontend renders. The daemon
+ * owns config when it is running (it persists the file it resolves and
+ * applies live values); with no daemon the file is the only authority, so a
+ * read still works before `kanariv start`.
  */
 
 #include <app/app_impl.hpp>
@@ -22,7 +24,12 @@
 namespace kanariv::app {
 
 AppResult App::configGet(const std::string& key) {
-    // Answered from the local file: no daemon needed.
+    // Ask the daemon while it is up, so a value it clamped or canonicalized is
+    // what the user sees; fall back to the file when it is down.
+    if (impl_->daemonReachable()) {
+        kanariv::ipc::Command cmd{kanariv::ipc::ConfigGet{key}};
+        return impl_->confirm(impl_->sendRaw(cmd));
+    }
     const auto cfg = impl_->config();
     auto v = kanariv::config::detail::configGetRaw(cfg.configPath, key);
     if (!v)
@@ -32,10 +39,9 @@ AppResult App::configGet(const std::string& key) {
 
 AppResult App::configSet(const std::string& key, const std::string& value) {
     kanariv::ipc::Command cmd{kanariv::ipc::ConfigSet{key, value}};
-    auto res = impl_->sendRaw(cmd);
-    if (!res)
-        return std::unexpected{res.error()};
-    return Outcome{};
+    // The reply carries the stored value, so a normalized (or rejected) write
+    // is visible instead of every success looking like a no-op.
+    return impl_->confirm(impl_->sendRaw(cmd));
 }
 
 AppResult App::configList() {

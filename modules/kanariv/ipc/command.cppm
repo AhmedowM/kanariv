@@ -55,6 +55,7 @@ using ::kanariv::ipc::QueueSwitch;
 using ::kanariv::ipc::Restart;
 using ::kanariv::ipc::Resume;
 using ::kanariv::ipc::Seek;
+using ::kanariv::ipc::SeekBy;
 using ::kanariv::ipc::Shutdown;
 using ::kanariv::ipc::StatusReq;
 using ::kanariv::ipc::Stop;

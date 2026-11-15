@@ -27,6 +27,7 @@ using kanariv::ipc::Prev;
 using kanariv::ipc::Restart;
 using kanariv::ipc::Resume;
 using kanariv::ipc::Seek;
+using kanariv::ipc::SeekBy;
 using kanariv::ipc::StatusReq;
 using kanariv::ipc::StatusWait;
 using kanariv::ipc::Stop;
@@ -35,6 +36,9 @@ using kanariv::ipc::VolumeSet;
 // Play command: start/resume playback of active queue
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::Play&) {
+    const auto before = engine_->state();
+    const int64_t beforeTrack = engine_->currentTrackId();
+    const double beforePos = engine_->position();
     int64_t aq = engine_->activeQueueId();
     auto r = engine_->play(aq);
     if (!r)
@@ -43,7 +47,16 @@ Service::Impl::handle(const kanariv::ipc::Play&) {
     syncMediaSession();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
-    return statusAfterChange();
+    // Classify the transition here so clients can word the reply without a
+    // second status probe (which raced other clients): a pause resumes in
+    // place; a stop replays the persisted track only when the engine landed
+    // back on it at (approximately) the persisted position.
+    const bool resumed =
+        before == kanariv::types::PlaybackState::Paused ||
+        (before == kanariv::types::PlaybackState::Stopped && beforeTrack != 0 &&
+         engine_->currentTrackId() == beforeTrack &&
+         std::abs(engine_->position() - beforePos) < 0.5);
+    return statusAfterChange(resumed ? "resumed" : "started");
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -60,14 +73,24 @@ Service::Impl::handle(const kanariv::ipc::Pause&) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::Resume&) {
-    auto r = engine_->resume();
+    // Forgiving resume, resolved server-side: Playing is a no-op success the
+    // reply marks "already_playing" (clients used to warn), and Stopped
+    // replays the persisted track instead of failing State.
+    const auto before = engine_->state();
+    if (before == kanariv::types::PlaybackState::Playing) {
+        updateShmStatus();
+        syncMediaSession();
+        return statusAfterChange("already_playing");
+    }
+    const bool wasPaused = before == kanariv::types::PlaybackState::Paused;
+    auto r = wasPaused ? engine_->resume() : engine_->play(engine_->activeQueueId());
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();
     syncMediaSession();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
-    return statusAfterChange();
+    return statusAfterChange(wasPaused ? "resumed" : "started");
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -138,6 +161,27 @@ Service::Impl::handle(const kanariv::ipc::Seek& s) {
                                                         "seek: invalid seconds")};
     }
     auto r = engine_->seek(s.seconds);
+    if (!r)
+        return std::unexpected{r.error()};
+    updateShmStatus();
+    syncMediaSession();
+    // Mutations are real state changes: bump the status sequence so
+    // StatusWait waiters observe them (S5).
+    return statusAfterChange();
+}
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::SeekBy& s) {
+    if (!std::isfinite(s.delta)) {
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                        "seek: invalid delta")};
+    }
+    // Resolve the base and clamp under the dispatch lock, so a relative seek
+    // cannot race another client's transport command between two roundtrips.
+    double target = engine_->position() + s.delta;
+    if (target < 0.0)
+        target = 0.0;
+    auto r = engine_->seek(target);
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();

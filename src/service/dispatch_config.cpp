@@ -79,7 +79,9 @@ Service::Impl::handle(const kanariv::ipc::ConfigSet& cmd) {
         logger_->setLevel(newLevel);
         logger_->info("log level set to {}", kanariv::utils::toString(newLevel));
     }
-    return Result{Empty{}};
+    // Echo the stored value: logLevel names arrive canonicalized to numbers,
+    // and a client that only sees "ok" cannot tell a change from a no-op.
+    return Result{ConfigValue{cmd.key, storedValue}};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>

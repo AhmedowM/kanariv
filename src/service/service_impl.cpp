@@ -293,10 +293,7 @@ Service::Impl::Impl(const ServiceConfig& cfg, kanariv::contracts::Storage storag
             .onStop = [this] { (void)dispatch(kanariv::ipc::Stop{}); },
             .onNext = [this] { (void)dispatch(kanariv::ipc::Next{}); },
             .onPrev = [this] { (void)dispatch(kanariv::ipc::Prev{}); },
-            .onSeek =
-                [this](double delta) {
-                    (void)dispatch(kanariv::ipc::Seek{engine_->position() + delta});
-                },
+            .onSeek = [this](double delta) { (void)dispatch(kanariv::ipc::SeekBy{delta}); },
             .onSeekTo = [this](double position) { (void)dispatch(kanariv::ipc::Seek{position}); },
             .onRepeat =
                 [this](kanariv::types::RepeatMode repeat) {
@@ -550,6 +547,16 @@ std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::status
     return statusResult();
 }
 
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::statusAfterChange(std::string_view transition) {
+    auto res = statusAfterChange();
+    if (res && !transition.empty()) {
+        if (auto* st = std::get_if<kanariv::ipc::Status>(&*res))
+            st->transition = transition;
+    }
+    return res;
+}
+
 void Service::Impl::syncMediaSession() {
     std::lock_guard<std::mutex> lk(mediaMtx_);
     if (!mediaSession_ || !mediaSession_->active() || !engine_)
@@ -664,6 +671,7 @@ bool commandRunsWithoutDatabase(const kanariv::ipc::Command& cmd) {
            std::holds_alternative<kanariv::ipc::Next>(cmd) ||
            std::holds_alternative<kanariv::ipc::Prev>(cmd) ||
            std::holds_alternative<kanariv::ipc::Seek>(cmd) ||
+           std::holds_alternative<kanariv::ipc::SeekBy>(cmd) ||
            std::holds_alternative<kanariv::ipc::VolumeSet>(cmd) ||
            std::holds_alternative<kanariv::ipc::StatusReq>(cmd) ||
            std::holds_alternative<kanariv::ipc::StatusWait>(cmd) ||

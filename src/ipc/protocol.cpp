@@ -176,6 +176,9 @@ Json toJson(const Command& cmd) {
             } else if constexpr (std::is_same_v<T, Seek>) {
                 j["type"] = "Seek";
                 j["seconds"] = v.seconds;
+            } else if constexpr (std::is_same_v<T, SeekBy>) {
+                j["type"] = "SeekBy";
+                j["delta"] = v.delta;
             } else if constexpr (std::is_same_v<T, StatusReq>) {
                 j["type"] = "StatusReq";
             } else if constexpr (std::is_same_v<T, StatusWait>) {
@@ -495,6 +498,12 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
             if (j.contains("seconds") && j["seconds"].isNumber())
                 sec = j["seconds"].get<double>();
             return Command{Seek{sec}};
+        }
+        if (t == "SeekBy") {
+            double delta = 0;
+            if (j.contains("delta") && j["delta"].isNumber())
+                delta = j["delta"].get<double>();
+            return Command{SeekBy{delta}};
         }
         if (t == "StatusReq")
             return Command{StatusReq{}};
@@ -972,6 +981,8 @@ Json toJson(const Result& r) {
                 j["q_size"] = v.q_size;
                 j["q_idx"] = v.q_idx;
                 j["version"] = v.version;
+                if (!v.transition.empty())
+                    j["transition"] = v.transition;
                 return j;
             } else if constexpr (std::is_same_v<T, QueueTracks>) {
                 Json j;
@@ -1307,6 +1318,8 @@ std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
                 s.q_idx = j["q_idx"].get<std::size_t>();
             if (j.contains("version") && j["version"].isString())
                 s.version = j["version"].get<std::string>();
+            if (j.contains("transition") && j["transition"].isString())
+                s.transition = j["transition"].get<std::string>();
             return Result{std::move(s)};
         }
         if (t == "QueueTracks") {

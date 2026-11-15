@@ -99,6 +99,15 @@ struct Status final {
      * when the producer did not set one.
      */
     std::string version;
+    /**
+     * @brief How the command that produced this status changed playback.
+     * @details `"resumed"` when playback continued in place (paused ->
+     * playing, or a restored session), `"started"` when it began from a track
+     * head, `"already_playing"` for a no-op resume. Empty for
+     * read-only replies (`StatusReq`/`StatusWait`) and transitions that need
+     * no wording, so a client never probes before acting to choose a message.
+     */
+    std::string transition;
 };
 
 // ---------------------------------------------------------------------------
