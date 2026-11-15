@@ -196,6 +196,18 @@ inline constexpr std::string_view kScopedFtsUpdateTrigger =
     "VALUES (new.id, new.title, new.artist, new.album, new.album_artist, new.genre);"
     "END;";
 
+/**
+ * @brief Version 6: drops indexes that duplicate a table constraint.
+ * @details `tracks.fingerprint` and `queue(queue_id, position)` already carry
+ * `UNIQUE` constraints, so their separate indexes only add write
+ * amplification. `idx_tracks_path` stays non-unique on purpose: identity is
+ * `(source_kind, source_key)` since version 3, and making path unique would
+ * reject rows instead of letting the scanner resolve them.
+ */
+inline constexpr std::string_view kDropRedundantIndexes =
+    "DROP INDEX IF EXISTS idx_tracks_fingerprint;"
+    "DROP INDEX IF EXISTS idx_queue_queue_pos;";
+
 std::expected<void, kanariv::utils::Error> execSql(sqlite3* db, std::string_view sql,
                                                    std::string_view context) {
     char* err = nullptr;
@@ -286,7 +298,7 @@ std::expected<void, kanariv::utils::Error> configureConnection(sqlite3* db) {
 }
 
 std::span<const MigrationStep> schemaMigrations() noexcept {
-    static constexpr std::array<MigrationStep, 5> steps{{
+    static constexpr std::array<MigrationStep, 6> steps{{
         MigrationStep{1, "base schema", kBaseSchema, nullptr},
         MigrationStep{2, "queue position uniqueness", kQueuePositionUniqueness, nullptr},
         MigrationStep{3, "track source identity", {}, &migrateSourceIdentity},
@@ -297,6 +309,7 @@ std::span<const MigrationStep> schemaMigrations() noexcept {
         // are reserved for tag-imported values, which nothing writes yet.
         MigrationStep{5, "clear mis-scaled replay gain",
                       "UPDATE tracks SET replay_gain_track=0, replay_gain_album=0", nullptr},
+        MigrationStep{6, "drop redundant indexes", kDropRedundantIndexes, nullptr},
     }};
     return steps;
 }

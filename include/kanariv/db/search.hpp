@@ -8,7 +8,7 @@
  * 1) Exact `MATCH sanitized`.
  * 2) Prefix `MATCH sanitized*`.
  * 3) `LIKE %escaped% ESCAPE '\' COLLATE NOCASE` on title/artist/album/album_artist/genre.
- * All stages are under a single `shared_lock` to avoid unlock gaps.
+ * All stages are under a single `unique_lock` to avoid unlock gaps.
  */
 
 #include <expected>
@@ -22,17 +22,17 @@ namespace kanariv::db {
 /**
  * @brief FTS5 search with LIKE fallback (three stages).
  * @ingroup kanariv_db
- * @param db Database to search (shared lock held for entire operation).
+ * @param db Database to search (lock held for entire operation).
  * @param query Raw user query (sanitized internally).
  * @param limit Maximum rows (<=0 defaults to 50).
  * @return Matching tracks, or `Error` with `StatusCode::Internal` if no DB handle,
  * or `Corrupt`/`Internal` on SQLite errors.
- * @details Stages (all under a single `shared_lock` to avoid unlock gaps):
+ * @details Stages (all under a single `unique_lock` to avoid unlock gaps):
  * 1) Exact `MATCH sanitized`.
  * 2) Prefix `MATCH sanitized*`.
  * 3) `LIKE %escaped% ESCAPE '\' COLLATE NOCASE` on title/artist/album/album_artist/genre.
  * @par Thread safety
- * Thread-safe: acquires `db.mutex()` as `shared_lock`.
+ * Thread-safe: acquires `db.mutex()` as `unique_lock`.
  * @see sanitizeFtsTerm
  * @see tryFtsQuery
  * @see searchLike
@@ -49,7 +49,7 @@ searchFts(db::Database& db, std::string_view query, int limit = 50);
  * @return Matching tracks, or `Error` with `StatusCode::Internal` if no handle.
  * @details Single `LIKE %escaped%` query across 5 columns with `COLLATE NOCASE`.
  * @par Thread safety
- * Thread-safe: acquires `shared_lock`.
+ * Thread-safe: acquires `unique_lock`.
  */
 KANARIV_API std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 searchLike(db::Database& db, std::string_view query, int limit = 50);

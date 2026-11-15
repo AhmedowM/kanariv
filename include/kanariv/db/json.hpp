@@ -24,9 +24,9 @@ namespace kanariv::db {
  * @param outPath Destination file path.
  * @return Success, or `Error` with `StatusCode::Internal`/`Io` on DB or file failure.
  * @details Calls `db.listTracks()` with no filter and writes
- * `{"tracks": [...]}` with 2-space indentation. Holds a shared lock via `listTracks`.
+ * `{"tracks": [...]}` with 2-space indentation. Holds the db lock via `listTracks`.
  * @par Thread safety
- * Thread-safe (shared lock).
+ * Thread-safe (takes the db lock).
  * @see importJson
  * @see trackToJson
  */

@@ -17,7 +17,6 @@
 #include <media/fingerprint.hpp>
 #include <mutex>
 #include <optional>
-#include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -66,12 +65,12 @@ scanLibrary(Database& db, int64_t libraryId,
     size_t batchPending = 0;
     // RAII: the lock is released and an open batch rolled back on every exit
     // path, including a failed BEGIN. No error path re-enters the mutex.
-    std::unique_lock<std::shared_mutex> batchLock;
+    std::unique_lock<std::mutex> batchLock;
     std::optional<DbTransaction> batchTx;
     auto beginBatch = [&]() -> std::expected<void, kanariv::utils::Error> {
         if (batchTx)
             return {};
-        batchLock = std::unique_lock<std::shared_mutex>(DatabaseAccess::mutex(db));
+        batchLock = std::unique_lock<std::mutex>(DatabaseAccess::mutex(db));
         if (!DatabaseAccess::handleLocked(db)) {
             batchLock.unlock();
             return std::unexpected{
@@ -368,7 +367,7 @@ scanLibrary(Database& db, int64_t libraryId,
                                      std::chrono::system_clock::now().time_since_epoch())
                                      .count();
                 {
-                    std::unique_lock<std::shared_mutex> lk(DatabaseAccess::mutex(db));
+                    std::unique_lock<std::mutex> lk(DatabaseAccess::mutex(db));
                     // Single UPDATE, no explicit transaction: a failed write is
                     // reported without re-entering the (non-recursive) mutex.
                     if (auto stored = DatabaseAccess::libraryUpdateLocked(db, l); !stored) {

@@ -4,10 +4,10 @@
  * @file database.hpp
  * @brief Main SQLite database handle with thread-safe CRUD.
  * @ingroup kanariv_db
- * @details Implements `Database` with a shared_mutex for the SQLite handle and
- * a mutex for the prepared-statement cache. All public methods are thread-safe;
- * see each method for locking requirements. Move operations are not thread-safe
- * after open.
+ * @details Implements `Database` with one mutex for the SQLite handle, the
+ * prepared-statement cache and every statement drawn from it. All public
+ * methods are thread-safe; see each method for locking requirements. Move
+ * operations are not thread-safe after open.
  */
 
 #include <array>
@@ -53,11 +53,11 @@ struct DatabaseOptions {
  * @details Implements the persistence ports (tracks, playlists, queues,
  * library, history, playback state) on one SQLite connection. Consumers
  * receive the ports through `contracts::Storage`, not this type.
- * @details Thread safety: dbMutex_ (shared_mutex) guards the handle and all
- * table access; cacheMutex_ (mutex) guards stmtCache_. Lock order is
- * dbMutex_ -> cacheMutex_. Readers take shared_lock on dbMutex_, writers
- * take unique_lock. getCachedForUse() requires the caller to already hold
- * cacheMutex_. Move operations are not thread-safe after open.
+ * @details Thread safety: dbMutex_ (mutex) serialises the handle, all table
+ * access and the statement cache; SQLite statements are not safe to share
+ * concurrently, so read and write operations both take unique_lock.
+ * getCachedForUse() requires the caller to already hold dbMutex_. Move
+ * operations are not thread-safe after open.
  * @see DatabaseOptions
  * @see SqliteStatement
  */
@@ -209,7 +209,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param id Track id.
      * @return Track or Error InvalidArg/NotFound/Internal.
      * @par Thread safety
-     * Thread-safe: shared_lock on dbMutex_.
+     * Thread-safe: unique_lock on dbMutex_.
      */
     std::expected<kanariv::types::Track, kanariv::utils::Error> getTrack(int64_t id) override;
 
@@ -219,7 +219,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param fp Fingerprint to search.
      * @return Track or Error NotFound/Internal.
      * @par Thread safety
-     * Thread-safe: shared_lock on dbMutex_.
+     * Thread-safe: unique_lock on dbMutex_.
      */
     std::expected<kanariv::types::Track, kanariv::utils::Error>
     findByFingerprint(const std::array<uint8_t, 32>& fp) override;
@@ -229,7 +229,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param path Path to search.
      * @return Track or Error NotFound/Internal.
      * @par Thread safety
-     * Thread-safe: shared_lock on dbMutex_.
+     * Thread-safe: unique_lock on dbMutex_.
      */
     std::expected<kanariv::types::Track, kanariv::utils::Error>
     findByPath(std::string_view path) override;
@@ -243,7 +243,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * `(source.kind, source.key)` instead of guessing a filesystem path for a
      * content URI. A transient descriptor number is never part of this key.
      * @par Thread safety
-     * Thread-safe: shared_lock on dbMutex_.
+     * Thread-safe: unique_lock on dbMutex_.
      * @see kanariv::types::normalizedSource
      */
     std::expected<kanariv::types::Track, kanariv::utils::Error>
@@ -256,7 +256,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @details Builds WHERE clauses from kanariv::types::TrackQuery fields; search uses LIKE
      * ESCAPE.
      * @par Thread safety
-     * Thread-safe: shared_lock on dbMutex_.
+     * Thread-safe: unique_lock on dbMutex_.
      * @see kanariv::types::TrackQuery
      */
     std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
@@ -267,7 +267,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param limit Maximum rows (<=0 defaults to 50).
      * @return Matching tracks, or a backend error.
      * @par Thread safety
-     * Thread-safe: shared_lock for the whole operation.
+     * Thread-safe: unique_lock for the whole operation.
      * @ingroup kanariv_db
      */
     std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
@@ -313,7 +313,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param id Playlist id.
      * @return Playlist or Error NotFound/InvalidArg.
      * @par Thread safety
-     * Thread-safe: shared_lock.
+     * Thread-safe: unique_lock.
      */
     std::expected<kanariv::types::Playlist, kanariv::utils::Error> getPlaylist(int64_t id) override;
     /**
@@ -361,7 +361,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @ingroup kanariv_db
      * @return Vector of playlists or Error.
      * @par Thread safety
-     * Thread-safe: shared_lock.
+     * Thread-safe: unique_lock.
      */
     std::expected<std::vector<kanariv::types::Playlist>, kanariv::utils::Error>
     listPlaylists() override;
@@ -406,7 +406,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param pid Playlist id.
      * @return Tracks or Error.
      * @par Thread safety
-     * Thread-safe: shared_lock.
+     * Thread-safe: unique_lock.
      */
     std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
     playlistGetTracks(int64_t pid) override;
@@ -489,7 +489,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param qid Queue id (0 -> 1).
      * @return Vector of items or Error.
      * @par Thread safety
-     * Thread-safe: shared_lock.
+     * Thread-safe: unique_lock.
      */
     std::expected<std::vector<kanariv::types::QueueItem>, kanariv::utils::Error>
     listQueueItems(int64_t qid) override;
@@ -501,7 +501,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @return Tracks ordered by queue position, or Error.
      * @details One join statement; matches listQueueItems() row for row.
      * @par Thread safety
-     * Thread-safe: shared_lock.
+     * Thread-safe: unique_lock.
      */
     std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
     tracksForQueue(int64_t qid) override;
@@ -598,7 +598,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param qid Queue id (0 -> 1).
      * @return Item count (zero for an empty queue), or a backend error.
      * @par Thread safety
-     * Thread-safe: shared_lock on dbMutex_; delegates to queueCountLocked().
+     * Thread-safe: unique_lock on dbMutex_; delegates to queueCountLocked().
      */
     std::expected<std::size_t, kanariv::utils::Error> queueCount(int64_t qid) override;
 
@@ -612,7 +612,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @details O(log n) via the queue position index (see
      * queueIndexOfLocked); O(1) extra memory vs listQueueItems().
      * @par Thread safety
-     * Thread-safe: shared_lock on dbMutex_.
+     * Thread-safe: unique_lock on dbMutex_.
      */
     std::expected<std::optional<std::size_t>, kanariv::utils::Error>
     queueIndexOf(int64_t qid, int64_t trackId) override;
@@ -635,7 +635,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @details Use `listHistory()` for the engine view, which joins tracks and
      * fills title/artist/path/duration.
      * @par Thread safety
-     * Thread-safe: shared_lock.
+     * Thread-safe: unique_lock.
      */
     std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
     queryHistory(const kanariv::types::HistoryQuery* q = nullptr);
@@ -659,7 +659,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param tid Track id.
      * @return Bookmarks or Error.
      * @par Thread safety
-     * Thread-safe: shared_lock.
+     * Thread-safe: unique_lock.
      */
     std::expected<std::vector<kanariv::types::Bookmark>, kanariv::utils::Error>
     listBookmarks(int64_t tid) override;
@@ -669,7 +669,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param id Bookmark id.
      * @return Bookmark, InvalidArg, NotFound or Error.
      * @par Thread safety
-     * Thread-safe: shared_lock.
+     * Thread-safe: unique_lock.
      */
     std::expected<kanariv::types::Bookmark, kanariv::utils::Error> bookmarkGet(int64_t id) override;
     /**
@@ -703,7 +703,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param tid Track id.
      * @return Lyrics, or NotFound when no lyrics exist for the track.
      * @par Thread safety
-     * Thread-safe: shared_lock.
+     * Thread-safe: unique_lock.
      */
     std::expected<kanariv::types::Lyrics, kanariv::utils::Error> lyricsGet(int64_t tid) override;
     /**
@@ -733,7 +733,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @ingroup kanariv_db
      * @return Vector of libraries or Error.
      * @par Thread safety
-     * Thread-safe: shared_lock (delegates to libraryListLocked).
+     * Thread-safe: unique_lock on dbMutex_ (delegates to libraryListLocked).
      */
     std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error>
     listLibraries() override;
@@ -762,7 +762,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @ingroup kanariv_db
      * @return kanariv::types::PlaybackStats or Error.
      * @par Thread safety
-     * Thread-safe: shared_lock + cacheMutex_ for cached statements.
+     * Thread-safe: unique_lock on dbMutex_ (cached statements included).
      */
     std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> getStats() override;
     /**
@@ -788,7 +788,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      *   are split so each individual artist is counted separately.
      * @return Stats or Error.
      * @par Thread safety
-     * Thread-safe: shared_lock + cacheMutex_.
+     * Thread-safe: unique_lock on dbMutex_.
      */
     std::expected<kanariv::types::LibraryStats, kanariv::utils::Error>
     libraryStats(std::optional<int> topTracks = std::nullopt,

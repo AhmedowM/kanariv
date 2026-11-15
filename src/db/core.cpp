@@ -24,7 +24,6 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <shared_mutex>
 #include <span>
 #include <string>
 #include <string_view>
@@ -64,17 +63,18 @@ struct Database::Impl {
     std::filesystem::path path_;
     /// Non-owning log sink from DatabaseOptions (null = silent). See DatabaseOptions::logger.
     kanariv::utils::Logger* logger_{nullptr};
-    // Lock order: dbMutex_ -> cacheMutex_.
-    mutable std::shared_mutex dbMutex_;
+    // One mutex serialises the handle, the statement cache and every statement
+    // taken from it: SQLite statements and the cache are not safe to touch
+    // concurrently, so a shared/unique split only bought false parallelism.
+    mutable std::mutex dbMutex_;
     mutable std::unordered_map<std::string, std::unique_ptr<SqliteStatement>> stmtCache_;
-    mutable std::mutex cacheMutex_;
 
     // Raw locking surface
     std::expected<SqliteStatement*, kanariv::utils::Error>
     getCachedForUse(std::string_view sql) const;
     sqlite3* handle() const noexcept;
     sqlite3* handleLocked() const noexcept;
-    std::shared_mutex& mutex() const noexcept;
+    std::mutex& mutex() const noexcept;
 
     // Track / library locked helpers
     std::expected<kanariv::types::Track, kanariv::utils::Error>
@@ -138,7 +138,7 @@ const std::filesystem::path& Database::path() const noexcept {
 
 std::expected<SqliteStatement*, kanariv::utils::Error>
 Database::Impl::getCachedForUse(std::string_view sql) const {
-    // Caller must hold cacheMutex_; see method docs.
+    // Caller must hold dbMutex_; see method docs.
     std::string key(sql);
     auto it = stmtCache_.find(key);
     if (it != stmtCache_.end()) {
@@ -197,7 +197,7 @@ sqlite3* Database::Impl::handle() const noexcept {
     return db_.get();
 }
 
-std::shared_mutex& Database::Impl::mutex() const noexcept {
+std::mutex& Database::Impl::mutex() const noexcept {
     return dbMutex_;
 }
 
@@ -242,7 +242,6 @@ Database::Impl::findByPathLocked(std::string_view path) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     std::string sql = std::string(internal::selectTracksCols) + " WHERE path=?";
-    std::unique_lock cacheLk{cacheMutex_};
     auto sRes = getCachedForUse(sql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -269,7 +268,6 @@ Database::Impl::findBySourceLocked(const kanariv::types::SourceRef& source) {
     }
     std::string sql =
         std::string(internal::selectTracksCols) + " WHERE source_kind=? AND source_key=?";
-    std::unique_lock cacheLk{cacheMutex_};
     auto sRes = getCachedForUse(sql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -292,7 +290,6 @@ Database::Impl::findByFingerprintLocked(const std::array<uint8_t, 32>& fp) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     std::string sql = std::string(internal::selectTracksCols) + " WHERE fingerprint=?";
-    std::unique_lock cacheLk{cacheMutex_};
     auto sRes = getCachedForUse(sql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -314,7 +311,6 @@ Database::Impl::insertTrackLocked(const kanariv::types::Track& t) {
     if (!db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
-    std::unique_lock cacheLk{cacheMutex_};
     auto sRes = getCachedForUse(insertTrackSql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -341,7 +337,6 @@ Database::Impl::updateTrackLocked(const kanariv::types::Track& t) {
     if (!db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
-    std::unique_lock cacheLk{cacheMutex_};
     auto sRes = getCachedForUse(updateTrackSql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -364,7 +359,6 @@ std::expected<void, kanariv::utils::Error> Database::Impl::deleteTrackLocked(int
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     std::string_view sql = "DELETE FROM tracks WHERE id=?";
-    std::unique_lock cacheLk{cacheMutex_};
     auto sRes = getCachedForUse(sql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -531,7 +525,7 @@ std::expected<void, kanariv::utils::Error> Database::deleteTrack(int64_t id) {
 }
 
 std::expected<kanariv::types::Track, kanariv::utils::Error> Database::getTrack(int64_t id) {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     return impl_->getTrackLocked(id);
 }
 
@@ -543,7 +537,6 @@ Database::Impl::getTrackLocked(int64_t id) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     std::string sql = std::string(internal::selectTracksCols) + " WHERE id=?";
-    std::unique_lock cacheLk{cacheMutex_};
     auto sRes = getCachedForUse(sql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -561,12 +554,11 @@ Database::Impl::getTrackLocked(int64_t id) {
 
 std::expected<kanariv::types::Track, kanariv::utils::Error>
 Database::findByFingerprint(const std::array<uint8_t, 32>& fp) {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     std::string sql = std::string(internal::selectTracksCols) + " WHERE fingerprint=?";
-    std::unique_lock cacheLk{impl_->cacheMutex_};
     auto sRes = impl_->getCachedForUse(sql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -585,12 +577,11 @@ Database::findByFingerprint(const std::array<uint8_t, 32>& fp) {
 
 std::expected<kanariv::types::Track, kanariv::utils::Error>
 Database::findByPath(std::string_view path) {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     std::string sql = std::string(internal::selectTracksCols) + " WHERE path=?";
-    std::unique_lock cacheLk{impl_->cacheMutex_};
     auto sRes = impl_->getCachedForUse(sql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -608,13 +599,13 @@ Database::findByPath(std::string_view path) {
 
 std::expected<kanariv::types::Track, kanariv::utils::Error>
 Database::findBySource(const kanariv::types::SourceRef& source) {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     return impl_->findBySourceLocked(source);
 }
 
 std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 Database::listTracks(std::optional<kanariv::types::TrackQuery> q) {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -749,7 +740,6 @@ std::expected<void, kanariv::utils::Error> Database::setDirty(int64_t id, int di
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     std::string_view sql = "UPDATE tracks SET dirty=? WHERE id=?";
-    std::unique_lock cacheLk{impl_->cacheMutex_};
     auto sRes = impl_->getCachedForUse(sql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -777,7 +767,6 @@ std::expected<void, kanariv::utils::Error> Database::setRating(int64_t id, int32
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     std::string_view sql = "UPDATE tracks SET rating=? WHERE id=?";
-    std::unique_lock cacheLk{impl_->cacheMutex_};
     auto sRes = impl_->getCachedForUse(sql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -823,7 +812,7 @@ Database::createPlaylist(std::string_view name, int type, std::string_view smart
 std::expected<kanariv::types::Playlist, kanariv::utils::Error> Database::getPlaylist(int64_t id) {
     if (id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -1033,7 +1022,7 @@ Database::Impl::playlistAddTrackLocked(int64_t pid, int64_t tid, int64_t pos) {
 
 std::expected<std::vector<kanariv::types::Playlist>, kanariv::utils::Error>
 Database::listPlaylists() {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -1202,7 +1191,7 @@ Database::playlistGetTracks(int64_t pid) {
             return std::unexpected{q.error()};
         return listTracks(*q);
     }
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -1288,25 +1277,25 @@ std::expected<void, kanariv::utils::Error> Database::queueClear(int64_t qid) {
 std::expected<std::vector<kanariv::types::QueueItem>, kanariv::utils::Error>
 Database::listQueueItems(int64_t qid) {
     qid = kanariv::db::normalizeQueueId(qid);
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     return kanariv::db::queueListLocked(impl_->db_.get(), qid);
 }
 
 std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 Database::tracksForQueue(int64_t qid) {
     qid = kanariv::db::normalizeQueueId(qid);
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     return kanariv::db::queueTracksLocked(impl_->db_.get(), qid);
 }
 
 std::expected<kanariv::types::Queue, kanariv::utils::Error> Database::getQueue(int64_t qid) {
     qid = kanariv::db::normalizeQueueId(qid);
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     return kanariv::db::getQueueLocked(impl_->db_.get(), qid);
 }
 
 std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error> Database::listQueues() {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     return kanariv::db::listQueuesLocked(impl_->db_.get());
 }
 
@@ -1339,7 +1328,7 @@ std::expected<void, kanariv::utils::Error> Database::setQueueTemp(int64_t qid, b
 
 std::expected<std::size_t, kanariv::utils::Error> Database::queueCount(int64_t qid) {
     qid = kanariv::db::normalizeQueueId(qid);
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -1355,7 +1344,7 @@ Database::queueIndexOf(int64_t qid, int64_t trackId) {
     qid = kanariv::db::normalizeQueueId(qid);
     if (trackId == 0)
         return std::nullopt;
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -1370,7 +1359,6 @@ Database::historyAdd(const kanariv::types::HistoryEntry& e) {
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     std::string_view sql = "INSERT INTO history (track_id, started_at, completed_at, "
                            "position_ms, completion_pct, queue_id) VALUES (?,?,?,?,?,?)";
-    std::unique_lock cacheLk{impl_->cacheMutex_};
     auto sRes = impl_->getCachedForUse(sql);
     if (!sRes)
         return std::unexpected{sRes.error()};
@@ -1394,7 +1382,7 @@ Database::historyAdd(const kanariv::types::HistoryEntry& e) {
 
 std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
 Database::queryHistory(const kanariv::types::HistoryQuery* q) {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -1493,7 +1481,7 @@ std::expected<std::vector<kanariv::types::Bookmark>, kanariv::utils::Error>
 Database::listBookmarks(int64_t tid) {
     if (tid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -1521,7 +1509,7 @@ Database::listBookmarks(int64_t tid) {
 std::expected<kanariv::types::Bookmark, kanariv::utils::Error> Database::bookmarkGet(int64_t id) {
     if (id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -1602,7 +1590,7 @@ std::expected<void, kanariv::utils::Error> Database::lyricsSet(int64_t tid,
 std::expected<kanariv::types::Lyrics, kanariv::utils::Error> Database::lyricsGet(int64_t tid) {
     if (tid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -1674,7 +1662,7 @@ std::expected<int64_t, kanariv::utils::Error> Database::libraryAdd(std::string_v
 
 std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error>
 Database::listLibraries() {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     return impl_->libraryListLocked();
 }
 
@@ -1705,12 +1693,11 @@ std::expected<void, kanariv::utils::Error> Database::libraryDelete(int64_t id) {
 }
 
 std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::getStats() {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     kanariv::types::PlaybackStats s;
-    std::unique_lock cacheLk{impl_->cacheMutex_};
     auto one = [&](std::string_view sql, int64_t& out) {
         auto sRes = impl_->getCachedForUse(sql);
         if (!sRes)
@@ -1740,12 +1727,11 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::ge
 std::expected<kanariv::types::LibraryStats, kanariv::utils::Error>
 Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbums,
                        std::optional<int> topGenres, std::optional<int> topArtists) {
-    std::shared_lock lk{impl_->dbMutex_};
+    std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     kanariv::types::LibraryStats d{};
-    std::unique_lock cacheLk{impl_->cacheMutex_};
 
     // Total tracks, queues, playlists
     auto one = [&](std::string_view sql, auto& out) {
@@ -1942,7 +1928,7 @@ sqlite3* DatabaseAccess::handleLocked(Database& db) noexcept {
     return db.impl_->handleLocked();
 }
 
-std::shared_mutex& DatabaseAccess::mutex(Database& db) noexcept {
+std::mutex& DatabaseAccess::mutex(Database& db) noexcept {
     return db.impl_->mutex();
 }
 

@@ -32,7 +32,7 @@ namespace kanariv::db {
  * @return Success or `Error` with `StatusCode::InvalidArg` if libraryId==0,
  * `StatusCode::NotFound` if library or path not found, `StatusCode::Busy` if
  * `BEGIN IMMEDIATE` fails, or `StatusCode::Internal` on commit failure.
- * @details Batching: holds `Database::mutex()` as `unique_lock<shared_mutex>`
+ * @details Batching: holds `Database::mutex()` as `unique_lock`
  * for `batchSize` (500) files, wrapped in `BEGIN IMMEDIATE / COMMIT`, so
  * concurrent `listQueueItems` never sees partial state and a crash leaves DB
  * consistent per batch. Deduplication: early-exit on `path+size+mtime` match;
@@ -43,8 +43,7 @@ namespace kanariv::db {
  * hold `db.mutex()` across the call.
  * @par Lock ordering
  * Acquires `db.mutex()` (dbMutex_) exclusively per batch; inside the batch
- * uses `*Locked` helpers that assume the lock is held and additionally take
- * `cacheMutex_` internally.
+ * uses `*Locked` helpers that assume the same lock is held.
  * @see kanariv::media::scanTracks
  * @see Database::findByPathLocked
  * @see Database::findByFingerprintLocked

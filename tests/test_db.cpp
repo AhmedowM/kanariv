@@ -53,6 +53,17 @@ bool tableExists(sqlite3* db, std::string_view name) {
     return found;
 }
 
+bool indexExists(sqlite3* db, std::string_view name) {
+    sqlite3_stmt* raw = nullptr;
+    if (sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?", -1,
+                           &raw, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_text(raw, 1, name.data(), static_cast<int>(name.size()), SQLITE_TRANSIENT);
+    const bool found = sqlite3_step(raw) == SQLITE_ROW;
+    sqlite3_finalize(raw);
+    return found;
+}
+
 struct SqliteHandleCloser {
     void operator()(sqlite3* h) const noexcept {
         if (h)
@@ -794,6 +805,26 @@ TEST_CASE("migration 5 clears gains written by the old loudness heuristic", "[db
     auto version = internal::readUserVersion(DatabaseAccess::handle(*db));
     REQUIRE(version.has_value());
     CHECK(*version == internal::kSchemaVersion);
+}
+
+TEST_CASE("migration 6 drops indexes that duplicate table constraints", "[db][migration]") {
+    auto path = kanariv::test_helpers::tempDbPath("redundant_indexes");
+    auto opened = Database::open(path.string());
+    REQUIRE(opened.has_value());
+    auto db = std::move(*opened);
+    sqlite3* handle = DatabaseAccess::handle(*db);
+    CHECK(!indexExists(handle, "idx_tracks_fingerprint"));
+    CHECK(!indexExists(handle, "idx_queue_queue_pos"));
+
+    // The table constraint still rejects a duplicate queue position.
+    char* err = nullptr;
+    int rc = sqlite3_exec(handle,
+                          "INSERT INTO queue (queue_id, position) VALUES (1, 0);"
+                          "INSERT INTO queue (queue_id, position) VALUES (1, 0);",
+                          nullptr, nullptr, &err);
+    if (err)
+        sqlite3_free(err);
+    CHECK(rc != SQLITE_OK);
 }
 
 TEST_CASE("queue positions are stored ordering values and APIs take indices",

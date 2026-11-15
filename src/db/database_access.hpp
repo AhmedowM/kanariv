@@ -12,7 +12,7 @@
  *
  * Every forwarder only delegates; the locking contract stays with the
  * caller -- the `*Locked` helpers still require the caller to hold
- * `dbMutex_`, and `getCachedForUse` still requires `cacheMutex_`.
+ * `dbMutex_`, and `getCachedForUse` is only safe under that same lock.
  *
  * Internal header: lives in `src/`, not installed.
  */
@@ -23,8 +23,8 @@
 #include <cstdint>
 #include <db/queue.hpp>
 #include <expected>
+#include <mutex>
 #include <optional>
-#include <shared_mutex>
 #include <string_view>
 #include <vector>
 
@@ -56,9 +56,9 @@ struct DatabaseAccess {
      * @brief Forwards to Database::mutex().
      * @ingroup kanariv_db
      * @param db Database instance.
-     * @return Reference to the shared_mutex guarding the handle and tables.
+     * @return Reference to the mutex guarding the handle, statement cache and tables.
      */
-    static std::shared_mutex& mutex(Database& db) noexcept;
+    static std::mutex& mutex(Database& db) noexcept;
     /**
      * @brief Forwards to Database::getCachedForUse().
      * @ingroup kanariv_db

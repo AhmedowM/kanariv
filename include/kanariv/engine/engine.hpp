@@ -310,7 +310,7 @@ class KANARIV_API Engine final {
      * @ingroup kanariv_engine
      * @return `std::expected<types::PlaybackStats, Error>` -- stats on success, Error if no db.
      * @par Thread safety
-     * Thread-safe; delegates to Database::getStats() which takes shared_lock.
+     * Thread-safe; delegates to Database::getStats() which takes the db lock.
      * @see kanariv::db::Database::getStats
      * @see kanariv::types::PlaybackStats
      */
@@ -323,7 +323,7 @@ class KANARIV_API Engine final {
      * @return `std::expected<std::vector<types::HistoryEntry>, Error>` -- vector on success, State
      * if no db. Entries carry track snapshots (title/artist/path/duration).
      * @par Thread safety
-     * Thread-safe; takes shared_lock on the database mutex.
+     * Thread-safe; takes the database mutex exclusively.
      * @see kanariv::types::HistoryEntry
      */
     std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>

@@ -10,7 +10,7 @@
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
-#include <shared_mutex>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -57,7 +57,7 @@ searchFts(Database& db, std::string_view query, int limit) {
     if (sanitized.empty())
         return std::vector<kanariv::types::Track>{};
     std::string ftsQ = sanitized;
-    std::shared_lock lock(DatabaseAccess::mutex(db));
+    std::unique_lock lock(DatabaseAccess::mutex(db));
     sqlite3* h = DatabaseAccess::handle(db);
     if (!h)
         return std::unexpected{
@@ -105,7 +105,7 @@ searchLike(Database& db, std::string_view query, int limit) {
         return std::vector<kanariv::types::Track>{};
     std::string esc = internal::escapeLike(query);
     std::string pat = "%" + esc + "%";
-    std::shared_lock lock(DatabaseAccess::mutex(db));
+    std::unique_lock lock(DatabaseAccess::mutex(db));
     sqlite3* h = DatabaseAccess::handle(db);
     if (!h)
         return std::unexpected{

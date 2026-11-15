@@ -50,10 +50,9 @@
  * Threading model:
  * - `utils::SpscRing` -- lock-free SPSC (decode thread ->' audio callback)
  * - `Engine` -- `queueMutex_` (try_lock) for queue state, `decodeMtx_` for
- *   decoder/ring vs seek, `dbMutex_` (shared_mutex) for DB, `cbMutex_` for callbacks.
- * - `Database` -- `dbMutex_` (shared_mutex) serializes all SQLite access;
- *   `cacheMutex_` protects prepared-statement cache.
- *   Lock order: `dbMutex_` ->' `cacheMutex_`.
+ *   decoder/ring vs seek, `dbMutex_` for DB, `cbMutex_` for callbacks.
+ * - `Database` -- `dbMutex_` (mutex) serializes all SQLite access, including
+ *   the prepared-statement cache.
  * - Background writer -- single consumer, bounded MPSC queue,
  *   `condition_variable` + `stop_token`.
  *

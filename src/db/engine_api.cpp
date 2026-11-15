@@ -12,7 +12,6 @@
 #include <limits>
 #include <mutex>
 #include <optional>
-#include <shared_mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -54,7 +53,7 @@ std::expected<kanariv::types::Track, kanariv::utils::Error> Database::queueTrack
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
     int64_t trackId = 0;
     {
-        std::shared_lock lock(DatabaseAccess::mutex(*this));
+        std::unique_lock lock(DatabaseAccess::mutex(*this));
         sqlite3_stmt* raw = nullptr;
         const char* sql =
             "SELECT track_id FROM queue WHERE queue_id=? ORDER BY position LIMIT 1 OFFSET ?";
@@ -76,7 +75,7 @@ std::optional<kanariv::types::EngineState> Database::legacyEngineState() {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::nullopt;
-    std::shared_lock lock(DatabaseAccess::mutex(*this));
+    std::unique_lock lock(DatabaseAccess::mutex(*this));
     sqlite3_stmt* raw = nullptr;
     const char* sql = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, volume, "
                       "shuffle_perm, active_queue_id, pre_mute_volume, position_ms "
@@ -217,7 +216,7 @@ Database::listHistory(int limit) {
     if (!handle)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
-    std::shared_lock lock(DatabaseAccess::mutex(*this));
+    std::unique_lock lock(DatabaseAccess::mutex(*this));
     std::string sql = "SELECT h.id, h.track_id, h.started_at, h.completed_at, h.position_ms, "
                       "h.completion_pct, h.queue_id, t.title, t.artist, t.path, t.duration "
                       "FROM history h JOIN tracks t ON t.id=h.track_id "
