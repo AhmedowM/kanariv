@@ -438,15 +438,22 @@ config; rotated at 1 MB keeping \fBkanariv.log.1\fR and \fBkanariv.log.2\fR.
 Success (including \fBstart\fR when the daemon is already running).
 .TP
 .B 1
-General error: unknown command, runtime failure, I/O error. Details go to stderr.
+General error: runtime failure, I/O error, failed batch entry. Details go to
+stderr.
+.TP
+.B 2
+Usage error: unknown command, missing or conflicting option, or an argument
+that fails the documented grammar (e.g. \fBseek abc\fR, \fBvolume 101\fR).
+The message names the offending value; \fB\-\-help\fR lists the valid forms.
 .TP
 .B 105
 Daemon not running or invalid state for the requested operation (e.g. queue empty,
 not playing). Start the daemon with \fBkanariv start\fR or check the current state.
 .TP
 .B 106
-Invalid argument: missing or malformed option, out-of-range value, validation
-failure. Check \fB\-\-help\fR for valid grammars.
+Invalid argument: the value parsed but failed semantic validation that needs
+the library or engine (e.g. an out-of-range seek target, an unknown id form
+accepted by the grammar but rejected by the store).
 .TP
 .B 109
 Requested entity not found: track, device, playlist, or queue id does not exist.

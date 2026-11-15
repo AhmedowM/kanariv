@@ -254,62 +254,65 @@ TEST_CASE("cli version subcommand prints details", "[cli]") {
 }
 
 TEST_CASE("cli rejects unknown command", "[cli]") {
+    // An unknown word is a direct-play path, so this is the app's runtime
+    // "no such file" failure, not a parser rejection.
     auto r = runCli({"frobnicate"});
     REQUIRE(r.exitCode == 1);
     REQUIRE(contains(r.out + r.err, "frobnicate"));
 }
 
 TEST_CASE("cli rejects missing required arg", "[cli]") {
+    // App-layer batch failure (BatchReport::fail), which stays exit 1.
     auto r = runCli({"queue", "add"});
     REQUIRE(r.exitCode == 1);
 }
 
 TEST_CASE("cli validates log level", "[cli]") {
     auto r = runCli({"--log-level", "bogus", "status"});
-    REQUIRE(r.exitCode == 1);
+    REQUIRE(r.exitCode == 2);
     REQUIRE(contains(r.err, "log-level"));
 }
 
 TEST_CASE("cli seek validates time grammar", "[cli]") {
     auto bad = runCli(withCfg("gold_seek1", {"seek", "abc"}));
-    REQUIRE(bad.exitCode == 1);
+    REQUIRE(bad.exitCode == 2);
     REQUIRE(contains(bad.err, "invalid time"));
     REQUIRE(contains(bad.err, "mm:ss"));
     auto colons = runCli(withCfg("gold_seek2", {"seek", "1:2:3:4"}));
-    REQUIRE(colons.exitCode == 1);
+    REQUIRE(colons.exitCode == 2);
     REQUIRE(contains(colons.err, "too many colons"));
     auto overflow = runCli(withCfg("gold_seek3", {"seek", "1:70"}));
-    REQUIRE(overflow.exitCode == 1);
+    REQUIRE(overflow.exitCode == 2);
     REQUIRE(contains(overflow.err, "ss < 60"));
     auto overflowH = runCli(withCfg("gold_seek4", {"seek", "1:2:70"}));
-    REQUIRE(overflowH.exitCode == 1);
+    REQUIRE(overflowH.exitCode == 2);
     REQUIRE(contains(overflowH.err, "ss < 60"));
 }
 
 TEST_CASE("cli volume validates range", "[cli]") {
     auto bad = runCli(withCfg("gold_vol1", {"volume", "loud"}));
-    REQUIRE(bad.exitCode == 1);
+    REQUIRE(bad.exitCode == 2);
     REQUIRE(contains(bad.err, "invalid volume"));
     REQUIRE(contains(bad.err, "0-100"));
     auto range = runCli(withCfg("gold_vol2", {"volume", "101"}));
-    REQUIRE(range.exitCode == 1);
+    REQUIRE(range.exitCode == 2);
     REQUIRE(contains(range.err, "out of range"));
 }
 
 TEST_CASE("cli shuffle/repeat echo valid modes", "[cli]") {
+    // Mode syntax is a CLI11 IsMember check, so a bad mode is a usage error
+    // (2) rejected before any daemon interaction.
     auto s = runCli(withCfg("gold_shuf", {"queue", "shuffle", "bogus"}));
-    REQUIRE(s.exitCode == 1);
-    REQUIRE(contains(s.err, "invalid mode"));
-    REQUIRE(contains(s.err, "on|off"));
+    REQUIRE(s.exitCode == 2);
+    REQUIRE(contains(s.err, "bogus"));
     auto r = runCli(withCfg("gold_rep", {"queue", "repeat", "bogus"}));
-    REQUIRE(r.exitCode == 1);
-    REQUIRE(contains(r.err, "invalid mode"));
-    REQUIRE(contains(r.err, "off|one|all"));
+    REQUIRE(r.exitCode == 2);
+    REQUIRE(contains(r.err, "bogus"));
 }
 
 TEST_CASE("cli status watch validates interval", "[cli]") {
     auto r = runCli(withCfg("gold_int", {"status", "--watch", "--interval", "0"}));
-    REQUIRE(r.exitCode == 1);
+    REQUIRE(r.exitCode == 2);
     REQUIRE(contains(r.err, "positive"));
 }
 
@@ -318,12 +321,12 @@ TEST_CASE("cli status watch and follow are aliases", "[cli]") {
     // accepted. They are distinct now and the contradictory pair is rejected
     // before any daemon interaction.
     auto both = runCli(withCfg("gold_wf1", {"status", "--watch", "--follow"}));
-    REQUIRE(both.exitCode == 1);
+    REQUIRE(both.exitCode == 2);
     REQUIRE(contains(both.err, "--watch"));
     REQUIRE(contains(both.err, "--follow"));
     // Each flag alone still reaches the shared interval validation.
     auto follow = runCli(withCfg("gold_wf2", {"status", "--follow", "--interval", "0"}));
-    REQUIRE(follow.exitCode == 1);
+    REQUIRE(follow.exitCode == 2);
     REQUIRE(contains(follow.err, "positive"));
 }
 
@@ -656,7 +659,7 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     REQUIRE(tgj.exitCode == 0);
     REQUIRE(contains(tgj.out, "\"year\""));
     auto tgbad = run({"tag", "get", "1", "bogus"});
-    REQUIRE(tgbad.exitCode == 1);
+    REQUIRE(tgbad.exitCode == 2);
     auto tgmiss = run({"tag", "get", "99999"});
     REQUIRE(tgmiss.exitCode == 109);
     REQUIRE(contains(tgmiss.err, "99999"));

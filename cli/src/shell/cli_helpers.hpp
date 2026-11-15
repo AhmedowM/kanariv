@@ -21,6 +21,15 @@ namespace kanariv::app::cli::detail {
 inline constexpr int exitOk = 0;
 /** @brief Runtime failure (including a failed or partial batch). @ingroup kanariv_app */
 inline constexpr int exitRuntime = 1;
+/**
+ * @brief Command-line usage error (L8).
+ * @details Unknown command, missing option, unparseable value or conflicting
+ * flags: the invocation itself is wrong, so `--help` is the fix. Defined here
+ * so the CLI11 remap in shell.cpp and the hand-written grammar checks share
+ * one constant.
+ * @ingroup kanariv_app
+ */
+inline constexpr int exitUsage = 2;
 /** @brief Daemon down or in a state that rejects the command. @ingroup kanariv_app */
 inline constexpr int exitDaemonDown = 105;
 /** @brief Argument rejected by daemon-side validation. @ingroup kanariv_app */
@@ -37,7 +46,8 @@ inline constexpr int exitNotFound = 109;
  * @details Every path (single outcomes, batches, JSON renders, watch/lyrics
  * loops) derives process status from here: `ipc::Result` keeps an embedded
  * error alternative, and re-deriving 0/1 from it produced codes that
- * disagreed with this table.
+ * disagreed with this table. Failures that never become a StatusCode (CLI11
+ * parse errors, shell grammar checks) use exitUsage instead.
  */
 inline int exitCodeForError(const kanariv::utils::Error& e) {
     using kanariv::utils::StatusCode;

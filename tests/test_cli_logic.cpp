@@ -20,6 +20,7 @@ using kanariv::utils::StatusCode;
 TEST_CASE("cli exit-code table maps status codes", "[cli][logic]") {
     REQUIRE(exitOk == 0);
     REQUIRE(exitRuntime == 1);
+    REQUIRE(exitUsage == 2);
     REQUIRE(exitDaemonDown == 105);
     REQUIRE(exitInvalidArgument == 106);
     REQUIRE(exitNotFound == 109);

@@ -18,6 +18,15 @@
 #endif
 
 #include <CLI/CLI.hpp>
+#include <chrono>
+#include <cstdint>
+#include <cstdlib>
+#include <ctime>
+#include <expected>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <iostream>
 #include <kanariv/app/app.hpp>
 #include <kanariv/app/paths.hpp>
 #include <kanariv/client/client.hpp>
@@ -28,8 +37,8 @@
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/types/format.hpp>
-#include <kanariv/utils/error.hpp>
 #include <kanariv/utils/base64.hpp>
+#include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/math.hpp>
@@ -37,15 +46,6 @@
 #include <kanariv/utils/print.hpp>
 #include <kanariv/utils/result.hpp>
 #include <kanariv/version.hpp>
-#include <chrono>
-#include <cstdint>
-#include <cstdlib>
-#include <ctime>
-#include <expected>
-#include <filesystem>
-#include <fstream>
-#include <format>
-#include <iostream>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -114,13 +114,15 @@ std::string statusLine(const kanariv::ipc::Status& st) {
         who = st.artist + st.title;
     if (!who.empty())
         s += " " + who;
-    s += " [" + kanariv::utils::formatClock(st.pos) + "/" + kanariv::utils::formatClock(st.dur) + "]";
+    s += " [" + kanariv::utils::formatClock(st.pos) + "/" + kanariv::utils::formatClock(st.dur) +
+         "]";
     return s;
 }
 
 // Exit codes come from the one table in cli_helpers.hpp (0 success, 1
-// runtime, 105 daemon down/bad state, 106 invalid argument, 109 not found).
-// No render path may re-derive status from an embedded ipc::Result error.
+// runtime, 2 usage, 105 daemon down/bad state, 106 invalid argument,
+// 109 not found). No render path may re-derive status from an embedded
+// ipc::Result error.
 
 int renderError(const kanariv::utils::Error& e) {
     // Same bytes as app::detail::renderErrorInto (which is src/-internal and
@@ -377,8 +379,7 @@ int renderLyricsLive(const kanariv::ipc::Lyrics& ly, const std::filesystem::path
                      const std::filesystem::path& socketPath, std::stop_token stop, bool ansi) {
     auto lines = parseLrc(ly.lrc_text);
     if (lines.empty()) {
-        kanariv::println(std::cerr,
-                        "lyrics get --live: no time-coded lyrics found");
+        kanariv::println(std::cerr, "lyrics get --live: no time-coded lyrics found");
         return exitRuntime;
     }
 
@@ -395,8 +396,8 @@ int renderLyricsLive(const kanariv::ipc::Lyrics& ly, const std::filesystem::path
             ++failures;
             if (failures == 1)
                 kanariv::println(std::cerr,
-                                "lyrics get --live: lost connection to daemon ({}); retrying",
-                                pres.error().message);
+                                 "lyrics get --live: lost connection to daemon ({}); retrying",
+                                 pres.error().message);
             if (failures > maxRetries) {
                 kanariv::println(std::cerr, "lyrics get --live: lost connection to daemon");
                 return exitRuntime;
@@ -582,12 +583,13 @@ int Shell::run(int argc, char** argv) {
     std::string qShuffleArg;
     bool qShuffleJson = false;
     auto* qShuffle = queueCmd->add_subcommand("shuffle", "Set shuffle");
-    qShuffle->add_option("mode", qShuffleArg, "on|off");
+    qShuffle->add_option("mode", qShuffleArg, "on|off")->check(CLI::IsMember({"on", "off"}));
     qShuffle->add_flag("--json", qShuffleJson, "JSON output");
     std::string qRepeatArg;
     bool qRepeatJson = false;
     auto* qRepeat = queueCmd->add_subcommand("repeat", "Set repeat");
-    qRepeat->add_option("mode", qRepeatArg, "off|one|all");
+    qRepeat->add_option("mode", qRepeatArg, "off|one|all")
+        ->check(CLI::IsMember({"off", "one", "all"}));
     qRepeat->add_flag("--json", qRepeatJson, "JSON output");
     auto* plCmd = cli_->add_subcommand("playlist", "Playlist operations");
     bool plJson = false;
@@ -718,9 +720,12 @@ int Shell::run(int argc, char** argv) {
     bool libListJson = false;
     auto* libList = libCmd->add_subcommand("list", "List all tracks in library");
     libList->add_option("--query", libListQuery, "Search query (title, artist, album, genre)");
-    libList->add_option("--sort", libListSort, "Sort field: id, title, artist, album, year, rating, play_count, duration, date_added");
+    libList->add_option(
+        "--sort", libListSort,
+        "Sort field: id, title, artist, album, year, rating, play_count, duration, date_added");
     libList->add_option("--order", libListOrder, "Sort direction: asc or desc");
-    libList->add_option("--columns", libListColumns, "Column allowlist: id,title,artist,album,genre,year,rating,duration,path");
+    libList->add_option("--columns", libListColumns,
+                        "Column allowlist: id,title,artist,album,genre,year,rating,duration,path");
     libList->add_option("--artist", libListArtist, "Filter by artist");
     libList->add_option("--album", libListAlbum, "Filter by album");
     libList->add_option("--genre", libListGenre, "Filter by genre");
@@ -741,8 +746,8 @@ int Shell::run(int argc, char** argv) {
     bool libMaintDryRun = true;
     std::int64_t libMaintLibraryId = 1;
     bool libMaintJson = false;
-    auto* libMaint = libCmd->add_subcommand("maintenance",
-                                            "Report or prune missing/duplicate tracks");
+    auto* libMaint =
+        libCmd->add_subcommand("maintenance", "Report or prune missing/duplicate tracks");
     libMaint->add_option("action", libMaintAction, "report or prune")
         ->check(CLI::IsMember({"report", "prune"}));
     libMaint->add_flag("--dry-run", libMaintDryRun, "Report only, no changes");
@@ -776,7 +781,8 @@ int Shell::run(int argc, char** argv) {
     bool tagBatchDryRun = false;
     bool tagBatchJson = false;
     auto* tagBatch = tagCmd->add_subcommand("batch", "Batch-edit tags from a file");
-    tagBatch->add_option("--file", tagBatchFile, "Tag assignments file (JSON or id|field|value lines)")
+    tagBatch
+        ->add_option("--file", tagBatchFile, "Tag assignments file (JSON or id|field|value lines)")
         ->required();
     tagBatch->add_flag("--dry-run", tagBatchDryRun, "Validate only, do not write");
     tagBatch->add_flag("--json", tagBatchJson, "JSON output");
@@ -786,8 +792,7 @@ int Shell::run(int argc, char** argv) {
     bool trRateJson = false;
     auto* trRate = trackCmd->add_subcommand("rate", "Rate a track (0-5)");
     trRate->add_option("id", trRateId, "Track id or file path")->required();
-    trRate->add_option("rating", trRateRating, "Rating (0-5)")
-        ->check(CLI::Range(0, 5));
+    trRate->add_option("rating", trRateRating, "Rating (0-5)")->check(CLI::Range(0, 5));
     trRate->add_flag("--json", trRateJson, "JSON output");
     auto* historyCmd = cli_->add_subcommand("history", "Playback history operations");
     bool historyJson = false;
@@ -849,7 +854,8 @@ int Shell::run(int argc, char** argv) {
     std::string lyricsRemoveTrack;
     bool lyricsRemoveJson = false;
     auto* lyricsRemove = lyricsCmd->add_subcommand("remove", "Remove lyrics for a track");
-    lyricsRemove->add_option("--track", lyricsRemoveTrack, "Track id or path (default: current track)");
+    lyricsRemove->add_option("--track", lyricsRemoveTrack,
+                             "Track id or path (default: current track)");
     lyricsRemove->add_flag("--json", lyricsRemoveJson, "JSON output");
     std::string previewFile;
     bool previewKeepPlaying = false;
@@ -912,7 +918,13 @@ int Shell::run(int argc, char** argv) {
     try {
         cli_->parse(argc, argv);
     } catch (const CLI::ParseError& e) {
-        return cli_->exit(e);
+        // CLI11's own codes (100..115) collide with this CLI's 105/106/109, so
+        // the process status is normalised (L8): help/version stay 0, every
+        // rejected invocation is a usage error. exit() still prints the message
+        // or the requested help exactly as before.
+        const bool informational = e.get_exit_code() == 0;
+        (void)cli_->exit(e);
+        return informational ? detail::exitOk : detail::exitUsage;
     }
     if (versionCmd->parsed())
         return detail::renderVersion(versionJson);
@@ -947,9 +959,9 @@ int Shell::run(int argc, char** argv) {
         auto lvl = kanariv::utils::parseLogLevel(logLevelStr);
         if (!lvl) {
             kanariv::println(std::cerr,
-                            "--log-level: invalid '{}' (expected trace|debug|info|warn|error)",
-                            logLevelStr);
-            return 1;
+                             "--log-level: invalid '{}' (expected trace|debug|info|warn|error)",
+                             logLevelStr);
+            return detail::exitUsage;
         }
         config_.logLevel = std::to_underlying(*lvl);
     }
@@ -972,9 +984,8 @@ int Shell::run(int argc, char** argv) {
     // Inject the local preview host: the CLI (not app) owns the player-backed
     // preview, so the app layer stays free of the player dependency. The
     // process stop token lets Ctrl+C end a preview cleanly.
-    app_.attachPreviewHost([this](const std::string& file) {
-        return detail::runLocalPreview(file, stop_);
-    });
+    app_.attachPreviewHost(
+        [this](const std::string& file) { return detail::runLocalPreview(file, stop_); });
     // Inject the foreground daemon host: the CLI (not app) owns service startup.
     app_.attachDaemonHost([this](bool foreground) -> kanariv::app::AppResult {
         kanariv::service::ServiceConfig scfg;
@@ -997,16 +1008,16 @@ int Shell::run(int argc, char** argv) {
         }
         // Announce before run() blocks: the line used to be returned only
         // after the daemon exited, so users never saw it while it started.
-        kanariv::println(std::cout, "starting daemon foreground at {} db={}",
-                         config_.socketPath, config_.dbPath.generic_string());
+        kanariv::println(std::cout, "starting daemon foreground at {} db={}", config_.socketPath,
+                         config_.dbPath.generic_string());
         std::cout.flush();
         // The process stop token makes Ctrl+C a graceful shutdown: run()
         // observes it, tears down (pid/socket/lock cleanup) and returns.
         auto res = svc.value()->run(stop_);
         if (!res) {
             return kanariv::app::Outcome::fail(std::format("daemon error: {} (dbPath={})",
-                                                          res.error().message,
-                                                          config_.dbPath.generic_string()));
+                                                           res.error().message,
+                                                           config_.dbPath.generic_string()));
         }
         return kanariv::app::Outcome{std::nullopt, std::string("daemon stopped"), false, false};
     });
@@ -1048,11 +1059,11 @@ int Shell::run(int argc, char** argv) {
     if (!posPaths.empty() || posSave) {
         if (anySub) {
             kanariv::println(std::cerr, "paths and --save take no subcommand");
-            return 1;
+            return detail::exitUsage;
         }
         if (posPaths.empty()) {
             kanariv::println(std::cerr, "need a PATH (audio file, folder, or glob)");
-            return 1;
+            return detail::exitUsage;
         }
         std::vector<std::string> files;
         std::vector<std::string> unmatched;
@@ -1100,9 +1111,9 @@ int Shell::run(int argc, char** argv) {
         auto parsed = detail::parseSeek(seekStr);
         if (!parsed) {
             kanariv::println(std::cerr,
-                            "seek: '{}': {} (expected mm:ss, hh:mm:ss, seconds, or +N/-N)", seekStr,
-                            parsed.error().message);
-            return 1;
+                             "seek: '{}': {} (expected mm:ss, hh:mm:ss, seconds, or +N/-N)",
+                             seekStr, parsed.error().message);
+            return detail::exitUsage;
         }
         double target = *parsed;
         // parseSeek trims whitespace, so detect +/- on the trimmed form too:
@@ -1119,15 +1130,14 @@ int Shell::run(int argc, char** argv) {
         // behavior. Phase 1 will replace it with a status-stream API.
         const bool follow = statusWatch || statusFollow;
         if (statusWatch && statusFollow) {
-            kanariv::println(std::cerr,
-                            "status: --watch and --follow are aliases; pass only one");
-            return detail::exitRuntime;
+            kanariv::println(std::cerr, "status: --watch and --follow are aliases; pass only one");
+            return detail::exitUsage;
         }
         if (follow) {
             if (statusInterval <= 0) {
                 kanariv::println(std::cerr, "status: --interval must be positive (got {})",
-                                statusInterval);
-                return detail::exitRuntime;
+                                 statusInterval);
+                return detail::exitUsage;
             }
             using namespace std::chrono;
             const bool ansi = detail::useColor();
@@ -1147,9 +1157,8 @@ int Shell::run(int argc, char** argv) {
                     // stream; one notice per outage keeps stderr readable.
                     ++failures;
                     if (failures == 1)
-                        kanariv::println(std::cerr,
-                                        "status: waiting for daemon ({}); retrying",
-                                        res.error().message);
+                        kanariv::println(std::cerr, "status: waiting for daemon ({}); retrying",
+                                         res.error().message);
                     if (detail::interruptibleSleep(stop_, detail::retryBackoff(failures - 1)))
                         break;
                     continue;
@@ -1192,8 +1201,8 @@ int Shell::run(int argc, char** argv) {
         auto pv = detail::parseVolume(volumeArg);
         if (!pv) {
             kanariv::println(std::cerr, "volume: '{}': {} (expected 0-100, +N/-N, mute, or unmute)",
-                            volumeArg, pv.error().message);
-            return 1;
+                             volumeArg, pv.error().message);
+            return detail::exitUsage;
         }
         return detail::render(app_.setVolume(*pv), volumeJson);
     }
@@ -1298,22 +1307,15 @@ int Shell::run(int argc, char** argv) {
         if (libStats->parsed()) {
             if (libStatsJson && (!libStatsQueues.empty() || !libStatsPlaylists.empty())) {
                 kanariv::println(std::cerr, "library stats: --json takes no --queue or --playlist");
-                return 1;
+                return detail::exitUsage;
             }
             return detail::renderBatch(
-                app_.libraryStats(libStatsTopTracks >= 0
-                                      ? std::optional<int>{libStatsTopTracks}
-                                      : std::nullopt,
-                                  libStatsTopAlbums > 0
-                                      ? std::optional<int>{libStatsTopAlbums}
-                                  : std::nullopt,
-                                  libStatsTopGenres > 0
-                                      ? std::optional<int>{libStatsTopGenres}
-                                  : std::nullopt,
-                                  libStatsTopArtists > 0
-                                      ? std::optional<int>{libStatsTopArtists}
-                                  : std::nullopt,
-                                  libStatsQueues, libStatsPlaylists),
+                app_.libraryStats(
+                    libStatsTopTracks >= 0 ? std::optional<int>{libStatsTopTracks} : std::nullopt,
+                    libStatsTopAlbums > 0 ? std::optional<int>{libStatsTopAlbums} : std::nullopt,
+                    libStatsTopGenres > 0 ? std::optional<int>{libStatsTopGenres} : std::nullopt,
+                    libStatsTopArtists > 0 ? std::optional<int>{libStatsTopArtists} : std::nullopt,
+                    libStatsQueues, libStatsPlaylists),
                 libStatsJson);
         }
         if (libList->parsed()) {
@@ -1321,19 +1323,17 @@ int Shell::run(int argc, char** argv) {
             if (libListRating > 0)
                 ratingOpt = libListRating;
             return detail::render(app_.libraryList(libListQuery, libListLimit, libListOffset,
-                                                   libListSort, libListOrder,
-                                                   libListArtist, libListAlbum, libListGenre,
-                                                   ratingOpt),
+                                                   libListSort, libListOrder, libListArtist,
+                                                   libListAlbum, libListGenre, ratingOpt),
                                   libListJson, libListColumns);
         }
         if (libFav->parsed()) {
-            return detail::render(app_.libraryFavorites(libFavMinRating, libFavLimit),
-                                  libFavJson);
+            return detail::render(app_.libraryFavorites(libFavMinRating, libFavLimit), libFavJson);
         }
         if (libMaint->parsed()) {
-            return detail::render(app_.libraryMaintenance(libMaintAction, libMaintDryRun,
-                                                          libMaintLibraryId),
-                                  libMaintJson);
+            return detail::render(
+                app_.libraryMaintenance(libMaintAction, libMaintDryRun, libMaintLibraryId),
+                libMaintJson);
         }
         if (libAdd->parsed())
             return detail::render(app_.libraryAdd(libAddPath, libAddRecursive), libAddJson);
@@ -1348,11 +1348,11 @@ int Shell::run(int argc, char** argv) {
         if (tagGet->parsed()) {
             if (!tagGetField.empty() && !kanariv::app::isTagField(tagGetField)) {
                 kanariv::println(std::cerr,
-                                "tag get: unknown field '{}' (expected one of "
-                                "title|artist|album|album_artist|genre|year|"
-                                "track_number|disc_number|cover)",
-                                tagGetField);
-                return 1;
+                                 "tag get: unknown field '{}' (expected one of "
+                                 "title|artist|album|album_artist|genre|year|"
+                                 "track_number|disc_number|cover)",
+                                 tagGetField);
+                return detail::exitUsage;
             }
             if (tagGetField.empty())
                 return detail::render(app_.tagGet(tagGetId), tagGetJson);
@@ -1366,25 +1366,23 @@ int Shell::run(int argc, char** argv) {
                     return detail::renderError(decoded.error());
                 std::ofstream ofs(tagGetOut, std::ios::binary);
                 if (!ofs)
+                    return detail::renderError(kanariv::utils::makeError(
+                        kanariv::utils::StatusCode::Io,
+                        "tag get: cannot open output '" + tagGetOut + "'"));
+                if (decoded->size() >
+                    static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max()))
                     return detail::renderError(
                         kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
-                                                 "tag get: cannot open output '" +
-                                                     tagGetOut + "'"));
-                if (decoded->size() > static_cast<std::size_t>(
-                                         std::numeric_limits<std::streamsize>::max()))
-                    return detail::renderError(
-                        kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
-                                                 "tag get: cover art is too large to write"));
+                                                  "tag get: cover art is too large to write"));
                 ofs.write(reinterpret_cast<const char*>(decoded->data()),
                           static_cast<std::streamsize>(decoded->size()));
                 ofs.flush();
                 if (!ofs)
                     return detail::renderError(
                         kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
-                                                 "tag get: write failed for '" +
-                                                     tagGetOut + "'"));
-                kanariv::println(std::cout, "Wrote cover art ({} bytes) to {}",
-                                decoded->size(), tagGetOut);
+                                                  "tag get: write failed for '" + tagGetOut + "'"));
+                kanariv::println(std::cout, "Wrote cover art ({} bytes) to {}", decoded->size(),
+                                 tagGetOut);
                 return 0;
             }
             if (tagGetJson)
@@ -1407,19 +1405,19 @@ int Shell::run(int argc, char** argv) {
             // Detect JSON by leading '[' or '{'; otherwise parse line-oriented
             // "id|field|value" or "path|field|value" records.
             std::size_t first = content.find_first_not_of(" \t\r\n");
-            bool isJson = first != std::string::npos &&
-                          (content[first] == '[' || content[first] == '{');
+            bool isJson =
+                first != std::string::npos && (content[first] == '[' || content[first] == '{');
             if (isJson) {
                 auto j = kanariv::utils::Json::tryParse(content);
                 if (!j)
                     return detail::renderError(
                         kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                 "tag batch: invalid JSON: " + j.error().message));
+                                                  "tag batch: invalid JSON: " + j.error().message));
                 const kanariv::utils::Json& arr = *j;
                 if (!arr.isArray())
                     return detail::renderError(
                         kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                 "tag batch: JSON must be an array of entries"));
+                                                  "tag batch: JSON must be an array of entries"));
                 for (std::size_t i = 0, n = arr.size(); i < n; ++i) {
                     auto jeExp = arr.at(i);
                     if (!jeExp)
@@ -1456,9 +1454,9 @@ int Shell::run(int argc, char** argv) {
                     parts.push_back(line.substr(start));
                     if (parts.size() != 3) {
                         kanariv::println(std::cerr,
-                                        "tag batch: malformed line (expected id|field|value): {}",
-                                        line);
-                        return 1;
+                                         "tag batch: malformed line (expected id|field|value): {}",
+                                         line);
+                        return detail::exitUsage;
                     }
                     kanariv::ipc::TagBatchEditEntry e{};
                     // First part: numeric id or path.
@@ -1491,15 +1489,14 @@ int Shell::run(int argc, char** argv) {
                         kanariv::println("{}", kanariv::ipc::toJson(ipc_res).dump());
                         return 0;
                     }
-                    kanariv::println(std::cout, "Tag batch: {} succeeded, {} failed",
-                                     br->succeeded, br->failed);
+                    kanariv::println(std::cout, "Tag batch: {} succeeded, {} failed", br->succeeded,
+                                     br->failed);
                     for (const auto& er : br->results) {
                         std::string idStr = er.id.has_value()
                                                 ? std::to_string(*er.id)
                                                 : (er.path.has_value() ? *er.path : "?");
                         kanariv::println(std::cout, "  [{}] {}={} {}", idStr, er.field,
-                                         er.ok ? "OK" : "FAIL",
-                                         er.ok ? "" : er.error);
+                                         er.ok ? "OK" : "FAIL", er.ok ? "" : er.error);
                     }
                     return br->failed > 0 ? 1 : 0;
                 }
@@ -1531,10 +1528,10 @@ int Shell::run(int argc, char** argv) {
             if (!bmAddTime.empty()) {
                 auto parsed = detail::parseTime(bmAddTime);
                 if (!parsed) {
-                    kanariv::println(std::cerr,
-                                    "bookmark add: '{}': {} (expected mm:ss, hh:mm:ss, or seconds)",
-                                    bmAddTime, parsed.error().message);
-                    return 1;
+                    kanariv::println(
+                        std::cerr, "bookmark add: '{}': {} (expected mm:ss, hh:mm:ss, or seconds)",
+                        bmAddTime, parsed.error().message);
+                    return detail::exitUsage;
                 }
                 pos = *parsed;
             }
@@ -1571,22 +1568,18 @@ int Shell::run(int argc, char** argv) {
                 // .lrc files are inherently time-coded
                 lyricsSetSynced = true;
             } else if (lrc_text.empty()) {
-                kanariv::println(std::cerr,
-                                "lyrics set: provide TEXT or --file <path>");
-                return 1;
+                kanariv::println(std::cerr, "lyrics set: provide TEXT or --file <path>");
+                return detail::exitUsage;
             }
-            return detail::render(app_.lyricsSet(std::move(lrc_text), lyricsSetSynced,
-                                                 lyricsSetSource,
-                                                 lyricsSetTrack.empty()
-                                                     ? std::nullopt
-                                                     : std::optional<std::string>{lyricsSetTrack}),
-                                  lyricsSetJson);
+            return detail::render(
+                app_.lyricsSet(std::move(lrc_text), lyricsSetSynced, lyricsSetSource,
+                               lyricsSetTrack.empty() ? std::nullopt
+                                                      : std::optional<std::string>{lyricsSetTrack}),
+                lyricsSetJson);
         }
         if (lyricsGet->parsed()) {
             auto res = app_.lyricsGet(
-                          lyricsGetTrack.empty()
-                              ? std::nullopt
-                              : std::optional<std::string>{lyricsGetTrack});
+                lyricsGetTrack.empty() ? std::nullopt : std::optional<std::string>{lyricsGetTrack});
             if (!res) {
                 return detail::renderError(res.error());
             }
@@ -1598,8 +1591,8 @@ int Shell::run(int argc, char** argv) {
             auto& ipc_res = *outcome->result;
             if (lyricsGetLive) {
                 if (auto* ly = std::get_if<kanariv::ipc::Lyrics>(&ipc_res)) {
-                    return detail::renderLyricsLive(*ly, config_.dbPath, config_.socketPath,
-                                                    stop_, detail::useColor());
+                    return detail::renderLyricsLive(*ly, config_.dbPath, config_.socketPath, stop_,
+                                                    detail::useColor());
                 }
                 kanariv::println(std::cerr, "lyrics get --live: no lyrics data");
                 return 1;
@@ -1634,11 +1627,11 @@ int Shell::run(int argc, char** argv) {
             return detail::render(std::move(res), lyricsGetJson);
         }
         if (lyricsRemove->parsed()) {
-            return detail::render(app_.lyricsRemove(
-                                      lyricsRemoveTrack.empty()
-                                          ? std::nullopt
-                                          : std::optional<std::string>{lyricsRemoveTrack}),
-                                  lyricsRemoveJson);
+            return detail::render(
+                app_.lyricsRemove(lyricsRemoveTrack.empty()
+                                      ? std::nullopt
+                                      : std::optional<std::string>{lyricsRemoveTrack}),
+                lyricsRemoveJson);
         }
         std::cout << lyricsCmd->help() << "\n";
         return 0;
@@ -1687,7 +1680,7 @@ int Shell::run(int argc, char** argv) {
             else if (cfgReset->count("key") > 0 && cfgResetKey.empty()) {
                 // explicit empty string passed -> treat as error
                 kanariv::println(std::cerr, "config reset: empty key (omit --key to reset all)");
-                return 1;
+                return detail::exitUsage;
             }
             return detail::render(app_.configReset(k), cfgResetJson);
         }
