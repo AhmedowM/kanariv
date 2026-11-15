@@ -818,20 +818,6 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     libraryApplyMaintenance(int64_t libraryId,
                             const kanariv::types::LibraryMaintenanceOptions& options) override;
     /**
-     * @brief Scans a library root and upserts the discovered tracks.
-     * @param libraryId Library identifier whose path is the scan root.
-     * @param progress Optional per-file progress callback.
-     * @param mode Discovery mode passed to the media scanner.
-     * @return Success, or `InvalidArg`/`NotFound`/`Busy`/`Internal`.
-     * @par Thread safety
-     * Thread-safe; takes the database write lock per batch only.
-     * @ingroup kanariv_db
-     */
-    std::expected<void, kanariv::utils::Error>
-    scanLibrary(int64_t libraryId,
-                std::function<void(int64_t, int64_t, std::string_view)> progress = {},
-                kanariv::media::ScanMode mode = kanariv::media::ScanMode::Sampled) override;
-    /**
      * @brief Exports every track row to a JSON file.
      * @param outPath Destination file path.
      * @return Success, or `Internal`/`Io`.

@@ -17,10 +17,8 @@
 #include <cstdint>
 #include <expected>
 #include <filesystem>
-#include <functional>
 #include <kanariv/contracts/store.hpp>
 #include <kanariv/fwd.hpp>
-#include <kanariv/media/scan.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/utils/error.hpp>
@@ -144,20 +142,6 @@ class ILibraryStore : public IStore {
     virtual std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
     libraryApplyMaintenance(int64_t library_id,
                             const kanariv::types::LibraryMaintenanceOptions& options) = 0;
-
-    /**
-     * @brief Scans a library root and upserts the discovered tracks.
-     * @param library_id Library identifier whose path is the scan root.
-     * @param progress Optional callback `progress(scanned, total, path)`.
-     * @param mode Discovery mode passed to the media scanner.
-     * @return Success, or `InvalidArg`/`NotFound`/`Busy`/`Internal`.
-     * @details Discovery runs outside the store lock; persistence proceeds in
-     * bounded batches. Callers must not hold the store lock across the call.
-     */
-    virtual std::expected<void, kanariv::utils::Error>
-    scanLibrary(int64_t library_id,
-                std::function<void(int64_t, int64_t, std::string_view)> progress = {},
-                kanariv::media::ScanMode mode = kanariv::media::ScanMode::Sampled) = 0;
 
     /**
      * @brief Exports every track row to a JSON file.

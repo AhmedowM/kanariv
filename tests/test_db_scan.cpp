@@ -13,11 +13,12 @@
 #include <ios>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/maintenance.hpp>
-#include <kanariv/db/scan.hpp>
+#include <kanariv/library/scan.hpp>
 #include <kanariv/media/scan.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <media/fingerprint.hpp>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -27,6 +28,7 @@
 #include <vector>
 using namespace kanariv::db;
 using namespace kanariv::utils;
+using kanariv::library::Scanner;
 using namespace kanariv::test_helpers;
 
 namespace {
@@ -184,17 +186,18 @@ TEST_CASE("scanLibrary inserts and dedup by fingerprint", "[db_scan]") {
     }
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
-    auto db = std::move(dbRes.value());
+    std::shared_ptr<Database> db = std::move(dbRes.value());
     auto libIdRes = db->libraryAdd(dir.string(), "testlib");
     REQUIRE(libIdRes.has_value());
     int64_t libId = *libIdRes;
-    auto sr = scanLibrary(*db, libId);
+    Scanner scanner{db};
+    auto sr = scanner.scanLibrary(libId);
     REQUIRE(sr.has_value());
     auto stats = db->getStats();
     REQUIRE(stats.has_value());
     REQUIRE(stats->num_tracks == 2);
     // second scan should dedup (same path+size+mtime -> skip) and not increase count
-    auto sr2 = scanLibrary(*db, libId);
+    auto sr2 = scanner.scanLibrary(libId);
     REQUIRE(sr2.has_value());
     auto stats2 = db->getStats();
     REQUIRE(stats2.has_value());
@@ -215,10 +218,11 @@ TEST_CASE("scanLibrary never persists an all-zero fingerprint or synthesised gai
     }
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
-    auto db = std::move(dbRes.value());
+    std::shared_ptr<Database> db = std::move(dbRes.value());
     auto libIdRes = db->libraryAdd(dir.string(), "testlib");
     REQUIRE(libIdRes.has_value());
-    auto sr = scanLibrary(*db, *libIdRes);
+    Scanner scanner{db};
+    auto sr = scanner.scanLibrary(*libIdRes);
     REQUIRE(sr.has_value());
 
     auto tracks = db->listTracks();
@@ -445,11 +449,12 @@ TEST_CASE("scanLibrary preserves play_count", "[db_scan]") {
     }
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
-    auto db = std::move(dbRes.value());
+    std::shared_ptr<Database> db = std::move(dbRes.value());
     auto libIdRes = db->libraryAdd(dir.string(), "lib");
     REQUIRE(libIdRes.has_value());
     int64_t libId = *libIdRes;
-    REQUIRE(scanLibrary(*db, libId).has_value());
+    Scanner scanner{db};
+    REQUIRE(scanner.scanLibrary(libId).has_value());
     auto tracks = db->listTracks();
     REQUIRE(tracks.has_value());
     REQUIRE(tracks->size() == 1);
@@ -475,7 +480,7 @@ TEST_CASE("scanLibrary preserves play_count", "[db_scan]") {
         std::ofstream f(p, std::ios::binary | std::ios::trunc);
         f.write((char*)d2.data(), d2.size());
     }
-    REQUIRE(scanLibrary(*db, libId).has_value());
+    REQUIRE(scanner.scanLibrary(libId).has_value());
     auto t2 = db->getTrack(tid);
     REQUIRE(t2.has_value());
     REQUIRE(t2->play_count == 42);
@@ -498,10 +503,11 @@ TEST_CASE("scanLibrary reports start/finish summary", "[db_scan]") {
     opts.logger = &logger;
     auto dbRes = Database::open(":memory:", opts);
     REQUIRE(dbRes.has_value());
-    auto db = std::move(dbRes.value());
+    std::shared_ptr<Database> db = std::move(dbRes.value());
     auto libIdRes = db->libraryAdd(dir.string(), "testlib");
     REQUIRE(libIdRes.has_value());
-    auto sr = scanLibrary(*db, *libIdRes);
+    Scanner scanner{db};
+    auto sr = scanner.scanLibrary(*libIdRes);
     REQUIRE(sr.has_value());
     bool started = false;
     bool finished = false;
@@ -576,7 +582,7 @@ TEST_CASE("scanLibrary BEGIN failure returns Busy promptly instead of deadlockin
 
     auto dbRes = Database::open(dbPath.string());
     REQUIRE(dbRes.has_value());
-    auto db = std::move(dbRes.value());
+    std::shared_ptr<Database> db = std::move(dbRes.value());
     auto library = db->libraryAdd(kanariv::utils::detail::pathToUtf8(root), "busy scan");
     REQUIRE(library.has_value());
 
@@ -590,7 +596,8 @@ TEST_CASE("scanLibrary BEGIN failure returns Busy promptly instead of deadlockin
     REQUIRE(sqlite3_exec(blocker, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) == SQLITE_OK);
 
     const auto started = std::chrono::steady_clock::now();
-    auto result = scanLibrary(*db, *library);
+    Scanner scanner{db};
+    auto result = scanner.scanLibrary(*library);
     const auto elapsed = std::chrono::steady_clock::now() - started;
 
     CHECK(!result.has_value());

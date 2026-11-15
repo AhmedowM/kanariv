@@ -82,7 +82,7 @@ if(KANARIV_ENABLE_TESTS)
   kanariv_add_catch_test(test_engine_state tests/test_engine_state.cpp LIBS kanariv::engine kanariv::db kanariv::player kanariv::utils kanariv::sqlite3)
   kanariv_add_catch_test(test_engine_gapless tests/test_engine_gapless.cpp LIBS kanariv::engine kanariv::db kanariv::player kanariv::utils kanariv::sqlite3)
 
-  kanariv_add_catch_test(test_db_scan tests/test_db_scan.cpp LIBS kanariv::db kanariv::utils kanariv::sqlite3)
+  kanariv_add_catch_test(test_db_scan tests/test_db_scan.cpp LIBS kanariv::library kanariv::db kanariv::media kanariv::utils kanariv::sqlite3)
   kanariv_add_catch_test(test_tag_write tests/test_tag_write.cpp LIBS kanariv::service kanariv::db kanariv::player kanariv::utils kanariv::sqlite3 WITH_TEST_DATA)
   kanariv_add_catch_test(test_db_search tests/test_db_search.cpp LIBS kanariv::db kanariv::utils kanariv::sqlite3)
   kanariv_add_catch_test(test_db_json tests/test_db_json.cpp LIBS kanariv::db kanariv::utils kanariv::sqlite3)

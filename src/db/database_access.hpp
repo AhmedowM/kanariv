@@ -7,13 +7,15 @@
  * @details `Database` keeps its raw locking surface (`handle`, `handleLocked`,
  * `mutex`, `getCachedForUse`) and its `*Locked` helpers private. This struct
  * is the sole `friend` of `Database` and exposes static forwarders so that
- * sibling translation units (scan/json/search, engine, service) can reach
- * those members without befriending individual functions or classes.
+ * sibling translation units (json/search and the library scan component) can
+ * reach those members without befriending individual functions or classes.
  *
  * Every forwarder only delegates; the locking contract stays with the
  * caller -- the `*Locked` helpers still require the caller to hold
  * `dbMutex_`, and `getCachedForUse` is only safe under that same lock.
  *
+ * KANARIV_API: the scan orchestration lives in kanariv::library (W2), so the
+ * forwarders cross a DLL boundary even though this header stays src-private.
  * Internal header: lives in `src/`, not installed.
  */
 
@@ -36,7 +38,7 @@ namespace kanariv::db {
  * @details Sole friend of `Database`. Each function forwards to the matching
  * private member one-for-one; see `Database` for the locking contract.
  */
-struct DatabaseAccess {
+struct KANARIV_API DatabaseAccess {
     // --- Raw locking surface ---
     /**
      * @brief Forwards to Database::handle().

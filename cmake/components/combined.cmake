@@ -1,7 +1,8 @@
 # combined is the shared libkanariv umbrella: utils/config/media/player/db/
-# engine/ipc/service/client/app linked into a single shared lib. It is built
-# only when KANARIV_BUILD_SHARED and KANARIV_BUILD_COMBINED (default ON) are
-# both enabled; the per-component *_shared targets always exist alongside it.
+# library/engine/ipc/service/client/app linked into a single shared lib. It is
+# built only when KANARIV_BUILD_SHARED and KANARIV_BUILD_COMBINED (default ON)
+# are both enabled; the per-component *_shared targets always exist alongside
+# it.
 #
 # Links component object files directly instead of WHOLE_ARCHIVE-ing static
 # archives. This avoids duplicate symbols from overlapping transitive deps
@@ -33,6 +34,7 @@ if(KANARIV_BUILD_SHARED AND KANARIV_BUILD_COMBINED)
     $<TARGET_OBJECTS:media_objects>
     $<TARGET_OBJECTS:player_objects>
     $<TARGET_OBJECTS:db_objects>
+    $<TARGET_OBJECTS:library_objects>
     $<TARGET_OBJECTS:engine_objects>
     $<TARGET_OBJECTS:ipc_objects>
     $<TARGET_OBJECTS:service_objects>

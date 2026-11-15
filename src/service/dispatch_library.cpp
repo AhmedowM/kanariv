@@ -172,34 +172,40 @@ Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
             pp = std::filesystem::current_path();
         root = pp / "music";
     }
-    auto mode =
+    const auto mode =
         (cmd.full_hash ? kanariv::media::ScanMode::Full : kanariv::media::ScanMode::Sampled);
-    // Prefer scanLibrary if a library matches root -- gives dedup + batched
-    // transaction
-    if (auto libs = storage_.library->listLibraries(); libs) {
-        for (auto& l : *libs) {
-            if (kanariv::utils::detail::pathFromUtf8(l.path) == root) {
-                std::size_t before = 0;
-                if (auto st = storage_.library->getStats())
-                    before = static_cast<std::size_t>(st->num_tracks);
-                auto sr = storage_.library->scanLibrary(l.id, {}, mode);
-                if (!sr) {
-                    if (logger_)
-                        logger_->error("scan failed root={} err={}", l.path, sr.error().message);
-                    return std::unexpected{sr.error()};
+    // Prefer the scanner when the composition root wired one and a library
+    // matches root -- gives dedup + batched transaction. `scanner` is optional
+    // in Storage, so a backend without it falls through to the insert path.
+    if (storage_.scanner) {
+        if (auto libs = storage_.library->listLibraries(); libs) {
+            for (auto& l : *libs) {
+                if (kanariv::utils::detail::pathFromUtf8(l.path) == root) {
+                    std::size_t before = 0;
+                    if (auto st = storage_.library->getStats())
+                        before = static_cast<std::size_t>(st->num_tracks);
+                    const auto scanMode = cmd.full_hash ? kanariv::contracts::ScanMode::Full
+                                                        : kanariv::contracts::ScanMode::Sampled;
+                    auto sr = storage_.scanner->scanLibrary(l.id, {}, scanMode);
+                    if (!sr) {
+                        if (logger_)
+                            logger_->error("scan failed root={} err={}", l.path,
+                                           sr.error().message);
+                        return std::unexpected{sr.error()};
+                    }
+                    std::size_t after = before;
+                    if (auto st = storage_.library->getStats())
+                        after = static_cast<std::size_t>(st->num_tracks);
+                    return Result{kanariv::ipc::ScanReport{after >= before ? after - before : 0}};
                 }
-                std::size_t after = before;
-                if (auto st = storage_.library->getStats())
-                    after = static_cast<std::size_t>(st->num_tracks);
-                return Result{kanariv::ipc::ScanReport{after >= before ? after - before : 0}};
             }
         }
     }
-    // Fallback: simple insert (batched path uses scanLibrary above which is already
-    // per-500 transactional). Files already recorded with matching size+mtime
-    // are skipped, so rescans (including cross-mode ones) do not duplicate
-    // untouched files. This is the path every first scan takes (no library
-    // row matches yet), so it reports its own summary like scanLibrary does.
+    // Fallback: simple insert (the scanner path above is per-500 transactional).
+    // Files already recorded with matching size+mtime are skipped, so rescans
+    // (including cross-mode ones) do not duplicate untouched files. This is the
+    // path every first scan takes (no library row matches yet), so it reports
+    // its own summary like the scanner does.
     const std::string rootStr = kanariv::utils::detail::pathToUtf8(root);
     if (logger_)
         logger_->info("scan started root={} mode={} (direct)", rootStr,

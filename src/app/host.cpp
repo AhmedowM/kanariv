@@ -11,8 +11,10 @@
 #include <format>
 #include <iostream>
 #include <kanariv/db/database.hpp>
+#include <kanariv/library/scan.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/utils/print.hpp>
+#include <memory>
 #include <stop_token>
 #include <string>
 #include <utility>
@@ -29,8 +31,12 @@ AppResult App::Impl::runForeground(std::stop_token stop) {
         return Outcome::fail(std::format("start failed: {} (db: {})", db.error().message,
                                          scfg.dbPath.generic_string()));
     }
-    auto svc =
-        kanariv::service::Service::create(scfg, kanariv::db::makeStorage(std::move(db.value())));
+    // The scanner shares ownership of the open database, so the ports and the
+    // scanner stay valid for the service's lifetime (one composition root).
+    std::shared_ptr<kanariv::db::Database> database = std::move(db.value());
+    auto storage = kanariv::db::makeStorage(database);
+    storage.scanner = std::make_shared<kanariv::library::Scanner>(database);
+    auto svc = kanariv::service::Service::create(scfg, std::move(storage));
     if (!svc) {
         return Outcome::fail(std::format("start failed: {} (db: {})", svc.error().message,
                                          scfg.dbPath.generic_string()));

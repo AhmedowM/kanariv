@@ -11,7 +11,7 @@
  * - FFmpeg-based Decoder for all common formats
  * - Metadata extraction and audio-extension helpers
  * - Library scan discovery: filesystem walk, fingerprinting, tag extraction
- *   (persistence of the result lives in `kanariv::db::scanLibrary`)
+ *   (persistence of the result lives in `kanariv::library::Scanner`)
  */
 
 #include <kanariv/media/audio_ext.hpp>

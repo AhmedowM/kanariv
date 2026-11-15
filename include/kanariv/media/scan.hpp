@@ -8,7 +8,7 @@
  * - `kanariv::media` owns the pure, DB-free half: filesystem walk,
  *   extension filter, BLAKE3 fingerprinting and metadata extraction,
  *   producing `kanariv::types::Track` records.
- * - `kanariv::db` keeps the DB-coupled half: `kanariv::db::scanLibrary`
+ * - `kanariv::library` keeps the DB-coupled half: `kanariv::library::Scanner`
  *   (batched upsert of the discovered tracks under the database mutex).
  *
  * Every scan entry point yields only tracks that carry a real fingerprint: a

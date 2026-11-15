@@ -17,6 +17,7 @@ export import kanariv.utils;
 export import kanariv.media;
 export import kanariv.player;
 export import kanariv.db;
+export import kanariv.library;
 export import kanariv.engine;
 export import kanariv.config;
 export import kanariv.ipc;

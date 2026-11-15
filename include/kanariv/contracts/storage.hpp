@@ -13,6 +13,7 @@
  */
 
 #include <kanariv/contracts/history_store.hpp>
+#include <kanariv/contracts/library_scan.hpp>
 #include <kanariv/contracts/library_store.hpp>
 #include <kanariv/contracts/playback_state_store.hpp>
 #include <kanariv/contracts/playlist_store.hpp>
@@ -37,6 +38,9 @@ struct Storage {
     std::shared_ptr<ILibraryStore> library;     ///< Libraries, queries, stats.
     std::shared_ptr<IHistoryStore> history;     ///< Opt-in play history.
     std::shared_ptr<IPlaybackStateStore> state; ///< Engine state sidecar.
+    /// Scan orchestration (discovery + upsert). Optional: it is a service over
+    /// the store, not a store itself, so `complete()` does not require it.
+    std::shared_ptr<ILibraryScanner> scanner;
 
     /// True when every port is populated.
     [[nodiscard]] bool complete() const noexcept {

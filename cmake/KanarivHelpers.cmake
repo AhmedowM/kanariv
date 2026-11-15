@@ -183,7 +183,7 @@ function(kanariv_add_component NAME)
   # install(DIRECTORY include/ ...) in cmake/Install.cmake, which preserves the
   # kanariv/<component>/ prefix and nested directories. PUBLIC_HEADER is
   # deliberately not set here -- it flattened every component into include/,
-  # where db/scan.hpp + media/scan.hpp (and json.hpp, result.hpp, the
+  # where library/scan.hpp + media/scan.hpp (and json.hpp, result.hpp, the
   # <component>.hpp facades) collided, and its non-recursive glob skipped
   # nested headers such as ipc/command/*.hpp.
   #

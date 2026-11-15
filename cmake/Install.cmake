@@ -144,7 +144,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/kanariv/version_config.hpp DES
 # shipped verbatim, so every header keeps its kanariv/<component>/ prefix and
 # nested directories (ipc/command/*.hpp, ipc/result/*.hpp) are present. No
 # target sets PUBLIC_HEADER any more: that mechanism flattened every component
-# into include/ and made db/scan.hpp, media/scan.hpp, db/json.hpp,
+# into include/ and made library/scan.hpp, media/scan.hpp, db/json.hpp,
 # utils/json.hpp, ipc/result.hpp, utils/result.hpp and the <component>.hpp
 # facades overwrite each other.
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT dev FILES_MATCHING PATTERN "*.hpp")

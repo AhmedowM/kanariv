@@ -2010,12 +2010,15 @@ contracts::Storage makeStorage(std::shared_ptr<Database> db) {
     // exception -- it is a JSON sidecar beside the database file, not a table.
     auto state = makePlaybackStateStore(*db);
     return contracts::Storage{
-        std::static_pointer_cast<contracts::ITrackStore>(db),
-        std::static_pointer_cast<contracts::IPlaylistStore>(db),
-        std::static_pointer_cast<contracts::IQueueStore>(db),
-        std::static_pointer_cast<contracts::ILibraryStore>(db),
-        std::static_pointer_cast<contracts::IHistoryStore>(db),
-        std::move(state),
+        .tracks = std::static_pointer_cast<contracts::ITrackStore>(db),
+        .playlists = std::static_pointer_cast<contracts::IPlaylistStore>(db),
+        .queues = std::static_pointer_cast<contracts::IQueueStore>(db),
+        .library = std::static_pointer_cast<contracts::ILibraryStore>(db),
+        .history = std::static_pointer_cast<contracts::IHistoryStore>(db),
+        .state = std::move(state),
+        // Scanning combines discovery with persistence; only the composition
+        // root that links the media stack can supply one (kanariv::library).
+        .scanner = nullptr,
     };
 }
 

@@ -20,8 +20,9 @@
  * - @ref kanariv_player "kanariv.player" -- Audio playback: miniaudio output,
  *   gapless playback. Reader/decoder are re-exported from `kanariv.media`.
  * - @ref kanariv_db "kanariv.db" -- Database layer: SQLite with WAL, track/playlist/queue
- *   management, full-text search (FTS5), JSON import/export, library scan
- *   persistence (upsert of the tracks discovered by `kanariv.media`).
+ *   management, full-text search (FTS5), JSON import/export.
+ * - @ref kanariv_library "kanariv.library" -- Library scan orchestration: walks a
+ *   configured root with the media stack and upserts the discovered tracks.
  * - @ref kanariv_engine "kanariv.engine" -- Playback engine: state machine, shuffle/repeat,
  *   gapless transition, history marking, persistence, event queue.
  * - @ref kanariv_ipc "kanariv.ipc" -- Daemon wire protocol: Command/Result
@@ -39,7 +40,8 @@
  * kanariv.utils   (types)
  * kanariv.media   (types, utils)
  * kanariv.player  (types, utils, media)
- * kanariv.db      (types, utils, media)
+ * kanariv.db      (types, utils, contracts)
+ * kanariv.library (contracts, db, media, utils)
  * kanariv.engine  (types, utils, media, player, db)
  * kanariv.ipc     (utils)
  * kanariv.client  (utils, ipc)
@@ -69,6 +71,7 @@
  * @see kanariv.media
  * @see kanariv.player
  * @see kanariv.db
+ * @see kanariv.library
  * @see kanariv.engine
  * @see kanariv.ipc
  * @see kanariv.client
@@ -82,6 +85,7 @@
 #include <kanariv/db.hpp>
 #include <kanariv/engine.hpp>
 #include <kanariv/ipc.hpp>
+#include <kanariv/library.hpp>
 #include <kanariv/media.hpp>
 #include <kanariv/player.hpp>
 #include <kanariv/service.hpp>

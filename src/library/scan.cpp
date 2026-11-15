@@ -1,4 +1,4 @@
-﻿#include <chrono>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <db/database_access.hpp>
@@ -7,7 +7,7 @@
 #include <filesystem>
 #include <functional>
 #include <kanariv/db/database.hpp>
-#include <kanariv/db/scan.hpp>
+#include <kanariv/library/scan.hpp>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/scan.hpp>
 #include <kanariv/types/db.hpp>
@@ -23,21 +23,27 @@
 #include <utility>
 #include <utils/path_utf8.hpp>
 
-namespace kanariv::db {
+namespace kanariv::library {
 
-std::expected<void, kanariv::utils::Error>
-Database::scanLibrary(int64_t libraryId,
-                      std::function<void(int64_t, int64_t, std::string_view)> progress,
-                      kanariv::media::ScanMode mode) {
-    return kanariv::db::scanLibrary(*this, libraryId, std::move(progress), mode);
+namespace {
+
+kanariv::media::ScanMode toMediaMode(kanariv::contracts::ScanMode mode) {
+    return mode == kanariv::contracts::ScanMode::Full ? kanariv::media::ScanMode::Full
+                                                      : kanariv::media::ScanMode::Sampled;
 }
 
+} // namespace
+
+Scanner::Scanner(std::shared_ptr<kanariv::db::Database> db) : db_(std::move(db)) {}
+
 std::expected<void, kanariv::utils::Error>
-scanLibrary(Database& db, int64_t libraryId,
-            std::function<void(int64_t, int64_t, std::string_view)> progress,
-            kanariv::media::ScanMode mode) {
+Scanner::scanLibrary(int64_t libraryId,
+                     std::function<void(int64_t, int64_t, std::string_view)> progress,
+                     kanariv::contracts::ScanMode mode) {
     if (libraryId == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
+    auto& db = *db_;
+    const auto mediaMode = toMediaMode(mode);
     auto libs = db.listLibraries();
     if (!libs)
         return std::unexpected{libs.error()};
@@ -56,7 +62,7 @@ scanLibrary(Database& db, int64_t libraryId,
             kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "path not found")};
     if (auto* lg = db.logger())
         lg->info("scan started root={} mode={}", libPath,
-                 mode == kanariv::media::ScanMode::Sampled ? "sampled" : "full");
+                 mode == kanariv::contracts::ScanMode::Sampled ? "sampled" : "full");
     int64_t scanned = 0;
     int64_t added = 0;
     int64_t updated = 0;
@@ -66,17 +72,17 @@ scanLibrary(Database& db, int64_t libraryId,
     // RAII: the lock is released and an open batch rolled back on every exit
     // path, including a failed BEGIN. No error path re-enters the mutex.
     std::unique_lock<std::mutex> batchLock;
-    std::optional<DbTransaction> batchTx;
+    std::optional<kanariv::db::DbTransaction> batchTx;
     auto beginBatch = [&]() -> std::expected<void, kanariv::utils::Error> {
         if (batchTx)
             return {};
-        batchLock = std::unique_lock<std::mutex>(DatabaseAccess::mutex(db));
-        if (!DatabaseAccess::handleLocked(db)) {
+        batchLock = std::unique_lock<std::mutex>(kanariv::db::DatabaseAccess::mutex(db));
+        if (!kanariv::db::DatabaseAccess::handleLocked(db)) {
             batchLock.unlock();
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
         }
-        auto tx = DbTransaction::begin(DatabaseAccess::handleLocked(db));
+        auto tx = kanariv::db::DbTransaction::begin(kanariv::db::DatabaseAccess::handleLocked(db));
         if (!tx) {
             batchLock.unlock();
             return std::unexpected{
@@ -110,7 +116,7 @@ scanLibrary(Database& db, int64_t libraryId,
             lg->warn("scan skipped file={} reason={}", issue.path, issue.message);
     };
 
-    for (auto trk : kanariv::media::scanTracks(root, mode, onIssue)) {
+    for (auto trk : kanariv::media::scanTracks(root, mediaMode, onIssue)) {
         // Backstop (M8): an all-zero fingerprint is the "unfingerprinted" sentinel
         // and collides with itself in the UNIQUE index, which would make every
         // later file look like a duplicate of the first. Never persist one.
@@ -128,7 +134,7 @@ scanLibrary(Database& db, int64_t libraryId,
             if (!b)
                 return std::unexpected{b.error()};
         }
-        auto existingPath = DatabaseAccess::findByPathLocked(db, trk.path);
+        auto existingPath = kanariv::db::DatabaseAccess::findByPathLocked(db, trk.path);
         if (existingPath && existingPath->size == trk.size && existingPath->mtime == trk.mtime) {
             scanned++;
             batchPending++;
@@ -141,7 +147,7 @@ scanLibrary(Database& db, int64_t libraryId,
             }
             continue;
         }
-        auto byFp = DatabaseAccess::findByFingerprintLocked(db, trk.fingerprint);
+        auto byFp = kanariv::db::DatabaseAccess::findByFingerprintLocked(db, trk.fingerprint);
         if (byFp) {
             kanariv::types::Track upd = *byFp;
             upd.path = trk.path;
@@ -221,13 +227,13 @@ scanLibrary(Database& db, int64_t libraryId,
                 upd.channels = 0;
                 upd.bitrate = 0;
             }
-            if (DatabaseAccess::updateTrackLocked(db, upd))
+            if (kanariv::db::DatabaseAccess::updateTrackLocked(db, upd))
                 updated++;
             else
                 failed++;
             if (existingPath && existingPath->id != byFp->id) {
                 if (existingPath->fingerprint == trk.fingerprint)
-                    (void)DatabaseAccess::deleteTrackLocked(db, existingPath->id);
+                    (void)kanariv::db::DatabaseAccess::deleteTrackLocked(db, existingPath->id);
             }
         } else if (existingPath) {
             kanariv::types::Track upd = *existingPath;
@@ -318,7 +324,7 @@ scanLibrary(Database& db, int64_t libraryId,
             // replay_gain_track/album are deliberately left untouched: the scanner
             // no longer synthesises gain values (M10), and the previous write was a
             // mis-scaled loudness heuristic, not ReplayGain.
-            if (DatabaseAccess::updateTrackLocked(db, upd))
+            if (kanariv::db::DatabaseAccess::updateTrackLocked(db, upd))
                 updated++;
             else {
                 failed++;
@@ -327,7 +333,7 @@ scanLibrary(Database& db, int64_t libraryId,
             }
         } else {
             trk.library_id = libraryId;
-            if (DatabaseAccess::insertTrackLocked(db, trk))
+            if (kanariv::db::DatabaseAccess::insertTrackLocked(db, trk))
                 added++;
             else {
                 failed++;
@@ -367,10 +373,11 @@ scanLibrary(Database& db, int64_t libraryId,
                                      std::chrono::system_clock::now().time_since_epoch())
                                      .count();
                 {
-                    std::unique_lock<std::mutex> lk(DatabaseAccess::mutex(db));
+                    std::unique_lock<std::mutex> lk(kanariv::db::DatabaseAccess::mutex(db));
                     // Single UPDATE, no explicit transaction: a failed write is
                     // reported without re-entering the (non-recursive) mutex.
-                    if (auto stored = DatabaseAccess::libraryUpdateLocked(db, l); !stored) {
+                    if (auto stored = kanariv::db::DatabaseAccess::libraryUpdateLocked(db, l);
+                        !stored) {
                         if (auto* lg = db.logger())
                             lg->warn("scan: recording last_scanned failed: {}",
                                      stored.error().message);
@@ -382,4 +389,4 @@ scanLibrary(Database& db, int64_t libraryId,
     return {};
 }
 
-} // namespace kanariv::db
+} // namespace kanariv::library

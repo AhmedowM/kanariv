@@ -476,6 +476,7 @@ set(KANARIV_COMPONENTS
   media
   player
   db
+  library
   engine
   ipc
   service
@@ -502,7 +503,7 @@ if(KANARIV_ENABLE_MODULES)
   add_library(kanariv_umbrella STATIC)
   target_sources(kanariv_umbrella PUBLIC FILE_SET CXX_MODULES TYPE CXX_MODULES BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/modules FILES modules/kanariv.cppm)
   target_include_directories(kanariv_umbrella PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>)
-  target_link_libraries(kanariv_umbrella PUBLIC kanariv::types kanariv::utils kanariv::contracts kanariv::config kanariv::media kanariv::player kanariv::db kanariv::engine kanariv::ipc kanariv::service kanariv::client kanariv::app)
+  target_link_libraries(kanariv_umbrella PUBLIC kanariv::types kanariv::utils kanariv::contracts kanariv::config kanariv::media kanariv::player kanariv::db kanariv::library kanariv::engine kanariv::ipc kanariv::service kanariv::client kanariv::app)
   ca_set_warnings(kanariv_umbrella)
   ca_set_module_warnings(kanariv_umbrella)
   kanariv_apply_extra_flags(kanariv_umbrella)

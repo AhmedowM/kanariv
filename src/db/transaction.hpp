@@ -1,5 +1,6 @@
 #pragma once
 
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils.hpp>
 #include <db/detail.hpp>
 #include <expected>
@@ -14,6 +15,8 @@
  * @details DbTransaction::begin() executes BEGIN IMMEDIATE; commit() or
  * rollback() finalizes. Destructor rolls back if not committed. Lock
  * ordering: caller must hold Database::mutex() before begin().
+ * KANARIV_API: the scan component (kanariv::library) drives the same batched
+ * transaction across a DLL boundary; the header itself stays src-private.
  */
 
 // Forward declarations for SQLite handles (sqlite3.h stays in .cpp files).
@@ -29,7 +32,7 @@ namespace kanariv::db {
  * If neither commit() nor rollback() is called, destructor rolls back.
  * Not thread-safe; caller must hold the DB mutex.
  */
-class DbTransaction final {
+class KANARIV_API DbTransaction final {
   public:
     /**
      * @brief Begins a transaction with BEGIN IMMEDIATE.
