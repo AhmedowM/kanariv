@@ -1,3 +1,4 @@
+#include <array>
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
@@ -278,6 +279,34 @@ TEST_CASE("library stats command roundtrip", "[ipc]") {
     REQUIRE(legacyCmd != nullptr);
     REQUIRE(legacyCmd->top_tracks.has_value());
     CHECK(*legacyCmd->top_tracks == 3);
+}
+
+namespace {
+
+template <class T>
+bool commandRoundtrips() {
+    auto json = toJson(Command{T{}});
+    const auto type = json["type"].snapshot().get<std::string>();
+    const auto back = commandFromJson(json);
+    return !type.empty() && back.has_value() && back->index() == Command{T{}}.index();
+}
+
+template <std::size_t... I>
+std::array<bool, sizeof...(I)> commandRoundtripResults(std::index_sequence<I...>) {
+    return {commandRoundtrips<std::variant_alternative_t<I, Command>>()...};
+}
+
+} // namespace
+
+TEST_CASE("every Command alternative roundtrips through the schema", "[ipc]") {
+    // The name table and the per-type parser live in protocol.cpp; this pins
+    // that every alternative has both halves and that defaults parse back.
+    constexpr auto count = std::variant_size_v<Command>;
+    const auto results = commandRoundtripResults(std::make_index_sequence<count>{});
+    for (std::size_t i = 0; i < count; ++i) {
+        INFO("alternative index: " << i);
+        REQUIRE(results[i]);
+    }
 }
 
 TEST_CASE("shm status reader/writer roundtrip", "[ipc][shm]") {
