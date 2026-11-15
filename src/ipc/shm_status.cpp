@@ -1,6 +1,5 @@
 ﻿#include <algorithm>
 #include <atomic>
-#include <bit>
 #include <kanariv/ipc/shm_status.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/result.hpp>
@@ -22,20 +21,6 @@
 
 namespace kanariv::ipc {
 
-// Helpers for bit_cast atomic operations
-double atomicLoadDouble(const std::atomic<uint64_t>& a) noexcept {
-    return std::bit_cast<double>(a.load(std::memory_order_acquire));
-}
-void atomicStoreDouble(std::atomic<uint64_t>& a, double v) noexcept {
-    a.store(std::bit_cast<uint64_t>(v), std::memory_order_relaxed);
-}
-float atomicLoadFloat(const std::atomic<uint32_t>& a) noexcept {
-    return std::bit_cast<float>(a.load(std::memory_order_acquire));
-}
-void atomicStoreFloat(std::atomic<uint32_t>& a, float v) noexcept {
-    a.store(std::bit_cast<uint32_t>(v), std::memory_order_relaxed);
-}
-
 namespace {
 
 // Raw SHM handle fields filled by the open/create helper.
@@ -44,7 +29,52 @@ struct ShmRaw {
     std::size_t size{0};
     std::string name;
     std::intptr_t handle{-1};
+    bool reset{false}; ///< True when the mapping must be re-initialized.
 };
+
+// Maximum number of seqlock retries before a reader declares the writer
+// crashed/wedged. A live publish() only holds an odd sequence for a few
+// hundred byte stores, so this budget is generous for real contention while
+// keeping a dead writer from pinning a client core.
+constexpr std::uint32_t kSnapshotAttempts = 1024;
+
+// Publishes `src` into a fixed seqlock-protected byte buffer. Always rewrites
+// the whole buffer: the payload, a terminator, and zero padding. Byte-wise
+// atomic stores keep the concurrent access defined (no data race) while the
+// surrounding seqlock rejects torn snapshots.
+void publishFixedString(char* dest, std::size_t capacity, std::string_view src) noexcept {
+    const std::size_t n = std::min(src.size(), capacity - 1);
+    for (std::size_t i = 0; i < n; ++i)
+        std::atomic_ref<char>(dest[i]).store(src[i], std::memory_order_relaxed);
+    for (std::size_t i = n; i < capacity; ++i)
+        std::atomic_ref<char>(dest[i]).store('\0', std::memory_order_relaxed);
+}
+
+// Copies a seqlock-protected byte buffer with atomic loads (race-free).
+void copyFixedString(char* dest, char* src, std::size_t capacity) noexcept {
+    for (std::size_t i = 0; i < capacity; ++i)
+        dest[i] = std::atomic_ref<char>(src[i]).load(std::memory_order_relaxed);
+}
+
+// Re-initializes a freshly created/replaced segment. Uses an odd/even sequence
+// so a lingering reader from a crashed daemon cannot adopt half-reset fields.
+void resetStatus(AtomicShmStatus* s) noexcept {
+    s->seq.store(1, std::memory_order_relaxed);
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+
+    s->position.store(0, std::memory_order_relaxed);
+    s->duration.store(0, std::memory_order_relaxed);
+    s->volume.store(0, std::memory_order_relaxed);
+    s->muted.store(false, std::memory_order_relaxed);
+    s->state.store(0, std::memory_order_relaxed);
+    s->track_id.store(0, std::memory_order_relaxed);
+    s->queueSize.store(0, std::memory_order_relaxed);
+    publishFixedString(s->title, sizeof(s->title), {});
+    publishFixedString(s->artist, sizeof(s->artist), {});
+
+    std::atomic_thread_fence(std::memory_order_release);
+    s->seq.store(0, std::memory_order_release);
+}
 
 // Opens or creates a shared-memory segment and fills `raw`. Returns an error
 // description on failure (empty string on success).
@@ -60,8 +90,16 @@ std::string openShmRaw(const std::string& name, bool create, ShmRaw& raw) {
     std::string fullName = "/kanariv-" + name + "-status";
     int flags = O_RDWR;
     if (create)
-        flags |= O_CREAT;
+        flags |= O_CREAT | O_EXCL;
     int fd = ::shm_open(fullName.c_str(), flags, 0600);
+    if (fd < 0 && create && errno == EEXIST) {
+        // Stale segment from a crashed daemon. The single-instance lock already
+        // guarantees no live writer owns it, so replace it with a fresh one.
+        if (::shm_unlink(fullName.c_str()) != 0 && errno != ENOENT) {
+            return "shm_unlink failed: " + std::string(std::strerror(errno));
+        }
+        fd = ::shm_open(fullName.c_str(), flags, 0600);
+    }
     if (fd < 0) {
         return "shm_open failed: " + std::string(std::strerror(errno));
     }
@@ -71,6 +109,17 @@ std::string openShmRaw(const std::string& name, bool create, ShmRaw& raw) {
             ::close(fd);
             ::shm_unlink(fullName.c_str());
             return "ftruncate failed: " + std::string(std::strerror(errno));
+        }
+        raw.reset = true;
+    } else {
+        struct stat st{};
+        if (::fstat(fd, &st) != 0) {
+            ::close(fd);
+            return "fstat failed: " + std::string(std::strerror(errno));
+        }
+        if (static_cast<std::size_t>(st.st_size) < sizeof(AtomicShmStatus)) {
+            ::close(fd);
+            return "shared memory status segment has an incompatible size";
         }
     }
 
@@ -97,8 +146,14 @@ std::string openShmRaw(const std::string& name, bool create, ShmRaw& raw) {
     HANDLE hMap = nullptr;
 
     if (create) {
+        // 183 == ERROR_ALREADY_EXISTS. A stale/lingering mapping survives when
+        // a reader still holds it after a daemon crash; a fresh one is already
+        // zero-filled, so only the pre-existing mapping needs an explicit reset.
+        constexpr DWORD kErrorAlreadyExists = 183UL;
         hMap = ::CreateFileMappingW(invalidHandleValue, nullptr, protect, 0,
                                     sizeof(AtomicShmStatus), wname.c_str());
+        if (hMap && ::GetLastError() == kErrorAlreadyExists)
+            raw.reset = true;
     } else {
         hMap = ::OpenFileMappingW(access, boolFalse, wname.c_str());
     }
@@ -120,6 +175,10 @@ std::string openShmRaw(const std::string& name, bool create, ShmRaw& raw) {
 #ifndef __ANDROID__
     raw.name = std::move(fullName);
 #endif
+    // A create must never inherit a crashed writer's odd sequence or stale
+    // metadata: reset the header before the writer becomes usable.
+    if (raw.reset)
+        resetStatus(raw.map);
     return "";
 }
 
@@ -209,33 +268,35 @@ ShmStatus ShmStatusReader::snapshot() const {
     if (!map_)
         return out;
     AtomicShmStatus* s = map_;
-    uint32_t spinCount = 0;
-    while (true) {
-        uint64_t seq = s->seq.load(std::memory_order_acquire);
+    for (uint32_t attempt = 0; attempt < kSnapshotAttempts; ++attempt) {
+        const uint64_t seq = s->seq.load(std::memory_order_acquire);
         if (seq & 1) {
-            // Writer busy, retry with occasional yield
-            if (++spinCount >= 3) {
+            // Writer busy (or crashed mid-publish): yield occasionally, retry.
+            if ((attempt & 7U) == 7U)
                 std::this_thread::yield();
-                spinCount = 0;
-            }
             continue;
         }
+        std::atomic_thread_fence(std::memory_order_acquire);
         out.seq = seq;
         out.position = atomicLoadDouble(s->position);
         out.duration = atomicLoadDouble(s->duration);
         out.volume = atomicLoadFloat(s->volume);
-        out.muted = s->muted.load(std::memory_order_acquire);
-        out.state = s->state.load(std::memory_order_acquire);
-        out.track_id = s->track_id.load(std::memory_order_acquire);
-        out.queueSize = s->queueSize.load(std::memory_order_acquire);
-        // Copy strings (protected by seqlock)
-        std::memcpy(out.title, s->title, sizeof(out.title));
-        std::memcpy(out.artist, s->artist, sizeof(out.artist));
-        // Verify no writer intervened
-        if (s->seq.load(std::memory_order_acquire) == seq) {
-            break;
-        }
+        out.muted = s->muted.load(std::memory_order_relaxed);
+        out.state = s->state.load(std::memory_order_relaxed);
+        out.track_id = s->track_id.load(std::memory_order_relaxed);
+        out.queueSize = s->queueSize.load(std::memory_order_relaxed);
+        copyFixedString(out.title, s->title, sizeof(out.title));
+        copyFixedString(out.artist, s->artist, sizeof(out.artist));
+        std::atomic_thread_fence(std::memory_order_acquire);
+        // Verify no writer intervened.
+        if (s->seq.load(std::memory_order_relaxed) == seq)
+            return out;
     }
+    // Bounded retry budget exhausted: a crashed writer leaves `seq` odd
+    // forever, so report a zeroed snapshot with `stale` set instead of
+    // spinning at 100% CPU.
+    out = ShmStatus{};
+    out.stale = true;
     return out;
 }
 
@@ -294,52 +355,36 @@ const std::string& ShmStatusWriter::name() const noexcept {
     return name_;
 }
 
-// Seqlock writer: publishes the plain update under an odd/even sequence.
+// Seqlock writer: publishes the complete plain update under an odd/even sequence.
 void ShmStatusWriter::publish(const ShmStatusUpdate& u) noexcept {
     if (!map_)
         return;
     AtomicShmStatus* s = map_;
-    uint64_t old = s->seq.load(std::memory_order_acquire);
-    // Ensure old is even
+    uint64_t old = s->seq.load(std::memory_order_relaxed);
+    // Ensure old is even (recover from a prior torn/crashed publish).
     if (old & 1)
-        old++;
+        ++old;
 
-    // Mark as writing (odd)
-    s->seq.store(old + 1, std::memory_order_release);
-    std::atomic_thread_fence(std::memory_order_release);
+    // Mark as writing (odd). The full fence keeps the data stores below from
+    // becoming visible before readers observe the odd sequence.
+    s->seq.store(old + 1, std::memory_order_relaxed);
+    std::atomic_thread_fence(std::memory_order_seq_cst);
 
     atomicStoreDouble(s->position, u.position);
+    atomicStoreDouble(s->duration, u.duration);
     atomicStoreFloat(s->volume, u.volume);
     s->state.store(u.state, std::memory_order_relaxed);
     s->track_id.store(u.track_id, std::memory_order_relaxed);
+    s->queueSize.store(u.queueSize, std::memory_order_relaxed);
     s->muted.store(u.muted, std::memory_order_relaxed);
+    // Always rewrite both strings: an empty view clears the previous value.
+    publishFixedString(s->title, sizeof(s->title), u.title);
+    publishFixedString(s->artist, sizeof(s->artist), u.artist);
 
-    // Copy strings with bounds checking
-    if (!u.title.empty()) {
-        std::size_t n = std::min(u.title.size(), sizeof(s->title) - 1);
-        std::memcpy(s->title, u.title.data(), n);
-        s->title[n] = '\0';
-    }
-    if (!u.artist.empty()) {
-        std::size_t n = std::min(u.artist.size(), sizeof(s->artist) - 1);
-        std::memcpy(s->artist, u.artist.data(), n);
-        s->artist[n] = '\0';
-    }
-
-    // Mark as done (even)
+    // Mark as done (even). The release fence makes every store above visible
+    // to readers that observe this even sequence.
+    std::atomic_thread_fence(std::memory_order_release);
     s->seq.store(old + 2, std::memory_order_release);
-}
-
-void ShmStatusWriter::setDuration(double dur) noexcept {
-    if (!map_)
-        return;
-    atomicStoreDouble(map_->duration, dur);
-}
-
-void ShmStatusWriter::setQueueSize(size_t sz) noexcept {
-    if (!map_)
-        return;
-    map_->queueSize.store(sz, std::memory_order_relaxed);
 }
 
 void ShmStatusWriter::close() noexcept {

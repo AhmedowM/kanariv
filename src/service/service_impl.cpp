@@ -512,17 +512,17 @@ void Service::Impl::updateShmStatus() {
     }
     kanariv::ipc::ShmStatusUpdate u{};
     u.position = eng.position();
+    u.duration = duration;
     u.volume = eng.volume();
     u.muted = (eng.volume() == 0.0f);
     u.state = static_cast<int>(eng.state());
     u.track_id = track_id;
+    u.queueSize = qSize;
     u.title = title;
     u.artist = artist;
+    // One seqlock critical section for the whole snapshot (duration and queue
+    // size used to be published through separate, non-sequenced setters).
     shmWriter_->publish(u);
-    shmWriter_->setQueueSize(qSize);
-    if (track_id != 0) {
-        shmWriter_->setDuration(duration);
-    }
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::statusResult() {

@@ -208,20 +208,33 @@ KANARIV_API std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std:
 // Framing: [4-byte BE len][json]
 // ---------------------------------------------------------------------------
 /**
+ * @brief Maximum accepted JSON payload size for one frame (16 MiB).
+ * @ingroup kanariv_ipc
+ * @details Enforced in both directions: `frame` refuses to emit an oversized
+ * payload and `deframe` refuses to allocate one claimed by a peer.
+ */
+inline constexpr std::size_t kMaxFrameBytes = 16 * 1024 * 1024;
+
+/**
  * @brief Frame a JSON string with 4-byte big-endian length prefix.
  * @ingroup kanariv_ipc
  * @param json JSON payload to frame.
- * @return Vector of bytes: [len_be][json...] where len_be is 4-byte big-endian length.
+ * @return Vector of bytes `[len_be][json...]`, or `InvalidArg` when the
+ * payload exceeds `kMaxFrameBytes` (no silent `uint32_t` truncation).
  */
-KANARIV_API std::vector<std::byte> frame(std::string_view json);
+KANARIV_API std::expected<std::vector<std::byte>, kanariv::utils::Error>
+frame(std::string_view json);
 
 /**
  * @brief Extract JSON payload from framed buffer.
  * @ingroup kanariv_ipc
- * @param buf Buffer containing [4-byte BE len][json...].
- * @return JSON string payload, or error if frame is incomplete or invalid.
+ * @param buf Buffer containing exactly one `[4-byte BE len][json...]` frame.
+ * @return JSON string payload, or an error when the buffer is short, the
+ * declared length exceeds `kMaxFrameBytes`, the frame is incomplete, or bytes
+ * trail the declared frame (protocol desync).
  */
-KANARIV_API std::expected<std::string, kanariv::utils::Error> deframe(std::span<const std::byte> buf);
+KANARIV_API std::expected<std::string, kanariv::utils::Error>
+deframe(std::span<const std::byte> buf);
 
 /**
  * @brief Serialize a Result to pretty-printed JSON string.

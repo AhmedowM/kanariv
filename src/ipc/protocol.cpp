@@ -527,10 +527,13 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
             return Command{std::move(q)};
         }
         if (t == "QueueDelete") {
-            int64_t qid = 1;
-            if (j.contains("qid") && j["qid"].isNumber())
-                qid = j["qid"].get<int64_t>();
-            return Command{QueueDelete{qid}};
+            // Never fall back to queue 1 on a missing field: a malformed frame
+            // must not delete a queue the client did not name.
+            if (!j.contains("qid") || !j["qid"].isNumber()) {
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg, "QueueDelete requires numeric qid")};
+            }
+            return Command{QueueDelete{j["qid"].get<int64_t>()}};
         }
         if (t == "PlayFiles") {
             PlayFiles p{};
@@ -549,10 +552,12 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
             return Command{std::move(p)};
         }
         if (t == "QueueSwitch") {
-            int64_t qid = 1;
-            if (j.contains("qid") && j["qid"].isNumber())
-                qid = j["qid"].get<int64_t>();
-            return Command{QueueSwitch{qid}};
+            // Same fail-closed rule as QueueDelete: `qid` is mandatory.
+            if (!j.contains("qid") || !j["qid"].isNumber()) {
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::InvalidArg, "QueueSwitch requires numeric qid")};
+            }
+            return Command{QueueSwitch{j["qid"].get<int64_t>()}};
         }
         if (t == "QueueAdd") {
             std::string q;
@@ -1841,11 +1846,13 @@ std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view
                 kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "missing id")};
         }
         uint32_t id = j["id"].get<uint32_t>();
-        bool ok = true;
-        if (j.contains("ok") && j["ok"].isBoolean())
-            ok = j["ok"].get<bool>();
-        else if (j.contains("error"))
-            ok = false;
+        // Fail closed: a reply without an explicit boolean `ok` is corrupt, not
+        // a success. The old fallback treated a missing `ok` as success.
+        if (!j.contains("ok") || !j["ok"].isBoolean()) {
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt,
+                                                             "missing boolean ok")};
+        }
+        const bool ok = j["ok"].get<bool>();
 
         if (ok) {
             if (!j.contains("result")) {
@@ -1857,14 +1864,13 @@ std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view
                 return std::unexpected{r.error()};
             return IpcReply{id, std::move(*r)};
         } else {
-            Json ej;
-            if (j.contains("error"))
-                ej = j["error"];
-            else if (j.contains("result"))
-                ej = j["result"];
-            else
+            // `ok == false` requires an explicit error payload (the sole
+            // producer always emits one); never reinterpret `result`.
+            if (!j.contains("error")) {
                 return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg, "missing error")};
+                    kanariv::utils::StatusCode::Corrupt, "missing error")};
+            }
+            Json ej = j["error"];
             auto e = detail::errorFromJson(ej);
             if (!e)
                 return std::unexpected{e.error()};
@@ -1876,10 +1882,16 @@ std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view
     }
 }
 
-std::vector<std::byte> frame(std::string_view json) {
+std::expected<std::vector<std::byte>, kanariv::utils::Error> frame(std::string_view json) {
+    // Reject before narrowing size_t -> uint32_t: an oversized payload would
+    // otherwise be framed with a bogus length and desync the stream.
+    if (json.size() > kMaxFrameBytes) {
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
+    }
     std::vector<std::byte> out;
     out.reserve(4 + json.size());
-    uint32_t len = static_cast<uint32_t>(json.size());
+    const uint32_t len = static_cast<uint32_t>(json.size());
     out.push_back(static_cast<std::byte>((len >> 24) & 0xFF));
     out.push_back(static_cast<std::byte>((len >> 16) & 0xFF));
     out.push_back(static_cast<std::byte>((len >> 8) & 0xFF));
@@ -1896,13 +1908,24 @@ std::expected<std::string, kanariv::utils::Error> deframe(std::span<const std::b
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too short")};
     }
-    uint32_t len = (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[0])) << 24) |
-                   (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[1])) << 16) |
-                   (static_cast<uint32_t>(std::to_integer<unsigned char>(buf[2])) << 8) |
-                   static_cast<uint32_t>(std::to_integer<unsigned char>(buf[3]));
-    if (buf.size() < 4 + len) {
+    const std::size_t len =
+        (static_cast<std::size_t>(std::to_integer<unsigned char>(buf[0])) << 24) |
+        (static_cast<std::size_t>(std::to_integer<unsigned char>(buf[1])) << 16) |
+        (static_cast<std::size_t>(std::to_integer<unsigned char>(buf[2])) << 8) |
+        static_cast<std::size_t>(std::to_integer<unsigned char>(buf[3]));
+    // Cap before reserve(): never honour a peer-claimed multi-gigabyte length.
+    if (len > kMaxFrameBytes) {
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
+    }
+    const std::size_t total = 4 + len;
+    if (buf.size() < total) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame incomplete")};
+    }
+    if (buf.size() != total) {
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "trailing bytes after frame")};
     }
     std::string s;
     s.reserve(len);

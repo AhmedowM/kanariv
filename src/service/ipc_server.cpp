@@ -343,7 +343,7 @@ void IpcServer::Impl::run(std::stop_token st,
                                 (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
                                 (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
                                 static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-                            if (len > 16 * 1024 * 1024) {
+                            if (len > kanariv::ipc::kMaxFrameBytes) {
                                 ::CloseHandle(clientHandle);
                                 return;
                             }
@@ -375,9 +375,14 @@ void IpcServer::Impl::run(std::stop_token st,
                             }
                             std::string repJson = kanariv::ipc::serializeReply(reply);
                             auto framed = kanariv::ipc::frame(repJson);
+                            if (!framed) {
+                                ::CloseHandle(clientHandle);
+                                return;
+                            }
                             DWORD w2 = 0;
-                            BOOL okW = ::WriteFile(clientHandle, framed.data(),
-                                                   static_cast<DWORD>(framed.size()), &w2, nullptr);
+                            BOOL okW =
+                                ::WriteFile(clientHandle, framed->data(),
+                                            static_cast<DWORD>(framed->size()), &w2, nullptr);
                             if (!okW) {
                                 ::CloseHandle(clientHandle);
                                 return;
@@ -399,11 +404,14 @@ void IpcServer::Impl::run(std::stop_token st,
                                     std::string("server error: ") + e.what())};
                                 std::string errJson = kanariv::ipc::serializeReply(errReply);
                                 auto errFrame = kanariv::ipc::frame(errJson);
-                                DWORD w3 = 0;
-                                (void)::WriteFile(clientHandle, errFrame.data(),
-                                                 static_cast<DWORD>(errFrame.size()), &w3, nullptr);
-                                (void)::FlushFileBuffers(clientHandle);
-                                (void)::DisconnectNamedPipe(clientHandle);
+                                if (errFrame) {
+                                    DWORD w3 = 0;
+                                    (void)::WriteFile(clientHandle, errFrame->data(),
+                                                      static_cast<DWORD>(errFrame->size()), &w3,
+                                                      nullptr);
+                                    (void)::FlushFileBuffers(clientHandle);
+                                    (void)::DisconnectNamedPipe(clientHandle);
+                                }
                             } catch (...) {
                             }
                             ::CloseHandle(clientHandle);
@@ -494,7 +502,7 @@ void IpcServer::Impl::run(std::stop_token st,
                             (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
                             (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
                             static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-                        if (len > 16 * 1024 * 1024) {
+                        if (len > kanariv::ipc::kMaxFrameBytes) {
                             ::close(cfd);
                             return;
                         }
@@ -522,7 +530,7 @@ void IpcServer::Impl::run(std::stop_token st,
                         }
                         std::string repJson = kanariv::ipc::serializeReply(reply);
                         auto framed = kanariv::ipc::frame(repJson);
-                        if (!sendAll(framed)) {
+                        if (!framed || !sendAll(*framed)) {
                             ::close(cfd);
                             return;
                         }
@@ -538,19 +546,19 @@ void IpcServer::Impl::run(std::stop_token st,
                                 std::string("server error: ") + e.what())};
                             std::string errJson = kanariv::ipc::serializeReply(errReply);
                             auto errFrame = kanariv::ipc::frame(errJson);
-                            std::size_t sent = 0;
-                            while (sent < errFrame.size()) {
-                                ::ssize_t n = ::send(cfd,
-                                                     reinterpret_cast<const char*>(
-                                                         errFrame.data()) +
-                                                         sent,
-                                                     errFrame.size() - sent, 0);
-                                if (n <= 0) {
-                                    if (n < 0 && errno == EINTR)
-                                        continue;
-                                    break;
+                            if (errFrame) {
+                                std::size_t sent = 0;
+                                while (sent < errFrame->size()) {
+                                    ::ssize_t n = ::send(
+                                        cfd, reinterpret_cast<const char*>(errFrame->data()) + sent,
+                                        errFrame->size() - sent, 0);
+                                    if (n <= 0) {
+                                        if (n < 0 && errno == EINTR)
+                                            continue;
+                                        break;
+                                    }
+                                    sent += static_cast<std::size_t>(n);
                                 }
-                                sent += static_cast<std::size_t>(n);
                             }
                         } catch (...) {
                         }

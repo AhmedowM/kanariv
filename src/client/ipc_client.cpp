@@ -148,8 +148,10 @@ kanariv::utils::Expected<kanariv::ipc::Result> IpcClient::send(const kanariv::ip
     kanariv::ipc::IpcRequest req{id, cmd};
     std::string json = kanariv::ipc::serializeRequest(req);
     auto framed = kanariv::ipc::frame(json);
+    if (!framed)
+        return std::unexpected{framed.error()};
 
-    if (auto e = impl_->rawSend(framed); !e)
+    if (auto e = impl_->rawSend(*framed); !e)
         return std::unexpected{e.error()};
 
     auto raw = impl_->rawRecv();
@@ -256,7 +258,7 @@ kanariv::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
                         (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
                         (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
                         static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-    if (len > 16 * 1024 * 1024) {
+    if (len > kanariv::ipc::kMaxFrameBytes) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
     }
@@ -303,7 +305,7 @@ kanariv::utils::Expected<std::vector<std::byte>> IpcClient::Impl::rawRecv() {
                         (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
                         (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
                         static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-    if (len > 16 * 1024 * 1024) {
+    if (len > kanariv::ipc::kMaxFrameBytes) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
     }
