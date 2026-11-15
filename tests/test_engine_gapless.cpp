@@ -1,18 +1,24 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/engine/engine.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
 #include <chrono>
+#include <cmath>
 #include <common.hpp>
 #include <cstdint>
+#include <engine/fade.hpp>
 #include <filesystem>
 #include <memory>
+#include <span>
 #include <string>
 #include <system_error>
 #include <thread>
 #include <utility>
+#include <vector>
 using namespace kanariv::db;
 using namespace kanariv::engine;
 using namespace kanariv::utils;
@@ -154,5 +160,150 @@ TEST_CASE("gapless not triggered when remaining > gap", "[engine_gapless]") {
         std::filesystem::remove(dbPath, ec);
         std::filesystem::remove(dbPath + "-wal", ec);
         std::filesystem::remove(dbPath + "-shm", ec);
+    }
+}
+
+namespace {
+
+/// Chunks in these tests run at a fixed rate so frame counts are exact.
+constexpr double kFadeRate = 48000.0;
+
+/// @brief Interleaved buffer with a trailing canary region.
+/// @details `applyFadeEnvelope()` only sees the first `used` floats as its
+/// span, so a write past that (the E1 `frames*ch`-as-sample-count mix-up) lands
+/// in the canary and is detected even when no sanitizer is available. The
+/// canary is sized for the worst case: the pre-fix loop addressed up to
+/// `frames*ch*ch` floats (ch <= 6 in these tests), i.e. six times the payload.
+class CanaryBuffer {
+  public:
+    static constexpr float kSentinel = -12345.0f;
+
+    explicit CanaryBuffer(std::size_t used, float value)
+        : used_(used), data_(used * 6 + kGuard, value) {
+        for (std::size_t i = used_; i < data_.size(); ++i)
+            data_[i] = kSentinel;
+    }
+
+    std::span<float> span() {
+        return std::span<float>(data_.data(), used_);
+    }
+    float& operator[](std::size_t i) {
+        return data_[i];
+    }
+    const float& operator[](std::size_t i) const {
+        return data_[i];
+    }
+    [[nodiscard]] bool canaryIntact() const {
+        for (std::size_t i = used_; i < data_.size(); ++i)
+            if (data_[i] != kSentinel)
+                return false;
+        return true;
+    }
+
+  private:
+    static constexpr std::size_t kGuard = 64;
+    std::size_t used_;
+    std::vector<float> data_;
+};
+
+} // namespace
+
+TEST_CASE("fade envelope applies one gain per frame at mono, stereo and 5.1", "[engine_fade]") {
+    using kanariv::engine::detail::applyFadeEnvelope;
+    using kanariv::engine::detail::FadeParams;
+    const std::uint32_t ch = GENERATE(1u, 2u, 6u);
+    constexpr std::size_t frames = 512;
+    const std::size_t samples = frames * ch;
+
+    SECTION("fade-in and fade-out attenuate the first and last frame") {
+        CanaryBuffer out(samples, 1.0f);
+        FadeParams p;
+        p.startFrame = 0;
+        p.fadeInFrames = 256;
+        p.fadeOutFrames = 256;
+        p.fadeOutStartSec = 256.0 / kFadeRate;
+        p.sampleRate = kFadeRate;
+        REQUIRE(applyFadeEnvelope(out.span(), frames, ch, p) == samples);
+        REQUIRE(out.canaryIntact());
+        for (std::uint32_t c = 0; c < ch; ++c) {
+            // Frame 0 is fully attenuated by the fade-in; frame 1 is one step in.
+            REQUIRE(out[c] == Catch::Approx(0.0).margin(1e-6));
+            REQUIRE(out[ch + c] == Catch::Approx(1.0 / 256.0).margin(1e-6));
+            // Fade-out starts at frame 256, where the gain is back to 1.0 ...
+            REQUIRE(out[256 * ch + c] == Catch::Approx(1.0).margin(1e-6));
+            // ... and the last frame is one step short of fully faded out.
+            REQUIRE(out[(frames - 1) * ch + c] == Catch::Approx(1.0 / 256.0).margin(1e-6));
+        }
+        // One envelope value per frame: equal input yields bit-equal channels.
+        for (std::size_t f = 0; f < frames; ++f)
+            for (std::uint32_t c = 1; c < ch; ++c)
+                REQUIRE(out[f * ch + c] == out[f * ch]);
+        for (std::size_t i = 0; i < samples; ++i) {
+            REQUIRE(std::isfinite(out[i]));
+            REQUIRE(out[i] >= 0.0f);
+            REQUIRE(out[i] <= 1.0f);
+        }
+    }
+
+    SECTION("full-scale audio after the fade passes through untouched") {
+        CanaryBuffer out(samples, 1.0f);
+        FadeParams p;
+        p.startFrame = 1000; // past the fade-in ramp; no fade-out configured
+        p.fadeInFrames = 256;
+        p.sampleRate = kFadeRate;
+        REQUIRE(applyFadeEnvelope(out.span(), frames, ch, p) == samples);
+        REQUIRE(out.canaryIntact());
+        for (std::size_t i = 0; i < samples; ++i) {
+            REQUIRE(out[i] == 1.0f);
+            REQUIRE(std::isfinite(out[i]));
+        }
+    }
+
+    // A gain of 1.0 is the identity, so an overrun into the canary would be
+    // invisible; this section ramps the gain to 0 across the chunk so any write
+    // past `frames*ch` alters the canary and fails `canaryIntact()`.
+    SECTION("envelope stops at exactly frames*ch samples") {
+        CanaryBuffer out(samples, 1.0f);
+        FadeParams p;
+        p.startFrame = 0;
+        p.fadeOutFrames = 256;
+        p.fadeOutStartSec = 0.0; // fade out over the first 256 frames, then silence
+        p.sampleRate = kFadeRate;
+        REQUIRE(applyFadeEnvelope(out.span(), frames, ch, p) == samples);
+        REQUIRE(out.canaryIntact());
+        for (std::uint32_t c = 0; c < ch; ++c) {
+            REQUIRE(out[(frames - 1) * ch + c] == 0.0f);
+        }
+        for (std::size_t i = 0; i < samples; ++i) {
+            REQUIRE(std::isfinite(out[i]));
+            REQUIRE(out[i] >= 0.0f);
+            REQUIRE(out[i] <= 1.0f);
+        }
+    }
+
+    SECTION("crossfade blends the incoming track per channel") {
+        CanaryBuffer out(samples, 1.0f);
+        CanaryBuffer in(samples, 0.0f);
+        for (std::size_t f = 0; f < frames; ++f)
+            for (std::uint32_t c = 0; c < ch; ++c)
+                in[f * ch + c] = 0.04f * static_cast<float>(c + 1);
+        FadeParams p;
+        p.startFrame = 1000; // no envelope gain, isolates the mix
+        p.sampleRate = kFadeRate;
+        constexpr double progress = 0.25;
+        REQUIRE(applyFadeEnvelope(out.span(), frames, ch, p, in.span(), progress) == samples);
+        REQUIRE(out.canaryIntact());
+        REQUIRE(in.canaryIntact());
+        const double outWeight = std::sqrt(1.0 - progress);
+        const double inWeight = std::sqrt(progress);
+        for (std::size_t f = 0; f < frames; ++f) {
+            for (std::uint32_t c = 0; c < ch; ++c) {
+                const double expected =
+                    1.0 * outWeight + (0.04 * static_cast<double>(c + 1)) * inWeight;
+                REQUIRE(out[f * ch + c] == Catch::Approx(expected).margin(1e-6));
+                REQUIRE(std::isfinite(out[f * ch + c]));
+                REQUIRE(out[f * ch + c] <= 1.0f);
+            }
+        }
     }
 }

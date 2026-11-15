@@ -17,6 +17,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <engine/fade.hpp>
 #include <engine/history.hpp>
 #include <engine/shuffle.hpp>
 #include <expected>
@@ -227,8 +228,8 @@ struct Engine::Impl {
     // Reset to false on TrackStarted / next() failure. Requires engineTick() single-writer.
     std::atomic<bool> gaplessArmed_{false};
     // Playback polish state (real-time safe, touched only in decodeLoop/doPlayTrack):
-    // fadeSample_ counts samples into the current fade; fadeInSamples_/fadeOutSamples_
-    // are precomputed per track; fadeOutStart_ holds the position where fade-out begins.
+    // fadeSample_ counts frames into the current fade; fadeInSamples_/fadeOutSamples_
+    // are precomputed per track in frames; fadeOutStart_ holds the position where fade-out begins.
     std::atomic<uint64_t> fadeSample_{0};
     uint64_t fadeInSamples_{0};
     uint64_t fadeOutSamples_{0};
@@ -243,8 +244,8 @@ struct Engine::Impl {
     std::unique_ptr<kanariv::media::Decoder> crossfadeDecoder_;
     std::unique_ptr<kanariv::media::Reader> crossfadeReader_;
     kanariv::types::Track crossfadeTrack_{};
-    uint64_t crossfadeSamples_{0};   // total crossfade length in samples
-    uint64_t crossfadeSample_{0};    // current sample within crossfade
+    uint64_t crossfadeSamples_{0}; // total crossfade length in frames
+    uint64_t crossfadeSample_{0};  // current frame within crossfade
     bool crossfadeActive_{false};
     std::atomic<bool> crossfadePending_{false};   // set by engineTick, consumed by decodeLoop
     mutable std::timed_mutex queueMutex_;
@@ -1967,6 +1968,7 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
         std::span<float> chunk(scratch.data(), maxFrames * ch);
         size_t frames;
         size_t xfFrames = 0;
+        uint32_t sampleRate = 0;
         std::vector<float> xfBuf;
         {
             std::unique_lock<std::mutex> lk(decodeMtx_);
@@ -1980,6 +1982,10 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             ch = decoder_->channels();
             if (ch == 0)
                 ch = 2;
+            // Snapshot the rate under decodeMtx_: doPlayTrack() frees/replaces
+            // decoder_ under the same lock, so the fade envelope below must not
+            // dereference the decoder again.
+            sampleRate = decoder_->sampleRate();
             frames = decoder_->decode(chunk);
             // During crossfade, decode the incoming track into a second buffer.
             if (crossfadeActive_ && crossfadeDecoder_ && frames > 0) {
@@ -1995,68 +2001,55 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             }
         }
         // Apply fade-in/fade-out envelope and crossfade mix (decode thread only,
-        // real-time safe). fadeSample_ tracks samples into the outgoing track.
+        // real-time safe). fadeSample_ tracks frames into the outgoing track;
+        // the envelope yields one gain per frame, applied to every channel.
         if ((fadeInSamples_ > 0 || fadeOutSamples_ > 0 || crossfadeActive_) && frames > 0) {
             uint64_t fadeStart = fadeSample_.load(std::memory_order_relaxed);
-            double sr = (double)decoder_->sampleRate();
-            if (sr == 0.0)
-                sr = 48000.0;
-            size_t samples = frames * ch;
-            double xfProgress = crossfadeActive_
-                                    ? (double)crossfadeSample_ / (double)crossfadeSamples_
-                                    : 0.0;
-            if (xfProgress > 1.0)
-                xfProgress = 1.0;
-            for (size_t i = 0; i < samples; ++i) {
-                uint64_t sampleIdx = fadeStart + i;
-                double gain = 1.0;
-                // Fade-in: ramp 0 -> 1 over fadeInSamples.
-                if (fadeInSamples_ > 0 && sampleIdx < fadeInSamples_)
-                    gain = (double)sampleIdx / (double)fadeInSamples_;
-                // Fade-out: ramp 1 -> 0 over fadeOutSamples starting at fadeOutStart_.
-                if (fadeOutSamples_ > 0) {
-                    double posSec = (double)sampleIdx / sr;
-                    if (posSec >= fadeOutStart_) {
-                        double fadeProg = (posSec - fadeOutStart_) /
-                                          ((double)fadeOutSamples_ / sr);
-                        gain = (fadeProg >= 1.0) ? 0.0 : (1.0 - fadeProg);
-                    }
-                }
-                // Crossfade mix: blend outgoing (gain) with incoming (xfProgress).
-                if (crossfadeActive_ && xfFrames > 0) {
-                    size_t xfIdx = i;
-                    double inSample = (double)xfBuf[xfIdx];
-                    double outSample = (double)scratch[i];
-                    // Crossfade uses equal-power mixing: sqrt(1-p) and sqrt(p).
-                    double outGain = std::sqrt(1.0 - xfProgress);
-                    double inGain = std::sqrt(xfProgress);
-                    scratch[i] = (float)(outSample * outGain * gain +
-                                         inSample * inGain * gain);
-                } else {
-                    for (uint32_t c = 0; c < ch; ++c)
-                        scratch[i * ch + c] = (float)(scratch[i * ch + c] * gain);
-                }
-            }
-            fadeSample_.store(fadeStart + samples, std::memory_order_release);
+            kanariv::engine::detail::FadeParams fade;
+            fade.startFrame = fadeStart;
+            fade.fadeInFrames = fadeInSamples_;
+            fade.fadeOutFrames = fadeOutSamples_;
+            fade.fadeOutStartSec = fadeOutStart_;
+            fade.sampleRate = static_cast<double>(sampleRate); // snapped under decodeMtx_
+            std::span<const float> incoming;
+            double xfProgress = 0.0;
             if (crossfadeActive_) {
-                crossfadeSample_ += samples;
+                xfProgress =
+                    static_cast<double>(crossfadeSample_) / static_cast<double>(crossfadeSamples_);
+                if (xfProgress > 1.0)
+                    xfProgress = 1.0;
+                // Blend outgoing (envelope gain) with the incoming track.
+                if (xfFrames > 0)
+                    incoming = std::span<const float>(xfBuf.data(), frames * ch);
+            }
+            (void)kanariv::engine::detail::applyFadeEnvelope(
+                std::span<float>(scratch.data(), frames * ch), frames, ch, fade, incoming,
+                xfProgress);
+            fadeSample_.store(fadeStart + frames, std::memory_order_release);
+            if (crossfadeActive_) {
+                crossfadeSample_ += frames;
                 if (crossfadeSample_ >= crossfadeSamples_) {
                     // Crossfade complete: swap incoming decoder into place.
-                    crossfadeActive_ = false;
-                    decoder_ = std::move(crossfadeDecoder_);
-                    reader_ = std::move(crossfadeReader_);
-                    crossfadeDecoder_.reset();
-                    crossfadeReader_.reset();
-                    crossfadeSamples_ = 0;
-                    crossfadeSample_ = 0;
-                    // Restart fade accounting for the new track.
-                    fadeSample_.store(0, std::memory_order_release);
-                    fadeInSamples_ = 0;
-                    fadeOutSamples_ = 0;
-                    fadeOutStart_ = 0;
-                    if (cfg_.logger)
-                        cfg_.logger->debug("crossfade complete track={}",
-                                            crossfadeTrack_.id);
+                    // The swap deliberately stays on the decode thread; taking
+                    // decodeMtx_ keeps it exclusive with doPlayTrack()/seek(),
+                    // which free/replace the same decoder pointers.
+                    std::unique_lock<std::mutex> lk(decodeMtx_);
+                    if (crossfadeActive_ && crossfadeDecoder_) {
+                        crossfadeActive_ = false;
+                        decoder_ = std::move(crossfadeDecoder_);
+                        reader_ = std::move(crossfadeReader_);
+                        crossfadeDecoder_.reset();
+                        crossfadeReader_.reset();
+                        crossfadeSamples_ = 0;
+                        crossfadeSample_ = 0;
+                        // Restart fade accounting for the new track.
+                        fadeSample_.store(0, std::memory_order_release);
+                        fadeInSamples_ = 0;
+                        fadeOutSamples_ = 0;
+                        fadeOutStart_ = 0;
+                        if (cfg_.logger)
+                            cfg_.logger->debug("crossfade complete track={}", crossfadeTrack_.id);
+                    }
                 }
             }
         }
