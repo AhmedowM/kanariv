@@ -313,6 +313,67 @@ TEST_CASE("fade envelope applies one gain per frame at mono, stereo and 5.1", "[
     }
 }
 
+TEST_CASE("crossfade mixes incoming tracks with their own channel count", "[engine_fade]") {
+    using kanariv::engine::detail::applyFadeEnvelope;
+    using kanariv::engine::detail::FadeParams;
+    constexpr std::size_t frames = 64;
+    constexpr double progress = 0.5;
+    const double outWeight = std::sqrt(1.0 - progress);
+    const double inWeight = std::sqrt(progress);
+    FadeParams p;
+    p.startFrame = 1000; // past any envelope ramp, isolates the mix
+    p.sampleRate = kFadeRate;
+
+    SECTION("mono incoming feeds every outgoing channel") {
+        constexpr std::uint32_t outCh = 2;
+        CanaryBuffer out(frames * outCh, 1.0f);
+        CanaryBuffer in(frames, 0.0f);
+        for (std::size_t f = 0; f < frames; ++f)
+            in[f] = 0.5f;
+        REQUIRE(applyFadeEnvelope(out.span(), frames, outCh, p, in.span(), progress, 1) ==
+                frames * outCh);
+        REQUIRE(out.canaryIntact());
+        REQUIRE(in.canaryIntact());
+        for (std::size_t f = 0; f < frames; ++f)
+            for (std::uint32_t c = 0; c < outCh; ++c)
+                REQUIRE(out[f * outCh + c] ==
+                        Catch::Approx(1.0 * outWeight + 0.5 * inWeight).margin(1e-6));
+    }
+
+    SECTION("stereo incoming into a mono chunk uses its left channel") {
+        CanaryBuffer out(frames, 1.0f);
+        CanaryBuffer in(frames * 2, 0.0f);
+        for (std::size_t f = 0; f < frames; ++f) {
+            in[f * 2] = 0.25f;
+            in[f * 2 + 1] = 0.75f;
+        }
+        REQUIRE(applyFadeEnvelope(out.span(), frames, 1, p, in.span(), progress, 2) == frames);
+        REQUIRE(out.canaryIntact());
+        REQUIRE(in.canaryIntact());
+        for (std::size_t f = 0; f < frames; ++f)
+            REQUIRE(out[f] == Catch::Approx(1.0 * outWeight + 0.25 * inWeight).margin(1e-6));
+    }
+
+    SECTION("a short incoming chunk only covers the frames it decoded") {
+        constexpr std::uint32_t outCh = 2;
+        constexpr std::size_t shortFrames = 16;
+        CanaryBuffer out(frames * outCh, 1.0f);
+        CanaryBuffer in(shortFrames * outCh, 0.0f);
+        for (std::size_t i = 0; i < shortFrames * outCh; ++i)
+            in[i] = 0.5f;
+        REQUIRE(applyFadeEnvelope(out.span(), frames, outCh, p, in.span(), progress, outCh) ==
+                frames * outCh);
+        REQUIRE(out.canaryIntact());
+        REQUIRE(in.canaryIntact());
+        for (std::size_t f = 0; f < frames; ++f) {
+            const double expected = f < shortFrames ? 1.0 * outWeight + 0.5 * inWeight
+                                                    : 1.0 * outWeight;
+            for (std::uint32_t c = 0; c < outCh; ++c)
+                REQUIRE(out[f * outCh + c] == Catch::Approx(expected).margin(1e-6));
+        }
+    }
+}
+
 namespace {
 
 /// @brief Writes a 16-bit mono PCM WAV of silence.

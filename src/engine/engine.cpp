@@ -2327,8 +2327,15 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
                         crossfadeTrack_ = std::move(next.track);
                         crossfadeActive_.store(true, std::memory_order_release);
                         crossfadePending_.store(false, std::memory_order_release);
-                        crossfadeSamples_ = (uint64_t)cfg_.interTrackGapMs *
-                                            (uint64_t)crossfadeDecoder_->sampleRate() / 1000;
+                        // crossfadeSample_ advances by decoded *outgoing* frames,
+                        // so the overlap length must be expressed in the
+                        // outgoing clock. The incoming rate only matters once
+                        // this track is published.
+                        uint32_t overlapRate = decoder_ ? decoder_->sampleRate() : 0;
+                        if (overlapRate == 0)
+                            overlapRate = crossfadeDecoder_->sampleRate();
+                        crossfadeSamples_ =
+                            (uint64_t)cfg_.interTrackGapMs * (uint64_t)overlapRate / 1000;
                         crossfadeSample_ = 0;
                         armed = true;
                     }
@@ -2369,6 +2376,7 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
         size_t frames = 0;
         size_t xfFrames = 0;
         uint32_t sampleRate = 0;
+        uint32_t xfCh = 0;
         std::vector<float> xfBuf;
         // Fade envelope parameters, snapped under decodeMtx_ (they are
         // decode-lock state; the mix below runs after the scope and must not
@@ -2402,7 +2410,13 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             // During crossfade, decode the incoming track into a second buffer.
             if (crossfadeActive_.load(std::memory_order_relaxed) && crossfadeDecoder_ &&
                 frames > 0) {
-                xfBuf.resize(frames * ch);
+                // The incoming decoder keeps its own channel layout; sizing the
+                // buffer from the outgoing channels decoded the wrong number of
+                // frames and mixed interleaved data with the wrong stride.
+                xfCh = crossfadeDecoder_->channels();
+                if (xfCh == 0)
+                    xfCh = ch;
+                xfBuf.resize(frames * xfCh);
                 xfFrames = crossfadeDecoder_->decode(std::span<float>(xfBuf.data(), xfBuf.size()));
                 if (xfFrames == 0) {
                     // Incoming track reached EOF before the overlap did: it has
@@ -2436,12 +2450,14 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             fade.sampleRate = static_cast<double>(sampleRate); // snapped under decodeMtx_
             std::span<const float> incoming;
             if (xfFrames > 0) {
-                // Blend outgoing (envelope gain) with the incoming track.
-                incoming = std::span<const float>(xfBuf.data(), frames * ch);
+                // Blend outgoing (envelope gain) with the incoming track; the
+                // two buffers are interleaved independently, so the mix needs
+                // each side's own channel count.
+                incoming = std::span<const float>(xfBuf.data(), xfFrames * xfCh);
             }
             (void)kanariv::engine::detail::applyFadeEnvelope(
                 std::span<float>(scratch.data(), frames * ch), frames, ch, fade, incoming,
-                xfProgress);
+                xfProgress, xfCh);
             fadeSample_.store(fadeStart + frames, std::memory_order_release);
         }
         if (frames == 0) {

@@ -43,11 +43,15 @@ struct FadeParams {
  * @ingroup kanariv_engine
  * @param buf Interleaved chunk buffer, at least `frames * channels` floats.
  * @param frames Frame count in the chunk.
- * @param channels Channel count (0 is treated as invalid and yields 0).
+ * @param channels Channel count of `buf` (0 is treated as invalid and yields 0).
  * @param params Envelope parameters (fade-in/out lengths and start position).
  * @param incoming Optional second buffer (same layout) mixed in for a
  * crossfade; empty applies the envelope only.
  * @param crossfadeProgress Equal-power mix position in [0,1]; clamped above 1.
+ * @param incomingChannels Channel count of `incoming` (0 means it matches
+ * `channels`). The two sides may differ: the incoming track is decoded with
+ * its own channel count, so a mono -> stereo transition must not index it as
+ * stereo pairs.
  * @return Number of interleaved samples written (`frames * channels`), or 0
  * when the arguments cannot describe a valid chunk.
  * @details Fade-in ramps 0 -> 1 over `fadeInFrames`; fade-out ramps 1 -> 0
@@ -55,18 +59,27 @@ struct FadeParams {
  * apply (matching the original decodeLoop arithmetic in double precision).
  * The crossfade mix keeps the outgoing gain applied to both tracks:
  * `out * sqrt(1-p) * gain + in * sqrt(p) * gain`.
+ * Incoming channel `c` (clamped to the last channel) feeds output channel `c`,
+ * so mono incoming is heard on every output channel. A short incoming chunk is
+ * mixed for the frames it covers; the remaining frames carry only the outgoing
+ * track at its fade weight.
  * @par Thread safety
  * Stateless; buffers are caller-owned and must not alias the envelope state.
  */
 inline std::size_t applyFadeEnvelope(std::span<float> buf, std::size_t frames,
                                      std::uint32_t channels, const FadeParams& params,
                                      std::span<const float> incoming = {},
-                                     double crossfadeProgress = 0.0) noexcept {
+                                     double crossfadeProgress = 0.0,
+                                     std::uint32_t incomingChannels = 0) noexcept {
     if (channels == 0 || frames == 0 || buf.size() < frames * channels)
         return 0;
     const std::size_t samples = frames * channels;
     const double sr = params.sampleRate > 0.0 ? params.sampleRate : 48000.0;
-    const bool crossfade = incoming.size() >= samples && !incoming.empty();
+    if (incomingChannels == 0)
+        incomingChannels = channels;
+    const std::size_t incomingFrames =
+        incoming.empty() ? 0 : incoming.size() / incomingChannels;
+    const bool crossfade = incomingFrames > 0;
     double progress = crossfadeProgress;
     if (progress > 1.0)
         progress = 1.0;
@@ -95,7 +108,12 @@ inline std::size_t applyFadeEnvelope(std::span<float> buf, std::size_t frames,
             const std::size_t idx = base + c;
             if (crossfade) {
                 const double outSample = static_cast<double>(buf[idx]);
-                const double inSample = static_cast<double>(incoming[idx]);
+                double inSample = 0.0;
+                if (f < incomingFrames) {
+                    const std::size_t inChannel =
+                        c < incomingChannels ? c : incomingChannels - 1;
+                    inSample = static_cast<double>(incoming[f * incomingChannels + inChannel]);
+                }
                 buf[idx] =
                     static_cast<float>(outSample * outWeight * gain + inSample * inWeight * gain);
             } else {
