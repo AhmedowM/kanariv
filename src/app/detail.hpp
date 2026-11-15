@@ -80,16 +80,4 @@ KANARIV_API void renderErrorInto(std::string& err, const kanariv::utils::Error& 
  */
 kanariv::utils::Error daemonDownError();
 
-/**
- * @brief Normalizes a successful reply that carries an embedded Error.
- * @details `ipc::Result` keeps the `CliError`/`Error` alternative for
- * server-side failures (I8), so a successful transport reply may still be a
- * failure. Every handler routes replies through this helper; when I8 is
- * fixed only this function changes.
- * @param res Client result to normalize.
- * @return The result, or the transport/embedded error.
- */
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-normalizeResult(std::expected<kanariv::ipc::Result, kanariv::utils::Error>&& res);
-
 } // namespace kanariv::app::detail

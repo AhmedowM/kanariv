@@ -406,12 +406,6 @@ int renderLyricsLive(const kanariv::ipc::Lyrics& ly, const std::filesystem::path
             continue;
         }
         failures = 0;
-        if (const auto* werr = std::get_if<kanariv::utils::Error>(&*pres)) {
-            kanariv::ipc::Result errRes{*werr};
-            OutputFormatter fmt{false};
-            fmt.print(errRes, std::cerr);
-            return exitCodeForError(*werr);
-        }
         auto* st = std::get_if<kanariv::ipc::Status>(&*pres);
         if (st == nullptr)
             continue;
@@ -1161,14 +1155,6 @@ int Shell::run(int argc, char** argv) {
                     continue;
                 }
                 failures = 0;
-                if (const auto* werr = std::get_if<kanariv::utils::Error>(&*res)) {
-                    kanariv::ipc::Result errRes{*werr};
-                    if (jsonFlag)
-                        kanariv::println(std::cerr, "{}", kanariv::ipc::toJson(errRes).dump());
-                    else
-                        fmt.print(errRes, std::cerr);
-                    return detail::exitCodeForError(*werr);
-                }
                 if (!jsonFlag) {
                     auto now = system_clock::now();
                     std::time_t t = system_clock::to_time_t(now);

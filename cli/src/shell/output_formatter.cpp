@@ -496,25 +496,12 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                                      er.ok ? "" : er.error);
                 }
             },
-            [&os](const std::monostate&) { kanariv::println(os, "OK"); },
-            [&os](const kanariv::utils::Error& v) {
-                // Error variant - print to given stream (caller may pass cerr)
-                kanariv::println(os, "Error: {} {}", kanariv::utils::toString(v.code), v.message);
-            }},
+            [&os](const std::monostate&) { kanariv::println(os, "OK"); }},
         r);
 }
 
-int OutputFormatter::printWithStatus(const kanariv::ipc::Result& r, std::ostream& out,
-                                     std::ostream& err) const {
-    // Status comes from the shared exit-code table, never from re-deriving
-    // 0/1 out of the embedded error alternative: two sources disagreed
-    // (105/106/109 vs 1) depending on the render path.
-    if (const auto* e = std::get_if<kanariv::utils::Error>(&r)) {
-        print(r, err);
-        return detail::exitCodeForError(*e);
-    }
-    print(r, out);
-    return detail::exitOk;
+void OutputFormatter::printError(const kanariv::utils::Error& e, std::ostream& err) const {
+    kanariv::println(err, "Error: {} {}", kanariv::utils::toString(e.code), e.message);
 }
 
 } // namespace kanariv::app::cli

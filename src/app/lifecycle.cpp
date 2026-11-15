@@ -430,7 +430,7 @@ App::Impl::sendRaw(const kanariv::ipc::Command& cmd, std::chrono::milliseconds t
             return std::unexpected{detail::daemonDownError()};
         return std::unexpected{res.error()};
     }
-    return detail::normalizeResult(std::move(res));
+    return res;
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>

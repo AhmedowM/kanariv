@@ -82,34 +82,6 @@ TEST_CASE("library stats renders every requested top report", "[app_render]") {
     REQUIRE(out.find("Most Played Tracks:") == std::string::npos);
 }
 
-TEST_CASE("normalizeResult unwraps the embedded error alternative", "[app_render]") {
-    using kanariv::utils::StatusCode;
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> embedded{
-        kanariv::ipc::Result{kanariv::utils::makeError(StatusCode::State, "boom")}};
-
-    auto norm = kanariv::app::detail::normalizeResult(std::move(embedded));
-
-    REQUIRE(!norm);
-    REQUIRE(norm.error().code == StatusCode::State);
-    REQUIRE(norm.error().message == "boom");
-}
-
-TEST_CASE("normalizeResult passes a value and a transport error through", "[app_render]") {
-    using kanariv::utils::StatusCode;
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> ok{
-        kanariv::ipc::Result{kanariv::ipc::Status{}}};
-    auto value = kanariv::app::detail::normalizeResult(std::move(ok));
-    REQUIRE(value);
-    REQUIRE(std::holds_alternative<kanariv::ipc::Status>(*value));
-
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> transport =
-        std::unexpected{kanariv::utils::makeError(StatusCode::Io, "io down")};
-    auto failed = kanariv::app::detail::normalizeResult(std::move(transport));
-    REQUIRE(!failed);
-    REQUIRE(failed.error().code == StatusCode::Io);
-    REQUIRE(failed.error().message == "io down");
-}
-
 TEST_CASE("readiness attempts fit one absolute 5 s budget", "[app_render]") {
     using kanariv::app::detail::daemonReadyAttempt;
     using kanariv::app::detail::daemonReadyBudget;

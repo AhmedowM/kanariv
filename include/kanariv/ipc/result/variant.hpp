@@ -5,8 +5,7 @@
  * @brief Result variant and expected-reply alias for the kanariv IPC protocol.
  * @ingroup kanariv_ipc
  * @details The active alternative identifies the reply projection returned
- * for a command. `Empty` represents a successful command with no payload and
- * `CliError` represents a protocol-level failure returned by the daemon.
+ * for a command. `Empty` represents a successful command with no payload.
  * Serialization preserves the selected alternative's wire discriminator.
  */
 
@@ -27,11 +26,10 @@
 namespace kanariv::ipc {
 
 /**
- * @brief Variant type representing any valid CLI result or error.
+ * @brief Variant type representing any successful CLI result.
  *
  * Used for JSON serialization/deserialization. Contains all possible
- * result types plus Empty for successful operations with no data,
- * and CliError for error responses.
+ * result types plus Empty for successful operations with no data.
  * @ingroup kanariv_ipc
  *
  * @see toJson for serialization
@@ -45,14 +43,15 @@ using Result =
     std::variant<Status, QueueTracks, Queues, QueueCreated, PlaylistLoaded, VolumeInfo,
                  kanariv::types::LibraryStats, Tracks, SearchResults, Playlists, PlaylistData,
                  PlaylistCreated, PlaylistImportReport, ScanReport, LibraryMaintenanceReport,
-                 ConfigValue, ConfigValues, SingleTrack, TrackInfo, History, Bookmarks, Lyrics, TagBatchEditResult, Empty,
-                 CliError, Devices>;
+                 ConfigValue, ConfigValues, SingleTrack, TrackInfo, History, Bookmarks, Lyrics,
+                 TagBatchEditResult, Empty, Devices>;
 
 /**
- * @brief Expected type for results that can fail with a CLI error.
+ * @brief Expected type for replies that can fail.
  * @ingroup kanariv_ipc
  *
- * Used for functions that return either a Result or a CliError.
+ * `IpcReply.result` is the only error channel: a daemon-side failure is the
+ * `unexpected` side, never a `Result` alternative.
  * @see kanariv::utils::Error
  */
 using ExpectedReply = kanariv::utils::Expected<Result>;

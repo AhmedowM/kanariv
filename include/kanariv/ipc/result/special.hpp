@@ -2,11 +2,14 @@
 
 /**
  * @file special.hpp
- * @brief Empty and error result types for the kanariv IPC protocol.
+ * @brief Empty result type for the kanariv IPC protocol.
  * @ingroup kanariv_ipc
+ *
+ * @details A command failure is never a `Result`: `IpcReply.result` is the
+ * single error channel (`std::expected<Result, Error>`), so there is no
+ * `Error` alternative in the variant.
  */
 
-#include <kanariv/utils/error.hpp>
 #include <variant>
 
 namespace kanariv::ipc {
@@ -20,13 +23,5 @@ namespace kanariv::ipc {
  * @ingroup kanariv_ipc
  */
 using Empty = std::monostate;
-
-/**
- * @brief Error type for CLI error responses.
- * @ingroup kanariv_ipc
- *
- * @see kanariv::utils::Error
- */
-using CliError = kanariv::utils::Error;
 
 } // namespace kanariv::ipc

@@ -7,6 +7,7 @@
  */
 
 #include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
@@ -21,7 +22,6 @@ namespace kanariv::app::cli {
  * @brief Formats CLI results for human-readable table output or JSON.
  * @ingroup kanariv_client
  *
- * Provides print() for formatted output and printWithStatus() for exit code handling.
  * Supports all Result variant types: Status, QueueTracks, VolumeInfo, LibraryStats, etc.
  * JSON mode uses kanariv::utils::Json pretty-printing (2-space indent).
  */
@@ -83,17 +83,11 @@ class OutputFormatter {
     void setColumns(std::string_view columns);
 
     /**
-     * @brief Print Result with automatic stderr/stdout routing and exit code.
-     * @param r Result to print.
-     * @param out Output stream for success (default stdout).
-     * @param err Output stream for errors (default stderr).
-     * @return 0 on success; for an embedded error, the shared exit-code
-     *         table's value (1/105/106/109), never a re-derived 0/1.
-     *
-     * Routes Error variants to err stream, others to out stream.
-     * Suitable for CLI main() to return appropriate exit code.
+     * @brief Print a failed reply to the error stream.
+     * @param e Error carried by the `unexpected` side of the reply.
+     * @param err Output stream (default stderr).
      */
-    int printWithStatus(const kanariv::ipc::Result& r, std::ostream& out, std::ostream& err) const;
+    void printError(const kanariv::utils::Error& e, std::ostream& err) const;
 };
 
 } // namespace kanariv::app::cli

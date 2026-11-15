@@ -544,6 +544,31 @@ TEST_CASE("reply decoding fails closed", "[ipc]") {
         REQUIRE_FALSE(r->result.has_value());
         CHECK(r->result.error().code == StatusCode::NotFound);
     }
+
+    SECTION("an Error result object is not a success result") {
+        // I8: the variant has no Error alternative; a daemon that reports
+        // failure as `ok:true` is rejected instead of surfacing as success.
+        const auto r =
+            deserializeReply(R"({"id":3,"ok":true,"result":{"type":"Error","code":"NotFound"}})");
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().code == StatusCode::InvalidArg);
+    }
+
+    SECTION("serializeReply emits exactly one error channel") {
+        const kanariv::ipc::IpcReply rep{
+            4, std::unexpected{kanariv::utils::makeError(StatusCode::Busy, "later")}};
+        const auto text = serializeReply(rep);
+        const kanariv::utils::Json doc = kanariv::utils::Json::parse(text);
+        const kanariv::utils::Json errObj = doc["error"];
+        CHECK(doc["ok"].get<bool>() == false);
+        CHECK_FALSE(doc.contains("result"));
+        CHECK(errObj["code"].get<std::string>() == "Busy");
+        CHECK(errObj["message"].get<std::string>() == "later");
+        const auto back = deserializeReply(text);
+        REQUIRE(back.has_value());
+        REQUIRE_FALSE(back->result.has_value());
+        CHECK(back->result.error().code == StatusCode::Busy);
+    }
 }
 
 TEST_CASE("framing rejects oversized and trailing frames", "[ipc]") {

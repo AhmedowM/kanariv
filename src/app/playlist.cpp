@@ -212,9 +212,7 @@ BatchResult App::playlistExport(std::int64_t pid, const std::string& path,
         kanariv::ipc::PlaylistExport{.pid = pid, .path = path, .format = format}};
     auto client = impl_->makeClient();
     auto timeout = std::chrono::milliseconds{5000};
-    // normalizeResult folds the embedded Error alternative (I8) into the
-    // unexpected channel, so one check covers both failure shapes.
-    auto cliRes = detail::normalizeResult(client.send(cmd, timeout));
+    auto cliRes = client.send(cmd, timeout);
     if (!cliRes)
         return BatchReport::fail(std::format("export: {}", cliRes.error().message));
     BatchReport rep;

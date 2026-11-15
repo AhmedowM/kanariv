@@ -5,7 +5,6 @@ export module kanariv.ipc:result;
 
 export namespace kanariv::ipc {
 using ::kanariv::ipc::Bookmarks;
-using ::kanariv::ipc::CliError;
 using ::kanariv::ipc::ConfigValue;
 using ::kanariv::ipc::ConfigValues;
 using ::kanariv::ipc::Devices;

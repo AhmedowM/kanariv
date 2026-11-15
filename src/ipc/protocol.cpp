@@ -104,8 +104,9 @@ std::expected<kanariv::types::Playlist, kanariv::utils::Error> playlistFromJson(
 }
 
 Json errorToJson(const kanariv::utils::Error& e) {
+    // Only emitted inside `ok:false` replies; the envelope already marks it as
+    // an error, so the object carries just the code and message.
     Json j;
-    j["type"] = "Error";
     j["code"] = resultCodeToString(e.code);
     j["code_value"] = std::to_underlying(e.code);
     j["message"] = e.message;
@@ -941,7 +942,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
             return Command{std::move(tr)};
         }
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                        "unknown Command type: " + t)};
+                                                         "unknown Command type: " + t)};
     } catch (const std::exception& e) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
@@ -1244,8 +1245,6 @@ Json toJson(const Result& r) {
                 Json j;
                 j["type"] = "Empty";
                 return j;
-            } else if constexpr (std::is_same_v<T, kanariv::utils::Error>) {
-                return detail::errorToJson(v);
             } else {
                 Json j;
                 j["type"] = "Unknown";
@@ -1259,7 +1258,7 @@ std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
     try {
         if (!j.contains("type") || !j["type"].isString()) {
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                            "missing Result type")};
+                                                             "missing Result type")};
         }
         std::string t = j["type"].get<std::string>();
         if (t == "Status") {
@@ -1787,14 +1786,8 @@ std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
         if (t == "Empty") {
             return Result{Empty{}};
         }
-        if (t == "Error") {
-            auto e = detail::errorFromJson(j);
-            if (!e)
-                return std::unexpected{e.error()};
-            return Result{*e};
-        }
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                        "unknown Result type: " + t)};
+                                                         "unknown Result type: " + t)};
     } catch (const std::exception& e) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};
@@ -1812,8 +1805,8 @@ std::expected<IpcRequest, kanariv::utils::Error> deserializeRequest(std::string_
     try {
         const Json j = Json::parse(sv);
         if (!j.contains("id") || !j.contains("cmd")) {
-            return std::unexpected{
-                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "missing id/cmd")};
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                             "missing id/cmd")};
         }
         uint32_t id = j["id"].get<uint32_t>();
         auto cmd = commandFromJson(j["cmd"]);

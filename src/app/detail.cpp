@@ -39,15 +39,6 @@ kanariv::utils::Error daemonDownError() {
         "daemon not running\nhint: run `kanariv start` to start the daemon"};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-normalizeResult(std::expected<kanariv::ipc::Result, kanariv::utils::Error>&& res) {
-    if (!res)
-        return std::unexpected{res.error()};
-    if (const auto* e = std::get_if<kanariv::utils::Error>(&*res))
-        return std::unexpected{*e};
-    return std::move(*res);
-}
-
 namespace {
 
 std::string formatTime(double secs) {
