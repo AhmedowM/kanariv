@@ -4,6 +4,8 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/result.hpp>
+#include <media/convert_loop.hpp>
+#include <media/ffmpeg_error.hpp>
 #include <cerrno>
 #include <cmath>
 #include <cstddef>
@@ -39,6 +41,8 @@ namespace kanariv::media {
 
 namespace {
 
+using internal::ffErrorString; // readable av_strerror text for every failure path (M4)
+
 // Probing bounds shared by every FFmpeg session (P1-1). Defaults (5 MB and an
 // unbounded-ish analysis window) let a single open buffer megabytes per file;
 // 1 MB / 0.5 s covers headers, Xing/Info tables and attached pictures.
@@ -46,12 +50,6 @@ constexpr int probeSizeBytes = 1048576;
 constexpr int analyzeDurationUs = 500000;
 constexpr const char* probeSizeOption = "1048576";
 constexpr const char* analyzeDurationOption = "500000";
-std::string ffErrorString(int err) {
-    char buf[AV_ERROR_MAX_STRING_SIZE] = {};
-    if (av_strerror(err, buf, sizeof(buf)) < 0)
-        return "unknown FFmpeg error " + std::to_string(err);
-    return std::string(buf);
-}
 
 } // namespace
 
@@ -116,6 +114,10 @@ struct Decoder::Impl {
 
     Reader* reader_{nullptr};
     kanariv::utils::Logger* logger_{nullptr};
+    // Readable cause of the last init() failure. FFmpeg's own logging is muted
+    // process-wide, so without this the caller sees only "FFmpeg init failed"
+    // while the actual reason ("Header missing", "Invalid data ...") is lost (M4).
+    std::string initError_{};
     AVFormatContext* fmt_{nullptr};
     AVCodecContext* dec_{nullptr};
     AVIOContext* avio_{nullptr};
@@ -166,10 +168,12 @@ kanariv::utils::Expected<kanariv::types::TrackMetadata> extractMetadata(std::str
                                       "avformat_open_input failed: " + ffErrorString(openRet)));
     }
 
-    if (avformat_find_stream_info(fmt, nullptr) < 0) {
+    const int infoRet = avformat_find_stream_info(fmt, nullptr);
+    if (infoRet < 0) {
         avformat_close_input(&fmt);
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
-                                                        "avformat_find_stream_info failed"));
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Io,
+            "avformat_find_stream_info failed: " + ffErrorString(infoRet)));
     }
 
     kanariv::types::TrackMetadata meta;
@@ -429,14 +433,22 @@ kanariv::utils::Expected<void> Decoder::Impl::seek(double seconds) {
     if (ret < 0) {
         // Fallback to simple av_seek_frame
         ret = av_seek_frame(fmt_, audioStreamIdx_, seekTarget, AVSEEK_FLAG_BACKWARD);
-        if (ret < 0)
-            return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Io,
-                                                        std::string_view("seek failed")});
+        if (ret < 0) {
+            // Both attempts failed and FFmpeg logging is muted, so carry the
+            // av_strerror text in the returned message (M4).
+            std::string message = "seek failed: " + ffErrorString(ret);
+            if (logger_)
+                logger_->warn("{}", message);
+            return std::unexpected(
+                kanariv::utils::Error{kanariv::utils::StatusCode::Io, message});
+        }
     }
     avcodec_flush_buffers(dec_);
     // flush resampler as well
-    if (swr_)
-        swr_init(swr_);
+    if (swr_) {
+        if (const int ret = swr_init(swr_); ret < 0 && logger_)
+            logger_->warn("swr_init after seek failed: {}", ffErrorString(ret));
+    }
     // Drop converted-but-undelivered residue: positions before the seek
     // target must never surface after it. Also forget any packet the codec
     // had not accepted yet; it belongs to the pre-seek stream.
@@ -492,18 +504,31 @@ int Decoder::Impl::convertFrameBuffered(AVFrame* frame) {
     try {
         if (convertBuf_.size() < convertFrames * ch)
             convertBuf_.resize(convertFrames * ch);
-        uint8_t* outPtrs[1] = {reinterpret_cast<uint8_t*>(convertBuf_.data())};
         int appended = 0;
-        int n = swr_convert(swr_, outPtrs, static_cast<int>(convertFrames),
-                            const_cast<const uint8_t**>(frame->extended_data), frame->nb_samples);
-        if (n < 0)
-            return n;
-        if (n > 0) {
-            spill_.insert(spill_.end(), convertBuf_.data(),
-                          convertBuf_.data() + static_cast<std::size_t>(n) * ch);
-            appended += n;
-        }
-        appended += drainResampler();
+        // Feed the frame once, then keep pulling until swresample reports
+        // empty: one swr_convert call truncates a frame larger than the window
+        // and drops the filter-delay tail (the fixed spill loop lives in
+        // pumpConvert so the same code is covered by a unit test).
+        bool fed = false;
+        auto convert = [&](float* out, std::size_t frames) {
+            uint8_t* outPtrs[1] = {reinterpret_cast<uint8_t*>(out)};
+            if (!fed) {
+                fed = true;
+                return swr_convert(swr_, outPtrs, static_cast<int>(frames),
+                                   const_cast<const uint8_t**>(frame->extended_data),
+                                   frame->nb_samples);
+            }
+            return swr_convert(swr_, outPtrs, static_cast<int>(frames), nullptr, 0);
+        };
+        auto append = [&](std::span<const float> block) {
+            spill_.insert(spill_.end(), block.begin(), block.end());
+            appended += static_cast<int>(block.size() / ch);
+        };
+        const int rc =
+            internal::pumpConvert(std::span<float>(convertBuf_.data(), convertBuf_.size()), ch,
+                                  convert, append);
+        if (rc < 0)
+            return rc;
         return appended;
     } catch (...) {
         return -1;
@@ -603,9 +628,12 @@ int64_t Decoder::Impl::seekCallback(void* opaque, int64_t offset, int whence) {
 }
 
 bool Decoder::Impl::init() {
+    initError_.clear();
     fmt_ = avformat_alloc_context();
-    if (!fmt_)
+    if (!fmt_) {
+        initError_ = "avformat_alloc_context failed (out of memory)";
         return false;
+    }
 
     // Allocate AVIOContext with our callbacks -- use larger buffer for high-rate FLAC/WAV
     // probing
@@ -613,6 +641,7 @@ bool Decoder::Impl::init() {
     const bool canSeek = reader_ && reader_->seekable();
     uint8_t* avioBuffer = static_cast<uint8_t*>(av_malloc(bufferSize));
     if (!avioBuffer) {
+        initError_ = "av_malloc for the AVIO buffer failed (out of memory)";
         avformat_free_context(fmt_);
         fmt_ = nullptr;
         return false;
@@ -621,6 +650,7 @@ bool Decoder::Impl::init() {
     avio_ = avio_alloc_context(avioBuffer, static_cast<int>(bufferSize), 0, this, &readCallback,
                                nullptr, canSeek ? &seekCallback : nullptr);
     if (!avio_) {
+        initError_ = "avio_alloc_context failed (out of memory)";
         av_free(avioBuffer);
         avformat_free_context(fmt_);
         fmt_ = nullptr;
@@ -634,9 +664,11 @@ bool Decoder::Impl::init() {
     fmt_->pb = avio_;
     fmt_->flags |= AVFMT_FLAG_CUSTOM_IO;
 
-    // Silence benign probe spam like "Header missing" / "CRC mismatch" during decode --
-    // real errors still surfaced via return codes; use QUIET to eliminate spam that
-    // masked restart bugs (Header missing x3, CRC mismatch). Keep silent after init.
+    // Probe spam like "Header missing" / "CRC mismatch" is noise during decode and
+    // used to mask restart bugs, so the process-wide level is pinned to QUIET here
+    // (M4). Because that also mutes genuine failures, every failure site below
+    // records the av_strerror() text into initError_, which Decoder::init() returns
+    // to the caller -- the level is never the only channel for a real error.
     av_log_set_level(AV_LOG_QUIET);
 
     // Open input (probes format). The probing bounds are set on the context
@@ -647,12 +679,14 @@ bool Decoder::Impl::init() {
     fmt_->probesize = probeSizeBytes;
     (void)av_opt_set_int(fmt_, "fprobesize", probeSizeBytes, 0);
     fmt_->max_analyze_duration = analyzeDurationUs;
-    if (avformat_open_input(&fmt_, nullptr, nullptr, nullptr) < 0) {
+    if (const int ret = avformat_open_input(&fmt_, nullptr, nullptr, nullptr); ret < 0) {
+        initError_ = "avformat_open_input failed: " + ffErrorString(ret);
         cleanup();
         return false;
     }
 
-    if (avformat_find_stream_info(fmt_, nullptr) < 0) {
+    if (const int ret = avformat_find_stream_info(fmt_, nullptr); ret < 0) {
+        initError_ = "avformat_find_stream_info failed: " + ffErrorString(ret);
         cleanup();
         return false;
     }
@@ -660,6 +694,8 @@ bool Decoder::Impl::init() {
     // Find audio stream
     audioStreamIdx_ = av_find_best_stream(fmt_, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     if (audioStreamIdx_ < 0) {
+        initError_ = "av_find_best_stream found no audio stream: "
+                     + ffErrorString(audioStreamIdx_);
         cleanup();
         return false;
     }
@@ -667,22 +703,27 @@ bool Decoder::Impl::init() {
     AVStream* stream = fmt_->streams[audioStreamIdx_];
     const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
     if (!codec) {
+        initError_ = "avcodec_find_decoder failed for codec id "
+                     + std::to_string(static_cast<int>(stream->codecpar->codec_id));
         cleanup();
         return false;
     }
 
     dec_ = avcodec_alloc_context3(codec);
     if (!dec_) {
+        initError_ = "avcodec_alloc_context3 failed (out of memory)";
         cleanup();
         return false;
     }
 
-    if (avcodec_parameters_to_context(dec_, stream->codecpar) < 0) {
+    if (const int ret = avcodec_parameters_to_context(dec_, stream->codecpar); ret < 0) {
+        initError_ = "avcodec_parameters_to_context failed: " + ffErrorString(ret);
         cleanup();
         return false;
     }
 
-    if (avcodec_open2(dec_, codec, nullptr) < 0) {
+    if (const int ret = avcodec_open2(dec_, codec, nullptr); ret < 0) {
+        initError_ = "avcodec_open2 failed: " + ffErrorString(ret);
         cleanup();
         return false;
     }
@@ -690,6 +731,7 @@ bool Decoder::Impl::init() {
     // Setup resampler to float interleaved -- preserve input channel layout exactly
     swr_ = swr_alloc();
     if (!swr_) {
+        initError_ = "swr_alloc failed (out of memory)";
         cleanup();
         return false;
     }
@@ -706,7 +748,8 @@ bool Decoder::Impl::init() {
     av_opt_set_int(swr_, "out_sample_rate", dec_->sample_rate, 0);
     av_opt_set_sample_fmt(swr_, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0);
 
-    if (swr_init(swr_) < 0) {
+    if (const int ret = swr_init(swr_); ret < 0) {
+        initError_ = "swr_init failed: " + ffErrorString(ret);
         cleanup();
         return false;
     }
@@ -716,6 +759,7 @@ bool Decoder::Impl::init() {
     scratchPkt_.reset(av_packet_alloc());
     scratchFrame_.reset(av_frame_alloc());
     if (!scratchPkt_ || !scratchFrame_) {
+        initError_ = "av_packet_alloc/av_frame_alloc failed (out of memory)";
         cleanup();
         return false;
     }
@@ -788,9 +832,16 @@ Decoder& Decoder::operator=(Decoder&&) noexcept = default;
 kanariv::utils::Expected<void> Decoder::init(Reader& reader) {
     impl_->reader_ = &reader;
     impl_->logger_ = logger_;
-    if (!impl_->init())
+    if (!impl_->init()) {
+        // Report the recorded cause, not just "init failed": FFmpeg logging is
+        // muted process-wide, so initError_ is the only readable explanation (M4).
+        std::string message = impl_->initError_.empty() ? std::string{"FFmpeg init failed"}
+                                                       : impl_->initError_;
+        if (logger_)
+            logger_->error("decoder init failed: " + message);
         return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
-                                                    std::string_view("FFmpeg init failed")});
+                                                     message});
+    }
     return {};
 }
 

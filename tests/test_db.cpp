@@ -737,6 +737,43 @@ TEST_CASE("legacy user_version 0 database migrates without data loss", "[db][mig
     CHECK(*version == internal::kSchemaVersion);
 }
 
+TEST_CASE("migration 5 clears gains written by the old loudness heuristic", "[db][migration]") {
+    auto path = kanariv::test_helpers::tempDbPath("replay_gain_migration");
+    sqlite3* handle = nullptr;
+    REQUIRE(sqlite3_open(path.string().c_str(), &handle) == SQLITE_OK);
+    {
+        auto raw = std::unique_ptr<sqlite3, SqliteHandleCloser>{handle};
+        // Stop at v4: the schema the old scanner wrote its mis-scaled gains into.
+        const auto steps = internal::schemaMigrations();
+        REQUIRE(steps.size() >= 5);
+        REQUIRE(internal::applyMigrations(handle, steps.first(4)).has_value());
+        char* err = nullptr;
+        const char* insertSql =
+            "INSERT INTO tracks (fingerprint, path, replay_gain_track, replay_gain_album) "
+            "VALUES (randomblob(32), 'old/gain.mp3', 7.5, 3.25)";
+        REQUIRE(sqlite3_exec(handle, insertSql, nullptr, nullptr, &err) == SQLITE_OK);
+        if (err)
+            sqlite3_free(err);
+        auto version = internal::readUserVersion(handle);
+        REQUIRE(version.has_value());
+        REQUIRE(*version == 4);
+    }
+
+    // Opening the database applies step 5, which must clear both columns rather
+    // than reinterpret them as ReplayGain (M10).
+    auto opened = Database::open(path.string());
+    REQUIRE(opened.has_value());
+    auto db = std::move(*opened);
+    auto tracks = db->listTracks();
+    REQUIRE(tracks.has_value());
+    REQUIRE(tracks->size() == 1);
+    CHECK((*tracks)[0].replayGainTrack == 0.0);
+    CHECK((*tracks)[0].replayGainAlbum == 0.0);
+    auto version = internal::readUserVersion(DatabaseAccess::handle(*db));
+    REQUIRE(version.has_value());
+    CHECK(*version == internal::kSchemaVersion);
+}
+
 TEST_CASE("queue positions are stored ordering values and APIs take indices",
           "[db][queue][position]") {
     auto dbRes = Database::open(":memory:");

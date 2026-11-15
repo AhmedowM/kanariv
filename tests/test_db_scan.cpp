@@ -8,6 +8,7 @@
 #include <kanariv/media/scan.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <common.hpp>
@@ -17,6 +18,7 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <media/fingerprint.hpp>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -204,14 +206,58 @@ TEST_CASE("scanLibrary inserts and dedup by fingerprint", "[db_scan]") {
     }
 }
 
-TEST_CASE("scan non-existent dir returns empty", "[db_scan]") {
-    auto tracks = kanariv::media::scanTracksToVector("/nonexistent_path_xyz_12345",
-                                                    kanariv::media::ScanMode::Sampled);
+TEST_CASE("scanLibrary never persists an all-zero fingerprint or synthesised gain", "[db_scan]") {
+    auto dir = tempDirPath("scanlib_fp");
+    {
+        std::ofstream f(dir / "tone.wav", std::ios::binary);
+        const auto wav = makeSineWav();
+        f.write(reinterpret_cast<const char*>(wav.data()),
+                static_cast<std::streamsize>(wav.size()));
+    }
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    auto libIdRes = db->libraryAdd(dir.string(), "testlib");
+    REQUIRE(libIdRes.has_value());
+    auto sr = scanLibrary(*db, *libIdRes);
+    REQUIRE(sr.has_value());
+
+    auto tracks = db->listTracks();
     REQUIRE(tracks.has_value());
-    REQUIRE(tracks->empty());
+    REQUIRE(tracks->size() == 1);
+    // Media layer already skips unhashable files; this asserts the stored
+    // invariant that the DB backstop protects (M8).
+    CHECK_FALSE(kanariv::media::internal::isZeroFingerprint(tracks->front().fingerprint));
+    // The scanner no longer writes loudness values into the ReplayGain columns
+    // (M10); only embedded tags may supply them, and this WAV has none.
+    CHECK(tracks->front().replayGainTrack == 0.0);
+    CHECK(tracks->front().replayGainAlbum == 0.0);
+
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
 }
 
-TEST_CASE("computeReplayGainTrack accepts a non-NUL-terminated path view", "[db_scan]") {
+TEST_CASE("isZeroFingerprint identifies only the all-zero sentinel", "[db_scan]") {
+    std::array<uint8_t, 32> zero{};
+    CHECK(kanariv::media::internal::isZeroFingerprint(zero));
+    auto oneBit = zero;
+    oneBit[31] = 1;
+    CHECK_FALSE(kanariv::media::internal::isZeroFingerprint(oneBit));
+    auto allOnes = zero;
+    allOnes.fill(0xFF);
+    CHECK_FALSE(kanariv::media::internal::isZeroFingerprint(allOnes));
+}
+
+TEST_CASE("scan non-existent dir reports NotFound instead of an empty library", "[db_scan]") {
+    // An empty vector must mean "no audio files", never "the root is missing":
+    // a typo'd library path used to look like a successfully scanned empty dir.
+    auto tracks = kanariv::media::scanTracksToVector("/nonexistent_path_xyz_12345",
+                                                    kanariv::media::ScanMode::Sampled);
+    REQUIRE_FALSE(tracks.has_value());
+    REQUIRE(tracks.error().code == StatusCode::NotFound);
+}
+
+TEST_CASE("computeLoudnessGain accepts a non-NUL-terminated path view", "[db_scan]") {
     auto dir = tempDirPath("replaygain");
     const auto p = dir / "tone.wav";
     {
@@ -225,7 +271,7 @@ TEST_CASE("computeReplayGainTrack accepts a non-NUL-terminated path view", "[db_
     // so FFmpeg never reads the trailing bytes as part of the path.
     const std::string padded = raw + "garbage";
     const std::string_view view(padded.data(), raw.size());
-    auto gain = kanariv::media::computeReplayGainTrack(view);
+    auto gain = kanariv::media::computeLoudnessGain(view);
     REQUIRE(gain.has_value());
     REQUIRE(std::isfinite(*gain));
     std::error_code ec;

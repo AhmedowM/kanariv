@@ -1,14 +1,4 @@
-﻿#include <sqlite3.h>
-
-#include <kanariv/db/database.hpp>
-#include <kanariv/db/scan.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/media/decoder.hpp>
-#include <kanariv/media/scan.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/log.hpp>
-#include <kanariv/utils/result.hpp>
-#include <chrono>
+﻿#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <db/database_access.hpp>
@@ -16,7 +6,15 @@
 #include <expected>
 #include <filesystem>
 #include <functional>
-#include <map>
+#include <kanariv/db/database.hpp>
+#include <kanariv/db/scan.hpp>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/scan.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
+#include <media/fingerprint.hpp>
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
@@ -93,7 +91,33 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
         return committed;
     };
 
-    for (auto trk : kanariv::media::scanTracks(root, mode)) {
+    // Per-file discovery problems are logged as they happen (M8): a skipped file
+    // is counted as failed so the final summary does not claim a clean scan.
+    auto onIssue = [&db, &failed](const kanariv::media::ScanIssue& issue) {
+        auto* lg = db.logger();
+        if (issue.kind == kanariv::media::ScanIssueKind::WalkError) {
+            if (lg)
+                lg->error("scan walk error: {} ({})", issue.path, issue.message);
+            return;
+        }
+        failed++;
+        if (lg)
+            lg->warn("scan skipped file={} reason={}", issue.path, issue.message);
+    };
+
+    for (auto trk : kanariv::media::scanTracks(root, mode, onIssue)) {
+        // Backstop (M8): an all-zero fingerprint is the "unfingerprinted" sentinel
+        // and collides with itself in the UNIQUE index, which would make every
+        // later file look like a duplicate of the first. Never persist one.
+        if (kanariv::media::internal::isZeroFingerprint(trk.fingerprint)) {
+            failed++;
+            scanned++;
+            if (auto* lg = db.logger())
+                lg->error("scan: refusing to store all-zero fingerprint file={}", trk.path);
+            if (progress)
+                progress(scanned, 0, trk.path);
+            continue;
+        }
         if (!batchTx) {
             auto b = beginBatch();
             if (!b)
@@ -286,8 +310,9 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             upd.play_count = keepPlay;
             upd.rating = keepRating;
             upd.date_added = keepAdded;
-            if (auto rg = kanariv::media::computeReplayGainTrack(trk.path); rg)
-                upd.replayGainTrack = *rg;
+            // replay_gain_track/album are deliberately left untouched: the scanner
+            // no longer synthesises gain values (M10), and the previous write was a
+            // mis-scaled loudness heuristic, not ReplayGain.
             if (DatabaseAccess::updateTrackLocked(db, upd))
                 updated++;
             else {
@@ -297,8 +322,6 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
             }
         } else {
             trk.library_id = libraryId;
-            if (auto rg = kanariv::media::computeReplayGainTrack(trk.path); rg)
-                trk.replayGainTrack = *rg;
             if (DatabaseAccess::insertTrackLocked(db, trk))
                 added++;
             else {
@@ -326,65 +349,10 @@ scanLibrary(contracts::IDatabase& db_, int64_t libraryId,
         lg->info("scan finished root={} scanned={} added={} updated={} failed={}", libPath, scanned,
                  added, updated, failed);
 
-    // Album gain: average the per-track gains of all tracks sharing an album
-    // name, then write replay_gain_album back to each track.
-    {
-        std::unique_lock<std::shared_mutex> lk(DatabaseAccess::mutex(db));
-        sqlite3* handle = DatabaseAccess::handleLocked(db);
-        if (handle) {
-            auto tx = DbTransaction::begin(handle);
-            if (!tx) {
-                if (auto* lg = db.logger())
-                    lg->warn("scan: album gain skipped: {}", tx.error().message);
-            } else {
-                sqlite3_stmt* st = nullptr;
-                const char* sql =
-                    "SELECT id, album, replay_gain_track FROM tracks "
-                    "WHERE library_id=? AND album!='' AND replay_gain_track!=0";
-                if (sqlite3_prepare_v2(handle, sql, -1, &st, nullptr) != SQLITE_OK) {
-                    if (auto* lg = db.logger())
-                        lg->warn("scan: album gain query failed: {}", sqlite3_errmsg(handle));
-                } else {
-                    sqlite3_bind_int64(st, 1, libraryId);
-                    struct AlbumGain { double sum; int count; };
-                    std::map<std::string, AlbumGain> albums;
-                    while (sqlite3_step(st) == SQLITE_ROW) {
-                        const char* album = (const char*)sqlite3_column_text(st, 1);
-                        double rg = sqlite3_column_double(st, 2);
-                        if (album && *album) {
-                            auto& ag = albums[std::string(album)];
-                            ag.sum += rg;
-                            ag.count++;
-                        }
-                    }
-                    sqlite3_finalize(st);
-                    // Second pass: update each track with its album average.
-                    for (auto& [album, ag] : albums) {
-                        if (ag.count == 0)
-                            continue;
-                        double avg = ag.sum / (double)ag.count;
-                        sqlite3_stmt* ust = nullptr;
-                        if (sqlite3_prepare_v2(
-                                handle,
-                                "UPDATE tracks SET replay_gain_album=? "
-                                "WHERE library_id=? AND album=? AND replay_gain_track!=0",
-                                -1, &ust, nullptr) == SQLITE_OK) {
-                            sqlite3_bind_double(ust, 1, avg);
-                            sqlite3_bind_int64(ust, 2, libraryId);
-                            sqlite3_bind_text(ust, 3, album.c_str(), -1, SQLITE_TRANSIENT);
-                            sqlite3_step(ust);
-                            sqlite3_finalize(ust);
-                        }
-                    }
-                    if (auto committed = tx->commit(); !committed) {
-                        if (auto* lg = db.logger())
-                            lg->warn("scan: album gain commit failed: {}",
-                                     committed.error().message);
-                    }
-                }
-            }
-        }
-    }
+    // Album gain is no longer derived here (M10): the old block averaged the
+    // per-track values the scanner had synthesised from a loudness heuristic and
+    // wrote the result into replay_gain_album as if it were ReplayGain. The
+    // columns are reserved for tag-imported values, which nothing writes yet.
 
     auto libs2 = db.listLibraries();
     if (libs2) {

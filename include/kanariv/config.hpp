@@ -91,7 +91,13 @@ struct Config {
     kanariv::types::RepeatMode repeatDefault{kanariv::types::RepeatMode::Off};
     /** @brief When a track is added to an empty queue, auto-start playback. Default: false. */
     bool autostart{false};
-    /** @brief ReplayGain normalization: "off", "track", or "album". Default: "off". */
+    /**
+     * @brief ReplayGain normalization: "off", "track", or "album". Default: "off".
+     * @details Reads `Track::replayGainTrack` / `replayGainAlbum` at load time.
+     * Nothing populates those columns yet (the scanner does not measure
+     * loudness and no tag importer exists), so all modes currently behave as
+     * "off".
+     */
     std::string replayGain{"off"};
     /** @brief Fade-in duration in ms (0 = off). Default: 0. */
     int fadeInMs{0};

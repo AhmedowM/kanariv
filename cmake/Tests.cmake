@@ -110,6 +110,9 @@ if(KANARIV_ENABLE_TESTS)
   # than just linkage (the .mm only compiles on macOS).
   kanariv_add_catch_test(test_fft tests/test_fft.cpp LIBS kanariv::media kanariv::utils)
 
+  # M8/M10: scan-walker skip/issue reporting and the swr spill-loop helper.
+  kanariv_add_catch_test(test_media_scan tests/test_media_scan.cpp LIBS kanariv::media kanariv::utils)
+
   if(APPLE)
     kanariv_add_catch_test(test_media_session_mac tests/test_media_session_mac.mm
       LIBS kanariv::service kanariv::utils

@@ -299,11 +299,17 @@ std::expected<void, kanariv::utils::Error> configureConnection(sqlite3* db) {
 }
 
 std::span<const MigrationStep> schemaMigrations() noexcept {
-    static constexpr std::array<MigrationStep, 4> steps{{
+    static constexpr std::array<MigrationStep, 5> steps{{
         MigrationStep{1, "base schema", kBaseSchema, nullptr},
         MigrationStep{2, "queue position uniqueness", kQueuePositionUniqueness, nullptr},
         MigrationStep{3, "track source identity", {}, &migrateSourceIdentity},
         MigrationStep{4, "scoped fts update trigger", kScopedFtsUpdateTrigger, nullptr},
+        // Older scans wrote a mis-scaled loudness heuristic into both gain
+        // columns; the scanner no longer produces gain values at all (M10), so
+        // the stale numbers are cleared rather than reinterpreted. The columns
+        // are reserved for tag-imported values, which nothing writes yet.
+        MigrationStep{5, "clear mis-scaled replay gain",
+                      "UPDATE tracks SET replay_gain_track=0, replay_gain_album=0", nullptr},
     }};
     return steps;
 }

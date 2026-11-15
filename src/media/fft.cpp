@@ -1,12 +1,11 @@
-#include <kanariv/media/fft.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/media/fft.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/result.hpp>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -58,8 +57,8 @@ void fftRadix2(std::vector<std::complex<float>>& z, bool inverse) noexcept {
     // Butterflies.
     for (std::size_t len = 2; len <= n; len <<= 1) {
         const float sign = inverse ? 1.0f : -1.0f;
-        const float ang = sign * 2.0f * static_cast<float>(std::numbers::pi) /
-                          static_cast<float>(len);
+        const float ang =
+            sign * 2.0f * static_cast<float>(std::numbers::pi) / static_cast<float>(len);
         std::complex<float> wlen(std::cos(ang), std::sin(ang));
         for (std::size_t i = 0; i < n; i += len) {
             std::complex<float> w(1.0f);
@@ -81,12 +80,16 @@ struct FftPlan::Impl {
     std::size_t length{0};
     std::size_t outputBins{0};
     bool r2c{false};
+    // Reused across executions and resized only when the length changes, so a
+    // steady stream of equal-length blocks allocates nothing. `mutable` because
+    // execute* is const; sharing this buffer is exactly why a plan is not
+    // reentrant (documented in fft.hpp).
+    mutable std::vector<std::complex<float>> scratch;
 };
 
 FftPlan::FftPlan() noexcept = default;
 
-FftPlan::FftPlan(FftPlan&& other) noexcept
-    : impl_(std::move(other.impl_)) {}
+FftPlan::FftPlan(FftPlan&& other) noexcept : impl_(std::move(other.impl_)) {}
 
 FftPlan& FftPlan::operator=(FftPlan&& other) noexcept {
     impl_ = std::move(other.impl_);
@@ -95,15 +98,12 @@ FftPlan& FftPlan::operator=(FftPlan&& other) noexcept {
 
 FftPlan::~FftPlan() = default;
 
-FftPlan::FftPlan(std::unique_ptr<Impl> impl) noexcept
-    : impl_(std::move(impl)) {}
+FftPlan::FftPlan(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
-std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error>
-FftPlan::createR2C(std::size_t n) {
+std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error> FftPlan::createR2C(std::size_t n) {
     if (!isPowerOfTwo(n) || n < 2)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg,
-            "fft length must be a power of two >= 2")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "fft length must be a power of two >= 2")};
 
     auto impl = std::make_unique<Impl>();
     impl->length = n;
@@ -112,12 +112,10 @@ FftPlan::createR2C(std::size_t n) {
     return std::unique_ptr<FftPlan>(new FftPlan(std::move(impl)));
 }
 
-std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error>
-FftPlan::createC2C(std::size_t n) {
+std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error> FftPlan::createC2C(std::size_t n) {
     if (!isPowerOfTwo(n) || n < 2)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg,
-            "fft length must be a power of two >= 2")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "fft length must be a power of two >= 2")};
 
     auto impl = std::make_unique<Impl>();
     impl->length = n;
@@ -127,18 +125,19 @@ FftPlan::createC2C(std::size_t n) {
 }
 
 std::expected<void, kanariv::utils::Error>
-FftPlan::executeR2C(std::span<const float> input,
-                    std::span<std::complex<float>> output) const {
+FftPlan::executeR2C(std::span<const float> input, std::span<std::complex<float>> output) const {
     if (!impl_)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, "fft plan is empty")};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "fft plan is empty")};
     if (input.size() != impl_->length || output.size() != impl_->outputBins)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg, "span size mismatch")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "span size mismatch")};
 
-    // Pack real input into a full complex array (imag = 0), run a complex
-    // FFT, and keep the first n/2 + 1 bins (DC..Nyquist).
-    std::vector<std::complex<float>> z(impl_->length);
+    // Pack real input into the plan's reusable complex scratch (imag = 0), run
+    // a complex FFT, and keep the first n/2 + 1 bins (DC..Nyquist).
+    auto& z = impl_->scratch;
+    if (z.size() != impl_->length)
+        z.resize(impl_->length);
     for (std::size_t i = 0; i < input.size(); ++i)
         z[i] = std::complex<float>{input[i], 0.0f};
 
@@ -151,16 +150,18 @@ FftPlan::executeR2C(std::span<const float> input,
 
 std::expected<void, kanariv::utils::Error>
 FftPlan::executeC2C(std::span<const std::complex<float>> input,
-                    std::span<std::complex<float>> output,
-                    bool inverse) const {
+                    std::span<std::complex<float>> output, bool inverse) const {
     if (!impl_)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, "fft plan is empty")};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "fft plan is empty")};
     if (input.size() != impl_->length || output.size() != impl_->length)
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg, "span size mismatch")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "span size mismatch")};
 
-    std::vector<std::complex<float>> z(input.begin(), input.end());
+    auto& z = impl_->scratch;
+    if (z.size() != impl_->length)
+        z.resize(impl_->length);
+    std::copy(input.begin(), input.end(), z.begin());
 
     fftRadix2(z, inverse);
 
@@ -193,7 +194,7 @@ std::vector<float> window::hann(std::size_t n) {
     const float denom = static_cast<float>(n - 1);
     for (std::size_t i = 0; i < n; ++i)
         w[i] = 0.5f * (1.0f - std::cos(2.0f * static_cast<float>(std::numbers::pi) *
-                                        static_cast<float>(i) / denom));
+                                       static_cast<float>(i) / denom));
     return w;
 }
 
@@ -208,16 +209,15 @@ std::vector<float> window::hamming(std::size_t n) {
     const float denom = static_cast<float>(n - 1);
     for (std::size_t i = 0; i < n; ++i)
         w[i] = 0.54f - 0.46f * std::cos(2.0f * static_cast<float>(std::numbers::pi) *
-                                         static_cast<float>(i) / denom);
+                                        static_cast<float>(i) / denom);
     return w;
 }
 
-std::expected<void, kanariv::utils::Error>
-window::applyInPlace(std::span<float> samples, std::span<const float> window) {
+std::expected<void, kanariv::utils::Error> window::applyInPlace(std::span<float> samples,
+                                                                std::span<const float> window) {
     if (samples.size() != window.size())
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg,
-            "window length must match sample length")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "window length must match sample length")};
     for (std::size_t i = 0; i < samples.size(); ++i)
         samples[i] *= window[i];
     return {};
@@ -226,8 +226,8 @@ window::applyInPlace(std::span<float> samples, std::span<const float> window) {
 std::expected<std::vector<std::complex<float>>, kanariv::utils::Error>
 fftReal(std::span<const float> samples) {
     if (samples.empty())
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg, "samples must be non-empty")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "samples must be non-empty")};
 
     auto plan = FftPlan::createR2C(samples.size());
     if (!plan)
@@ -243,16 +243,16 @@ fftReal(std::span<const float> samples) {
 std::expected<std::vector<float>, kanariv::utils::Error>
 ifftReal(std::span<const std::complex<float>> bins) {
     if (bins.empty())
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg, "bins must be non-empty")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "bins must be non-empty")};
 
     // bins count = n/2 + 1  =>  n = 2 * (bins.size() - 1)
     const std::size_t half = bins.size() - 1;
     const std::size_t n = 2 * half;
     if (!isPowerOfTwo(n))
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg,
-            "bin count must be n/2 + 1 for a power-of-two n")};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                      "bin count must be n/2 + 1 for a power-of-two n")};
 
     auto plan = FftPlan::createC2C(n);
     if (!plan)

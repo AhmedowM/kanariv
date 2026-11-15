@@ -29,6 +29,29 @@
 namespace kanariv::media::internal {
 
 /**
+ * @brief The all-zero digest that must never be persisted.
+ * @ingroup kanariv_media
+ * @details `Track::fingerprint` is value-initialised, so a scan that failed to
+ * hash a file used to yield 32 zero bytes. `tracks.fingerprint` is
+ * `NOT NULL UNIQUE`, so that sentinel makes the second unreadable file collide
+ * or overwrite the first. Scan discovery refuses to emit it and the DB scan
+ * refuses to persist it; both use this predicate so the sentinel is defined in
+ * exactly one place.
+ */
+inline constexpr std::array<uint8_t, 32> zeroFingerprint{};
+
+/**
+ * @brief True when `fp` is the unusable all-zero sentinel.
+ * @ingroup kanariv_media
+ * @param fp 32-byte digest to test.
+ * @return true when every byte is zero.
+ * @see zeroFingerprint
+ */
+inline bool isZeroFingerprint(const std::array<uint8_t, 32>& fp) noexcept {
+    return fp == zeroFingerprint;
+}
+
+/**
  * @brief Number of bytes sampled from head and tail.
  * @ingroup kanariv_media
  * @details 64 KiB each. Files <= 64 KiB hash only once (head == whole file plus size/version

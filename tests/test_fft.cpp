@@ -116,6 +116,39 @@ TEST_CASE("fft FftPlan executeC2C inverse round trip", "[media][fft]") {
         CHECK(closeEnough(backward[i].imag(), input[i].imag()));
 }
 
+TEST_CASE("fft FftPlan reuse across calls stays stable", "[media][fft]") {
+    constexpr std::size_t n = 256;
+    const auto first = makeSine(n, 440.0, 44100.0);
+    const auto second = makeSine(n, 1000.0, 44100.0);
+
+    // One plan, many calls: the scratch buffer is resized once and reused, so a
+    // stale or half-overwritten buffer would show up as drift against the
+    // stateless reference.
+    auto plan = FftPlan::createR2C(n);
+    REQUIRE(plan.has_value());
+    std::vector<std::complex<float>> bins(n / 2 + 1);
+
+    for (int iter = 0; iter < 64; ++iter) {
+        const auto& input = (iter % 2 == 0) ? first : second;
+        REQUIRE((*plan)->executeR2C(input, bins).has_value());
+
+        auto reference = fftReal(input);
+        REQUIRE(reference.has_value());
+        REQUIRE(reference->size() == bins.size());
+        for (std::size_t i = 0; i < bins.size(); ++i) {
+            CHECK(closeEnough(bins[i].real(), reference->at(i).real()));
+            CHECK(closeEnough(bins[i].imag(), reference->at(i).imag()));
+        }
+    }
+
+    // Two consecutive calls on the same input must be identical, not merely
+    // close: nothing from the previous result may leak into the next one.
+    REQUIRE((*plan)->executeR2C(first, bins).has_value());
+    const auto once = bins;
+    REQUIRE((*plan)->executeR2C(first, bins).has_value());
+    CHECK(bins == once);
+}
+
 TEST_CASE("fft window hann", "[media][fft]") {
     constexpr std::size_t n = 16;
     auto w = window::hann(n);

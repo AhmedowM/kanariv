@@ -1798,7 +1798,9 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
                 cfg.channels = ch;
                 cfg.ring = ring_.get();
                 // ReplayGain: apply track/album gain (dB) as a volume multiplier
-                // on top of the user volume. dB -> linear: 10^(dB/20).
+                // on top of the user volume. dB -> linear: 10^(dB/20). Nothing
+                // populates the gain columns yet (no tag importer), so gainDb
+                // stays 0 and this is currently a no-op (M10).
                 float gain = volume_.load(std::memory_order_relaxed);
                 if (cfg_.replayGain != kanariv::types::ReplayGainMode::Off) {
                     double gainDb = 0.0;
