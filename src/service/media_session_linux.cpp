@@ -295,7 +295,7 @@ class LinuxImpl final : public Impl {
         std::lock_guard lock(mtx_);
         metadata_ = metadata;
         // Publishing is deferred to setPlaybackState(), which the service
-        // always calls immediately after setMetadata() in syncMediaSession().
+        // always calls immediately after setMetadata() in publishMediaSession().
         // publishChangedLocked() diffs the complete snapshot, so metadata is
         // included in that same signal.
         return {};

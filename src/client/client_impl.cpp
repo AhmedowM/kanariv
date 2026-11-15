@@ -223,4 +223,68 @@ Client::waitForStatus(std::chrono::milliseconds timeout) {
                 timeout + statusWaitMargin);
 }
 
+struct Session::Impl {
+    Config config;
+    // One request at a time: the transport is a single stream without request
+    // pipelining, so the mutex serializes callers instead of interleaving them.
+    std::mutex mtx;
+    std::unique_ptr<IpcClient> conn;
+
+    explicit Impl(Config cfg) : config(canonicalConfig(std::move(cfg))) {}
+};
+
+Session::Session(Config cfg) : impl_(std::make_unique<Impl>(std::move(cfg))) {}
+
+Session::Session(std::filesystem::path dbPath) : Session(Config{std::move(dbPath)}) {}
+
+Session::Session(std::filesystem::path dbPath, std::string_view socketPath)
+    : Session(Config{std::move(dbPath), std::string(socketPath)}) {}
+
+Session::Session(const kanariv::config::Config& cfg) : Session(Config{cfg.dbPath, cfg.socketPath}) {}
+
+Session::~Session() = default;
+
+Session::Session(Session&& other) noexcept = default;
+
+Session& Session::operator=(Session&& other) noexcept = default;
+
+const Config& Session::config() const noexcept {
+    return impl_->config;
+}
+
+kanariv::utils::Expected<kanariv::ipc::Result> Session::send(const kanariv::ipc::Command& cmd,
+                                                            std::chrono::milliseconds timeout) {
+    const auto budget = timeout.count() > 0 ? timeout : commandTimeout(cmd);
+    const auto deadline = std::chrono::steady_clock::now() + budget;
+    std::lock_guard lk{impl_->mtx};
+    if (!impl_->conn) {
+        auto opened = IpcClient::connect(impl_->config.dbPath, impl_->config.socketPath, deadline);
+        if (!opened) {
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::State, "daemon not running")};
+        }
+        impl_->conn = std::make_unique<IpcClient>(std::move(*opened));
+    }
+    auto res = impl_->conn->send(cmd, deadline);
+    if (!res) {
+        // The daemon closes idle connections, so a failed transfer usually
+        // means the cached stream is stale. Drop it and let the caller's next
+        // call reconnect; retrying here could execute the command twice.
+        impl_->conn.reset();
+    }
+    return res;
+}
+
+kanariv::utils::Expected<kanariv::ipc::Result>
+Session::waitForStatus(std::chrono::milliseconds timeout) {
+    const auto daemonWait = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
+    return send(kanariv::ipc::Command{kanariv::ipc::StatusWait{static_cast<int>(daemonWait)}},
+                timeout + statusWaitMargin);
+}
+
+void Session::reset() noexcept {
+    std::lock_guard lk{impl_->mtx};
+    impl_->conn.reset();
+}
+
 } // namespace kanariv::client

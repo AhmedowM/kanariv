@@ -195,6 +195,18 @@ IoStatus readExact(int fd, std::span<std::byte> out, IpcClient::Deadline deadlin
     return IoStatus::Ok;
 }
 
+/**
+ * @brief Send flags that turn a peer-closed socket into an error instead of SIGPIPE.
+ * @details A reused keep-alive connection can be closed by the daemon at any
+ * moment; without this flag the default SIGPIPE disposition kills the client
+ * before `EPIPE` can be returned to the caller.
+ */
+#if defined(MSG_NOSIGNAL)
+inline constexpr int sendFlags = MSG_NOSIGNAL;
+#else
+inline constexpr int sendFlags = 0;
+#endif
+
 /// @brief Writes every byte of `data` to a non-blocking socket.
 IoStatus writeAll(int fd, std::span<const std::byte> data, IpcClient::Deadline deadline,
                   std::stop_token st) {
@@ -202,8 +214,8 @@ IoStatus writeAll(int fd, std::span<const std::byte> data, IpcClient::Deadline d
     while (sent < data.size()) {
         if (st.stop_requested())
             return IoStatus::Stopped;
-        const ::ssize_t n =
-            ::send(fd, reinterpret_cast<const char*>(data.data()) + sent, data.size() - sent, 0);
+        const ::ssize_t n = ::send(fd, reinterpret_cast<const char*>(data.data()) + sent,
+                                   data.size() - sent, sendFlags);
         if (n > 0) {
             sent += static_cast<std::size_t>(n);
             continue;
@@ -355,6 +367,12 @@ kanariv::utils::Expected<IpcClient> IpcClient::connect(const std::filesystem::pa
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "connect failed")};
         }
     }
+#if defined(SO_NOSIGPIPE)
+    // Platforms without send(MSG_NOSIGNAL) need the socket-level fallback so a
+    // write to a peer-closed keep-alive connection cannot raise SIGPIPE.
+    int noSigpipe = 1;
+    (void)::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigpipe, sizeof(noSigpipe));
+#endif
     IpcClient c;
     c.impl_->pipeHandle.store(fd);
     c.impl_->socketPath = std::move(path);

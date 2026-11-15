@@ -387,11 +387,13 @@ int renderLyricsLive(const kanariv::ipc::Lyrics& ly, const std::filesystem::path
     // Persistent-outage bound: ~20 retries with capped backoff is roughly 30 s.
     constexpr int maxRetries = 20;
     constexpr double tailGrace = 10.0; // seconds after the last timestamp
-    kanariv::client::Client client{dbPath, socketPath.string()};
+    // A session reuses one connection: this loop polls every 500 ms, so a
+    // per-call connect would churn a daemon thread on every lyric update.
+    kanariv::client::Session session{dbPath, socketPath.string()};
     std::size_t shown = lines.size(); // last printed line index (size = none)
     int failures = 0;
     while (!stop.stop_requested()) {
-        auto pres = client.waitForStatus(milliseconds{500});
+        auto pres = session.waitForStatus(milliseconds{500});
         if (!pres) {
             ++failures;
             if (failures == 1)
@@ -1142,15 +1144,15 @@ int Shell::run(int argc, char** argv) {
             using namespace std::chrono;
             const bool ansi = detail::useColor();
             OutputFormatter fmt{jsonFlag};
-            // One client (and its connection policy) for the whole stream.
-            kanariv::client::Client client{config_.dbPath, config_.socketPath};
+            // One session (and its one connection) for the whole stream.
+            kanariv::client::Session session{config_.dbPath, config_.socketPath};
             int failures = 0;
             while (!stop_.stop_requested()) {
                 // waitForStatus blocks until the status changes or the
                 // interval elapses, avoiding wasteful polling. The transport
-                // budget follows the interval (client adds its margin), so
-                // long intervals are not capped by the 2 s default timeout.
-                auto res = client.waitForStatus(milliseconds{statusInterval});
+                // budget follows the interval (the session adds its margin),
+                // so long intervals are not capped by the 2 s default timeout.
+                auto res = session.waitForStatus(milliseconds{statusInterval});
                 if (!res) {
                     // Transient transport failures (daemon restart, timeout)
                     // are retried with bounded backoff instead of ending the

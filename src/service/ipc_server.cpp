@@ -378,59 +378,59 @@ void IpcServer::Impl::run(std::stop_token st,
                                 closeClient();
                                 return;
                             }
-                            const auto deadline =
-                                std::chrono::steady_clock::now() + kRequestTimeout;
-                            std::array<std::byte, 4> hdr{};
-                            if (detail::readExact(clientHandle, std::span<std::byte>(hdr), ct,
-                                                  deadline) != detail::IoStatus::Ok) {
-                                closeClient();
-                                return;
+                            // Keep-alive: serve requests until the peer closes
+                            // or stays idle past kRequestTimeout, so a polling
+                            // client reuses one connection (and one thread).
+                            for (;;) {
+                                const auto deadline =
+                                    std::chrono::steady_clock::now() + kRequestTimeout;
+                                std::array<std::byte, 4> hdr{};
+                                if (detail::readExact(clientHandle, std::span<std::byte>(hdr), ct,
+                                                      deadline) != detail::IoStatus::Ok) {
+                                    closeClient();
+                                    return;
+                                }
+                                std::uint32_t len =
+                                    (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
+                                    (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
+                                    (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
+                                    static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
+                                if (len > kanariv::ipc::kMaxFrameBytes) {
+                                    closeClient();
+                                    return;
+                                }
+                                std::vector<std::byte> payload(len);
+                                if (len > 0 &&
+                                    detail::readExact(clientHandle, std::span<std::byte>(payload),
+                                                      ct, deadline) != detail::IoStatus::Ok) {
+                                    closeClient();
+                                    return;
+                                }
+                                std::string reqStr;
+                                reqStr.reserve(payload.size());
+                                for (auto b : payload)
+                                    reqStr.push_back(
+                                        static_cast<char>(static_cast<unsigned char>(b)));
+                                auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
+                                kanariv::ipc::IpcReply reply;
+                                if (!reqExp) {
+                                    reply.id = 0;
+                                    reply.result = std::unexpected{reqExp.error()};
+                                } else {
+                                    reply.id = reqExp->id;
+                                    auto resExp = dispatch(reqExp->cmd);
+                                    if (!resExp)
+                                        reply.result = std::unexpected{resExp.error()};
+                                    else
+                                        reply.result = *resExp;
+                                }
+                                std::string repJson = kanariv::ipc::serializeReply(reply);
+                                auto framed = kanariv::ipc::frame(repJson);
+                                if (!framed || writeReply(*framed) != detail::IoStatus::Ok) {
+                                    closeClient();
+                                    return;
+                                }
                             }
-                            std::uint32_t len =
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
-                                static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-                            if (len > kanariv::ipc::kMaxFrameBytes) {
-                                closeClient();
-                                return;
-                            }
-                            std::vector<std::byte> payload(len);
-                            if (len > 0 &&
-                                detail::readExact(clientHandle, std::span<std::byte>(payload), ct,
-                                                  deadline) != detail::IoStatus::Ok) {
-                                closeClient();
-                                return;
-                            }
-                            std::string reqStr;
-                            reqStr.reserve(payload.size());
-                            for (auto b : payload)
-                                reqStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
-                            auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
-                            kanariv::ipc::IpcReply reply;
-                            if (!reqExp) {
-                                reply.id = 0;
-                                reply.result = std::unexpected{reqExp.error()};
-                            } else {
-                                reply.id = reqExp->id;
-                                auto resExp = dispatch(reqExp->cmd);
-                                if (!resExp)
-                                    reply.result = std::unexpected{resExp.error()};
-                                else
-                                    reply.result = *resExp;
-                            }
-                            std::string repJson = kanariv::ipc::serializeReply(reply);
-                            auto framed = kanariv::ipc::frame(repJson);
-                            if (!framed || writeReply(*framed) != detail::IoStatus::Ok) {
-                                closeClient();
-                                return;
-                            }
-                            // Close (not disconnect): the instance is not
-                            // reused, and closing keeps the buffered reply
-                            // readable by the client. Disconnecting here
-                            // would discard bytes the client has not read.
-                            closeClient();
-                            return;
                         } catch (const std::exception& e) {
                             // Last-resort fallback: a thrown handler used to
                             // just close the pipe, so the client could only
@@ -518,54 +518,59 @@ void IpcServer::Impl::run(std::stop_token st,
                                 ::close(cfd);
                                 return;
                             }
-                            const auto deadline =
-                                std::chrono::steady_clock::now() + kRequestTimeout;
-                            std::array<std::byte, 4> hdr{};
-                            if (detail::readExact(cfd, std::span<std::byte>(hdr), ct, deadline) !=
-                                detail::IoStatus::Ok) {
-                                ::close(cfd);
-                                return;
+                            // Keep-alive: serve requests until the peer closes
+                            // or stays idle past kRequestTimeout, so a polling
+                            // client reuses one connection (and one thread).
+                            for (;;) {
+                                const auto deadline =
+                                    std::chrono::steady_clock::now() + kRequestTimeout;
+                                std::array<std::byte, 4> hdr{};
+                                if (detail::readExact(cfd, std::span<std::byte>(hdr), ct,
+                                                      deadline) != detail::IoStatus::Ok) {
+                                    ::close(cfd);
+                                    return;
+                                }
+                                std::uint32_t len =
+                                    (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
+                                    (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
+                                    (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
+                                    static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
+                                if (len > kanariv::ipc::kMaxFrameBytes) {
+                                    ::close(cfd);
+                                    return;
+                                }
+                                std::vector<std::byte> payload(len);
+                                if (len > 0 &&
+                                    detail::readExact(cfd, std::span<std::byte>(payload), ct,
+                                                      deadline) != detail::IoStatus::Ok) {
+                                    ::close(cfd);
+                                    return;
+                                }
+                                std::string reqStr;
+                                reqStr.reserve(payload.size());
+                                for (auto b : payload)
+                                    reqStr.push_back(
+                                        static_cast<char>(static_cast<unsigned char>(b)));
+                                auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
+                                kanariv::ipc::IpcReply reply;
+                                if (!reqExp) {
+                                    reply.id = 0;
+                                    reply.result = std::unexpected{reqExp.error()};
+                                } else {
+                                    reply.id = reqExp->id;
+                                    auto resExp = dispatch(reqExp->cmd);
+                                    if (!resExp)
+                                        reply.result = std::unexpected{resExp.error()};
+                                    else
+                                        reply.result = *resExp;
+                                }
+                                std::string repJson = kanariv::ipc::serializeReply(reply);
+                                auto framed = kanariv::ipc::frame(repJson);
+                                if (!framed || writeReply(*framed) != detail::IoStatus::Ok) {
+                                    ::close(cfd);
+                                    return;
+                                }
                             }
-                            std::uint32_t len =
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
-                                (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
-                                static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-                            if (len > kanariv::ipc::kMaxFrameBytes) {
-                                ::close(cfd);
-                                return;
-                            }
-                            std::vector<std::byte> payload(len);
-                            if (len > 0 && detail::readExact(cfd, std::span<std::byte>(payload), ct,
-                                                             deadline) != detail::IoStatus::Ok) {
-                                ::close(cfd);
-                                return;
-                            }
-                            std::string reqStr;
-                            reqStr.reserve(payload.size());
-                            for (auto b : payload)
-                                reqStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
-                            auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
-                            kanariv::ipc::IpcReply reply;
-                            if (!reqExp) {
-                                reply.id = 0;
-                                reply.result = std::unexpected{reqExp.error()};
-                            } else {
-                                reply.id = reqExp->id;
-                                auto resExp = dispatch(reqExp->cmd);
-                                if (!resExp)
-                                    reply.result = std::unexpected{resExp.error()};
-                                else
-                                    reply.result = *resExp;
-                            }
-                            std::string repJson = kanariv::ipc::serializeReply(reply);
-                            auto framed = kanariv::ipc::frame(repJson);
-                            if (!framed || writeReply(*framed) != detail::IoStatus::Ok) {
-                                ::close(cfd);
-                                return;
-                            }
-                            ::close(cfd);
-                            return;
                         } catch (const std::exception& e) {
                             // Answer with the cause instead of silently
                             // closing (matches the Windows branch above).

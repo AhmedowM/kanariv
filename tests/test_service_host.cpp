@@ -22,6 +22,7 @@
 #include <kanariv/utils/error.hpp>
 #include <memory>
 #include <optional>
+#include <service/art_cache.hpp>
 #include <service/ipc_io.hpp>
 #include <service/ipc_server.hpp>
 #include <service/service_paths.hpp>
@@ -826,4 +827,87 @@ TEST_CASE("explicit sockets give daemons independent pid and lock files", "[serv
     REQUIRE(svc2.has_value());
     REQUIRE(std::filesystem::exists(pid1));
     REQUIRE(std::filesystem::exists(pid2));
+}
+
+TEST_CASE("art cache validates entries against the source stat", "[service][artcache]") {
+    ArtCache cache;
+    const std::filesystem::path cover = "art.jpg";
+    const auto stamp = std::filesystem::file_time_type{std::chrono::seconds{1000}};
+    cache.put(7, cover, stamp, 4096, ArtCacheEntry{std::string{"QUJD"}, "image/jpeg"});
+    REQUIRE(cache.size() == 1);
+    REQUIRE(cache.bytes() == 4);
+
+    auto hit = cache.get(7, cover, stamp, 4096);
+    REQUIRE(hit.has_value());
+    REQUIRE(hit->base64 == std::string{"QUJD"});
+    REQUIRE(hit->mime == "image/jpeg");
+
+    // A changed size, mtime or source path is a miss: the art may have changed.
+    CHECK_FALSE(cache.get(7, cover, stamp, 4095).has_value());
+    CHECK_FALSE(
+        cache.get(7, cover, stamp + std::chrono::seconds{1}, 4096).has_value());
+    CHECK_FALSE(cache.get(7, "other.jpg", stamp, 4096).has_value());
+    CHECK_FALSE(cache.get(8, cover, stamp, 4096).has_value());
+
+    // Replacing a track's entry keeps one node and updates the byte count.
+    cache.put(7, cover, stamp, 4096, ArtCacheEntry{std::string{"QUJDRA=="}, "image/png"});
+    REQUIRE(cache.size() == 1);
+    REQUIRE(cache.bytes() == 8);
+    auto replaced = cache.get(7, cover, stamp, 4096);
+    REQUIRE(replaced.has_value());
+    CHECK(replaced->mime == "image/png");
+
+    cache.clear();
+    CHECK(cache.size() == 0);
+    CHECK(cache.bytes() == 0);
+}
+
+TEST_CASE("art cache caches misses so artless tracks are demuxed once", "[service][artcache]") {
+    ArtCache cache;
+    const auto stamp = std::filesystem::file_time_type{};
+    cache.put(5, "song.mp3", stamp, 77, ArtCacheEntry{});
+    auto hit = cache.get(5, "song.mp3", stamp, 77);
+    REQUIRE(hit.has_value());
+    CHECK_FALSE(hit->base64.has_value());
+    CHECK(hit->mime.empty());
+    CHECK(cache.bytes() == 0);
+}
+
+TEST_CASE("art cache evicts least-recently used entries past the entry cap",
+          "[service][artcache]") {
+    ArtCache cache{2, 1024};
+    const auto stamp = std::filesystem::file_time_type{};
+    cache.put(1, "a", stamp, 1, ArtCacheEntry{std::string{"A"}, "image/png"});
+    cache.put(2, "b", stamp, 1, ArtCacheEntry{std::string{"B"}, "image/png"});
+    REQUIRE(cache.size() == 2);
+
+    // Touch 1 so 2 becomes the least-recently used entry.
+    REQUIRE(cache.get(1, "a", stamp, 1).has_value());
+    cache.put(3, "c", stamp, 1, ArtCacheEntry{std::string{"C"}, "image/png"});
+    REQUIRE(cache.size() == 2);
+    CHECK(cache.get(1, "a", stamp, 1).has_value());
+    CHECK_FALSE(cache.get(2, "b", stamp, 1).has_value());
+    CHECK(cache.get(3, "c", stamp, 1).has_value());
+}
+
+TEST_CASE("art cache evicts past the byte cap but keeps one oversized entry",
+          "[service][artcache]") {
+    const auto stamp = std::filesystem::file_time_type{};
+    ArtCache cache{8, 8};
+    cache.put(1, "a", stamp, 1, ArtCacheEntry{std::string(5, 'x'), "image/png"});
+    cache.put(2, "b", stamp, 1, ArtCacheEntry{std::string(5, 'y'), "image/png"});
+    REQUIRE(cache.size() == 1);
+    REQUIRE(cache.bytes() == 5);
+    CHECK_FALSE(cache.get(1, "a", stamp, 1).has_value());
+    CHECK(cache.get(2, "b", stamp, 1).has_value());
+
+    // A single entry larger than the cap is still cached: evicting it would
+    // leave nothing and force a re-encode on every refresh.
+    ArtCache oversized{8, 4};
+    oversized.put(3, "c", stamp, 1, ArtCacheEntry{std::string(9, 'z'), "image/png"});
+    REQUIRE(oversized.size() == 1);
+    REQUIRE(oversized.bytes() == 9);
+    oversized.put(4, "d", stamp, 1, ArtCacheEntry{std::string(9, 'w'), "image/png"});
+    REQUIRE(oversized.size() == 1);
+    CHECK(oversized.get(4, "d", stamp, 1).has_value());
 }

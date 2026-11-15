@@ -23,17 +23,20 @@
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/ipc/shm_status.hpp>
 #include <kanariv/service/service.hpp>
+#include <kanariv/types/record.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <service/art_cache.hpp>
 #include <service/ipc_server.hpp>
 #include <service/media_session.hpp>
 #include <span>
 #include <stop_token>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -80,8 +83,22 @@ struct Service::Impl {
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     dispatch(const kanariv::ipc::Command& cmd);
 
-    /** Push current engine state to the OS media session. */
-    void syncMediaSession();
+    /**
+     * @brief Requests a media-session refresh (never blocks the caller).
+     * @details The worker coalesces requests: it publishes the current engine
+     * state once per burst, so a transport command only pays for a wake-up,
+     * not for a database lookup and cover-art encoding.
+     */
+    void requestMediaSessionRefresh();
+    /// Worker loop: waits for a request, publishes, repeats while behind.
+    void mediaWorkerLoop();
+    /// Publishes engine state and encoded art to the OS media session.
+    void publishMediaSession();
+    /**
+     * @brief Encodes cover art for a track, reusing the stat-validated cache.
+     * @return Encoded art, or nullopt when the track has none (or a cached miss).
+     */
+    std::optional<ArtCacheEntry> artworkFor(const kanariv::types::Track& track);
 
     /// Visitor routing each Command alternative to its handle() overload.
     struct DispatchVisitor {
@@ -236,6 +253,16 @@ struct Service::Impl {
     std::atomic<bool> shutdownRequested_{false};
     /** Set once shutdown() starts; late media-key intents are rejected. */
     std::atomic<bool> shuttingDown_{false};
+
+    // Media-session worker: owns every mediaSession_ update and the art cache.
+    // Requests are counted, so a burst collapses into one publish per wake-up.
+    std::thread mediaThread_;
+    std::mutex mediaReqMtx_;
+    std::condition_variable mediaReqCv_;
+    std::uint64_t mediaReqSeq_{0};
+    std::uint64_t mediaDoneSeq_{0};
+    bool mediaStop_{false};
+    ArtCache artCache_;
 
     // Serializes command dispatch: one writer into Engine/Database at a time,
     // matching the documented IPC model. StatusWait waits outside this lock.

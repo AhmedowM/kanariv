@@ -310,22 +310,25 @@ Service::Impl::Impl(const ServiceConfig& cfg, kanariv::contracts::Storage storag
                 },
         });
         // Engine track events (natural end / auto-advance) must refresh the
-        // OS now-playing UI, which syncMediaSession() only does on explicit
-        // user commands. They also bump the status sequence: a track change is
-        // a real state change, so StatusWait waiters must observe it (S5).
+        // OS now-playing UI, which no IPC command triggers. They also bump the
+        // status sequence: a track change is a real state change, so StatusWait
+        // waiters must observe it (S5).
         (void)engine_->setCallbacks({
             .on_track_started = [this](int64_t) -> void {
                 noteStateChanged();
-                syncMediaSession();
+                requestMediaSessionRefresh();
             },
             .on_track_ended = [this](int64_t, double) -> void {
                 noteStateChanged();
-                syncMediaSession();
+                requestMediaSessionRefresh();
             },
         });
         // Activate the OS media session so media keys and now-playing UI work.
         if (auto e = mediaSession_->activate(); !e && logger_)
             logger_->debug("media session activate: {}", e.error().message);
+        // Publishes on its own thread: a transport command must never pay for
+        // a database lookup, a cover read or a Base64 encode (S7).
+        mediaThread_ = std::thread([this] { mediaWorkerLoop(); });
     }
 }
 
@@ -380,6 +383,16 @@ void Service::Impl::shutdown() {
     shuttingDown_.store(true, std::memory_order_release);
     if (engine_)
         (void)engine_->setCallbacks({});
+    // Stop the media worker before touching the backend it publishes to: no
+    // request can be queued after the engine callbacks are cleared, and the
+    // worker checks the stop flag before every publish.
+    {
+        std::lock_guard<std::mutex> lk{mediaReqMtx_};
+        mediaStop_ = true;
+    }
+    mediaReqCv_.notify_all();
+    if (mediaThread_.joinable())
+        mediaThread_.join();
     if (mediaSession_) {
         {
             std::lock_guard<std::mutex> lk(mediaMtx_);
@@ -557,19 +570,97 @@ Service::Impl::statusAfterChange(std::string_view transition) {
     return res;
 }
 
-void Service::Impl::syncMediaSession() {
+void Service::Impl::requestMediaSessionRefresh() {
+    if (!mediaSession_)
+        return;
+    {
+        std::lock_guard<std::mutex> lk{mediaReqMtx_};
+        if (mediaStop_)
+            return;
+        ++mediaReqSeq_;
+    }
+    mediaReqCv_.notify_one();
+}
+
+void Service::Impl::mediaWorkerLoop() {
+    for (;;) {
+        std::uint64_t requested = 0;
+        {
+            std::unique_lock lk{mediaReqMtx_};
+            mediaReqCv_.wait(lk, [this] { return mediaStop_ || mediaReqSeq_ != mediaDoneSeq_; });
+            if (mediaStop_)
+                return;
+            requested = mediaReqSeq_;
+        }
+        publishMediaSession();
+        {
+            std::lock_guard lk{mediaReqMtx_};
+            if (requested > mediaDoneSeq_)
+                mediaDoneSeq_ = requested;
+        }
+    }
+}
+
+std::optional<ArtCacheEntry> Service::Impl::artworkFor(const kanariv::types::Track& track) {
+    std::filesystem::path source;
+    bool embedded = false;
+    if (!track.cover_art_path.empty())
+        source = track.cover_art_path;
+    else if (!track.path.empty()) {
+        source = track.path;
+        embedded = true;
+    } else {
+        return std::nullopt;
+    }
+
+    std::error_code ec;
+    const auto mtime = std::filesystem::last_write_time(source, ec);
+    if (ec)
+        return std::nullopt;
+    const auto size = std::filesystem::file_size(source, ec);
+    if (ec)
+        return std::nullopt;
+
+    if (auto hit = artCache_.get(track.id, source, mtime, size))
+        return hit;
+
+    ArtCacheEntry entry;
+    if (embedded) {
+        if (auto art = extractEmbeddedCoverArt(source, logger_.get())) {
+            entry.base64 = kanariv::utils::Base64::encode(
+                std::span<const std::byte>(art->first.data(), art->first.size()));
+            entry.mime = art->second;
+        }
+    } else {
+        std::ifstream ifs(source, std::ios::binary);
+        if (ifs) {
+            const std::string content((std::istreambuf_iterator<char>(ifs)),
+                                      std::istreambuf_iterator<char>());
+            if (!content.empty()) {
+                entry.base64 = kanariv::utils::Base64::encode(std::span<const std::byte>(
+                    reinterpret_cast<const std::byte*>(content.data()), content.size()));
+                entry.mime = kanariv::utils::Base64::mimeTypeFromPath(source.string());
+            }
+        }
+    }
+    // Misses are cached too: a track without art is demuxed once, not per
+    // command, and the stat check still invalidates it when the file changes.
+    artCache_.put(track.id, source, mtime, size, entry);
+    if (!entry.base64)
+        return std::nullopt;
+    return entry;
+}
+
+void Service::Impl::publishMediaSession() {
     std::lock_guard<std::mutex> lk(mediaMtx_);
     if (!mediaSession_ || !mediaSession_->active() || !engine_)
         return;
 
     try {
-        if (logger_)
-            logger_->debug("media session sync started track={}", engine_->currentTrackId());
-
-        int64_t track_id = engine_->currentTrackId();
+        const int64_t track_id = engine_->currentTrackId();
         std::string title, artist;
-        std::optional<std::string> album, artworkPath, artworkBase64;
-        std::string artworkMime;
+        std::optional<std::string> album, artworkPath;
+        std::optional<ArtCacheEntry> art;
         double duration = 0.0;
 
         if (track_id != 0 && storage_.tracks) {
@@ -577,46 +668,14 @@ void Service::Impl::syncMediaSession() {
                 title = tr->title;
                 artist = tr->artist;
                 album = tr->album;
-                artworkPath = tr->cover_art_path;
+                if (!tr->cover_art_path.empty())
+                    artworkPath = tr->cover_art_path;
                 duration = tr->duration;
-
-                if (artworkPath) {
-                    std::ifstream ifs(*artworkPath, std::ios::binary);
-                    if (ifs) {
-                        std::string content((std::istreambuf_iterator<char>(ifs)),
-                                            std::istreambuf_iterator<char>());
-                        if (!content.empty()) {
-                            std::vector<std::byte> bytes;
-                            bytes.reserve(content.size());
-                            for (char value : content)
-                                bytes.push_back(static_cast<std::byte>(value));
-                            artworkBase64 = kanariv::utils::Base64::encode(
-                                std::span<const std::byte>(bytes.data(), bytes.size()));
-                            artworkMime = kanariv::utils::Base64::mimeTypeFromPath(*artworkPath);
-                            if (logger_)
-                                logger_->debug(
-                                    "media session artwork encoded from cover file bytes={}",
-                                    bytes.size());
-                        }
-                    }
-                }
-
-                if (!artworkBase64 && !tr->path.empty()) {
-                    if (auto embedded = extractEmbeddedCoverArt(tr->path, logger_.get())) {
-                        artworkBase64 = kanariv::utils::Base64::encode(std::span<const std::byte>(
-                            embedded->first.data(), embedded->first.size()));
-                        artworkMime = embedded->second;
-                        if (logger_)
-                            logger_->debug("media session artwork encoded from embedded bytes={}",
-                                           embedded->first.size());
-                    }
-                }
+                art = artworkFor(*tr);
             }
         }
 
         // Best-effort: a failed OS update must never break playback dispatch.
-        if (logger_)
-            logger_->debug("media session sending metadata artwork={}", artworkBase64.has_value());
         // When playback stops at the end of the queue the engine reports track
         // id 0. Keep the last now-playing item so the OS card shows the track
         // that just finished with a Stopped/play state instead of blanking.
@@ -626,8 +685,9 @@ void Service::Impl::syncMediaSession() {
                                                      .artist = artist,
                                                      .album = album,
                                                      .artworkPath = artworkPath,
-                                                     .artworkBase64 = artworkBase64,
-                                                     .artworkMime = artworkMime,
+                                                     .artworkBase64 = art ? art->base64
+                                                                          : std::nullopt,
+                                                     .artworkMime = art ? art->mime : std::string{},
                                                      .trackId = track_id});
                 !e && logger_)
                 logger_->warn("media session setMetadata failed: {}", e.error().message);
@@ -647,10 +707,10 @@ void Service::Impl::syncMediaSession() {
             logger_->warn("media session setVolume failed: {}", e.error().message);
     } catch (const std::exception& error) {
         if (logger_)
-            logger_->error("media session sync failed: {}", error.what());
+            logger_->error("media session publish failed: {}", error.what());
     } catch (...) {
         if (logger_)
-            logger_->error("media session sync failed with unknown exception");
+            logger_->error("media session publish failed with unknown exception");
     }
 }
 

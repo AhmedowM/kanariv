@@ -165,6 +165,12 @@ inline bool configureSocket(int fd) noexcept {
         std::chrono::duration_cast<std::chrono::microseconds>(kSocketTimeout).count());
     const bool recvOk = ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0;
     const bool sendOk = ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == 0;
+#if defined(SO_NOSIGPIPE)
+    // Platforms without send(MSG_NOSIGNAL) need this so writing a reply to a
+    // peer that just disconnected cannot raise SIGPIPE in the daemon.
+    int noSigpipe = 1;
+    (void)::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigpipe, sizeof(noSigpipe));
+#endif
     return recvOk && sendOk;
 }
 
@@ -192,14 +198,25 @@ inline IoStatus readExact(int fd, std::span<std::byte> out, std::stop_token st,
     return IoStatus::Ok;
 }
 
+/**
+ * @brief Send flags that turn a peer-closed socket into an error instead of SIGPIPE.
+ * @details A client may disconnect between its request and the reply; without
+ * this flag the default SIGPIPE disposition would kill the whole daemon.
+ */
+#if defined(MSG_NOSIGNAL)
+inline constexpr int kSendFlags = MSG_NOSIGNAL;
+#else
+inline constexpr int kSendFlags = 0;
+#endif
+
 inline IoStatus writeAll(int fd, std::span<const std::byte> data, std::stop_token st,
                          std::chrono::steady_clock::time_point deadline) {
     std::size_t sent = 0;
     while (sent < data.size()) {
         if (st.stop_requested())
             return IoStatus::Stopped;
-        const ::ssize_t n =
-            ::send(fd, reinterpret_cast<const char*>(data.data()) + sent, data.size() - sent, 0);
+        const ::ssize_t n = ::send(fd, reinterpret_cast<const char*>(data.data()) + sent,
+                                   data.size() - sent, kSendFlags);
         if (n > 0) {
             sent += static_cast<std::size_t>(n);
             continue;

@@ -12,6 +12,7 @@
 #include <kanariv/ipc/result.hpp>
 #include <chrono>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -141,6 +142,85 @@ class KANARIV_API Client {
      */
     kanariv::utils::Expected<kanariv::ipc::Result>
     waitForStatus(std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});
+};
+
+/**
+ * @brief Long-lived client connection for repeated commands (watch loops).
+ * @ingroup kanariv_client
+ * @details `Client` opens and closes a connection per call. A stream that sends
+ * a command every interval -- `status --watch`, `lyrics get --live` -- would pay
+ * a connect, accept and thread per poll; a `Session` keeps one connection and
+ * reuses it for every request, which the daemon serves until the peer closes
+ * or idles past its request timeout.
+ *
+ * A failed transfer means the stream is unusable (the daemon closed it while
+ * idle, or the transport broke). The connection is dropped and the next call
+ * reconnects. The failed command is **not** retried: the daemon may already
+ * have executed it, so a retry could apply a state change twice. Callers that
+ * want retry semantics keep their own backoff loop and call again.
+ *
+ * @par Thread safety
+ * Calls are serialized by an internal mutex (the transport carries one request
+ * at a time), so concurrent calls are safe but do not overlap. Destroying the
+ * object while a call is in flight on another thread is not supported.
+ */
+class KANARIV_API Session {
+  public:
+    /**
+     * @brief Constructs from an explicit transport config.
+     * @ingroup kanariv_client
+     * @details A relative `dbPath` is resolved once here, as with `Client`.
+     */
+    explicit Session(Config cfg);
+    /** @brief Constructs for a database path (socket path derived). @ingroup kanariv_client */
+    explicit Session(std::filesystem::path dbPath);
+    /** @brief Constructs for a database path with explicit socket path. @ingroup kanariv_client */
+    explicit Session(std::filesystem::path dbPath, std::string_view socketPath);
+    /** @brief Constructs from a loaded app config. @ingroup kanariv_client */
+    explicit Session(const kanariv::config::Config& cfg);
+    /** @brief Closes the connection if one is open. */
+    ~Session();
+
+    Session(Session&& other) noexcept;
+    Session& operator=(Session&& other) noexcept;
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+
+    /** @brief Returns the transport configuration used by this session. @ingroup kanariv_client */
+    const Config& config() const noexcept;
+
+    /**
+     * @brief Sends one command over the reused connection, connecting if needed.
+     * @ingroup kanariv_client
+     * @param cmd Command to serialize and transmit synchronously.
+     * @param timeout Maximum time for connecting and for the reply; `0` selects
+     * the per-command default, as with `Client::send()`.
+     * @return Command result, or a transport/timeout error. A transport error
+     * also closes the connection; the command is not retried.
+     */
+    kanariv::utils::Expected<kanariv::ipc::Result> send(const kanariv::ipc::Command& cmd,
+                                                        std::chrono::milliseconds timeout = {});
+
+    /**
+     * @brief Waits for a playback status change over the reused connection.
+     * @ingroup kanariv_client
+     * @param timeout Maximum time the daemon waits for a change.
+     * @return Current Status result, or timeout/error (which drops the connection).
+     */
+    kanariv::utils::Expected<kanariv::ipc::Result>
+    waitForStatus(std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});
+
+    /**
+     * @brief Closes the connection; the next `send()` connects again.
+     * @ingroup kanariv_client
+     * @details Use before a long idle gap, or to release the daemon-side
+     * connection slot immediately instead of waiting for its idle timeout.
+     */
+    void reset() noexcept;
+
+  private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 } // namespace kanariv::client
