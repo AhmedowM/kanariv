@@ -100,6 +100,13 @@ if(KANARIV_ENABLE_TESTS)
   kanariv_add_catch_test(test_cli_logic tests/test_cli_logic.cpp LIBS kanariv::utils)
   target_include_directories(test_cli_logic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cli/src/shell)
 
+  # Declaration-vocabulary tripwire: the hand-written dispatch chain must stay
+  # in sync with the declared leaf subcommands (roadmap L6). Links the same
+  # shell library the binary ships.
+  if(TARGET kanariv_cli_shell)
+    kanariv_add_catch_test(test_cli_commands tests/test_cli_commands.cpp LIBS kanariv_cli_shell)
+  endif()
+
   kanariv_add_catch_test(test_media_source tests/test_media_source.cpp LIBS kanariv::media kanariv::player kanariv::utils)
   kanariv_add_catch_test(test_db_source tests/test_db_source.cpp LIBS kanariv::db kanariv::utils kanariv::sqlite3)
   kanariv_add_catch_test(test_service_host tests/test_service_host.cpp LIBS kanariv::service kanariv::config kanariv::db kanariv::utils kanariv::sqlite3)

@@ -211,11 +211,4 @@ AppResult App::seek(double target, bool isRelative) {
                    .quiet = true};
 }
 
-AppResult App::previewFile(const std::string& file) {
-    if (impl_->previewHost_) {
-        return impl_->previewHost_(file);
-    }
-    return Outcome::fail("preview host not configured");
-}
-
 } // namespace kanariv::app

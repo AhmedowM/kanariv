@@ -19,9 +19,8 @@
  * config and the daemon re-spawn path are read as one immutable snapshot per
  * call, so `setConfig`/`setArgv0` may run while commands are in flight: a
  * call observes either the old or the new state in full, never a mix.
- * `attachDaemonHost`/`attachPreviewHost` are setup-only -- inject both before
- * any command runs concurrently. Daemon interactions go through the IPC
- * client, which serializes per connection.
+ * Daemon interactions go through the IPC client, which serializes per
+ * connection.
  */
 
 #include <array>
@@ -32,8 +31,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
-#include <functional>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -156,38 +155,23 @@ class KANARIV_API App {
     void setArgv0(std::string argv0);
 
     /**
-     * @brief Injects the foreground daemon host (CLI owns service startup).
-     * @ingroup kanariv_app
-     * @param host Callable that runs the service in-process and blocks;
-     *             when unset, `startDaemon(true)` returns an error.
-     */
-    void attachDaemonHost(std::function<AppResult(bool foreground)> host);
-
-    /**
-     * @brief Injects the local preview implementation (CLI owns the player-backed one).
-     * @ingroup kanariv_app
-     * @param host Callable that previews a local file and blocks until it
-     *             finishes; when unset, `previewFile` returns an error.
-     * @details The app layer stays free of the player dependency: the CLI
-     * owns the player-backed preview and injects it here.
-     */
-    void attachPreviewHost(std::function<AppResult(const std::string& file)> host);
-
-    /**
      * @brief Starts the daemon (foreground service or background spawn).
      * @ingroup kanariv_app
-     * @param foreground Run the service in-process and block (child path).
+     * @param foreground Run the service in this process and block (child path).
+     * @param stop Token that ends a foreground run gracefully (Ctrl+C).
      * @return Outcome data on success (an "already running" or "started"
      * line frontends skip in JSON mode), or std::unexpected for a real start
-     * failure: no foreground host configured, the host returning a failure,
-     * spawning failing, or the readiness round-trip not completing within
-     * its budget. Failures never use `Outcome::failed`, so callers can test
-     * `!result` instead of inspecting the outcome.
-     * @details Background path waits out a previous daemon's teardown,
-     * spawns once, then requires a full StatusReq round-trip (not just a
-     * connect) within a fixed 5 s absolute budget before reporting success.
+     * failure: the foreground host failing, spawning failing, or the
+     * readiness round-trip not completing within its budget. Failures never
+     * use `Outcome::failed`, so callers can test `!result` instead of
+     * inspecting the outcome.
+     * @details Foreground hosting composes the database and service here (see
+     * runForeground), so every frontend shares one composition root.
+     * Background path waits out a previous daemon's teardown, spawns once,
+     * then requires a full StatusReq round-trip (not just a connect) within a
+     * fixed 5 s absolute budget before reporting success.
      */
-    AppResult startDaemon(bool foreground);
+    AppResult startDaemon(bool foreground, std::stop_token stop = {});
 
     /**
      * @brief Stops the daemon and waits for its teardown to complete.
@@ -589,10 +573,13 @@ class KANARIV_API App {
     /**
      * @brief Plays a file ephemerally without touching the daemon/queue.
      * @ingroup kanariv_app
-     * @details Delegates to the injected preview host (see
-     * attachPreviewHost); returns an error when no host is configured.
+     * @param file Path to the audio file.
+     * @param stop Token that stops playback early (Ctrl+C).
+     * @return Outcome data; blocks until playback finishes or stop fires.
+     * @details Uses a throwaway local player, so previewing works without a
+     * running daemon and leaves the queue and history untouched.
      */
-    AppResult previewFile(const std::string& file);
+    AppResult previewFile(const std::string& file, std::stop_token stop = {});
 
   private:
     struct Impl;

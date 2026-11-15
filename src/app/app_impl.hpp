@@ -11,7 +11,6 @@
 #include <chrono>
 #include <expected>
 #include <filesystem>
-#include <functional>
 #include <kanariv/app/app.hpp>
 #include <kanariv/client/client.hpp>
 #include <kanariv/config.hpp>
@@ -20,6 +19,7 @@
 #include <kanariv/utils/error.hpp>
 #include <mutex>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -101,21 +101,25 @@ struct App::Impl {
     /**
      * @brief Starts the daemon (foreground service or background spawn).
      * @param foreground Run the service in-process and block (child path).
+     * @param stop Token that ends a foreground run gracefully.
      * @return Outcome data on success; std::unexpected for real start
-     *         failures (no host, host failure, spawn failure, readiness
-     *         timeout).
+     *         failures (host failure, spawn failure, readiness timeout).
      */
-    AppResult startDaemon(bool foreground);
+    AppResult startDaemon(bool foreground, std::stop_token stop);
+
+    /**
+     * @brief Hosts the service in this process until the stop token fires.
+     * @param stop Token observed by the service loop.
+     * @return "daemon stopped" on a clean run; a `failed` outcome for
+     *         database, service or daemon-loop startup failures.
+     */
+    AppResult runForeground(std::stop_token stop);
 
     /**
      * @brief Human track label for the last transport result.
      * @return Track label, or "unknown track" for non-status results.
      */
     std::string transportWho(const std::expected<kanariv::ipc::Result, kanariv::utils::Error>& res);
-
-    std::function<AppResult(bool foreground)> daemonHost_{}; ///< Injected foreground daemon host.
-    std::function<AppResult(const std::string& file)>
-        previewHost_{}; ///< Injected local preview host.
 
   private:
     mutable std::mutex stateMutex_;  ///< Guards config_ and argv0_.

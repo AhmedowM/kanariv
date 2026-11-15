@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <fstream>
 #include <kanariv/app/app.hpp>
 #include <kanariv/config.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -113,16 +114,38 @@ TEST_CASE("a failed daemon start is an unexpected, not a failed outcome", "[app_
     namespace fs = std::filesystem;
     const auto stamp = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     TempDir dir{fs::temp_directory_path() / ("kanariv-app-start-" + stamp)};
+    fs::create_directories(dir.path);
 
+    // The database path's parent is a regular file, so the foreground host
+    // cannot open the database: the failure must surface through the error
+    // channel, which is what sendPlay() checks after a failed start.
+    const auto notADir = dir.path / "notadir";
+    {
+        std::ofstream blocker{notADir};
+    }
+    kanariv::config::Config cfg;
+    cfg.dbPath = notADir / "library.db";
+    cfg.socketPath = (dir.path / "kanariv.sock").string();
+    kanariv::app::App app{cfg};
+
+    auto r = app.startDaemon(true);
+    REQUIRE(!r);
+    REQUIRE(r.error().code == kanariv::utils::StatusCode::State);
+    REQUIRE(r.error().message.starts_with("start failed:"));
+}
+
+TEST_CASE("previewing a missing file is a failed outcome", "[app_render]") {
+    namespace fs = std::filesystem;
+    const auto stamp = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    TempDir dir{fs::temp_directory_path() / ("kanariv-app-preview-" + stamp)};
     kanariv::config::Config cfg;
     cfg.dbPath = dir.path / "library.db";
     cfg.socketPath = (dir.path / "kanariv.sock").string();
     kanariv::app::App app{cfg};
 
-    // No daemon host attached: the foreground start must fail through the
-    // error channel, which is what sendPlay() checks after a failed start.
-    auto r = app.startDaemon(true);
-    REQUIRE(!r);
-    REQUIRE(r.error().code == kanariv::utils::StatusCode::State);
-    REQUIRE(r.error().message == "daemon host not configured");
+    const auto missing = (dir.path / "nope.flac").string();
+    auto r = app.previewFile(missing);
+    REQUIRE(r);
+    REQUIRE(r->failed);
+    REQUIRE(r->line == "preview: file not found " + missing);
 }

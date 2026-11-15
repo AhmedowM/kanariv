@@ -47,7 +47,6 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <functional>
 #include <kanariv/app/app.hpp>
 #include <kanariv/client/client.hpp>
 #include <kanariv/config.hpp>
@@ -107,14 +106,6 @@ void App::setConfig(kanariv::config::Config cfg) {
 
 void App::setArgv0(std::string argv0) {
     impl_->setArgv0(std::move(argv0));
-}
-
-void App::attachDaemonHost(std::function<AppResult(bool foreground)> host) {
-    impl_->daemonHost_ = std::move(host);
-}
-
-void App::attachPreviewHost(std::function<AppResult(const std::string& file)> host) {
-    impl_->previewHost_ = std::move(host);
 }
 
 kanariv::config::Config App::Impl::config() const {
@@ -279,7 +270,7 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const kanariv::config:
 #endif
 }
 
-AppResult App::Impl::startDaemon(bool foreground) {
+AppResult App::Impl::startDaemon(bool foreground, std::stop_token stop) {
     // One config snapshot for the whole start (probe, spawn, readiness).
     const auto cfg = config();
     kanariv::client::Client client{cfg.dbPath, cfg.socketPath};
@@ -316,16 +307,13 @@ AppResult App::Impl::startDaemon(bool foreground) {
             std::filesystem::create_directories(parent, ec2);
     }
     if (foreground) {
-        if (!daemonHost_)
-            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::State,
-                                                             "daemon host not configured")};
-        auto started = daemonHost_(foreground);
+        auto started = runForeground(stop);
         if (!started)
             return started;
         if (started->failed) {
-            // The injected host reports its own failures as a failed
-            // Outcome; lift them onto the single error channel so callers
-            // can detect a failed start structurally.
+            // runForeground reports its own failures as a failed Outcome;
+            // lift them onto the single error channel so callers can detect a
+            // failed start structurally.
             return std::unexpected{kanariv::utils::makeError(
                 kanariv::utils::StatusCode::State, started->line.value_or("daemon start failed"))};
         }
@@ -382,8 +370,8 @@ AppResult App::Impl::startDaemon(bool foreground) {
         kanariv::utils::makeError(kanariv::utils::StatusCode::State, std::move(msg))};
 }
 
-AppResult App::startDaemon(bool foreground) {
-    return impl_->startDaemon(foreground);
+AppResult App::startDaemon(bool foreground, std::stop_token stop) {
+    return impl_->startDaemon(foreground, stop);
 }
 
 AppResult App::shutdownDaemon() {
@@ -439,7 +427,7 @@ App::Impl::sendPlay(const kanariv::ipc::Command& cmd) {
     if (!res && !daemonReachable()) {
         // Autostart only when the daemon is actually down; a reachable
         // daemon's error is propagated untouched.
-        if (!startDaemon(false)) {
+        if (!startDaemon(false, {})) {
             // A failed start gets one 500 ms grace period before the single
             // retry; the retry's error is what the caller sees.
             std::this_thread::sleep_for(std::chrono::milliseconds{500});
