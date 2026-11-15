@@ -26,7 +26,13 @@ if(KANARIV_BUILD_STATIC)
 else()
   foreach(_tgt IN LISTS KANARIV_INSTALL_LIBS)
     get_target_property(_type ${_tgt} TYPE)
-    if(_type STREQUAL "SHARED_LIBRARY")
+    # Mirror the static branch: object libraries are an implementation detail
+    # (they have no installable artifact). Listing one in install(TARGETS)
+    # silently exports it as an empty INTERFACE IMPORTED target, so
+    # shared-only packages would advertise kanariv::<name>_objects.
+    if(_type STREQUAL "OBJECT_LIBRARY")
+      list(APPEND _kanariv_objects ${_tgt})
+    elseif(_type STREQUAL "SHARED_LIBRARY")
       list(APPEND _kanariv_shared ${_tgt})
     else()
       list(APPEND _kanariv_static ${_tgt})
@@ -34,8 +40,9 @@ else()
   endforeach()
 endif()
 # combined owns no component sources of its own, so it is never registered in
-# KANARIV_TARGETS; opt it into the shared set explicitly in both flavours.
-if(TARGET combined)
+# KANARIV_TARGETS; add it to the shared set explicitly. It only exists when
+# KANARIV_BUILD_COMBINED and KANARIV_BUILD_SHARED are both on.
+if(KANARIV_BUILD_COMBINED AND TARGET combined)
   list(APPEND _kanariv_shared combined)
 endif()
 set(KANARIV_INSTALL_LIBS ${_kanariv_static})
@@ -93,7 +100,6 @@ install(
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT dev
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT dev
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT dev
-  PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   ${_kanariv_module_fs}
 )
 
@@ -114,7 +120,6 @@ if(_kanariv_shared)
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT dev
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT runtime
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT dev
     ${_kanariv_module_fs}
   )
   install(
@@ -135,7 +140,13 @@ endif()
 # Version header
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/kanariv/version_config.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/kanariv COMPONENT dev)
 
-# Public headers
+# Public headers -- the single install mechanism. The whole include/ tree is
+# shipped verbatim, so every header keeps its kanariv/<component>/ prefix and
+# nested directories (ipc/command/*.hpp, ipc/result/*.hpp) are present. No
+# target sets PUBLIC_HEADER any more: that mechanism flattened every component
+# into include/ and made db/scan.hpp, media/scan.hpp, db/json.hpp,
+# utils/json.hpp, ipc/result.hpp, utils/result.hpp and the <component>.hpp
+# facades overwrite each other.
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT dev FILES_MATCHING PATTERN "*.hpp")
 
 # NOTE: vendor headers (sqlite3.h, blake3.h) are deliberately NOT installed --

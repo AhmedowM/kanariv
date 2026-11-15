@@ -37,8 +37,7 @@ if(KANARIV_ENABLE_MODULES)
     FILES ${KANARIV_TYPES_MODULE_SOURCES})
   ca_set_warnings(types)
   ca_set_module_warnings(types)
-  # Install .cppm sources directly; consumers compile them to BMIs or add the
-  # install/modules dir to their C++ module search path.
-  install(FILES ${KANARIV_TYPES_MODULE_SOURCES}
-    DESTINATION modules/kanariv/types COMPONENT dev)
+  # No extra install(FILES ...) here: install(TARGETS ... FILE_SET CXX_MODULES)
+  # in cmake/Install.cmake already ships these sources under modules/kanariv/
+  # (a second rule would duplicate them under a flattened path).
 endif()

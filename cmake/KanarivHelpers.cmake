@@ -45,6 +45,10 @@ endfunction()
 # call this on vendor targets, and never fold these into CMAKE_CXX_FLAGS /
 # CMAKE_C_FLAGS / CMAKE_EXE_LINKER_FLAGS: the cache defaults stay untouched
 # and an empty value is a no-op.
+#
+# clang-tidy is applied per target here (W22) instead of through the
+# directory-wide CMAKE_CXX_CLANG_TIDY: the variable is inherited by every
+# target created afterwards, which included the fetched TagLib tree.
 function(kanariv_apply_extra_flags tgt)
   if(KANARIV_EXTRA_CXX_FLAGS)
     separate_arguments(_kanariv_extra_cxx NATIVE_COMMAND "${KANARIV_EXTRA_CXX_FLAGS}")
@@ -61,6 +65,9 @@ function(kanariv_apply_extra_flags tgt)
   if(KANARIV_EXTRA_LINK_FLAGS)
     separate_arguments(_kanariv_extra_link NATIVE_COMMAND "${KANARIV_EXTRA_LINK_FLAGS}")
     target_link_options(${tgt} PRIVATE ${_kanariv_extra_link})
+  endif()
+  if(KANARIV_CLANG_TIDY_PROGRAM)
+    set_target_properties(${tgt} PROPERTIES CXX_CLANG_TIDY "${KANARIV_CLANG_TIDY_PROGRAM}")
   endif()
 endfunction()
 
@@ -82,9 +89,6 @@ function(kanariv_add_component NAME)
       $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
     if(ARG_INCLUDES)
       target_include_directories(${NAME}_objects SYSTEM PRIVATE ${ARG_INCLUDES})
-    endif()
-    if(KANARIV_NLOHMANN_PRIVATE_INCLUDE)
-      target_include_directories(${NAME}_objects SYSTEM PRIVATE ${KANARIV_NLOHMANN_PRIVATE_INCLUDE})
     endif()
     if(KANARIV_BUILD_SHARED)
       target_compile_definitions(${NAME}_objects PRIVATE KANARIV_BUILDING_DLL)
@@ -130,6 +134,11 @@ function(kanariv_add_component NAME)
     if(ARG_SOURCES)
       target_sources(${NAME} PRIVATE $<TARGET_OBJECTS:${NAME}_objects>)
     endif()
+    # Consumers of this DLL must take the __declspec(dllimport) branch of
+    # KANARIV_API (include/kanariv/fwd.hpp). INTERFACE only: the DLL itself is
+    # compiled through ${NAME}_objects, which defines KANARIV_BUILDING_DLL.
+    # Static and object builds never define KANARIV_USING_DLL.
+    target_compile_definitions(${NAME} INTERFACE KANARIV_USING_DLL)
   endif()
   add_library(kanariv::${NAME} ALIAS ${NAME})
   set_property(DIRECTORY APPEND PROPERTY KANARIV_TARGETS ${NAME})
@@ -147,9 +156,6 @@ function(kanariv_add_component NAME)
   if(ARG_INCLUDES)
     target_include_directories(${NAME} SYSTEM PRIVATE ${ARG_INCLUDES})
   endif()
-  if(KANARIV_NLOHMANN_PRIVATE_INCLUDE)
-    target_include_directories(${NAME} SYSTEM PRIVATE ${KANARIV_NLOHMANN_PRIVATE_INCLUDE})
-  endif()
   if(ARG_DEPS)
     target_link_libraries(${NAME} PUBLIC ${ARG_DEPS})
   endif()
@@ -160,16 +166,14 @@ function(kanariv_add_component NAME)
   # ship CXX_MODULES interface units -- consumers (incl. module synth targets)
   # must compile at C++23 or newer.
   target_compile_features(${NAME} PUBLIC cxx_std_23)
-  # PUBLIC_HEADER: one source of truth for installed headers per target.
-  set(_pub_hdrs "")
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include/kanariv/${NAME}.hpp")
-    list(APPEND _pub_hdrs "${CMAKE_CURRENT_SOURCE_DIR}/include/kanariv/${NAME}.hpp")
-  endif()
-  file(GLOB _sub_hdrs "${CMAKE_CURRENT_SOURCE_DIR}/include/kanariv/${NAME}/*.hpp")
-  list(APPEND _pub_hdrs ${_sub_hdrs})
-  if(_pub_hdrs)
-    set_target_properties(${NAME} PROPERTIES PUBLIC_HEADER "${_pub_hdrs}")
-  endif()
+  # Installed headers have exactly one mechanism: the wholesale
+  # install(DIRECTORY include/ ...) in cmake/Install.cmake, which preserves the
+  # kanariv/<component>/ prefix and nested directories. PUBLIC_HEADER is
+  # deliberately not set here -- it flattened every component into include/,
+  # where db/scan.hpp + media/scan.hpp (and json.hpp, result.hpp, the
+  # <component>.hpp facades) collided, and its non-recursive glob skipped
+  # nested headers such as ipc/command/*.hpp.
+  #
   # FFmpeg (the decoder backend) is linked PRIVATE by the components that
   # actually use it (currently media; see media.cmake) -- not blanket-linked to
   # every component, which forced every target to resolve FFmpeg at link time
@@ -246,6 +250,11 @@ function(kanariv_add_shared_variant NAME)
   target_compile_features(${NAME}_shared PUBLIC cxx_std_23)
   # Define KANARIV_BUILDING_DLL so KANARIV_API expands to dllexport on Windows.
   target_compile_definitions(${NAME}_shared PRIVATE KANARIV_BUILDING_DLL)
+  # Consumers of the DLL take the __declspec(dllimport) branch of KANARIV_API.
+  # INTERFACE so the definition is exported with the target and never applied
+  # to the DLL's own objects (those are compiled by ${NAME}_objects with
+  # KANARIV_BUILDING_DLL).
+  target_compile_definitions(${NAME}_shared INTERFACE KANARIV_USING_DLL)
   # MSVC C4251/C4275: STL types in dllexport classes. Suppress for shared builds;
   # these are well-known and unavoidable when exporting classes with STL members.
   if(MSVC)
@@ -273,13 +282,14 @@ function(kanariv_add_shared_variant NAME)
 endfunction()
 
 # Build an example executable with the standard boilerplate:
-#   add_executable + link libs + vendor SYSTEM include + cxx_std_23 +
-#   extra flags + sanitizers (if enabled).
+#   add_executable + link libs + cxx_std_23 + extra flags + sanitizers (if
+#   enabled). No vendor include: examples only use installed kanariv headers,
+#   and vendor/ is scoped per component (see ARG_INCLUDES in
+#   kanariv_add_component).
 function(kanariv_add_example name srcs)
   cmake_parse_arguments(PARSE_ARGV 1 ARG "" "" "LIBS")
   add_executable(${name} ${srcs})
   target_link_libraries(${name} PRIVATE ${ARG_LIBS})
-  target_include_directories(${name} SYSTEM PRIVATE vendor)
   target_compile_features(${name} PRIVATE cxx_std_23)
   kanariv_apply_extra_flags(${name})
   if(KANARIV_ENABLE_SANITIZERS)

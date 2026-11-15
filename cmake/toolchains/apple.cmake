@@ -1,5 +1,8 @@
 # AppleClang toolchain (--toolchain apple): resolves the Xcode compilers
-# via xcrun so the resolver pins no machine-specific paths. No brew LLVM.
+# via xcrun so the resolver pins no machine-specific paths. This is the
+# default macOS compiler selected by `auto` and the one release artifacts use;
+# upstream LLVM Clang (brew) remains available through --toolchain clang.
+# No brew LLVM.
 find_program(_kanariv_xcrun xcrun REQUIRED)
 execute_process(COMMAND "${_kanariv_xcrun}" -f clang
   OUTPUT_VARIABLE _kanariv_apple_cc OUTPUT_STRIP_TRAILING_WHITESPACE

@@ -18,7 +18,6 @@
 #endif
 
 #include <CLI/CLI.hpp>
-#include <app/detail.hpp>
 #include <kanariv/app/app.hpp>
 #include <kanariv/app/paths.hpp>
 #include <kanariv/client/client.hpp>
@@ -123,9 +122,9 @@ std::string statusLine(const kanariv::ipc::Status& st) {
 // No render path may re-derive status from an embedded ipc::Result error.
 
 int renderError(const kanariv::utils::Error& e) {
-    std::string text;
-    kanariv::app::detail::renderErrorInto(text, e);
-    kanariv::println(std::cerr, "{}", text);
+    // Same bytes as app::detail::renderErrorInto (which is src/-internal and
+    // must not be reachable from the CLI): "Error: <Code>[: message]".
+    kanariv::println(std::cerr, "Error: {}", e);
     return exitCodeForError(e);
 }
 

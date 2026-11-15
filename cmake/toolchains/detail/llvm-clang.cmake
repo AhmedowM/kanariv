@@ -1,6 +1,8 @@
 # Resolve brew LLVM Clang on macOS (shared by the clang and auto
-# dispatchers). Plain `clang` on PATH is AppleClang, which lags our C++23
-# baseline; GCC builds miniaudio with a dummy backend (no audio).
+# dispatchers). `auto` selects AppleClang (xcrun) instead; this file backs
+# --toolchain clang, whose newer front end tracks the C++23 baseline more
+# closely. GCC builds miniaudio without its CoreAudio backend, so audio would
+# be unavailable.
 #
 # NOTE: the cache variable does NOT survive try_compile (compiler ABI
 # probes re-run this file in a fresh scope), but the environment does --

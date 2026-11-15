@@ -25,10 +25,12 @@ if(KANARIV_ENABLE_MODULES)
 else()
   set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 endif()
-# Single compilation per C++23 module: static libs own the module BMIs,
-# shared variants link the static objects whole-archive (GCC -fmodules-ts
-# BMI CRC covers defines/flags, so recompiling the same sources with
-# different *_EXPORTS/PIC flags breaks dependents with CRC mismatch).
+# Single compilation per C++23 module: the component target that owns the
+# CXX_MODULES file set produces the BMIs, and the shared variants link the same
+# PIC object files directly ($<TARGET_OBJECTS:${NAME}_objects>) -- no
+# whole-archive, no re-archive. Recompiling the same sources for the DLL with
+# different *_EXPORTS/PIC flags would break dependents: GCC's -fmodules-ts BMI
+# CRC covers defines/flags.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Compiler policy (default-per-host selection lives in the toolchain
@@ -76,6 +78,10 @@ else()
 endif()
 option(KANARIV_BUILD_STATIC "build static component libraries" ${_kanariv_build_static_default})
 unset(_kanariv_build_static_default)
+# The `combined` umbrella (libkanariv): every component in one shared library.
+# Default ON keeps the shipped SDK shape; OFF builds only the per-component
+# shared libraries.
+option(KANARIV_BUILD_COMBINED "build the combined libkanariv umbrella library" ON)
 # White-box tests include src/ headers, so they need symbols that are not part
 # of the DLL ABI. They link the static component flavour; the CLI and daemon
 # link the shared one, so both paths are exercised. Forced rather than
@@ -125,12 +131,14 @@ if(KANARIV_ENABLE_CCACHE)
 endif()
 unset(_launcher)
 
-# clang-tidy integration (requires compile_commands.json)
+# clang-tidy integration (requires compile_commands.json). Applied per target
+# through kanariv_apply_extra_flags (cmake/KanarivHelpers.cmake) so fetched
+# third-party targets (TagLib, Catch2, CLI11) are never tidied.
 if(KANARIV_ENABLE_CLANG_TIDY)
   find_program(CLANG_TIDY_PROGRAM clang-tidy)
   if(CLANG_TIDY_PROGRAM)
-    set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY_PROGRAM})
-    message(STATUS "clang-tidy enabled: ${CLANG_TIDY_PROGRAM}")
+    set(KANARIV_CLANG_TIDY_PROGRAM "${CLANG_TIDY_PROGRAM}")
+    message(STATUS "clang-tidy enabled (kanariv targets only): ${CLANG_TIDY_PROGRAM}")
   else()
     message(WARNING "KANARIV_ENABLE_CLANG_TIDY=ON but clang-tidy not found")
   endif()
@@ -232,7 +240,7 @@ configure_file(
 # SQLite copy (two static copies -- one per component DLL -- corrupt handles:
 # each copy has its own sqlite3GlobalConfig and mutex table).
 # Content-named like blake3 below; the only artifact called "kanariv" is the
-# opt-in shared umbrella (combined -> libkanariv).
+# `combined` umbrella (libkanariv, KANARIV_BUILD_COMBINED, default ON).
 if(KANARIV_BUILD_SHARED)
   add_library(sqlite3 SHARED vendor/sqlite3.c)
   # WINDOWS_EXPORT_ALL_SYMBOLS makes CMake scan the object file with
@@ -254,14 +262,17 @@ target_include_directories(sqlite3 SYSTEM PRIVATE vendor)
 # downstream configure with "non-existent path" errors.
 # SYSTEM: vendored amalgamation -- dependents (db/*.cpp include sqlite3.h)
 # must not inherit its extension-token noise under Clang. Propagates.
-target_compile_definitions(sqlite3 PUBLIC SQLITE_ENABLE_FTS5=1)
+# PRIVATE (W15): these configure the amalgamation TU only. sqlite3 is installed
+# and exported, and no installed header includes sqlite3.h (fwd.hpp only
+# forward-declares `struct sqlite3`), so consumers must not inherit them.
+target_compile_definitions(sqlite3 PRIVATE SQLITE_ENABLE_FTS5=1)
 target_compile_options(sqlite3 PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W0> $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w>)
 # Trimmed amalgamation: only the API surface
 # in use (prepare/bind/step/column/finalize, exec, open_v2, WAL + foreign_keys
 # + FTS5). OMIT_LOAD_EXTENSION is also hardening. None of the omitted areas
 # (JSON1 SQL, authorizer, progress callbacks, get_table, loadable extensions,
 # deprecated spellings) is referenced anywhere in src/tests/examples/cli.
-target_compile_definitions(sqlite3 PUBLIC
+target_compile_definitions(sqlite3 PRIVATE
   SQLITE_OMIT_LOAD_EXTENSION=1
   SQLITE_OMIT_DEPRECATED=1
   SQLITE_OMIT_AUTHORIZER=1
@@ -291,11 +302,12 @@ target_compile_options(blake3 PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W0> $<$<NOT:$<C
 # clone; fetch only as fallback. nlohmann_json is vendored instead
 # (vendor/nlohmann/, see vendor/README.md): it is PRIVATE (backend for
 # src/utils/json.cpp only) -- its headers never enter installed headers, so
-# no JSON_Install and no find_dependency downstream. Components get it as
-# PRIVATE SYSTEM -I (KANARIV_NLOHMANN_PRIVATE_INCLUDE): even a PRIVATE target
-# link would force it into install(EXPORT).
+# no JSON_Install and no find_dependency downstream. Components get vendor/
+# only through their own INCLUDES list (utils declares the path below); there
+# is no blanket vendor include in the component helper.
 include(FetchContent)
 # Vendored single-header backend, version locked in vendor/README.md.
+# Consumed by utils only: INCLUDES ${KANARIV_NLOHMANN_PRIVATE_INCLUDE}.
 set(KANARIV_NLOHMANN_PRIVATE_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/vendor)
 
 # CLI11 is private to the kanariv executable: skip entirely with KANARIV_BUILD_CLI=OFF.
@@ -412,6 +424,14 @@ foreach(_comp IN LISTS KANARIV_COMPONENTS)
   include(cmake/components/${_comp}.cmake)
 endforeach()
 unset(_comp)
+
+# D-4 header self-containment gate: compiles every public header as a
+# standalone TU (compile-only, nothing is linked, no Catch2 involved). It is
+# gated on its own option and deliberately lives outside cmake/Tests.cmake so
+# it also runs with KANARIV_ENABLE_TESTS=OFF; the `ci` preset turns it on.
+if(KANARIV_ENABLE_HEADER_SELF_CONTAINMENT)
+  kanariv_add_header_self_containment()
+endif()
 
 # Umbrella module (optional, headers are canonical)
 if(KANARIV_ENABLE_MODULES)

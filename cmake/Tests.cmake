@@ -123,12 +123,4 @@ if(KANARIV_ENABLE_TESTS)
   if(TARGET kanariv_cli)
     kanariv_add_catch_test(test_cli_golden tests/test_cli_golden.cpp LIBS Catch2::Catch2WithMain WITH_TEST_DATA TEST_CLI_BIN "$<TARGET_FILE:kanariv_cli>")
   endif()
-
-  # D-4: compile every public header as a standalone TU (build gate, no ctest
-  # entry -- the objects are never linked, only compiled). Opt-in via
-  # KANARIV_ENABLE_HEADER_SELF_CONTAINMENT because it adds one compile per
-  # public header with no link artifact.
-  if(KANARIV_ENABLE_HEADER_SELF_CONTAINMENT)
-    kanariv_add_header_self_containment()
-  endif()
 endif()

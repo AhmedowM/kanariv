@@ -35,8 +35,6 @@ if(KANARIV_ENABLE_MODULES)
     FILES ${KANARIV_CONTRACTS_MODULE_SOURCES})
   ca_set_warnings(contracts)
   ca_set_module_warnings(contracts)
-  # Install the .cppm sources so consumers can compile them into BMIs or
-  # add the install/modules dir to their module search path.
-  install(FILES ${KANARIV_CONTRACTS_MODULE_SOURCES}
-    DESTINATION modules/kanariv/contracts COMPONENT dev)
+  # No extra install(FILES ...) here: install(TARGETS ... FILE_SET CXX_MODULES)
+  # in cmake/Install.cmake already ships the .cppm sources under modules/kanariv/.
 endif()

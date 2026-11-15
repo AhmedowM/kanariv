@@ -11,22 +11,36 @@ add_executable(kanariv_cli
 )
 set_target_properties(kanariv_cli PROPERTIES OUTPUT_NAME kanariv)
 target_sources(kanariv_cli PRIVATE cli/src/shell/shell.cpp cli/src/shell/output_formatter.cpp cli/src/shell/preview.cpp)
-target_include_directories(kanariv_cli PRIVATE cli/src/shell)
-target_include_directories(kanariv_cli PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include)
-# Link the DLL flavour when it exists (dual builds keep the static libs for
-# the white-box tests); a pure static build falls back to the static targets.
-set(_kanariv_cli_libs "")
-foreach(_cli_dep IN ITEMS app service client ipc db player)
-  if(TARGET kanariv::${_cli_dep}_shared)
-    list(APPEND _kanariv_cli_libs kanariv::${_cli_dep}_shared)
+# cli/ (its own headers) + the installed header tree + generated headers. No
+# src/: the CLI is an ordinary consumer of the public API, not a white-box
+# test (src/ is build-tree-only, see cmake/Tests.cmake).
+target_include_directories(kanariv_cli PRIVATE
+  cli/src/shell
+  ${CMAKE_CURRENT_BINARY_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# Minimum honest set: exactly the components whose public API the CLI names.
+# app (daemon lifecycle/dispatch) and service (daemon host path) are the
+# orchestration layer; client (IpcClient/Client), db (Database::open for the
+# local preview) and player (Player::create for `preview`) are called directly
+# from cli/src/shell. ipc/config/utils arrive through app's PUBLIC interface.
+# A DLL's PRIVATE deps are not transitive to consumers, so the directly used
+# components must be linked by name (that is also why this cannot be reduced to
+# app + service alone). One helper replaces the per-component flavour loop.
+function(_kanariv_cli_link dep)
+  if(TARGET kanariv::${dep}_shared)
+    target_link_libraries(kanariv_cli PRIVATE kanariv::${dep}_shared)
   else()
-    list(APPEND _kanariv_cli_libs kanariv::${_cli_dep})
+    target_link_libraries(kanariv_cli PRIVATE kanariv::${dep})
   endif()
+endfunction()
+foreach(_cli_dep IN ITEMS app service client db player)
+  _kanariv_cli_link(${_cli_dep})
 endforeach()
 unset(_cli_dep)
-target_link_libraries(kanariv_cli PRIVATE ${_kanariv_cli_libs} CLI11::CLI11 Threads::Threads)
-# FFmpeg is not linked here directly: kanariv::media links it PRIVATE (see
-# media.cmake) and that propagates as $<LINK_ONLY:...> through cli -> player -> media.
+target_link_libraries(kanariv_cli PRIVATE CLI11::CLI11 Threads::Threads)
+# FFmpeg is not linked here: the decoding components (media) link it PRIVATE,
+# so it reaches the CLI as $<LINK_ONLY:...> through app/service and their
+# transitive deps (service -> media/player/engine/db).
 ca_set_warnings(kanariv_cli)
 ca_set_module_warnings(kanariv_cli)
 kanariv_apply_extra_flags(kanariv_cli)

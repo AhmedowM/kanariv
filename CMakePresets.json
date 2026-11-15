@@ -42,11 +42,12 @@
     {
       "name": "ci",
       "inherits": "base",
-      "displayName": "Headless CI: Debug, tests, no audio device",
+      "displayName": "Headless CI: Debug, tests, no audio device, header gate",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "KANARIV_ENABLE_TESTS": "ON",
-        "KANARIV_TEST_NOAUDIO": "ON"
+        "KANARIV_TEST_NOAUDIO": "ON",
+        "KANARIV_ENABLE_HEADER_SELF_CONTAINMENT": "ON"
       }
     },
     {

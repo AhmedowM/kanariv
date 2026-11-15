@@ -19,7 +19,13 @@ set(KANARIV_APP_MODULE_SOURCES
   modules/kanariv/app/core.cppm
   modules/kanariv/app/paths.cppm
 )
-kanariv_add_component(app SOURCES ${KANARIV_APP_SOURCES} MODULE_SOURCES ${KANARIV_APP_MODULE_SOURCES} DEPS kanariv::config kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::client kanariv::ipc kanariv::media)
+# kanariv::ipc is PUBLIC: include/kanariv/app/app.hpp includes
+# <kanariv/ipc/command.hpp> and <kanariv/ipc/result.hpp>. client and media are
+# used only from app's .cpp files, so they stay PRIVATE.
+kanariv_add_component(app SOURCES ${KANARIV_APP_SOURCES} MODULE_SOURCES ${KANARIV_APP_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::client kanariv::media)
 if(KANARIV_BUILD_SHARED)
-  kanariv_add_shared_variant(app EXTRA_DEPS kanariv::client_shared kanariv::ipc_shared kanariv::media_shared Threads::Threads)
+  # config_shared is listed explicitly: app PUBLIC-depends on config, and none
+  # of the other shared variants pulls it in (ipc used to, which was the W3
+  # spurious dependency).
+  kanariv_add_shared_variant(app EXTRA_DEPS kanariv::config_shared kanariv::client_shared kanariv::ipc_shared kanariv::media_shared Threads::Threads)
 endif()

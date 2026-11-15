@@ -93,6 +93,7 @@ cfg.inProcess = true;
 | Option | Default | Description |
 |---|---|---|
 | `KANARIV_BUILD_SHARED` | `ON` | Build per-component shared libraries |
+| `KANARIV_BUILD_COMBINED` | `ON` | Build the combined `kanariv` umbrella shared library (shared builds only) |
 | `KANARIV_BUILD_CLI` | `ON` | Build the `kanariv` executable |
 | `KANARIV_ENABLE_TESTS` | `OFF` | Build Catch2 tests |
 | `KANARIV_ENABLE_MODULES` | `OFF` | Build C++23 module interfaces |

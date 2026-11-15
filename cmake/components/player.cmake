@@ -11,6 +11,8 @@ set(KANARIV_PLAYER_SOURCES
   src/player/output.cpp
   src/player/core.cpp
 )
+# INCLUDES vendor: src/player/miniaudio_impl.cpp and output.cpp include
+# <miniaudio.h>; no other component gets the vendor root.
 kanariv_add_component(player SOURCES ${KANARIV_PLAYER_SOURCES} MODULE_SOURCES ${KANARIV_PLAYER_MODULE_SOURCES} DEPS kanariv::utils kanariv::types INCLUDES vendor PRIVATE_DEPS kanariv::media)
 # GCC cannot parse Apple's ObjC-blocks system headers pulled in by miniaudio's
 # CoreAudio backend; Apple Clang-only. Local mac devs (Xcode Clang) keep full

@@ -21,6 +21,13 @@
 #if defined(_WIN32)
 #if defined(KANARIV_BUILDING_DLL)
 #define KANARIV_API __declspec(dllexport)
+#elif defined(KANARIV_USING_DLL)
+// Consumers of the shared libraries: exported INTERFACE compile definition on
+// every *_shared / shared-only component target (never on static or object
+// targets). Without it MSVC compiles against undecorated declarations, loses
+// the import thunk, cannot diagnose declaration mismatches, and cannot
+// correctly address exported static data members.
+#define KANARIV_API __declspec(dllimport)
 #else
 #define KANARIV_API
 #endif

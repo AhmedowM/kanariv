@@ -242,6 +242,7 @@ Important cache options:
 | Option | Default | Description |
 | --- | --- | --- |
 | `KANARIV_BUILD_SHARED` | `ON` | Build per-component shared libraries |
+| `KANARIV_BUILD_COMBINED` | `ON` | Build the combined `kanariv` umbrella shared library (shared builds only) |
 | `KANARIV_BUILD_STATIC` | Depends on shared mode | Build static component libraries |
 | `KANARIV_BUILD_CLI` | `ON` | Build the `kanariv` executable |
 | `KANARIV_ENABLE_TESTS` | `OFF` | Build Catch2 tests |

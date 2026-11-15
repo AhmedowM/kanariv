@@ -32,18 +32,18 @@ elseif(UNIX)
   list(APPEND KANARIV_SERVICE_SOURCES src/service/media_session_linux.cpp)
 endif()
 
+# INCLUDES vendor: src/service/service_status.cpp includes <blake3.h>.
+# TagLib headers arrive through KANARIV_TAGLIB_BUILD_INCLUDES below, not from
+# the vendor root.
 kanariv_add_component(service SOURCES ${KANARIV_SERVICE_SOURCES} MODULE_SOURCES ${KANARIV_SERVICE_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::utils Threads::Threads INCLUDES vendor PRIVATE_DEPS kanariv::engine kanariv::db kanariv::media kanariv::player)
 target_link_libraries(service PRIVATE tag)
 if(WIN32)
-  # runtimeobject.lib provides RoGetActivationFactory / WindowsCreateString etc.
-  find_library(KANARIV_RUNTIMEOBJECT_LIB runtimeobject
-    PATHS "C:/Program Files (x86)/Windows Kits/10/Lib"
-    PATH_SUFFIXES "10.0.26100.0/um")
-  if(KANARIV_RUNTIMEOBJECT_LIB)
-    set(_K_WIN_LIBS user32 ole32 shcore ${KANARIV_RUNTIMEOBJECT_LIB})
-  else()
-    set(_K_WIN_LIBS user32 ole32 shcore runtimeobject)
-  endif()
+  # runtimeobject.lib (RoGetActivationFactory, WindowsCreateString, ...) ships
+  # with the Windows SDK and the selected SDK's um/ directory is already on the
+  # compiler driver's default library search path, so link it by name. Pinning
+  # "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/um" only worked on
+  # machines with that exact SDK.
+  set(_K_WIN_LIBS user32 ole32 shcore runtimeobject)
   target_link_libraries(service PRIVATE ${_K_WIN_LIBS})
 elseif(APPLE)
   # AppKit provides NSImage, used to build MPMediaItemArtwork from cover art.
@@ -83,16 +83,57 @@ endif()
 target_include_directories(service SYSTEM PRIVATE ${KANARIV_TAGLIB_BUILD_INCLUDES})
 
 if(WIN32)
-  file(GLOB _KANARIV_CPPWINRT_INCLUDE_DIRS
-    "C:/Program Files (x86)/Windows Kits/10/Include/*/cppwinrt")
-  if(_KANARIV_CPPWINRT_INCLUDE_DIRS)
-    list(SORT _KANARIV_CPPWINRT_INCLUDE_DIRS)
-    list(GET _KANARIV_CPPWINRT_INCLUDE_DIRS -1 _KANARIV_CPPWINRT_INCLUDE_DIR)
+  # cppwinrt headers live in the Windows SDK the toolchain actually targets.
+  # Ask CMake for that version first; only fall back to scanning the SDK dir
+  # (natural order, so 10.0.26100.0 sorts above 10.0.9999.0) when the
+  # generator does not report one (Ninja + clang outside a vcvars shell).
+  set(_KANARIV_WINSDK_ROOT "C:/Program Files (x86)/Windows Kits/10")
+  if(DEFINED ENV{WindowsSdkDir} AND NOT "$ENV{WindowsSdkDir}" STREQUAL "")
+    # vcvars exports the root with a trailing separator ("...\Windows Kits\10\").
+    string(REGEX REPLACE "[/\\\\]+$" "" _KANARIV_WINSDK_ROOT "$ENV{WindowsSdkDir}")
+  endif()
+  set(_KANARIV_WINSDK_VERSION "${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
+  set(_KANARIV_WINSDK_SOURCE "CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION")
+  if(NOT _KANARIV_WINSDK_VERSION AND DEFINED ENV{WindowsSDKVersion})
+    # vcvars exports e.g. "10.0.26100.0\" while IDE builds use a plain version.
+    string(REGEX REPLACE "\\\\$" "" _KANARIV_WINSDK_VERSION "$ENV{WindowsSDKVersion}")
+    set(_KANARIV_WINSDK_SOURCE "WindowsSDKVersion")
+  endif()
+  if(NOT _KANARIV_WINSDK_VERSION)
+    set(_KANARIV_WINSDK_SOURCE "SDK directory scan")
+    file(GLOB _KANARIV_WINSDK_CANDIDATES LIST_DIRECTORIES true
+      "${_KANARIV_WINSDK_ROOT}/Include/*")
+    set(_KANARIV_WINSDK_VERSIONS "")
+    foreach(_sdk_dir IN LISTS _KANARIV_WINSDK_CANDIDATES)
+      if(EXISTS "${_sdk_dir}/cppwinrt")
+        get_filename_component(_sdk_ver "${_sdk_dir}" NAME)
+        list(APPEND _KANARIV_WINSDK_VERSIONS "${_sdk_ver}")
+      endif()
+    endforeach()
+    if(_KANARIV_WINSDK_VERSIONS)
+      list(SORT _KANARIV_WINSDK_VERSIONS COMPARE NATURAL ORDER DESCENDING)
+      list(GET _KANARIV_WINSDK_VERSIONS 0 _KANARIV_WINSDK_VERSION)
+    endif()
+    unset(_KANARIV_WINSDK_CANDIDATES)
+    unset(_KANARIV_WINSDK_VERSIONS)
+    unset(_sdk_dir)
+    unset(_sdk_ver)
+  endif()
+  set(_KANARIV_CPPWINRT_INCLUDE_DIR
+    "${_KANARIV_WINSDK_ROOT}/Include/${_KANARIV_WINSDK_VERSION}/cppwinrt")
+  if(_KANARIV_WINSDK_VERSION AND EXISTS "${_KANARIV_CPPWINRT_INCLUDE_DIR}")
+    message(STATUS "cppwinrt (${_KANARIV_WINSDK_SOURCE}): Windows SDK ${_KANARIV_WINSDK_VERSION} -> ${_KANARIV_CPPWINRT_INCLUDE_DIR}")
     target_include_directories(service SYSTEM PRIVATE
       ${_KANARIV_CPPWINRT_INCLUDE_DIR})
     target_include_directories(service_objects SYSTEM PRIVATE
       ${_KANARIV_CPPWINRT_INCLUDE_DIR})
+  else()
+    message(STATUS "cppwinrt: no matching Windows SDK headers under ${_KANARIV_WINSDK_ROOT}/Include")
   endif()
+  unset(_KANARIV_WINSDK_ROOT)
+  unset(_KANARIV_WINSDK_VERSION)
+  unset(_KANARIV_WINSDK_SOURCE)
+  unset(_KANARIV_CPPWINRT_INCLUDE_DIR)
 endif()
 
 # Propagate TagLib include dirs to the object library so it can compile
@@ -117,7 +158,10 @@ endfunction()
 _kanariv_service_link_rt(service)
 ca_set_module_warnings(service)
 if(KANARIV_BUILD_SHARED)
-  kanariv_add_shared_variant(service EXTRA_DEPS kanariv::ipc_shared kanariv::engine_shared kanariv::db_shared kanariv::media_shared kanariv::player_shared kanariv::utils_shared Threads::Threads)
+  # config_shared is explicit: service PUBLIC-depends on config (its dispatch
+  # layer reads it) and config used to arrive only through ipc_shared, the
+  # spurious ipc -> config dependency removed in W3.
+  kanariv_add_shared_variant(service EXTRA_DEPS kanariv::config_shared kanariv::ipc_shared kanariv::engine_shared kanariv::db_shared kanariv::media_shared kanariv::player_shared kanariv::utils_shared Threads::Threads)
   if(KANARIV_BUILD_STATIC)
     _kanariv_service_link_rt(service_shared)
     target_link_libraries(service_shared PRIVATE tag)

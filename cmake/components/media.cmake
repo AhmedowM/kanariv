@@ -17,7 +17,8 @@ set(KANARIV_MEDIA_SOURCES
   src/media/fingerprint.cpp
   src/media/fft.cpp
 )
-kanariv_add_component(media SOURCES ${KANARIV_MEDIA_SOURCES} MODULE_SOURCES ${KANARIV_MEDIA_MODULE_SOURCES} DEPS kanariv::utils kanariv::types)
+# INCLUDES vendor: src/media/scan.cpp and fingerprint.cpp include <blake3.h>.
+kanariv_add_component(media SOURCES ${KANARIV_MEDIA_SOURCES} MODULE_SOURCES ${KANARIV_MEDIA_MODULE_SOURCES} DEPS kanariv::utils kanariv::types INCLUDES vendor)
 ca_set_module_warnings(media)
 # FFmpeg (sole decoder backend) is used only by src/media/decoders/ffmpeg.cpp
 # (via ffmpeg_impl.hpp), so link it here PRIVATE. STATIC private deps propagate
