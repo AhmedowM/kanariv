@@ -7,9 +7,13 @@
 #include <db/database_access.hpp>
 #include <db/migration.hpp>
 #include <expected>
+#include <fstream>
+#include <kanariv/contracts/null_history_store.hpp>
 #include <kanariv/db/database.hpp>
+#include <kanariv/db/json_state_store.hpp>
 #include <kanariv/db/smart.hpp>
 #include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/result.hpp>
@@ -21,6 +25,7 @@
 #include <vector>
 using namespace kanariv::db;
 using namespace kanariv::utils;
+using namespace kanariv::test_helpers;
 
 static kanariv::types::Track makeTrack(int idx, const std::string& pathOverride = "") {
     kanariv::types::Track t;
@@ -982,4 +987,185 @@ TEST_CASE("queue insertion renormalizes exhausted gaps without changing order",
     auto middle = db->queueTrackAt(0, 1);
     REQUIRE(middle.has_value());
     CHECK(middle->id == inserted.back());
+}
+
+TEST_CASE("NullHistoryStore accepts writes and lists nothing", "[db][contracts]") {
+    kanariv::contracts::NullHistoryStore store;
+    CHECK(store.isOpen());
+    CHECK(store.logger() == nullptr);
+    CHECK(store.markPlayed(1, 10, 20, 1000, 50.0, 1).has_value());
+    auto listed = store.listHistory(10);
+    REQUIRE(listed.has_value());
+    CHECK(listed->empty());
+    CHECK(store.clearHistory().has_value());
+}
+
+namespace {
+
+kanariv::types::EngineState sampleEngineState() {
+    kanariv::types::EngineState state;
+    state.queue_name = "chill";
+    state.cursor_pos = 3;
+    state.current_path = "music/current.flac";
+    state.current_track_id = 42;
+    state.shuffle_perm = {2, 0, 1};
+    state.shuffle_enabled = true;
+    state.repeat_mode = kanariv::types::RepeatMode::All;
+    state.volume = 0.25f;
+    state.pre_mute_volume = 0.75f;
+    state.position_ms = 12345;
+    return state;
+}
+
+} // namespace
+
+TEST_CASE("JsonPlaybackStateStore round-trips the engine snapshot", "[db][state_store]") {
+    const std::string dbPath = tempDbPath("state_store_rt").string();
+    const std::string sidecar = dbPath + ".state.json";
+    JsonPlaybackStateStore store(sidecar);
+    CHECK(store.isOpen());
+    CHECK(store.path() == sidecar);
+
+    // A missing sidecar starts from a default snapshot, never an error.
+    auto missing = store.load();
+    REQUIRE(missing.has_value());
+    CHECK(missing->queue_name == "default");
+    CHECK(missing->volume == 1.0f);
+
+    REQUIRE(store.save(sampleEngineState()).has_value());
+    JsonPlaybackStateStore reopened(sidecar);
+    auto loaded = reopened.load();
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->queue_name == "chill");
+    CHECK(loaded->cursor_pos == 3);
+    CHECK(loaded->current_path == "music/current.flac");
+    REQUIRE(loaded->current_track_id.has_value());
+    CHECK(*loaded->current_track_id == 42);
+    CHECK(loaded->shuffle_perm == std::vector<int64_t>{2, 0, 1});
+    CHECK(loaded->shuffle_enabled);
+    CHECK(loaded->repeat_mode == kanariv::types::RepeatMode::All);
+    CHECK(loaded->volume > 0.24f);
+    CHECK(loaded->volume < 0.26f);
+    CHECK(loaded->pre_mute_volume > 0.74f);
+    CHECK(loaded->pre_mute_volume < 0.76f);
+    CHECK(loaded->position_ms == 12345);
+
+    // The document on disk is the versioned JSON format, not a default blob.
+    const auto doc = readStateSidecar(dbPath);
+    REQUIRE(doc.has_value());
+    CHECK((*doc)["version"].get<int>() == 1);
+    CHECK((*doc)["repeat"].get<std::string>() == "all");
+}
+
+TEST_CASE("JsonPlaybackStateStore keeps state in memory without a path", "[db][state_store]") {
+    JsonPlaybackStateStore store;
+    CHECK(store.path().empty());
+    auto initial = store.load();
+    REQUIRE(initial.has_value());
+    CHECK(initial->volume == 1.0f);
+    REQUIRE(store.save(sampleEngineState()).has_value());
+    auto loaded = store.load();
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->queue_name == "chill");
+    CHECK(loaded->position_ms == 12345);
+}
+
+TEST_CASE("JsonPlaybackStateStore ignores unknown document versions", "[db][state_store]") {
+    const std::string dbPath = tempDbPath("state_store_version").string();
+    {
+        std::ofstream out(dbPath + ".state.json", std::ios::binary);
+        out << R"({"version":99,"volume":0.1,"queue_name":"future"})";
+    }
+    JsonPlaybackStateStore store(dbPath + ".state.json");
+    auto loaded = store.load();
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->queue_name == "default");
+    CHECK(loaded->volume == 1.0f);
+}
+
+TEST_CASE("JsonPlaybackStateStore recovers from the previous generation", "[db][state_store]") {
+    const std::string dbPath = tempDbPath("state_store_prev").string();
+    const std::string sidecar = dbPath + ".state.json";
+    JsonPlaybackStateStore store(sidecar);
+    kanariv::types::EngineState first = sampleEngineState();
+    first.volume = 0.2f;
+    REQUIRE(store.save(first).has_value());
+    kanariv::types::EngineState second = sampleEngineState();
+    second.volume = 0.9f;
+    REQUIRE(store.save(second).has_value()); // rotates `first` into `.prev`
+    {
+        std::ofstream out(sidecar, std::ios::binary | std::ios::trunc);
+        out << "{ broken";
+    }
+    auto recovered = store.load();
+    REQUIRE(recovered.has_value());
+    CHECK(recovered->volume > 0.19f);
+    CHECK(recovered->volume < 0.21f);
+}
+
+TEST_CASE("makeStorage imports the legacy engine_state row once", "[db][state_store][migration]") {
+    const std::string dbPath = tempDbPath("state_import").string();
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto db = std::shared_ptr<Database>(std::move(dbRes.value()));
+
+    auto trackId = db->insertTrack(makeTrack(7, "legacy/current.flac"));
+    REQUIRE(trackId.has_value());
+    auto qid = db->createQueue("chill");
+    REQUIRE(qid.has_value());
+
+    // Simulate a pre-sidecar database: migrations no longer create the table.
+    const int64_t perm[2] = {1, 2};
+    {
+        sqlite3* h = nullptr;
+        REQUIRE(sqlite3_open(dbPath.c_str(), &h) == SQLITE_OK);
+        REQUIRE(sqlite3_exec(h,
+                             "CREATE TABLE engine_state(id INTEGER PRIMARY KEY, "
+                             "active_queue_id INTEGER, cursor_pos INTEGER, shuffle_enabled INTEGER, "
+                             "repeat_mode INTEGER, volume REAL, pre_mute_volume REAL, "
+                             "position_ms INTEGER, shuffle_perm BLOB, current_track_id INTEGER)",
+                             nullptr, nullptr, nullptr) == SQLITE_OK);
+        sqlite3_stmt* st = nullptr;
+        REQUIRE(sqlite3_prepare_v2(
+                    h,
+                    "INSERT INTO engine_state VALUES(1,?,5,1,1,0.33,0.5,12000,?,?)", -1, &st,
+                    nullptr) == SQLITE_OK);
+        sqlite3_bind_int64(st, 1, *qid);
+        sqlite3_bind_blob(st, 2, perm, static_cast<int>(sizeof perm), SQLITE_TRANSIENT);
+        sqlite3_bind_int64(st, 3, *trackId);
+        REQUIRE(sqlite3_step(st) == SQLITE_DONE);
+        sqlite3_finalize(st);
+        sqlite3_close(h);
+    }
+
+    auto storage = makeStorage(db);
+    REQUIRE(storage.state != nullptr);
+    auto imported = storage.state->load();
+    REQUIRE(imported.has_value());
+    CHECK(imported->queue_name == "chill");
+    CHECK(imported->cursor_pos == 5);
+    CHECK(imported->shuffle_enabled);
+    CHECK(imported->repeat_mode == kanariv::types::RepeatMode::All);
+    CHECK(imported->volume > 0.32f);
+    CHECK(imported->volume < 0.34f);
+    CHECK(imported->position_ms == 12000);
+    CHECK(imported->shuffle_perm == std::vector<int64_t>{1, 2});
+    REQUIRE(imported->current_track_id.has_value());
+    CHECK(*imported->current_track_id == *trackId);
+    CHECK(imported->current_path == "legacy/current.flac");
+    CHECK(readStateSidecar(dbPath).has_value());
+
+    // The sidecar now exists: a later composition must not re-import the row.
+    {
+        sqlite3* h = nullptr;
+        REQUIRE(sqlite3_open(dbPath.c_str(), &h) == SQLITE_OK);
+        REQUIRE(sqlite3_exec(h, "UPDATE engine_state SET cursor_pos=9", nullptr, nullptr,
+                             nullptr) == SQLITE_OK);
+        sqlite3_close(h);
+    }
+    auto again = makeStorage(db);
+    REQUIRE(again.state != nullptr);
+    auto reloaded = again.state->load();
+    REQUIRE(reloaded.has_value());
+    CHECK(reloaded->cursor_pos == 5);
 }

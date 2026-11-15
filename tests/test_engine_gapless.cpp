@@ -496,10 +496,10 @@ TEST_CASE("failed crossfade preload keeps the cursor on the unreadable track",
     // The preload failed, so nothing was committed: still on the outgoing
     // track and the persisted cursor still points at the unreadable entry.
     REQUIRE(eng->currentTrackId() == ids[0]);
-    auto persisted = sharedDb->load();
+    const auto persisted = readStateSidecar(dbPath);
     REQUIRE(persisted.has_value());
-    REQUIRE(persisted->cursor_pos == 1);
-    REQUIRE(persisted->current_track_id == ids[0]);
+    REQUIRE((*persisted)["cursor"].get<int64_t>() == 1);
+    REQUIRE((*persisted)["current_track_id"].get<int64_t>() == ids[0]);
 
     // The next explicit advance targets the unreadable entry (which the
     // simulated backend can "play") instead of skipping to the third one.
@@ -591,17 +591,19 @@ TEST_CASE("crossfade completion publishes the incoming track", "[engine_gapless]
     }
     // The same publication persists the new current track and cursor.
     const auto persistedIncoming = [&]() {
-        auto st = tracks.db->load();
-        return st && st->current_track_id == ids[1];
+        const auto st = readStateSidecar(dbPath);
+        return st && st->contains("current_track_id") &&
+               (*st)["current_track_id"].get<int64_t>() == ids[1];
     };
     busyWaitUntil(persistedIncoming, std::chrono::milliseconds(3000),
                   std::chrono::milliseconds(20));
-    auto persisted = tracks.db->load();
+    const auto persisted = readStateSidecar(dbPath);
     REQUIRE(persisted.has_value());
-    REQUIRE(persisted->current_track_id == ids[1]);
+    REQUIRE(persisted->contains("current_track_id"));
+    REQUIRE((*persisted)["current_track_id"].get<int64_t>() == ids[1]);
     // The preload transaction already committed the cursor past the incoming
     // entry (cursor addresses the NEXT entry), and publication persists it.
-    REQUIRE(persisted->cursor_pos == 2);
+    REQUIRE((*persisted)["cursor"].get<int64_t>() == 2);
     eng.reset();
     safeRemoveDb(dbPath);
 }

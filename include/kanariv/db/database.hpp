@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <filesystem>
 #include <kanariv/contracts/history_store.hpp>
 #include <kanariv/contracts/library_store.hpp>
 #include <kanariv/contracts/playback_state_store.hpp>
@@ -64,8 +65,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
                                    public kanariv::contracts::IPlaylistStore,
                                    public kanariv::contracts::IQueueStore,
                                    public kanariv::contracts::ILibraryStore,
-                                   public kanariv::contracts::IHistoryStore,
-                                   public kanariv::contracts::IPlaybackStateStore {
+                                   public kanariv::contracts::IHistoryStore {
   public:
     // Lifecycle and connection management
     /**
@@ -127,6 +127,14 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * no logger of their own. Never null-dereference; check before use.
      */
     kanariv::utils::Logger* logger() const noexcept override;
+    /**
+     * @brief Reports the filesystem path the database was opened with.
+     * @ingroup kanariv_db
+     * @return Path, or an empty path for an in-memory or URI-opened database.
+     * @details Callers that keep sibling files (the engine-state sidecar) derive
+     * their location from this path instead of re-parsing configuration.
+     */
+    [[nodiscard]] const std::filesystem::path& path() const noexcept;
 
     /**
      * @brief Enqueues multiple tracks atomically (single transaction).
@@ -147,6 +155,18 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     friend struct DatabaseAccess;
     struct Impl;
     std::unique_ptr<Impl> impl_;
+
+    /**
+     * @brief Reads the pre-sidecar `engine_state` row once.
+     * @return Converted state, or `std::nullopt` when the table or row is absent
+     * or unreadable.
+     * @details Only used by `db::makePlaybackStateStore` to seed the JSON
+     * sidecar for a database written by an older release. Ids are converted to
+     * the stable identities `EngineState` stores (`queue_name`, `current_path`).
+     * @par Thread safety
+     * Thread-safe; takes the database read lock.
+     */
+    std::optional<kanariv::types::EngineState> legacyEngineState();
 
   public:
     // Track CRUD and search
@@ -832,41 +852,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     std::expected<void, kanariv::utils::Error>
     importJson(const std::filesystem::path& inPath) override;
 
-    // Persisted engine state and playback history
-    /**
-     * @brief Loads persisted engine state.
-     * @return State snapshot, or a backend error.
-     * @par Thread safety
-     * Thread-safe; takes the database lock.
-     * @ingroup kanariv_db
-     */
-    std::expected<kanariv::types::EngineState, kanariv::utils::Error> load() override;
-    /**
-     * @brief Persists engine state.
-     * @param state State snapshot to write.
-     * @return Success, or a backend error.
-     * @par Thread safety
-     * Thread-safe; serializes the write.
-     * @ingroup kanariv_db
-     */
-    std::expected<void, kanariv::utils::Error>
-    save(const kanariv::types::EngineState& state) override;
-    /**
-     * @brief Persists shuffle state and its cursor.
-     * @param enabled Whether shuffle is enabled.
-     * @param permutation Ordered shuffle positions.
-     * @param cursor_position Current position in the permutation.
-     * @return Success, or a backend error.
-     */
-    std::expected<void, kanariv::utils::Error> saveShuffle(bool enabled,
-                                                           std::span<const int64_t> permutation,
-                                                           int64_t cursor_position) override;
-    /**
-     * @brief Persists the active queue cursor position.
-     * @param cursor_position Zero-based cursor position.
-     * @return Success, or a backend error.
-     */
-    std::expected<void, kanariv::utils::Error> saveCursor(int64_t cursor_position) override;
+    // Playback history
     /**
      * @brief Records a completed or partially completed track play.
      * @param track_id Track identifier.
@@ -900,7 +886,10 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
  * @brief Builds the port aggregate for one database instance.
  * @ingroup kanariv_db
  * @param db Database to expose; every port shares ownership of it.
- * @return Storage whose ports all view @p db.
+ * @return Storage whose ports all view @p db. `state` is not database-backed:
+ * it is a `JsonPlaybackStateStore` beside the database file (in memory for
+ * `:memory:` databases), seeded once from the legacy `engine_state` row when
+ * the sidecar does not exist yet.
  */
 KANARIV_API kanariv::contracts::Storage makeStorage(std::shared_ptr<Database> db);
 

@@ -75,19 +75,18 @@ struct QueueState {
 };
 
 /**
- * @brief Persisted engine state (row `engine_state.id=1`).
- * @details Mirrors columns `shuffle_enabled, repeat_mode, cursor_pos,
- * current_track_id, volume, shuffle_perm (BLOB), active_queue_id,
- * pre_mute_volume, position_ms`. `active_queue_id` may be missing on old DBs -- loadState falls
- * back to `1` and saveState tries `sqlNew` then `sqlOld`. `pre_mute_volume` and `position_ms` are
- * best-effort both ways (missing columns keep their defaults). `shuffle_perm` is `perm` serialized
- * as `int64_t` blob.
+ * @brief In-memory mirrors of the persisted engine state.
+ * @details `shuffleEnabled/repeatMode/cursorPos/activeQueueId` publish the queue
+ * fields; the sidecar record itself is rebuilt from `queue_` at save time.
+ * `currentTrackId` is the published current track and `currentPath` its stable
+ * identity for the sidecar. `volume`/`preMuteVolume`/`positionMs` mirror the
+ * persisted values.
  * @par Ownership
  * `queueMutex_`-only for writers (attach/load, pause/seek/stop/play/track
- * change, retry checkpoint). Every field is an atomic so the two lock-free observers --
- * `currentTrackId()` and `position()` without a loaded track -- read one
- * narrow value instead of the struct; consistency across fields still
- * requires `queueMutex_`.
+ * change, retry checkpoint). Every field except `currentPath` is an atomic so
+ * the two lock-free observers -- `currentTrackId()` and `position()` without a
+ * loaded track -- read one narrow value instead of the struct; consistency
+ * across fields still requires `queueMutex_`.
  */
 struct EngineState {
     std::atomic<int> shuffleEnabled{0}; ///< Persisted shuffle flag (0/1).
@@ -95,6 +94,7 @@ struct EngineState {
         kanariv::types::RepeatMode::Off};   ///< Persisted repeat mode.
     std::atomic<int64_t> cursorPos{0};      ///< Persisted cursor (QueueState::cursor).
     std::atomic<int64_t> currentTrackId{0}; ///< Published current track id.
+    std::string currentPath;                ///< Current track path (stable sidecar identity).
     std::atomic<float> volume{1.0f};        ///< Persisted volume [0,1].
     std::atomic<int64_t> activeQueueId{1};  ///< Persisted active queue id.
     std::atomic<float> preMuteVolume{0.5f}; ///< Restore level for unmute (0,1].
@@ -130,16 +130,23 @@ struct Engine::Impl {
     ExpectedVoid attachStorage(kanariv::contracts::Storage storage);
     std::optional<kanariv::utils::Error> loadState();
     /**
-     * @brief Persists `state_` (and the live position) to the engine_state row.
+     * @brief Persists the engine state snapshot to the playback-state sidecar.
      * @pre `queueMutex_` is held by the caller (name suffix `Locked`).
-     * @details Takes `decodeMtx_` briefly to derive the live position, so the
-     * caller must not already hold it. Database I/O therefore runs under the
-     * queue lock (the established persistence story) but never under the
-     * decode lock.
+     * @param livePositionMs Decode-lock-free position for callers that already
+     * hold `decodeMtx_`; omit to derive it here (the usual case).
+     * @details Rebuilds the record from `queue_` and the published current
+     * track, so cursor/shuffle/repeat edits are persisted by this one call.
+     * Takes `decodeMtx_` briefly to derive the live position unless the caller
+     * supplies one, so by default the caller must not already hold it. Store
+     * I/O therefore runs under the queue lock (the established persistence
+     * story) but never under the decode lock.
      */
-    std::expected<void, kanariv::utils::Error> saveStateLocked();
-    std::expected<void, kanariv::utils::Error> persistShuffleBlobLocked();
-    std::expected<void, kanariv::utils::Error> persistCursorLocked();
+    std::expected<void, kanariv::utils::Error>
+    saveStateLocked(std::optional<int64_t> livePositionMs = std::nullopt);
+    std::expected<void, kanariv::utils::Error>
+    persistShuffleBlobLocked(std::optional<int64_t> livePositionMs = std::nullopt);
+    std::expected<void, kanariv::utils::Error>
+    persistCursorLocked(std::optional<int64_t> livePositionMs = std::nullopt);
     std::expected<kanariv::types::Track, kanariv::utils::Error> fetchTrackByPosLocked(int64_t qid,
                                                                                       int64_t pos);
 
@@ -223,9 +230,12 @@ struct Engine::Impl {
     /**
      * @brief Commits @p next when the queue still matches @p expected.
      * @pre `queueMutex_` held by the caller.
+     * @param livePositionMs Forwarded to the persistence call; required when
+     * the caller also holds `decodeMtx_` (decodeLoop's preload path).
      * @return false when the queue changed since the peek (nothing committed).
      */
-    bool commitNextLocked(const QueueFingerprint& expected, PeekedNext&& next);
+    bool commitNextLocked(const QueueFingerprint& expected, PeekedNext&& next,
+                          std::optional<int64_t> livePositionMs = std::nullopt);
     /// @brief Snapshots the queue fields tracked by QueueFingerprint.
     /// @pre `queueMutex_` held by the caller.
     QueueFingerprint queueFingerprintLocked() const;
@@ -1314,6 +1324,7 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs)
             // doesn't seek to end-of-track and loop forever.
             state_.positionMs.store(0, std::memory_order_relaxed);
             state_.currentTrackId.store(0, std::memory_order_release);
+            state_.currentPath.clear();
             hasCurrent_.store(false, std::memory_order_release);
             (void)saveStateLocked();
             const int64_t endedId = currentTrack_.id;
@@ -1512,53 +1523,87 @@ std::optional<kanariv::utils::Error> Engine::Impl::loadState() {
     auto loaded = storage_.state->load();
     if (!loaded)
         return loaded.error();
-    state_.shuffleEnabled.store(loaded->shuffle_enabled, std::memory_order_relaxed);
+    state_.shuffleEnabled.store(loaded->shuffle_enabled ? 1 : 0, std::memory_order_relaxed);
     state_.repeatMode.store(loaded->repeat_mode, std::memory_order_relaxed);
     state_.cursorPos.store(loaded->cursor_pos, std::memory_order_relaxed);
-    state_.currentTrackId.store(loaded->current_track_id, std::memory_order_release);
     state_.volume.store(loaded->volume, std::memory_order_relaxed);
-    state_.activeQueueId.store(loaded->active_queue_id, std::memory_order_relaxed);
     state_.preMuteVolume.store(loaded->pre_mute_volume, std::memory_order_relaxed);
     state_.positionMs.store(loaded->position_ms, std::memory_order_relaxed);
     volume_.store(loaded->volume, std::memory_order_relaxed);
     preMute_.store(loaded->pre_mute_volume, std::memory_order_relaxed);
     queue_.perm = std::move(loaded->shuffle_perm);
-    queue_.shuffle.store(loaded->shuffle_enabled != 0, std::memory_order_relaxed);
+    queue_.shuffle.store(loaded->shuffle_enabled, std::memory_order_relaxed);
     queue_.repeat.store(loaded->repeat_mode, std::memory_order_relaxed);
     const int64_t cursor = loaded->cursor_pos < 0 ? 0 : loaded->cursor_pos;
     queue_.cursor = static_cast<size_t>(cursor);
     if (!queue_.perm.empty() && queue_.cursor >= queue_.perm.size())
         queue_.cursor = 0;
-    queue_.queue_id.store(loaded->active_queue_id, std::memory_order_relaxed);
-    auto queueExists =
-        storage_.queues->queueExists(queue_.queue_id.load(std::memory_order_relaxed));
+    // The record names its queue instead of storing a row id, so a database
+    // rebuild or import finds it again. An unknown name falls back to default.
+    int64_t qid = 1;
+    if (const auto queues = storage_.queues->listQueues(); queues) {
+        for (const auto& q : *queues) {
+            if (q.name == loaded->queue_name) {
+                qid = q.id;
+                break;
+            }
+        }
+    }
+    queue_.queue_id.store(qid, std::memory_order_relaxed);
+    state_.activeQueueId.store(qid, std::memory_order_relaxed);
+    auto queueExists = storage_.queues->queueExists(qid);
     if (!queueExists || !*queueExists) {
         queue_.queue_id.store(1, std::memory_order_relaxed);
         state_.activeQueueId.store(1, std::memory_order_relaxed);
     }
+    // The optional id is a hint; the path is the identity.
+    int64_t trackId = 0;
+    std::string trackPath = loaded->current_path;
+    if (loaded->current_track_id) {
+        if (auto track = storage_.tracks->getTrack(*loaded->current_track_id); track) {
+            trackId = track->id;
+            trackPath = track->path;
+        }
+    }
+    if (trackId <= 0 && !trackPath.empty()) {
+        if (auto track = storage_.tracks->findByPath(trackPath); track) {
+            trackId = track->id;
+            trackPath = track->path;
+        }
+    }
+    state_.currentTrackId.store(trackId, std::memory_order_release);
+    state_.currentPath = std::move(trackPath);
     return std::nullopt;
 }
 
-std::expected<void, kanariv::utils::Error> Engine::Impl::saveStateLocked() {
+std::expected<void, kanariv::utils::Error>
+Engine::Impl::saveStateLocked(std::optional<int64_t> livePositionMs) {
     // @pre queueMutex_ held: state_/queue_.perm are queue-lock-only. The live
-    // position needs decodeMtx_ (transport counters), so take it briefly here
-    // -- callers must not already hold it.
+    // position needs decodeMtx_ (transport counters) when the caller cannot
+    // supply it, so take it briefly then -- callers must not already hold it.
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "no db"));
     kanariv::types::EngineState persisted;
-    persisted.shuffle_enabled = state_.shuffleEnabled.load(std::memory_order_relaxed);
-    persisted.repeat_mode = state_.repeatMode.load(std::memory_order_relaxed);
-    persisted.cursor_pos = state_.cursorPos.load(std::memory_order_relaxed);
-    persisted.current_track_id = state_.currentTrackId.load(std::memory_order_relaxed);
+    persisted.queue_name = "default";
+    if (auto queue = storage_.queues->getQueue(queue_.queue_id.load(std::memory_order_relaxed));
+        queue && !queue->name.empty())
+        persisted.queue_name = queue->name;
+    persisted.cursor_pos = static_cast<int64_t>(queue_.cursor);
+    persisted.current_path = state_.currentPath;
+    const int64_t trackId = state_.currentTrackId.load(std::memory_order_relaxed);
+    if (trackId > 0)
+        persisted.current_track_id = trackId;
+    persisted.shuffle_enabled = queue_.shuffle.load(std::memory_order_relaxed);
+    persisted.repeat_mode = queue_.repeat.load(std::memory_order_relaxed);
+    persisted.shuffle_perm = queue_.perm;
     // volume_ is the authoritative value: setVolume() may skip the queue lock
     // while it is contended, and the atomic is still current.
     persisted.volume = volume_.load(std::memory_order_relaxed);
-    persisted.active_queue_id = state_.activeQueueId.load(std::memory_order_relaxed)
-                                    ? state_.activeQueueId.load(std::memory_order_relaxed)
-                                    : queue_.queue_id.load(std::memory_order_relaxed);
-    persisted.pre_mute_volume = state_.preMuteVolume.load(std::memory_order_relaxed);
-    {
+    persisted.pre_mute_volume = preMute_.load(std::memory_order_relaxed);
+    if (livePositionMs) {
+        persisted.position_ms = *livePositionMs;
+    } else {
         std::lock_guard<std::mutex> lk(decodeMtx_);
         persisted.position_ms = hasCurrent_.load(std::memory_order_acquire)
                                     ? static_cast<int64_t>(currentPositionLocked() * 1000.0)
@@ -1566,35 +1611,28 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::saveStateLocked() {
     }
     if (persisted.position_ms < 0)
         persisted.position_ms = 0;
-    persisted.shuffle_perm = queue_.perm;
     auto result = storage_.state->save(persisted);
-    if (result)
-        state_.positionMs = persisted.position_ms;
-    return result;
-}
-
-std::expected<void, kanariv::utils::Error> Engine::Impl::persistShuffleBlobLocked() {
-    if (!hasDb())
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "no db"));
-    const bool shuffle = queue_.shuffle.load(std::memory_order_relaxed);
-    auto result =
-        storage_.state->saveShuffle(shuffle, queue_.perm, static_cast<int64_t>(queue_.cursor));
     if (result) {
-        state_.shuffleEnabled.store(shuffle ? 1 : 0, std::memory_order_relaxed);
-        state_.cursorPos.store(static_cast<int64_t>(queue_.cursor), std::memory_order_relaxed);
+        state_.positionMs = persisted.position_ms;
+        state_.shuffleEnabled.store(persisted.shuffle_enabled ? 1 : 0, std::memory_order_relaxed);
+        state_.repeatMode.store(persisted.repeat_mode, std::memory_order_relaxed);
+        state_.cursorPos.store(persisted.cursor_pos, std::memory_order_relaxed);
+        state_.activeQueueId.store(queue_.queue_id.load(std::memory_order_relaxed),
+                                   std::memory_order_relaxed);
     }
     return result;
 }
 
-std::expected<void, kanariv::utils::Error> Engine::Impl::persistCursorLocked() {
-    if (!hasDb())
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "no db"));
-    auto result = storage_.state->saveCursor(static_cast<int64_t>(queue_.cursor));
-    if (result)
-        state_.cursorPos.store(static_cast<int64_t>(queue_.cursor), std::memory_order_relaxed);
-    return result;
+std::expected<void, kanariv::utils::Error>
+Engine::Impl::persistShuffleBlobLocked(std::optional<int64_t> livePositionMs) {
+    // A sidecar snapshot carries cursor, shuffle, repeat and permutation
+    // together, so the field-specific saves collapse into one call.
+    return saveStateLocked(livePositionMs);
+}
+
+std::expected<void, kanariv::utils::Error>
+Engine::Impl::persistCursorLocked(std::optional<int64_t> livePositionMs) {
+    return saveStateLocked(livePositionMs);
 }
 
 std::expected<kanariv::types::Track, kanariv::utils::Error>
@@ -1697,7 +1735,8 @@ std::expected<Engine::Impl::PeekedNext, kanariv::utils::Error> Engine::Impl::pee
     return out;
 }
 
-bool Engine::Impl::commitNextLocked(const QueueFingerprint& expected, PeekedNext&& next) {
+bool Engine::Impl::commitNextLocked(const QueueFingerprint& expected, PeekedNext&& next,
+                                    std::optional<int64_t> livePositionMs) {
     if (!(queueFingerprintLocked() == expected))
         return false;
     queue_.queue_id.store(next.queueId, std::memory_order_relaxed);
@@ -1707,13 +1746,13 @@ bool Engine::Impl::commitNextLocked(const QueueFingerprint& expected, PeekedNext
         queue_.perm = std::move(*next.plan.newPerm);
         queue_.shuffle.store(true, std::memory_order_relaxed);
         queue_.cursor = next.plan.cursor;
-        (void)persistShuffleBlobLocked();
+        (void)persistShuffleBlobLocked(livePositionMs);
         return true;
     }
     if (queue_.cursor == next.plan.cursor)
         return true; // RepeatMode::One replay: the cursor must not move.
     queue_.cursor = next.plan.cursor;
-    (void)persistCursorLocked();
+    (void)persistCursorLocked(livePositionMs);
     return true;
 }
 
@@ -1957,6 +1996,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
     resetPlaybackAccounting();
     startedMs_.store((int64_t)detail::wallMs(), std::memory_order_relaxed);
     state_.currentTrackId.store(t.id, std::memory_order_release);
+    state_.currentPath = t.path;
     state_.cursorPos.store((int64_t)queue_.cursor, std::memory_order_relaxed);
     playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
     // Position tracking starts at the resumed offset (0 for next/prev);
@@ -2195,10 +2235,12 @@ bool Engine::Impl::tryPublishCrossfade() {
     double trackDuration = 0.0;
     int64_t trackId = 0;
     double sampleRate = 0.0;
+    std::string trackPath;
     {
         std::unique_lock<std::mutex> lk(decodeMtx_);
-        if (!crossfadeActive_.load(std::memory_order_acquire) || !crossfadeDecoder_)
+        if (!crossfadeActive_.load(std::memory_order_acquire) || !crossfadeDecoder_) {
             return false; // someone else completed or cancelled the transition
+        }
         // Read the incoming track's metadata while it is still crossfadeDecoder_:
         // the swap below moves it into decoder_ (same decode-lock ownership).
         sampleRate = static_cast<double>(crossfadeDecoder_->sampleRate());
@@ -2208,6 +2250,7 @@ bool Engine::Impl::tryPublishCrossfade() {
         if (trackDuration <= 0.0)
             trackDuration = crossfadeTrack_.duration;
         trackId = crossfadeTrack_.id;
+        trackPath = crossfadeTrack_.path;
 
         decoder_ = std::move(crossfadeDecoder_);
         reader_ = std::move(crossfadeReader_);
@@ -2244,6 +2287,7 @@ bool Engine::Impl::tryPublishCrossfade() {
     gaplessArmed_.store(false, std::memory_order_release);
     startedMs_.store((int64_t)detail::wallMs(), std::memory_order_relaxed);
     state_.currentTrackId.store(trackId, std::memory_order_release);
+    state_.currentPath = std::move(trackPath);
     state_.cursorPos.store((int64_t)queue_.cursor, std::memory_order_relaxed);
     resetPlaybackAccounting();
     if (hasDb())
@@ -2383,10 +2427,14 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
                     // holds when the crossfade becomes active.
                     std::unique_lock<std::timed_mutex> qlk(queueMutex_);
                     std::unique_lock<std::mutex> lk(decodeMtx_);
+                    // decodeMtx_ is held here, so hand the position down
+                    // instead of letting the persist path relock it.
+                    const int64_t livePositionMs =
+                        static_cast<int64_t>(currentPositionLocked() * 1000.0);
                     if (playbackState_.load(std::memory_order_acquire) ==
                             kanariv::types::PlaybackState::Playing &&
                         !crossfadeActive_.load(std::memory_order_relaxed) &&
-                        commitNextLocked(fingerprint, std::move(next))) {
+                        commitNextLocked(fingerprint, std::move(next), livePositionMs)) {
                         crossfadeReader_ = std::move(xfReader);
                         crossfadeDecoder_ = std::move(xfDecoder);
                         crossfadeTrack_ = std::move(next.track);

@@ -16,6 +16,7 @@ set(KANARIV_DB_MODULE_SOURCES
 set(KANARIV_DB_SOURCES
   src/db/core.cpp
   src/db/engine_api.cpp
+  src/db/state_store.cpp
   src/db/queue.cpp
   src/db/scan.cpp
   src/db/search.cpp

@@ -51,28 +51,15 @@ TEST_CASE("engine queue shuffle creates perm via mt19937", "[engine_queue]") {
                    kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
                 .has_value());
     REQUIRE(eng->setShuffle(true).has_value());
-    // after shuffle, perm should be size 4 and be a permutation of 0..3
-    // verify by checking engine_state blob via raw sqlite
-    // open raw handle via new connection to same file
-    sqlite3* h = nullptr;
-    REQUIRE(sqlite3_open_v2(dbPath.c_str(), &h, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK);
-    sqlite3_stmt* st = nullptr;
-    REQUIRE(sqlite3_prepare_v2(h, "SELECT shuffle_perm FROM engine_state WHERE id=1", -1, &st,
-                               nullptr) == SQLITE_OK);
-    REQUIRE(sqlite3_step(st) == SQLITE_ROW);
-    int n = sqlite3_column_bytes(st, 0);
-    REQUIRE(n == (int)(4 * sizeof(int64_t)));
-    const void* blob = sqlite3_column_blob(st, 0);
-    REQUIRE(blob != nullptr);
-    std::set<int64_t> s;
-    const int64_t* arr = (const int64_t*)blob;
-    for (int i = 0; i < 4; ++i)
-        s.insert(arr[i]);
+    // after shuffle, the sidecar perm should be size 4 and a permutation of 0..3
+    const auto doc = readStateSidecar(dbPath);
+    REQUIRE(doc.has_value());
+    const std::vector<int64_t> perm = jsonIntArray(*doc, "shuffle_perm");
+    REQUIRE(perm.size() == 4);
+    std::set<int64_t> s(perm.begin(), perm.end());
     REQUIRE(s.size() == 4);
     for (int i = 0; i < 4; ++i)
         REQUIRE(s.count(i) == 1);
-    sqlite3_finalize(st);
-    sqlite3_close(h);
     eng.reset();
     safeRemoveDb(dbPath);
 }
@@ -275,18 +262,11 @@ TEST_CASE("engine queue perm persistence blob cursor qid", "[engine_queue]") {
         openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
     REQUIRE(e2Res.has_value());
     auto eng2 = std::move(e2Res.value());
-    // after reopen shuffle should still be on (state shuffleEnabled=1)
-    // verify via raw sqlite: shuffle_enabled=1 and cursor_pos persisted
-    sqlite3* h = nullptr;
-    REQUIRE(sqlite3_open_v2(dbPath.c_str(), &h, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK);
-    sqlite3_stmt* st = nullptr;
-    REQUIRE(sqlite3_prepare_v2(h, "SELECT shuffle_enabled,cursor_pos FROM engine_state WHERE id=1",
-                               -1, &st, nullptr) == SQLITE_OK);
-    REQUIRE(sqlite3_step(st) == SQLITE_ROW);
-    REQUIRE(sqlite3_column_int(st, 0) == 1);
-    REQUIRE(sqlite3_column_int64(st, 1) >= 1);
-    sqlite3_finalize(st);
-    sqlite3_close(h);
+    // after reopen shuffle should still be on and the cursor persisted
+    const auto doc = readStateSidecar(dbPath);
+    REQUIRE(doc.has_value());
+    REQUIRE((*doc)["shuffle"].get<bool>());
+    REQUIRE((*doc)["cursor"].get<int64_t>() >= 1);
     eng2.reset();
     safeRemoveDb(dbPath);
 }
@@ -470,12 +450,9 @@ TEST_CASE("engine queue persists via cursor non-shuffle", "[engine_queue]") {
         REQUIRE(sqlite3_step(stc) == SQLITE_ROW);
         REQUIRE(sqlite3_column_int(stc, 0) == 4);
         sqlite3_finalize(stc);
-        sqlite3_stmt* st2 = nullptr;
-        REQUIRE(sqlite3_prepare_v2(ch, "SELECT cursor_pos FROM engine_state WHERE id=1", -1, &st2,
-                                   nullptr) == SQLITE_OK);
-        REQUIRE(sqlite3_step(st2) == SQLITE_ROW);
-        REQUIRE(sqlite3_column_int64(st2, 0) == 2);
-        sqlite3_finalize(st2);
+        const auto doc = readStateSidecar(dbPath);
+        REQUIRE(doc.has_value());
+        REQUIRE((*doc)["cursor"].get<int64_t>() == 2);
         sqlite3_close(ch);
     }
     auto e2Res = openEngineWithDatabase(
@@ -552,9 +529,12 @@ TEST_CASE("engine switchQueue adopts the queue's stored repeat mode", "[engine_q
         REQUIRE(eng->switchQueue(*qid).has_value());
         REQUIRE(eng->repeat() == mode);
 
-        auto persisted = sharedDb->load();
+        const auto persisted = readStateSidecar(dbPath);
         REQUIRE(persisted.has_value());
-        REQUIRE(persisted->repeat_mode == mode);
+        const std::string expected = mode == RepeatMode::One   ? "one"
+                                     : mode == RepeatMode::All ? "all"
+                                                               : "off";
+        REQUIRE((*persisted)["repeat"].get<std::string>() == expected);
 
         eng.reset();
         safeRemoveDb(dbPath);
@@ -563,46 +543,20 @@ TEST_CASE("engine switchQueue adopts the queue's stored repeat mode", "[engine_q
 
 namespace {
 
-/// @brief Reads `engine_state.cursor_pos` from a separate read-only handle.
-/// @details The engine keeps the write handle; committed WAL state is visible
-/// to a second connection, which is how the other engine tests read it back.
+/// @brief Reads `cursor` from the JSON engine-state sidecar (-1 when absent).
+/// @details Engine state is a sidecar document, not a database row; the helper
+/// keeps the assertions identical to the other persisted-state checks.
 int64_t persistedCursorPos(const std::string& dbPath) {
-    sqlite3* h = nullptr;
-    if (sqlite3_open_v2(dbPath.c_str(), &h, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK)
+    const auto doc = readStateSidecar(dbPath);
+    if (!doc || !doc->contains("cursor"))
         return -1;
-    sqlite3_stmt* st = nullptr;
-    int64_t value = -1;
-    if (sqlite3_prepare_v2(h, "SELECT cursor_pos FROM engine_state WHERE id=1", -1, &st, nullptr) ==
-        SQLITE_OK) {
-        if (sqlite3_step(st) == SQLITE_ROW)
-            value = sqlite3_column_int64(st, 0);
-        sqlite3_finalize(st);
-    }
-    sqlite3_close(h);
-    return value;
+    return (*doc)["cursor"].get<int64_t>();
 }
 
-/// @brief Reads the persisted shuffle permutation blob.
+/// @brief Reads the persisted shuffle permutation from the sidecar.
 std::vector<int64_t> persistedPerm(const std::string& dbPath) {
-    sqlite3* h = nullptr;
-    std::vector<int64_t> out;
-    if (sqlite3_open_v2(dbPath.c_str(), &h, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK)
-        return out;
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(h, "SELECT shuffle_perm FROM engine_state WHERE id=1", -1, &st,
-                           nullptr) == SQLITE_OK) {
-        if (sqlite3_step(st) == SQLITE_ROW) {
-            const int bytes = sqlite3_column_bytes(st, 0);
-            const void* blob = sqlite3_column_blob(st, 0);
-            if (blob && bytes > 0 && bytes % static_cast<int>(sizeof(int64_t)) == 0) {
-                const auto* data = static_cast<const int64_t*>(blob);
-                out.assign(data, data + bytes / static_cast<int>(sizeof(int64_t)));
-            }
-        }
-        sqlite3_finalize(st);
-    }
-    sqlite3_close(h);
-    return out;
+    const auto doc = readStateSidecar(dbPath);
+    return doc ? jsonIntArray(*doc, "shuffle_perm") : std::vector<int64_t>{};
 }
 
 } // namespace

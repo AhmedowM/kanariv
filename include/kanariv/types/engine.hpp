@@ -10,11 +10,12 @@
  * remains in `kanariv::engine`.
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/types/wire.hpp>
-#include <kanariv/types/status.hpp>
 #include <cstdint>
 #include <functional>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/status.hpp>
+#include <kanariv/types/wire.hpp>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -143,17 +144,24 @@ struct EngineConfig {
  * @ingroup kanariv_types
  * @details Stores the queue cursor, repeat/shuffle settings, volume and
  * position needed to restore playback after restarting the service.
+ * @par Stable identities
+ * The record survives restarts and database rebuilds, so it names its targets
+ * instead of storing row ids: `queue_name` and `current_path` are the
+ * identities, and `current_track_id` is an optional hint that merely saves the
+ * lookup when the id still resolves. Consumers resolve the name/path against
+ * their own store and fall back to the default queue or no current track.
  */
 struct EngineState {
-    int shuffle_enabled{};
-    kanariv::types::RepeatMode repeat_mode{kanariv::types::RepeatMode::Off};
-    int64_t cursor_pos{};
-    int64_t current_track_id{};
-    float volume{1.0f};
-    int64_t active_queue_id{1};
-    float pre_mute_volume{0.5f};
-    int64_t position_ms{};
-    std::vector<int64_t> shuffle_perm;
+    std::string queue_name{"default"};       ///< Active queue name (identity, not id).
+    int64_t cursor_pos{};                    ///< Next queue position index.
+    std::string current_path;                ///< Last current track path (identity).
+    std::optional<int64_t> current_track_id; ///< Optional id hint for `current_path`.
+    std::vector<int64_t> shuffle_perm;       ///< Shuffle permutation (queue positions).
+    kanariv::types::RepeatMode repeat_mode{kanariv::types::RepeatMode::Off}; ///< Repeat mode.
+    bool shuffle_enabled{};      ///< Whether shuffle is active.
+    float volume{1.0f};          ///< Volume in [0,1].
+    float pre_mute_volume{0.5f}; ///< Restore level for unmute in (0,1].
+    int64_t position_ms{};       ///< Position in the current track in ms.
 };
 
 } // namespace kanariv::types

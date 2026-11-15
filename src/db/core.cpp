@@ -12,7 +12,9 @@
 #include <db/statement.hpp>
 #include <db/stmt_helpers.hpp>
 #include <expected>
+#include <filesystem>
 #include <kanariv/db/database.hpp>
+#include <kanariv/db/json_state_store.hpp>
 #include <kanariv/db/smart.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
@@ -58,6 +60,8 @@ inline constexpr std::string_view updateTrackSql =
 // cached statements are finalized before the handle is closed.
 struct Database::Impl {
     std::unique_ptr<sqlite3, SqliteCloser> db_;
+    /// Filesystem path the database was opened with (empty for :memory:/URI).
+    std::filesystem::path path_;
     /// Non-owning log sink from DatabaseOptions (null = silent). See DatabaseOptions::logger.
     kanariv::utils::Logger* logger_{nullptr};
     // Lock order: dbMutex_ -> cacheMutex_.
@@ -127,6 +131,11 @@ kanariv::utils::Logger* Database::logger() const noexcept {
     return impl_ ? impl_->logger_ : nullptr;
 }
 
+const std::filesystem::path& Database::path() const noexcept {
+    static const std::filesystem::path kEmpty;
+    return impl_ ? impl_->path_ : kEmpty;
+}
+
 std::expected<SqliteStatement*, kanariv::utils::Error>
 Database::Impl::getCachedForUse(std::string_view sql) const {
     // Caller must hold cacheMutex_; see method docs.
@@ -175,6 +184,10 @@ Database::open(std::string_view path, const DatabaseOptions& opts) {
     }
     auto db = std::make_unique<Database>(opts);
     db->impl_->db_.reset(raw);
+    // A URI is connection syntax, not a sibling-file location; in-memory
+    // databases have no directory to keep the state sidecar in.
+    if (dbPath != ":memory:" && !(opts.allowUri && dbPath.starts_with("file:")))
+        db->impl_->path_ = std::filesystem::path(dbPath);
     if (db->impl_->logger_)
         db->impl_->logger_->info("database opened path={}", dbPath);
     return db;
@@ -1999,18 +2012,24 @@ DatabaseAccess::queueDequeueLocked(Database& db, int64_t qid) {
     return db.impl_->queueDequeueLocked(qid);
 }
 
+std::optional<kanariv::types::EngineState> DatabaseAccess::legacyEngineState(Database& db) {
+    return db.legacyEngineState();
+}
+
 contracts::Storage makeStorage(std::shared_ptr<Database> db) {
     if (!db)
         return {};
     // One control block shared by every port: a consumer that keeps any port
-    // alive keeps the database (and its connection) alive with it.
+    // alive keeps the database (and its connection) alive with it. State is the
+    // exception -- it is a JSON sidecar beside the database file, not a table.
+    auto state = makePlaybackStateStore(*db);
     return contracts::Storage{
         std::static_pointer_cast<contracts::ITrackStore>(db),
         std::static_pointer_cast<contracts::IPlaylistStore>(db),
         std::static_pointer_cast<contracts::IQueueStore>(db),
         std::static_pointer_cast<contracts::ILibraryStore>(db),
         std::static_pointer_cast<contracts::IHistoryStore>(db),
-        std::static_pointer_cast<contracts::IPlaybackStateStore>(db),
+        std::move(state),
     };
 }
 

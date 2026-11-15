@@ -1,15 +1,21 @@
 #pragma once
 #include <atomic>
-#include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/ring.hpp>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <thread>
+#include <utility>
 #include <vector>
 #ifdef _WIN32
 #include <process.h>
@@ -118,6 +124,8 @@ inline std::filesystem::path tempDbPath(const std::string& prefix) {
     registerTempPath(p);
     registerTempPath(std::filesystem::path(p.string() + "-wal"));
     registerTempPath(std::filesystem::path(p.string() + "-shm"));
+    registerTempPath(std::filesystem::path(p.string() + ".state.json"));
+    registerTempPath(std::filesystem::path(p.string() + ".state.json.prev"));
     return p;
 }
 
@@ -158,6 +166,45 @@ inline void safeRemoveDb(const std::string& p) {
     std::filesystem::remove(p, ec);
     std::filesystem::remove(p + "-wal", ec);
     std::filesystem::remove(p + "-shm", ec);
+    std::filesystem::remove(p + ".state.json", ec);
+    std::filesystem::remove(p + ".state.json.prev", ec);
+}
+
+/**
+ * @brief Reads the JSON playback-state sidecar written beside a database.
+ * @param dbPath Path of the database file.
+ * @return Parsed document, or nullopt when the sidecar is absent or corrupt.
+ */
+inline std::optional<kanariv::utils::Json> readStateSidecar(const std::string& dbPath) {
+    std::ifstream in(dbPath + ".state.json", std::ios::binary);
+    if (!in)
+        return std::nullopt;
+    const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    auto parsed = kanariv::utils::Json::tryParse(text);
+    if (!parsed)
+        return std::nullopt;
+    return std::move(*parsed);
+}
+
+/**
+ * @brief Reads an integer array field from a parsed JSON document.
+ * @return Values in order; empty when the key is absent or not an array.
+ */
+inline std::vector<int64_t> jsonIntArray(const kanariv::utils::Json& doc, std::string_view key) {
+    std::vector<int64_t> out;
+    if (!doc.contains(key))
+        return out;
+    const kanariv::utils::Json array = doc[key];
+    if (!array.isArray())
+        return out;
+    out.reserve(array.size());
+    for (std::size_t i = 0; i < array.size(); ++i) {
+        auto entry = array.at(i);
+        if (!entry)
+            return {};
+        out.push_back(entry->get<int64_t>());
+    }
+    return out;
 }
 
 } // namespace kanariv::test_helpers

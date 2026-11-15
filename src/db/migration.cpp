@@ -162,14 +162,7 @@ inline constexpr std::string_view kBaseSchema =
     "CREATE TRIGGER IF NOT EXISTS tracks_ad AFTER DELETE ON tracks BEGIN "
     "INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album, album_artist, genre) "
     "VALUES ('delete', old.id, old.title, old.artist, old.album, old.album_artist, old.genre);"
-    "END;"
-    "CREATE TABLE IF NOT EXISTS engine_state (id INTEGER PRIMARY KEY CHECK(id=1), "
-    "shuffle_enabled INTEGER DEFAULT 0, repeat_mode INTEGER DEFAULT 0, shuffle_perm BLOB, "
-    "cursor_pos INTEGER DEFAULT 0, current_track_id INTEGER DEFAULT 0, volume REAL DEFAULT 1.0, "
-    "active_queue_id INTEGER DEFAULT 1, pre_mute_volume REAL DEFAULT 0.5, "
-    "position_ms INTEGER DEFAULT 0, "
-    "updated DATETIME DEFAULT CURRENT_TIMESTAMP);"
-    "INSERT OR IGNORE INTO engine_state(id) VALUES (1);";
+    "END;";
 
 /**
  * @brief Renumbers every queue to full gap positions, then enforces uniqueness.
@@ -252,14 +245,8 @@ std::expected<void, kanariv::utils::Error> ensureColumn(sqlite3* db, std::string
  */
 std::expected<void, kanariv::utils::Error> migrateSourceIdentity(sqlite3* db) {
     for (const auto& [table, column, alter] :
-         std::array<std::tuple<std::string_view, std::string_view, std::string_view>, 10>{
-             {std::tuple{"engine_state", "active_queue_id",
-                         "ALTER TABLE engine_state ADD COLUMN active_queue_id INTEGER DEFAULT 1"},
-              std::tuple{"engine_state", "pre_mute_volume",
-                         "ALTER TABLE engine_state ADD COLUMN pre_mute_volume REAL DEFAULT 0.5"},
-              std::tuple{"engine_state", "position_ms",
-                         "ALTER TABLE engine_state ADD COLUMN position_ms INTEGER DEFAULT 0"},
-              std::tuple{"queues", "temp", "ALTER TABLE queues ADD COLUMN temp INTEGER DEFAULT 0"},
+         std::array<std::tuple<std::string_view, std::string_view, std::string_view>, 7>{
+             {std::tuple{"queues", "temp", "ALTER TABLE queues ADD COLUMN temp INTEGER DEFAULT 0"},
               std::tuple{"tracks", "source_kind",
                          "ALTER TABLE tracks ADD COLUMN source_kind INTEGER NOT NULL DEFAULT 0"},
               std::tuple{"tracks", "source_key",

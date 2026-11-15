@@ -1,11 +1,8 @@
-#include <sqlite3.h>
-
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <cstdint>
-#include <filesystem>
 #include <kanariv/db/database.hpp>
 #include <kanariv/engine/engine.hpp>
 #include <kanariv/types/db.hpp>
@@ -16,7 +13,6 @@
 #include <string>
 #include <string_view>
 #include <support/engine_test_helpers.hpp>
-#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -58,26 +54,18 @@ TEST_CASE("engine state save and load roundtrip", "[engine_state]") {
         // state should be persisted on shutdown
         eng->shutdown();
     }
-    // verify raw engine_state values
-    sqlite3* h = nullptr;
-    REQUIRE(sqlite3_open_v2(dbPath.c_str(), &h, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK);
-    sqlite3_stmt* st = nullptr;
-    REQUIRE(sqlite3_prepare_v2(h,
-                               "SELECT shuffle_enabled,repeat_mode,cursor_pos,volume,shuffle_perm "
-                               "FROM engine_state WHERE id=1",
-                               -1, &st, nullptr) == SQLITE_OK);
-    REQUIRE(sqlite3_step(st) == SQLITE_ROW);
-    REQUIRE(sqlite3_column_int(st, 0) == 1);
-    REQUIRE(sqlite3_column_int(st, 1) == (int)kanariv::types::RepeatMode::All);
-    int64_t cursor = sqlite3_column_int64(st, 2);
-    REQUIRE(cursor >= 1);
-    double vol = sqlite3_column_double(st, 3);
+    // verify the JSON sidecar record
+    const auto doc = readStateSidecar(dbPath);
+    REQUIRE(doc.has_value());
+    REQUIRE((*doc)["shuffle"].get<bool>());
+    REQUIRE((*doc)["repeat"].get<std::string>() == "all");
+    REQUIRE((*doc)["cursor"].get<int64_t>() >= 1);
+    const double vol = (*doc)["volume"].get<double>();
     REQUIRE(vol > 0.41);
     REQUIRE(vol < 0.43);
-    int blobBytes = sqlite3_column_bytes(st, 4);
-    REQUIRE(blobBytes == (int)(2 * sizeof(int64_t)));
-    sqlite3_finalize(st);
-    sqlite3_close(h);
+    const kanariv::utils::Json perm = (*doc)["shuffle_perm"];
+    REQUIRE(perm.isArray());
+    REQUIRE(perm.size() == 2);
     // reopen via Engine::open and verify loaded
     auto e2Res =
         openEngineWithDatabase(dbPath, kanariv::types::EngineConfig{.enableMonitorThread = false});
@@ -85,28 +73,9 @@ TEST_CASE("engine state save and load roundtrip", "[engine_state]") {
     auto eng2 = std::move(e2Res.value());
     REQUIRE(eng2->volume() > 0.41f);
     REQUIRE(eng2->volume() < 0.43f);
-    // shuffle should still be true: try setShuffle(false) and check it toggles
-    // we can verify via checking that next() uses shuffle perm (should still have perm)
-    // Check by reopening raw again
-    sqlite3* h2 = nullptr;
-    REQUIRE(sqlite3_open_v2(dbPath.c_str(), &h2, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK);
-    sqlite3_stmt* st2 = nullptr;
-    REQUIRE(sqlite3_prepare_v2(
-                h2, "SELECT shuffle_enabled,repeat_mode,volume FROM engine_state WHERE id=1", -1,
-                &st2, nullptr) == SQLITE_OK);
-    REQUIRE(sqlite3_step(st2) == SQLITE_ROW);
-    REQUIRE(sqlite3_column_int(st2, 0) == 1);
-    REQUIRE(sqlite3_column_int(st2, 1) == (int)kanariv::types::RepeatMode::All);
-    REQUIRE(sqlite3_column_double(st2, 2) > 0.41);
-    sqlite3_finalize(st2);
-    sqlite3_close(h2);
+    REQUIRE(eng2->repeat() == kanariv::types::RepeatMode::All);
     eng2.reset();
-    {
-        std::error_code ec;
-        std::filesystem::remove(dbPath, ec);
-        std::filesystem::remove(dbPath + "-wal", ec);
-        std::filesystem::remove(dbPath + "-shm", ec);
-    }
+    safeRemoveDb(dbPath);
 }
 
 TEST_CASE("engine state open without file creates default", "[engine_state]") {
@@ -119,12 +88,7 @@ TEST_CASE("engine state open without file creates default", "[engine_state]") {
     // default repeat Off
     REQUIRE(eng->setRepeat(kanariv::types::RepeatMode::Off).has_value());
     eng.reset();
-    {
-        std::error_code ec;
-        std::filesystem::remove(dbPath, ec);
-        std::filesystem::remove(dbPath + "-wal", ec);
-        std::filesystem::remove(dbPath + "-shm", ec);
-    }
+    safeRemoveDb(dbPath);
 }
 
 TEST_CASE("engine state volume clamped 0-1", "[engine_state]") {
@@ -181,34 +145,19 @@ TEST_CASE("engine state shuffle toggle clears perm", "[engine_state]") {
                    kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
                 .has_value());
     REQUIRE(eng->setShuffle(true).has_value());
-    // verify blob exists
-    sqlite3* h = nullptr;
-    REQUIRE(sqlite3_open_v2(dbPath.c_str(), &h, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK);
-    sqlite3_stmt* st = nullptr;
-    REQUIRE(sqlite3_prepare_v2(h, "SELECT shuffle_perm FROM engine_state WHERE id=1", -1, &st,
-                               nullptr) == SQLITE_OK);
-    REQUIRE(sqlite3_step(st) == SQLITE_ROW);
-    REQUIRE(sqlite3_column_bytes(st, 0) == 2 * sizeof(int64_t));
-    sqlite3_finalize(st);
-    sqlite3_close(h);
+    // the sidecar records the permutation for the two queued tracks
+    const auto doc = readStateSidecar(dbPath);
+    REQUIRE(doc.has_value());
+    const kanariv::utils::Json perm = (*doc)["shuffle_perm"];
+    REQUIRE(perm.isArray());
+    REQUIRE(perm.size() == 2);
     REQUIRE(eng->setShuffle(false).has_value());
-    sqlite3* h2 = nullptr;
-    REQUIRE(sqlite3_open_v2(dbPath.c_str(), &h2, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK);
-    REQUIRE(sqlite3_prepare_v2(h2,
-                               "SELECT shuffle_perm,shuffle_enabled FROM engine_state WHERE id=1",
-                               -1, &st, nullptr) == SQLITE_OK);
-    REQUIRE(sqlite3_step(st) == SQLITE_ROW);
-    REQUIRE(sqlite3_column_bytes(st, 0) == 0); // null blob
-    REQUIRE(sqlite3_column_int(st, 1) == 0);
-    sqlite3_finalize(st);
-    sqlite3_close(h2);
+    const auto cleared = readStateSidecar(dbPath);
+    REQUIRE(cleared.has_value());
+    REQUIRE((*cleared)["shuffle"].get<bool>() == false);
+    REQUIRE((*cleared)["shuffle_perm"].size() == 0);
     eng.reset();
-    {
-        std::error_code ec;
-        std::filesystem::remove(dbPath, ec);
-        std::filesystem::remove(dbPath + "-wal", ec);
-        std::filesystem::remove(dbPath + "-shm", ec);
-    }
+    safeRemoveDb(dbPath);
 }
 
 TEST_CASE("engine persists resume position across restart", "[engine_state]") {
@@ -244,18 +193,12 @@ TEST_CASE("engine persists resume position across restart", "[engine_state]") {
         eng->shutdown();
     }
     {
-        sqlite3* h = nullptr;
-        REQUIRE(sqlite3_open_v2(dbPath.c_str(), &h, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK);
-        sqlite3_stmt* st = nullptr;
-        REQUIRE(sqlite3_prepare_v2(h, "SELECT position_ms,current_track_id FROM engine_state", -1,
-                                   &st, nullptr) == SQLITE_OK);
-        REQUIRE(sqlite3_step(st) == SQLITE_ROW);
-        int64_t posMs = sqlite3_column_int64(st, 0);
+        const auto doc = readStateSidecar(dbPath);
+        REQUIRE(doc.has_value());
+        const int64_t posMs = (*doc)["position_ms"].get<int64_t>();
         REQUIRE(posMs >= 3900);
         REQUIRE(posMs <= 4500);
-        REQUIRE(sqlite3_column_int64(st, 1) == trackId);
-        sqlite3_finalize(st);
-        sqlite3_close(h);
+        REQUIRE((*doc)["current_track_id"].get<int64_t>() == trackId);
     }
     {
         auto eRes = openEngineWithDatabase(
@@ -267,12 +210,7 @@ TEST_CASE("engine persists resume position across restart", "[engine_state]") {
         REQUIRE(eng->position() > 3.9);
         REQUIRE(eng->position() <= 4.5);
     }
-    {
-        std::error_code ec;
-        std::filesystem::remove(dbPath, ec);
-        std::filesystem::remove(dbPath + "-wal", ec);
-        std::filesystem::remove(dbPath + "-shm", ec);
-    }
+    safeRemoveDb(dbPath);
 }
 
 TEST_CASE("concurrent transport commands keep the engine usable", "[engine_state][concurrency]") {
@@ -416,10 +354,5 @@ TEST_CASE("explicit stop clears the resume position", "[engine_state]") {
         auto eng = std::move(eRes.value());
         REQUIRE(eng->position() == 0.0);
     }
-    {
-        std::error_code ec;
-        std::filesystem::remove(dbPath, ec);
-        std::filesystem::remove(dbPath + "-wal", ec);
-        std::filesystem::remove(dbPath + "-shm", ec);
-    }
+    safeRemoveDb(dbPath);
 }

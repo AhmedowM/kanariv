@@ -6,10 +6,10 @@
  * @ingroup kanariv_contracts
  * @details The engine's durable state (queue cursor, current track, repeat,
  * shuffle permutation, volume, resume position) is a fixed record with no
- * relational needs. The default adapter writes a versioned JSON sidecar, so
- * remembering volume and position does not require a database; the
- * database-backed adapter exists only for the one-time import of the legacy
- * `engine_state` row.
+ * relational needs. The default adapter (`db::JsonPlaybackStateStore`) writes a
+ * versioned JSON sidecar, so remembering volume and position does not require a
+ * database; `db::makeStorage` seeds it once from the legacy `engine_state` row
+ * of an existing database.
  *
  * @par Ownership
  * State is produced and consumed by the daemon only (one writer), so adapters
@@ -23,7 +23,6 @@
 #include <kanariv/fwd.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
-#include <span>
 
 namespace kanariv::contracts {
 
@@ -44,26 +43,12 @@ class IPlaybackStateStore : public IStore {
      * @brief Persists the complete playback-engine state.
      * @param state State snapshot to write.
      * @return Success, or a backend error.
+     * @details The snapshot is self-contained: adapters replace the stored
+     * record, so cursor, shuffle and repeat changes always go through this one
+     * call rather than through field-specific setters.
      */
     virtual std::expected<void, kanariv::utils::Error>
     save(const kanariv::types::EngineState& state) = 0;
-
-    /**
-     * @brief Persists shuffle enablement, permutation, and cursor position.
-     * @param enabled Whether shuffle is active.
-     * @param permutation Ordered queue positions used for shuffle playback.
-     * @param cursor_position Current position in the permutation.
-     * @return Success, or a backend error.
-     */
-    virtual std::expected<void, kanariv::utils::Error>
-    saveShuffle(bool enabled, std::span<const int64_t> permutation, int64_t cursor_position) = 0;
-
-    /**
-     * @brief Persists the current queue cursor position.
-     * @param cursor_position Zero-based cursor position.
-     * @return Success, or a backend error.
-     */
-    virtual std::expected<void, kanariv::utils::Error> saveCursor(int64_t cursor_position) = 0;
 };
 
 } // namespace kanariv::contracts

@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <db/queue.hpp>
 #include <expected>
+#include <optional>
 #include <shared_mutex>
 #include <string_view>
 #include <vector>
@@ -67,6 +68,15 @@ struct DatabaseAccess {
      */
     static std::expected<SqliteStatement*, kanariv::utils::Error>
     getCachedForUse(Database& db, std::string_view sql);
+
+    // --- Playback state ---
+    /**
+     * @brief Forwards to Database::legacyEngineState().
+     * @ingroup kanariv_db
+     * @param db Database instance.
+     * @return Converted legacy state, or `std::nullopt` when absent.
+     */
+    static std::optional<kanariv::types::EngineState> legacyEngineState(Database& db);
 
     // --- Track / library locked helpers ---
     /**

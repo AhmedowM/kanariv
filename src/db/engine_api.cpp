@@ -1,5 +1,6 @@
 #include <sqlite3.h>
 
+#include <cstddef>
 #include <cstring>
 #include <db/database_access.hpp>
 #include <db/queue.hpp>
@@ -10,6 +11,7 @@
 #include <kanariv/utils/error.hpp>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <string>
 #include <utility>
@@ -70,201 +72,86 @@ std::expected<kanariv::types::Track, kanariv::utils::Error> Database::queueTrack
     return getTrack(trackId);
 }
 
-std::expected<kanariv::types::EngineState, kanariv::utils::Error> Database::load() {
+std::optional<kanariv::types::EngineState> Database::legacyEngineState() {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
+        return std::nullopt;
     std::shared_lock lock(DatabaseAccess::mutex(*this));
-    const char* sqlNew = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, "
-                         "volume, shuffle_perm, active_queue_id FROM engine_state WHERE id=1";
-    const char* sqlOld = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, "
-                         "volume, shuffle_perm FROM engine_state WHERE id=1";
     sqlite3_stmt* raw = nullptr;
-    bool hasActiveQueue = true;
-    if (sqlite3_prepare_v2(handle, sqlNew, -1, &raw, nullptr) != SQLITE_OK) {
+    const char* sql = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, volume, "
+                      "shuffle_perm, active_queue_id, pre_mute_volume, position_ms "
+                      "FROM engine_state WHERE id=1";
+    if (sqlite3_prepare_v2(handle, sql, -1, &raw, nullptr) != SQLITE_OK) {
         sqlite3_finalize(raw);
         raw = nullptr;
-        hasActiveQueue = false;
-        if (sqlite3_prepare_v2(handle, sqlOld, -1, &raw, nullptr) != SQLITE_OK)
-            return std::unexpected(
-                kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
+        // Pre-source-identity databases lack the last three columns.
+        sql = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, volume, "
+              "shuffle_perm FROM engine_state WHERE id=1";
+        if (sqlite3_prepare_v2(handle, sql, -1, &raw, nullptr) != SQLITE_OK) {
+            sqlite3_finalize(raw);
+            return std::nullopt;
+        }
     }
     internal::StmtGuard statement(raw);
+    if (sqlite3_step(raw) != SQLITE_ROW)
+        return std::nullopt;
     kanariv::types::EngineState state;
-    int rc = sqlite3_step(raw);
-    if (rc == SQLITE_DONE)
-        return state;
-    if (rc != SQLITE_ROW)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "load failed"));
-    state.shuffle_enabled = sqlite3_column_int(raw, 0);
-    state.repeat_mode = static_cast<kanariv::types::RepeatMode>(sqlite3_column_int(raw, 1));
-    state.cursor_pos = sqlite3_column_int64(raw, 2);
-    state.current_track_id = sqlite3_column_int64(raw, 3);
-    state.volume = static_cast<float>(sqlite3_column_double(raw, 4));
-    if (state.volume < 0.0f || state.volume > 1.0f)
-        state.volume = 1.0f;
-    if (hasActiveQueue) {
-        state.active_queue_id = sqlite3_column_int64(raw, 6);
-        if (state.active_queue_id <= 0)
-            state.active_queue_id = 1;
-    }
+    state.shuffle_enabled = sqlite3_column_int(raw, 0) != 0;
+    const int repeat = sqlite3_column_int(raw, 1);
+    if (repeat == static_cast<int>(kanariv::types::RepeatMode::One) ||
+        repeat == static_cast<int>(kanariv::types::RepeatMode::All))
+        state.repeat_mode = static_cast<kanariv::types::RepeatMode>(repeat);
+    const int64_t cursor = sqlite3_column_int64(raw, 2);
+    state.cursor_pos = cursor < 0 ? 0 : cursor;
+    const int64_t trackId = sqlite3_column_int64(raw, 3);
+    if (trackId > 0)
+        state.current_track_id = trackId;
+    const float volume = static_cast<float>(sqlite3_column_double(raw, 4));
+    state.volume = volume < 0.0f ? 0.0f : (volume > 1.0f ? 1.0f : volume);
     const auto* blob = static_cast<const std::byte*>(sqlite3_column_blob(raw, 5));
     const int blobBytes = sqlite3_column_bytes(raw, 5);
-    if (blob && blobBytes >= static_cast<int>(sizeof(int64_t)) && state.shuffle_enabled) {
+    if (blob && blobBytes >= static_cast<int>(sizeof(int64_t))) {
         const size_t count = static_cast<size_t>(blobBytes) / sizeof(int64_t);
         state.shuffle_perm.resize(count);
         std::memcpy(state.shuffle_perm.data(), blob, count * sizeof(int64_t));
     }
-
-    sqlite3_stmt* optional = nullptr;
-    if (sqlite3_prepare_v2(handle, "SELECT pre_mute_volume FROM engine_state WHERE id=1", -1,
-                           &optional, nullptr) == SQLITE_OK) {
-        internal::StmtGuard optionalStatement(optional);
-        if (sqlite3_step(optional) == SQLITE_ROW) {
-            const float preMute = static_cast<float>(sqlite3_column_double(optional, 0));
-            if (preMute > 0.0f && preMute <= 1.0f)
-                state.pre_mute_volume = preMute;
+    if (sqlite3_column_count(raw) >= 9) {
+        const int64_t qid = sqlite3_column_int64(raw, 6);
+        const float preMute = static_cast<float>(sqlite3_column_double(raw, 7));
+        if (preMute > 0.0f && preMute <= 1.0f)
+            state.pre_mute_volume = preMute;
+        const int64_t position = sqlite3_column_int64(raw, 8);
+        state.position_ms = position < 0 ? 0 : position;
+        if (qid > 0) {
+            sqlite3_stmt* queue = nullptr;
+            if (sqlite3_prepare_v2(handle, "SELECT name FROM queues WHERE id=?", -1, &queue,
+                                   nullptr) == SQLITE_OK) {
+                internal::StmtGuard queueStatement(queue);
+                sqlite3_bind_int64(queue, 1, qid);
+                if (sqlite3_step(queue) == SQLITE_ROW) {
+                    const auto* name = sqlite3_column_text(queue, 0);
+                    if (name)
+                        state.queue_name = reinterpret_cast<const char*>(name);
+                }
+            }
         }
     }
-
-    optional = nullptr;
-    if (sqlite3_prepare_v2(handle, "SELECT position_ms FROM engine_state WHERE id=1", -1, &optional,
-                           nullptr) == SQLITE_OK) {
-        internal::StmtGuard optionalStatement(optional);
-        if (sqlite3_step(optional) == SQLITE_ROW) {
-            state.position_ms = sqlite3_column_int64(optional, 0);
-            if (state.position_ms < 0)
-                state.position_ms = 0;
-        }
-    }
-
-    sqlite3_stmt* queue = nullptr;
-    if (sqlite3_prepare_v2(handle, "SELECT id FROM queues WHERE id=?", -1, &queue, nullptr) ==
+    if (state.queue_name.empty())
+        state.queue_name = "default";
+    if (!state.current_track_id)
+        return state;
+    sqlite3_stmt* track = nullptr;
+    if (sqlite3_prepare_v2(handle, "SELECT path FROM tracks WHERE id=?", -1, &track, nullptr) ==
         SQLITE_OK) {
-        internal::StmtGuard queueStatement(queue);
-        sqlite3_bind_int64(queue, 1, state.active_queue_id);
-        if (sqlite3_step(queue) != SQLITE_ROW)
-            state.active_queue_id = 1;
+        internal::StmtGuard trackStatement(track);
+        sqlite3_bind_int64(track, 1, *state.current_track_id);
+        if (sqlite3_step(track) == SQLITE_ROW) {
+            const auto* path = sqlite3_column_text(track, 0);
+            if (path)
+                state.current_path = reinterpret_cast<const char*>(path);
+        }
     }
     return state;
-}
-
-std::expected<void, kanariv::utils::Error>
-Database::save(const kanariv::types::EngineState& state) {
-    sqlite3* handle = DatabaseAccess::handle(*this);
-    if (!handle)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
-    std::unique_lock lock(DatabaseAccess::mutex(*this));
-    auto transaction = DbTransaction::begin(handle);
-    if (!transaction)
-        return std::unexpected(transaction.error());
-    const char* sqlNew =
-        "UPDATE engine_state SET shuffle_enabled=?, repeat_mode=?, shuffle_perm=?, "
-        "cursor_pos=?, current_track_id=?, volume=?, active_queue_id=?, position_ms=?, "
-        "updated=CURRENT_TIMESTAMP WHERE id=1";
-    const char* sqlOld =
-        "UPDATE engine_state SET shuffle_enabled=?, repeat_mode=?, shuffle_perm=?, "
-        "cursor_pos=?, current_track_id=?, volume=?, updated=CURRENT_TIMESTAMP WHERE id=1";
-    sqlite3_stmt* raw = nullptr;
-    bool hasNewColumns = true;
-    if (sqlite3_prepare_v2(handle, sqlNew, -1, &raw, nullptr) != SQLITE_OK) {
-        sqlite3_finalize(raw);
-        raw = nullptr;
-        hasNewColumns = false;
-        if (sqlite3_prepare_v2(handle, sqlOld, -1, &raw, nullptr) != SQLITE_OK)
-            return std::unexpected(
-                kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
-    }
-    internal::StmtGuard statement(raw);
-    if (state.shuffle_perm.size() >
-        static_cast<size_t>(std::numeric_limits<int>::max() / static_cast<int>(sizeof(int64_t))))
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::NoMem, "perm too large"));
-    sqlite3_bind_int(raw, 1, state.shuffle_enabled);
-    sqlite3_bind_int(raw, 2, static_cast<int>(state.repeat_mode));
-    if (state.shuffle_enabled && !state.shuffle_perm.empty())
-        sqlite3_bind_blob(raw, 3, state.shuffle_perm.data(),
-                          static_cast<int>(state.shuffle_perm.size() * sizeof(int64_t)),
-                          SQLITE_TRANSIENT);
-    else
-        sqlite3_bind_null(raw, 3);
-    sqlite3_bind_int64(raw, 4, state.cursor_pos);
-    sqlite3_bind_int64(raw, 5, state.current_track_id);
-    sqlite3_bind_double(raw, 6, static_cast<double>(state.volume));
-    if (hasNewColumns) {
-        sqlite3_bind_int64(raw, 7, state.active_queue_id > 0 ? state.active_queue_id : 1);
-        sqlite3_bind_int64(raw, 8, state.position_ms >= 0 ? state.position_ms : 0);
-    }
-    if (sqlite3_step(raw) != SQLITE_DONE)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "step failed"));
-    sqlite3_stmt* optional = nullptr;
-    if (sqlite3_prepare_v2(handle, "UPDATE engine_state SET pre_mute_volume=? WHERE id=1", -1,
-                           &optional, nullptr) == SQLITE_OK) {
-        internal::StmtGuard optionalStatement(optional);
-        sqlite3_bind_double(optional, 1, static_cast<double>(state.pre_mute_volume));
-        (void)sqlite3_step(optional);
-    }
-    return transaction->commit();
-}
-
-std::expected<void, kanariv::utils::Error>
-Database::saveShuffle(bool enabled, std::span<const int64_t> permutation, int64_t cursorPosition) {
-    sqlite3* handle = DatabaseAccess::handle(*this);
-    if (!handle)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
-    if (permutation.size() >
-        static_cast<size_t>(std::numeric_limits<int>::max() / static_cast<int>(sizeof(int64_t))))
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::NoMem, "perm too large"));
-    std::unique_lock lock(DatabaseAccess::mutex(*this));
-    auto transaction = DbTransaction::begin(handle);
-    if (!transaction)
-        return std::unexpected(transaction.error());
-    sqlite3_stmt* raw = nullptr;
-    const char* sql = "UPDATE engine_state SET shuffle_perm=?, cursor_pos=?, "
-                      "shuffle_enabled=? WHERE id=1";
-    if (sqlite3_prepare_v2(handle, sql, -1, &raw, nullptr) != SQLITE_OK)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
-    internal::StmtGuard statement(raw);
-    if (enabled && !permutation.empty())
-        sqlite3_bind_blob(raw, 1, permutation.data(),
-                          static_cast<int>(permutation.size() * sizeof(int64_t)), SQLITE_TRANSIENT);
-    else
-        sqlite3_bind_null(raw, 1);
-    sqlite3_bind_int64(raw, 2, cursorPosition);
-    sqlite3_bind_int(raw, 3, enabled ? 1 : 0);
-    if (sqlite3_step(raw) != SQLITE_DONE)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "step failed"));
-    return transaction->commit();
-}
-
-std::expected<void, kanariv::utils::Error> Database::saveCursor(int64_t cursorPosition) {
-    sqlite3* handle = DatabaseAccess::handle(*this);
-    if (!handle)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db"));
-    std::unique_lock lock(DatabaseAccess::mutex(*this));
-    auto transaction = DbTransaction::begin(handle);
-    if (!transaction)
-        return std::unexpected(transaction.error());
-    sqlite3_stmt* raw = nullptr;
-    if (sqlite3_prepare_v2(handle, "UPDATE engine_state SET cursor_pos=? WHERE id=1", -1, &raw,
-                           nullptr) != SQLITE_OK)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "prepare failed"));
-    internal::StmtGuard statement(raw);
-    sqlite3_bind_int64(raw, 1, cursorPosition);
-    if (sqlite3_step(raw) != SQLITE_DONE)
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "step failed"));
-    return transaction->commit();
 }
 
 std::expected<void, kanariv::utils::Error>
