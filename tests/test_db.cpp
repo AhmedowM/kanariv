@@ -509,6 +509,22 @@ TEST_CASE("listTracks after schema init", "[db]") {
     sqlite3_close(db);
 }
 
+TEST_CASE("Database treats file: paths as URIs only when opted in", "[db]") {
+    const auto path = kanariv::test_helpers::tempDbPath("uri");
+    {
+        auto created = Database::open(path.string());
+        REQUIRE(created.has_value());
+        REQUIRE((*created)->insertTrack(makeTrack(1)).has_value());
+    }
+    kanariv::db::DatabaseOptions opts;
+    opts.allowUri = true;
+    auto ro = Database::open("file:" + path.string() + "?mode=ro", opts);
+    REQUIRE(ro.has_value());
+    // The URI reached SQLite (not a literal filename): mode=ro is honoured and
+    // a write is rejected.
+    REQUIRE_FALSE((*ro)->insertTrack(makeTrack(2)).has_value());
+}
+
 TEST_CASE("Database open emits lifecycle log", "[db]") {
     using namespace kanariv::utils;
     std::vector<std::string> out;

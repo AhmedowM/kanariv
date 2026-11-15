@@ -147,8 +147,12 @@ std::expected<std::unique_ptr<Database>, kanariv::utils::Error>
 Database::open(std::string_view path, const DatabaseOptions& opts) {
     std::string dbPath = path.empty() ? ":memory:" : std::string(path);
     sqlite3* raw = nullptr;
-    int rc = sqlite3_open_v2(dbPath.c_str(), &raw,
-                             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI, nullptr);
+    int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+    // A configured path must name the file it looks like: only an explicit
+    // opt-in may turn `file:...?mode=ro` into connection flags.
+    if (opts.allowUri)
+        flags |= SQLITE_OPEN_URI;
+    int rc = sqlite3_open_v2(dbPath.c_str(), &raw, flags, nullptr);
     if (rc != SQLITE_OK) {
         std::string msg = raw ? sqlite3_errmsg(raw) : "open failed";
         if (raw)

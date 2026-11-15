@@ -34,6 +34,10 @@ struct DatabaseOptions {
     /// Non-owning logger (may be null = silent). Must outlive the Database;
     /// never emitted from destructors. Set from opts at open().
     kanariv::utils::Logger* logger{nullptr};
+    /// Interpret the path as an SQLite URI (`file:...?mode=ro`) instead of a
+    /// filesystem path. Off by default: a config-owned path that starts with
+    /// `file:` must name the file it looks like, not switch connection flags.
+    bool allowUri{false};
 };
 
 /**
@@ -76,8 +80,9 @@ class KANARIV_API Database final : public kanariv::contracts::IDatabase {
     /**
      * @brief Opens (or creates) a database.
      * @ingroup kanariv_db
-     * @param path Filesystem path (empty => :memory:).
-     * @param opts Options (logger).
+     * @param path Filesystem path (empty => :memory:), or an SQLite URI when
+     * `opts.allowUri` is set.
+     * @param opts Options (logger, URI opt-in).
      * @return Owning Database pointer or Error Io/Corrupt.
      * @details Applies connection pragmas, then the ordered `PRAGMA
      * user_version` migration ladder. Every step runs in one transaction and a
