@@ -14,24 +14,26 @@
 namespace kanariv::service::detail {
 
 /**
- * @brief Get PID file path for a database path.
- * Delegates to cli::pidPathFor; falls back to dbPath parent / "kanariv.pid".
+ * @brief Get PID file path for a database path or explicit socket endpoint.
+ * Delegates to config::pidPathFor; falls back to dbPath parent / "kanariv.pid".
  * @param dbPath Database path.
- * @param socketPath Unused (kept for signature compatibility).
+ * @param socketPath Explicit socket path; when non-empty, the PID file is
+ * keyed by the socket so daemons on different endpoints stay independent.
  * @return PID file path.
  */
 std::filesystem::path pidPathForSocket(const std::filesystem::path& dbPath,
-                                       const std::string& /*socketPath*/);
+                                       const std::string& socketPath);
 
 /**
- * @brief Get lock file path for a database path.
- * Delegates to cli::lockPathFor; falls back to PID dir / "kanariv-<hash>.lock".
+ * @brief Get lock file path for a database path or explicit socket endpoint.
+ * Delegates to config::lockPathFor; falls back to PID dir / "kanariv-<hash>.lock".
  * @param dbPath Database path.
- * @param socketPath Unused (kept for signature compatibility).
+ * @param socketPath Explicit socket path; when non-empty, the lock file is
+ * keyed by the socket so daemons on different endpoints stay independent.
  * @return Lock file path.
  */
 std::filesystem::path lockPathForSocket(const std::filesystem::path& dbPath,
-                                        const std::string& /*socketPath*/);
+                                        const std::string& socketPath);
 
 /**
  * @brief Get socket path for a database path.

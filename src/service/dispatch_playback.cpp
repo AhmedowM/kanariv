@@ -41,7 +41,9 @@ Service::Impl::handle(const kanariv::ipc::Play&) {
         return std::unexpected{r.error()};
     updateShmStatus();
     syncMediaSession();
-    return statusResult();
+    // Mutations are real state changes: bump the status sequence so
+    // StatusWait waiters observe them (S5).
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -51,7 +53,9 @@ Service::Impl::handle(const kanariv::ipc::Pause&) {
         return std::unexpected{r.error()};
     updateShmStatus();
     syncMediaSession();
-    return statusResult();
+    // Mutations are real state changes: bump the status sequence so
+    // StatusWait waiters observe them (S5).
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -61,7 +65,9 @@ Service::Impl::handle(const kanariv::ipc::Resume&) {
         return std::unexpected{r.error()};
     updateShmStatus();
     syncMediaSession();
-    return statusResult();
+    // Mutations are real state changes: bump the status sequence so
+    // StatusWait waiters observe them (S5).
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -75,8 +81,8 @@ Service::Impl::handle(const kanariv::ipc::Restart&) {
         if (!pr)
             return std::unexpected{pr.error()};
         updateShmStatus();
-    syncMediaSession();
-        return statusResult();
+        syncMediaSession();
+        return statusAfterChange();
     }
     // ensure playing
     if (engine_->state() == kanariv::types::PlaybackState::Paused) {
@@ -84,7 +90,9 @@ Service::Impl::handle(const kanariv::ipc::Restart&) {
     }
     updateShmStatus();
     syncMediaSession();
-    return statusResult();
+    // Mutations are real state changes: bump the status sequence so
+    // StatusWait waiters observe them (S5).
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -94,7 +102,9 @@ Service::Impl::handle(const kanariv::ipc::Stop&) {
         return std::unexpected{r.error()};
     updateShmStatus();
     syncMediaSession();
-    return statusResult();
+    // Mutations are real state changes: bump the status sequence so
+    // StatusWait waiters observe them (S5).
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -104,7 +114,9 @@ Service::Impl::handle(const kanariv::ipc::Next&) {
         return std::unexpected{r.error()};
     updateShmStatus();
     syncMediaSession();
-    return statusResult();
+    // Mutations are real state changes: bump the status sequence so
+    // StatusWait waiters observe them (S5).
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -114,7 +126,9 @@ Service::Impl::handle(const kanariv::ipc::Prev&) {
         return std::unexpected{r.error()};
     updateShmStatus();
     syncMediaSession();
-    return statusResult();
+    // Mutations are real state changes: bump the status sequence so
+    // StatusWait waiters observe them (S5).
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -128,23 +142,23 @@ Service::Impl::handle(const kanariv::ipc::Seek& s) {
         return std::unexpected{r.error()};
     updateShmStatus();
     syncMediaSession();
-    return statusResult();
+    // Mutations are real state changes: bump the status sequence so
+    // StatusWait waiters observe them (S5).
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::StatusReq&) {
+    // Pure read: never bumps the status sequence, so polling clients cannot
+    // wake StatusWait waiters (S5).
     return statusResult();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::StatusWait& cmd) {
-    // Capture the current status sequence, then wait until it changes (a
-    // status-changing operation incremented it) or the timeout elapses.
-    uint64_t seq = status_seq_.load(std::memory_order_acquire);
-    std::unique_lock<std::mutex> lk(status_mtx_);
-    status_cv_.wait_for(lk, std::chrono::milliseconds(cmd.timeout_ms), [this, seq] {
-        return status_seq_.load(std::memory_order_acquire) != seq;
-    });
+    // Normally intercepted by dispatch() so the wait does not hold the
+    // dispatch mutex; kept consistent for direct callers (S5).
+    waitForStatusChange(std::chrono::milliseconds(cmd.timeout_ms));
     return statusResult();
 }
 
@@ -222,6 +236,8 @@ Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
     }
     updateShmStatus();
     syncMediaSession();
+    if (hasTarget)
+        noteStateChanged();
     kanariv::ipc::VolumeInfo vi{engine_->volume(), engine_->volume() == 0.0f};
     return Result{vi};
 }

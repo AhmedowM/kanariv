@@ -364,7 +364,7 @@ Service::Impl::handle(const kanariv::ipc::BookmarkGoto& cmd) {
         return std::unexpected{pr.error()};
     if (auto sr = engine_->seek((double)b->position_ms / 1000.0); !sr)
         return std::unexpected{sr.error()};
-    return statusResult();
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -1005,7 +1005,8 @@ Service::Impl::handle(const kanariv::ipc::PlaylistLoad& cmd) {
             return std::unexpected{pr.error()};
     }
     updateShmStatus();
-    auto st = detail::buildStatus(*engine_, *db_);
+    noteStateChanged();
+    auto st = detail::buildStatus(*engine_, db_.get());
     if (!st)
         return std::unexpected{st.error()};
     return Result{kanariv::ipc::PlaylistLoaded{qid, std::move(*st)}};

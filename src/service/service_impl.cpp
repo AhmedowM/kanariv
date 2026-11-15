@@ -9,7 +9,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <engine/engine_access.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -49,8 +48,6 @@
 
 namespace kanariv::service {
 
-using kanariv::engine::detail::ServiceAccess;
-
 Service::~Service() {
     shutdown();
 }
@@ -81,22 +78,26 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
 
     if (!inProcess) {
         // Determine socket path: explicit override, else derived from the database.
-        if (!resolved.socketPath.empty()) {
+        // Only an explicit socket re-keys the pid/lock files; a derived one
+        // must keep the database-derived names clients already look for.
+        const bool explicitSocket = !resolved.socketPath.empty();
+        if (explicitSocket) {
             spStr = resolved.socketPath;
         } else {
             spStr = detail::socketPathForDb(dbPath);
         }
         resolved.socketPath = spStr;
+        const std::string socketKey = explicitSocket ? spStr : std::string{};
 
         // Single-instance enforcement via flock lock file
-        lockPath = detail::lockPathForSocket(dbPath, spStr);
+        lockPath = detail::lockPathForSocket(dbPath, socketKey);
         if (!detail::tryAcquireLock(lockPath, lockFd)) {
             return std::unexpected{kanariv::utils::makeError(
                 kanariv::utils::StatusCode::AlreadyExists, "service already running (lock held)")};
         }
 
         // Check for stale PID file
-        pidPath = detail::pidPathForSocket(dbPath, spStr);
+        pidPath = detail::pidPathForSocket(dbPath, socketKey);
         if (std::filesystem::exists(pidPath, ec)) {
             auto existingPid = detail::readPidFile(pidPath);
             if (existingPid && detail::checkPidAlive(*existingPid)) {
@@ -240,9 +241,9 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
             shmWriter = std::make_unique<kanariv::ipc::ShmStatusWriter>(std::move(*shmRes));
     }
 
-    auto svc = std::unique_ptr<Service>(
-        new Service(resolved, std::move(db), std::move(eng), std::move(srvPtr),
-                    std::move(loggerPtr), pidPath, spStr, lockFd, std::move(shmWriter), shmName));
+    auto svc = std::unique_ptr<Service>(new Service(
+        resolved, std::move(db), std::move(eng), std::move(srvPtr), std::move(loggerPtr), pidPath,
+        lockPath, spStr, lockFd, std::move(shmWriter), shmName));
     if (inProcess) {
         svc->impl_->logger_->info("service started in-process version={} db={}",
                                   kanariv::version::version(), dbPath.generic_string());
@@ -257,20 +258,22 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
 Service::Service(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts::IDatabase> db,
                  std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
                  std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
-                 std::string socketPath, std::intptr_t lockFd,
+                 std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,
                  std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName)
     : impl_(std::make_unique<Impl>(cfg, std::move(db), std::move(eng), std::move(srv),
-                                   std::move(logger), std::move(pidPath), std::move(socketPath),
-                                   lockFd, std::move(shmWriter), std::move(shmName))) {}
+                                   std::move(logger), std::move(pidPath), std::move(lockPath),
+                                   std::move(socketPath), lockFd, std::move(shmWriter),
+                                   std::move(shmName))) {}
 
 Service::Impl::Impl(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts::IDatabase> db,
                     std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
                     std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
-                    std::string socketPath, std::intptr_t lockFd,
+                    std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,
                     std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName)
     : config_(cfg), db_(std::move(db)), engine_(std::move(eng)), server_(std::move(srv)),
-      logger_(std::move(logger)), pidPath_(std::move(pidPath)), socketPath_(std::move(socketPath)),
-      lockFd_(lockFd), shmWriter_(std::move(shmWriter)), shmName_(std::move(shmName)) {
+      logger_(std::move(logger)), pidPath_(std::move(pidPath)), lockPath_(std::move(lockPath)),
+      socketPath_(std::move(socketPath)), lockFd_(lockFd), shmWriter_(std::move(shmWriter)),
+      shmName_(std::move(shmName)) {
     // Create the OS media-session backend (internal, daemon-only). A missing
     // backend is not fatal: the daemon runs fine without OS integration.
     auto msRes = kanariv::media_session::MediaSession::create("kanariv", "", true, true);
@@ -280,76 +283,48 @@ Service::Impl::Impl(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts
     } else {
         mediaSession_ = std::move(*msRes);
         mediaSession_->setLogger(logger_.get());
+        // OS media-key intents run on backend threads. They are routed through
+        // dispatch() instead of touching the engine directly, so there is
+        // exactly one serialized writer into Engine/Database (S2/S8) and the
+        // command handlers keep owning the shm/media-session refresh.
         mediaSession_->setCallbacks({
-            .onPlay =
-                [this] {
-                    (void)engine_->play(engine_->activeQueueId());
-                    syncMediaSession();
-                },
-            .onPause =
-                [this] {
-                    (void)engine_->pause();
-                    syncMediaSession();
-                },
-            .onStop =
-                [this] {
-                    (void)engine_->stop();
-                    syncMediaSession();
-                },
-            .onNext =
-                [this] {
-                    (void)engine_->next();
-                    syncMediaSession();
-                },
-            .onPrev =
-                [this] {
-                    (void)engine_->prev();
-                    syncMediaSession();
-                },
+            .onPlay = [this] { (void)dispatch(kanariv::ipc::Play{}); },
+            .onPause = [this] { (void)dispatch(kanariv::ipc::Pause{}); },
+            .onStop = [this] { (void)dispatch(kanariv::ipc::Stop{}); },
+            .onNext = [this] { (void)dispatch(kanariv::ipc::Next{}); },
+            .onPrev = [this] { (void)dispatch(kanariv::ipc::Prev{}); },
             .onSeek =
                 [this](double delta) {
-                    auto cur = engine_->position();
-                    (void)engine_->seek(cur + delta);
-                    syncMediaSession();
+                    (void)dispatch(kanariv::ipc::Seek{engine_->position() + delta});
                 },
-            .onSeekTo =
-                [this](double position) {
-                    (void)engine_->seek(position);
-                    syncMediaSession();
-                },
+            .onSeekTo = [this](double position) { (void)dispatch(kanariv::ipc::Seek{position}); },
             .onRepeat =
                 [this](kanariv::types::RepeatMode repeat) {
-                    (void)engine_->setRepeat(repeat);
-                    syncMediaSession();
+                    (void)dispatch(kanariv::ipc::QueueRepeat{.mode = repeat});
                 },
             .onShuffle =
-                [this](bool shuffle) {
-                    (void)engine_->setShuffle(shuffle);
-                    syncMediaSession();
-                },
+                [this](bool shuffle) { (void)dispatch(kanariv::ipc::QueueShuffle{.on = shuffle}); },
             .onVolume =
                 [this](float volume, bool muted) {
-                    const float current = engine_->volume();
-                    if (muted || volume <= 0.0f) {
-                        // Remember the pre-mute level so a later unmute (from
-                        // the OS mixer) can restore it, mirroring VolumeSet.
-                        if (current > 0.0f)
-                            (void)ServiceAccess::setPreMuteVolume(*engine_, current);
-                        (void)engine_->setVolume(0.0f);
-                    } else {
-                        (void)ServiceAccess::setPreMuteVolume(*engine_, volume);
-                        (void)engine_->setVolume(volume);
-                    }
-                    syncMediaSession();
+                    // VolumeSet already owns the pre-mute bookkeeping, so an OS
+                    // unmute restores the level the CLI would have restored.
+                    const float pct = std::clamp(volume, 0.0f, 1.0f) * 100.0f;
+                    (void)dispatch(kanariv::ipc::VolumeSet{.level = pct, .mute = muted});
                 },
         });
         // Engine track events (natural end / auto-advance) must refresh the
         // OS now-playing UI, which syncMediaSession() only does on explicit
-        // user commands. Wire these up after media-session setup so natural
-        // track end transitions SMTC to Stopped instead of staying on Playing.
+        // user commands. They also bump the status sequence: a track change is
+        // a real state change, so StatusWait waiters must observe it (S5).
         (void)engine_->setCallbacks({
-            .on_track_started = [this](int64_t) -> void { syncMediaSession(); },
-            .on_track_ended = [this](int64_t, double) -> void { syncMediaSession(); },
+            .on_track_started = [this](int64_t) -> void {
+                noteStateChanged();
+                syncMediaSession();
+            },
+            .on_track_ended = [this](int64_t, double) -> void {
+                noteStateChanged();
+                syncMediaSession();
+            },
         });
         // Activate the OS media session so media keys and now-playing UI work.
         if (auto e = mediaSession_->activate(); !e && logger_)
@@ -397,6 +372,22 @@ void Service::Impl::shutdown() {
     bool was = running_.exchange(false);
     (void)was;
     shutdownRequested_.store(true, std::memory_order_release);
+    // Reject late media-key intents and stop the OS media session BEFORE the
+    // engine is torn down: an intent arriving in that window would otherwise
+    // dispatch into a shut-down engine (S8). Clearing the callbacks stops new
+    // intents; deactivate() runs after releasing mediaMtx_ because it joins
+    // the backend thread, which may be parked inside a callback waiting for
+    // that lock (dispatch rejects it via shuttingDown_).
+    shuttingDown_.store(true, std::memory_order_release);
+    if (engine_)
+        (void)engine_->setCallbacks({});
+    if (mediaSession_) {
+        {
+            std::lock_guard<std::mutex> lk(mediaMtx_);
+            mediaSession_->setCallbacks({});
+        }
+        (void)mediaSession_->deactivate();
+    }
     if (server_)
         server_->shutdown();
     if (engine_)
@@ -425,23 +416,26 @@ void Service::Impl::shutdown() {
                 }
             }
         }
-        // cleanup lock file
+        // Remove the lock file while the lock is still held: releasing first
+        // would let another process acquire the lock and then have the live
+        // file deleted underneath it, admitting a third "exclusive" holder.
+        // Windows keeps the file open without FILE_SHARE_DELETE, so the remove
+        // fails there and the empty file stays -- harmless, because the lock
+        // is the handle, not the name.
         if (lockFd_ >= 0) {
+            std::error_code rmEc;
+            if (!lockPath_.empty())
+                std::filesystem::remove(lockPath_, rmEc);
             detail::releaseLock(lockFd_);
             lockFd_ = -1;
-            auto lockPath = detail::lockPathForSocket(config_.dbPath, socketPath_);
-            std::filesystem::remove(lockPath, ec);
         }
     } catch (...) {
     }
-    // Tear down OS media session.
-    if (mediaSession_)
-        (void)mediaSession_->deactivate();
     // shm handle will be cleaned up via RAII
 }
 
-kanariv::contracts::IDatabase& Service::db() noexcept {
-    return *impl_->db_;
+kanariv::contracts::IDatabase* Service::db() noexcept {
+    return impl_->db_.get();
 }
 
 kanariv::utils::Expected<void>
@@ -489,14 +483,15 @@ kanariv::ipc::ShmStatusWriter* Service::shmWriter() noexcept {
 }
 
 void Service::Impl::updateShmStatus() {
-    if (!shmWriter_ || !shmWriter_->valid())
+    if (!shmWriter_ || !shmWriter_->valid() || !engine_)
         return;
     auto& eng = *engine_;
     int64_t track_id = eng.currentTrackId();
     // Single track fetch (C-2): title/artist/duration come from one lookup.
+    // A database-less service still publishes engine state (S4).
     std::string title, artist;
     double duration = 0.0;
-    if (track_id != 0) {
+    if (db_ && track_id != 0) {
         if (auto tr = db_->getTrack(track_id); tr) {
             title = tr->title;
             artist = tr->artist;
@@ -506,7 +501,7 @@ void Service::Impl::updateShmStatus() {
     // O(1) queue size via COUNT(*) (C-2): the old listQueueItems() materialized
     // the full vector of items just for .size().
     size_t qSize = 0;
-    {
+    if (db_) {
         int64_t aq = eng.activeQueueId();
         qSize = db_->queueCount(aq);
     }
@@ -525,19 +520,37 @@ void Service::Impl::updateShmStatus() {
     shmWriter_->publish(u);
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::statusResult() {
-    auto st = detail::buildStatus(*engine_, *db_);
-    if (!st)
-        return std::unexpected{st.error()};
-    // Bump the status sequence and wake any StatusWait waiters so they
-    // observe the latest status.
+void Service::Impl::noteStateChanged() {
+    // Called only for real state changes: mutating command handlers and engine
+    // track events. Reads must never bump the sequence, or every StatusReq
+    // would wake every StatusWait waiter (S5).
     status_seq_.fetch_add(1, std::memory_order_release);
     status_cv_.notify_all();
+}
+
+void Service::Impl::waitForStatusChange(std::chrono::milliseconds timeout) {
+    const uint64_t seq = status_seq_.load(std::memory_order_acquire);
+    std::unique_lock<std::mutex> lk(status_mtx_);
+    status_cv_.wait_for(lk, timeout,
+                        [this, seq] { return status_seq_.load(std::memory_order_acquire) != seq; });
+}
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::statusResult() {
+    // Pure read: does not bump the status sequence (S5).
+    auto st = detail::buildStatus(*engine_, db_.get());
+    if (!st)
+        return std::unexpected{st.error()};
     return kanariv::ipc::Result{*st};
 }
 
+std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::statusAfterChange() {
+    noteStateChanged();
+    return statusResult();
+}
+
 void Service::Impl::syncMediaSession() {
-    if (!mediaSession_ || !mediaSession_->active())
+    std::lock_guard<std::mutex> lk(mediaMtx_);
+    if (!mediaSession_ || !mediaSession_->active() || !engine_)
         return;
 
     try {
@@ -550,7 +563,7 @@ void Service::Impl::syncMediaSession() {
         std::string artworkMime;
         double duration = 0.0;
 
-        if (track_id != 0) {
+        if (track_id != 0 && db_) {
             if (auto tr = db_->getTrack(track_id); tr) {
                 title = tr->title;
                 artist = tr->artist;
@@ -632,6 +645,40 @@ void Service::Impl::syncMediaSession() {
     }
 }
 
+namespace {
+
+/**
+ * @brief Reports whether a command can run without an attached database.
+ * @details The transport commands and config/device inspection only touch the
+ * engine or the config file; everything else reads or writes library data and
+ * must fail cleanly instead of dereferencing a null database (S4).
+ */
+bool commandRunsWithoutDatabase(const kanariv::ipc::Command& cmd) {
+    return std::holds_alternative<kanariv::ipc::Play>(cmd) ||
+           std::holds_alternative<kanariv::ipc::Pause>(cmd) ||
+           std::holds_alternative<kanariv::ipc::Resume>(cmd) ||
+           std::holds_alternative<kanariv::ipc::Restart>(cmd) ||
+           std::holds_alternative<kanariv::ipc::Stop>(cmd) ||
+           std::holds_alternative<kanariv::ipc::Next>(cmd) ||
+           std::holds_alternative<kanariv::ipc::Prev>(cmd) ||
+           std::holds_alternative<kanariv::ipc::Seek>(cmd) ||
+           std::holds_alternative<kanariv::ipc::VolumeSet>(cmd) ||
+           std::holds_alternative<kanariv::ipc::StatusReq>(cmd) ||
+           std::holds_alternative<kanariv::ipc::StatusWait>(cmd) ||
+           std::holds_alternative<kanariv::ipc::Shutdown>(cmd) ||
+           std::holds_alternative<kanariv::ipc::ConfigList>(cmd) ||
+           std::holds_alternative<kanariv::ipc::ConfigGet>(cmd) ||
+           std::holds_alternative<kanariv::ipc::ConfigSet>(cmd) ||
+           std::holds_alternative<kanariv::ipc::ConfigReset>(cmd) ||
+           std::holds_alternative<kanariv::ipc::ConfigExport>(cmd) ||
+           std::holds_alternative<kanariv::ipc::ConfigImport>(cmd) ||
+           std::holds_alternative<kanariv::ipc::DeviceList>(cmd) ||
+           std::holds_alternative<kanariv::ipc::DeviceSet>(cmd) ||
+           std::holds_alternative<kanariv::ipc::DeviceTest>(cmd);
+}
+
+} // namespace
+
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::dispatch(const kanariv::ipc::Command& cmd) {
     // Per-command trace at debug: what the daemon was asked to do. Guarded
@@ -648,6 +695,28 @@ Service::Impl::dispatch(const kanariv::ipc::Command& cmd) {
     // connection thread -- which used to close the pipe and leave the client
     // with a bare `ReadFile hdr failed: 109` (ERROR_BROKEN_PIPE).
     try {
+        if (shuttingDown_.load(std::memory_order_acquire)) {
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                             "service is shutting down")};
+        }
+        // StatusWait blocks on a condition variable; holding the dispatch lock
+        // while waiting would serialize every other client behind a long poll.
+        // The snapshot is taken under the lock (so it cannot race a mutating
+        // handler) but does not bump the sequence (S5).
+        if (const auto* wait = std::get_if<kanariv::ipc::StatusWait>(&cmd)) {
+            waitForStatusChange(std::chrono::milliseconds(wait->timeout_ms));
+            std::lock_guard<std::mutex> lk(dispatchMtx_);
+            return statusResult();
+        }
+        // Serialized dispatch (S2): one writer into Engine/Database at a time,
+        // matching the documented IPC model and keeping the status sequence a
+        // single ordered stream for StatusWait.
+        std::lock_guard<std::mutex> lk(dispatchMtx_);
+        if (!db_ && !commandRunsWithoutDatabase(cmd)) {
+            return std::unexpected{
+                kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                          "database unavailable: command requires a database")};
+        }
         return std::visit(DispatchVisitor{this}, cmd);
     } catch (const std::exception& e) {
         if (logger_)

@@ -21,14 +21,15 @@ class IDatabase;
 namespace kanariv::service::detail {
 
 /**
- * @brief Build a Status object from Engine and Database.
+ * @brief Build a Status object from Engine and optional Database.
  * Populates playback state, position, duration, volume, shuffle, repeat,
  * current track info (title, artist, path), and active queue size/index.
  * @param eng Engine reference.
- * @param db Database reference.
+ * @param db Database pointer; may be null, in which case only engine state is
+ * reported (title/artist/path and queue counters stay at their defaults).
  * @return Status on success, Error on failure.
  */
 std::expected<kanariv::ipc::Status, kanariv::utils::Error>
-buildStatus(kanariv::engine::Engine& eng, kanariv::contracts::IDatabase& db);
+buildStatus(kanariv::engine::Engine& eng, kanariv::contracts::IDatabase* db);
 
 } // namespace kanariv::service::detail

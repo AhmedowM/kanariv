@@ -33,6 +33,32 @@ namespace detail {
 
 double durationFromDecoder(const std::filesystem::path& path) noexcept;
 
+/** Strips leading/trailing ASCII whitespace. */
+inline std::string_view trimAscii(std::string_view s) {
+    const auto isSpace = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
+    while (!s.empty() && isSpace(s.front()))
+        s.remove_prefix(1);
+    while (!s.empty() && isSpace(s.back()))
+        s.remove_suffix(1);
+    return s;
+}
+
+/**
+ * @brief Parses a bare non-negative decimal integer.
+ * @return The value, or nullopt for signs, garbage or overflow-sized input.
+ */
+inline std::optional<int64_t> parseQueueOrdinal(std::string_view text) {
+    if (text.empty() || text.size() > 18)
+        return std::nullopt;
+    int64_t value = 0;
+    for (char c : text) {
+        if (c < '0' || c > '9')
+            return std::nullopt;
+        value = value * 10 + (c - '0');
+    }
+    return value;
+}
+
 inline std::expected<kanariv::types::Track, kanariv::utils::Error>
 ensureLibraryTrack(kanariv::contracts::IDatabase& db, const std::filesystem::path& p) {
     auto fpRes = kanariv::media::internal::computeFingerprint(p);
@@ -258,7 +284,7 @@ Service::Impl::handle(const kanariv::ipc::PlayFiles& cmd) {
     if (!pr)
         return std::unexpected{pr.error()};
     updateShmStatus();
-    return statusResult();
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -274,7 +300,7 @@ Service::Impl::handle(const kanariv::ipc::QueueSwitch& qs) {
     if (!sw)
         return std::unexpected{sw.error()};
     updateShmStatus();
-    return statusResult();
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -313,6 +339,7 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
                 if (!eq)
                     return std::unexpected{eq.error()};
                 ServiceAccess::noteEnqueued(*engine_, qid, 1);
+                noteStateChanged();
             }
             updateShmStatus();
             std::vector<kanariv::types::Track> single;
@@ -400,6 +427,7 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
             if (!er)
                 return std::unexpected{er.error()};
             ServiceAccess::noteEnqueued(*engine_, qid, fresh.size());
+            noteStateChanged();
         }
     }
     updateShmStatus();
@@ -412,52 +440,36 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
     auto q = db_->getQueue(qid);
     if (!q)
         return std::unexpected{q.error()};
-    // parse idOrIndex
-    int64_t val = 0;
-    bool isNum = false;
-    try {
-        std::string s = qr.idOrIndex;
-        s.erase(0, s.find_first_not_of(" \t\n\r"));
-        s.erase(s.find_last_not_of(" \t\n\r") + 1);
-        if (!s.empty()) {
-            bool allDigit = true;
-            std::size_t off = (s[0] == '-' ? 1 : 0);
-            for (std::size_t i = off; i < s.size(); ++i)
-                if (!std::isdigit((unsigned char)s[i])) {
-                    allDigit = false;
-                    break;
-                }
-            if (allDigit) {
-                val = std::stoll(s);
-                isNum = true;
-            }
-        }
-    } catch (...) {
+    // Resolve idOrIndex with an explicit discriminator (S6):
+    //   "#pos:<n>" = zero-based queue position, "#id:<n>" = track id, and a
+    //   bare number is a position (the D4 contract makes db::queueRemove take
+    //   an ordinal index, which is what clients send). Never guess between the
+    //   two spaces: a wrong guess silently removes a different track.
+    std::string_view spec = detail::trimAscii(qr.idOrIndex);
+    bool byTrackId = false;
+    if (spec.starts_with("#id:")) {
+        byTrackId = true;
+        spec.remove_prefix(4);
+    } else if (spec.starts_with("#pos:")) {
+        spec.remove_prefix(5);
     }
-    if (!isNum) {
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "invalid idOrIndex")};
+    const auto number = detail::parseQueueOrdinal(spec);
+    if (!number) {
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg,
+            "queue remove: invalid idOrIndex (use <pos>, #pos:<n> or #id:<n>)")};
     }
-    // Try a zero-based index first, then a track id. Negative values can only
-    // name a track id, so they bypass the index attempt.
-    bool removed = false;
-    if (val >= 0) {
-        auto byIndex = db_->queueRemove(qid, val);
-        if (byIndex) {
-            removed = true;
-        } else if (byIndex.error().code != kanariv::utils::StatusCode::NotFound) {
-            return std::unexpected{byIndex.error()};
-        }
-    }
-    if (!removed) {
-        auto index = db_->queueIndexOf(qid, val);
-        if (!index)
+    int64_t index = *number;
+    if (byTrackId) {
+        auto found = db_->queueIndexOf(qid, *number);
+        if (!found)
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                              "queue item not found")};
-        auto byTrack = db_->queueRemove(qid, static_cast<int64_t>(*index));
-        if (!byTrack)
-            return std::unexpected{byTrack.error()};
+        index = static_cast<int64_t>(*found);
     }
+    auto removedRes = db_->queueRemove(qid, index);
+    if (!removedRes)
+        return std::unexpected{removedRes.error()};
     auto items = db_->listQueueItems(qid);
     if (!items)
         return std::unexpected{items.error()};
@@ -468,6 +480,7 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
             tracks.push_back(std::move(*tr));
     }
     updateShmStatus();
+    noteStateChanged();
     return Result{QueueTracks{std::move(tracks)}};
 }
 
@@ -512,6 +525,7 @@ Service::Impl::handle(const kanariv::ipc::QueueMove& qm) {
             tracks.push_back(std::move(*tr));
     }
     updateShmStatus();
+    noteStateChanged();
     return Result{QueueTracks{std::move(tracks)}};
 }
 
@@ -529,6 +543,7 @@ Service::Impl::handle(const kanariv::ipc::QueueClear&) {
             return std::unexpected{e.error()};
     }
     updateShmStatus();
+    noteStateChanged();
     return Result{QueueTracks{{}}};
 }
 
@@ -545,7 +560,7 @@ Service::Impl::handle(const kanariv::ipc::QueueShuffle& qs) {
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();
-    return statusResult();
+    return statusAfterChange();
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -555,8 +570,11 @@ Service::Impl::handle(const kanariv::ipc::QueueRepeat& qr) {
         if (!r)
             return std::unexpected{r.error()};
     }
-    // if no arg provided, just show current (statusResult already includes it)
     updateShmStatus();
+    // Without a mode this is a read of the current repeat setting, so it must
+    // not bump the change sequence (S5).
+    if (qr.mode.has_value())
+        return statusAfterChange();
     return statusResult();
 }
 

@@ -531,7 +531,7 @@ class LinuxImpl final : public Impl {
     // callback synchronously calls back into setPlaybackState()/setPlaybackMode().
     Callbacks copyCallbacks() const {
         std::lock_guard lock(mtx_);
-        return callbacks_;
+        return callbacks();
     }
 
     // ----- container/value helpers -----

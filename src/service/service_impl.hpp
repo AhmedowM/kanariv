@@ -10,6 +10,7 @@
  */
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -42,13 +43,20 @@ struct Service::Impl {
     Impl(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts::IDatabase> db,
          std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
          std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
-         std::string socketPath, std::intptr_t lockFd,
+         std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,
          std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName);
 
     kanariv::utils::Expected<void> run(std::stop_token st);
     void shutdown();
     void updateShmStatus();
+    /** Status snapshot; a pure read that does not touch the change sequence. */
     std::expected<kanariv::ipc::Result, kanariv::utils::Error> statusResult();
+    /** Status snapshot after a real state change: bumps the sequence, then reads. */
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error> statusAfterChange();
+    /** Bumps the status change sequence and wakes StatusWait waiters. */
+    void noteStateChanged();
+    /** Blocks until the sequence changes or the timeout elapses. */
+    void waitForStatusChange(std::chrono::milliseconds timeout);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     dispatch(const kanariv::ipc::Command& cmd);
 
@@ -184,6 +192,7 @@ struct Service::Impl {
     std::unique_ptr<IpcServer> server_;
     std::unique_ptr<kanariv::utils::Logger> logger_;
     std::filesystem::path pidPath_;
+    std::filesystem::path lockPath_;
     std::string socketPath_;
     std::intptr_t lockFd_{-1};
     std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter_;
@@ -191,10 +200,19 @@ struct Service::Impl {
     std::unique_ptr<kanariv::media_session::MediaSession> mediaSession_;
     std::atomic<bool> running_{false};
     std::atomic<bool> shutdownRequested_{false};
+    /** Set once shutdown() starts; late media-key intents are rejected. */
+    std::atomic<bool> shuttingDown_{false};
+
+    // Serializes command dispatch: one writer into Engine/Database at a time,
+    // matching the documented IPC model. StatusWait waits outside this lock.
+    std::mutex dispatchMtx_;
+    // Guards calls into the OS media-session backend, so dispatch and engine
+    // track callbacks never update it concurrently.
+    std::mutex mediaMtx_;
 
     // Status-change notification for StatusWait (long-poll style streaming).
-    // Incremented on every status-changing operation; StatusWait blocks until
-    // it changes or a timeout elapses.
+    // Bumped by actual state changes only (engine events and mutating
+    // commands); pure reads never bump it, so waiters do not wake each other.
     std::atomic<uint64_t> status_seq_{0};
     std::mutex status_mtx_;
     std::condition_variable status_cv_;

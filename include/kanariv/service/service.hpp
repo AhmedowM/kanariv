@@ -58,9 +58,11 @@ struct ServiceConfig : public kanariv::config::Config {
  * @ingroup kanariv_service
  *
  * @par Thread safety
- * Service is not thread-safe for concurrent method calls. The IPC server runs
- * on its own thread and invokes its internal dispatcher serially. External callers should not
- * invoke Service methods concurrently with server->run().
+ * Command dispatch is serialized internally: IPC connection threads, media-key
+ * callbacks and dispatchCommand() all pass through one dispatch mutex, so
+ * Engine/Database never see concurrent writers. The remaining Service methods
+ * (destroy the instance, engine(), db()) are not synchronized and must not be
+ * called concurrently with server->run().
  *
  * @par Lifetime
  * Created via create(), runs via run(stop_token), cleaned up via shutdown() in
@@ -173,11 +175,13 @@ class KANARIV_API Service final {
 
     /**
      * @brief Access the database instance.
-     * @return Reference to the Database.
+     * @return Pointer to the Database, or nullptr when the service was created
+     * without one.
      * @details Exposed for host integrations (e.g. Android foreground service)
-     * that need direct database access without going through IPC.
+     * that need direct database access without going through IPC. Commands
+     * that require a database fail with StatusCode::State while it is null.
      */
-    kanariv::contracts::IDatabase& db() noexcept;
+    [[nodiscard]] kanariv::contracts::IDatabase* db() noexcept;
 
     /**
      * @brief Gracefully shut down the service.
@@ -214,7 +218,7 @@ class KANARIV_API Service final {
     Service(const ServiceConfig& cfg, std::shared_ptr<kanariv::contracts::IDatabase> db,
             std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
             std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
-            std::string socketPath, std::intptr_t lockFd,
+            std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,
             std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName);
 
     struct Impl;

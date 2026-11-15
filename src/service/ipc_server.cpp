@@ -34,7 +34,36 @@
 
 #include <kanariv/config.hpp>
 
+#include "ipc_io.hpp"
 #include "ipc_server.hpp"
+
+namespace {
+
+/// Concurrent connections served at once; beyond this the server refuses the
+/// connection instead of spawning an unbounded number of threads.
+constexpr std::size_t kMaxClients = 32;
+/// Time allowed for one whole framed request to arrive.
+constexpr std::chrono::milliseconds kRequestTimeout{5000};
+/// Time allowed for one whole framed reply to leave the daemon.
+constexpr std::chrono::milliseconds kReplyTimeout{5000};
+
+/// Frames an out-of-band error reply (unsolicited id 0), used for refusals and
+/// last-resort handler failures. Never throws.
+template <typename Write>
+void sendErrorFrame(Write&& write, kanariv::utils::StatusCode code, std::string_view message) {
+    try {
+        kanariv::ipc::IpcReply reply;
+        reply.id = 0;
+        reply.result = std::unexpected{kanariv::utils::makeError(code, message)};
+        std::string json = kanariv::ipc::serializeReply(reply);
+        auto framed = kanariv::ipc::frame(json);
+        if (framed)
+            (void)write(*framed);
+    } catch (...) {
+    }
+}
+
+} // namespace
 
 #ifdef _WIN32
 namespace {
@@ -316,12 +345,17 @@ void IpcServer::Impl::run(std::stop_token st,
                 // else: stay without a listener; the loop re-checks stop
                 // flags and shutdown's post-join drain closes strays.
             }
+            bool refused = false;
             {
                 std::lock_guard<std::mutex> lk(clientsMtx_);
-                clients_.emplace_back();
-                clients_.back().thread =
-                    std::jthread([this, clientHandle, dispatch](std::stop_token ct) {
-                        (void)ct;
+                // Reap exited connections first: the cap counts live threads.
+                std::erase_if(clients_, [](const ClientSlot& s) { return s.done; });
+                if (clients_.size() >= kMaxClients) {
+                    refused = true;
+                } else {
+                    clients_.emplace_back();
+                    clients_.back().thread = std::jthread([this, clientHandle,
+                                                           dispatch](std::stop_token ct) {
                         // Self-retire on every exit path (including
                         // exceptions): the slot is swept by the accept loop.
                         struct RetireGuard {
@@ -330,12 +364,26 @@ void IpcServer::Impl::run(std::stop_token st,
                                 self->retireClient();
                             }
                         } retire{this};
+                        auto closeClient = [clientHandle] { ::CloseHandle(clientHandle); };
+                        auto writeReply = [clientHandle, ct](std::span<const std::byte> bytes) {
+                            return detail::writeAll(clientHandle, bytes, ct,
+                                                    std::chrono::steady_clock::now() +
+                                                        kReplyTimeout);
+                        };
                         try {
+                            // Nonblocking byte mode: an idle or stalled
+                            // peer can never park this thread past a
+                            // deadline or a shutdown request.
+                            if (!detail::setNonBlocking(clientHandle)) {
+                                closeClient();
+                                return;
+                            }
+                            const auto deadline =
+                                std::chrono::steady_clock::now() + kRequestTimeout;
                             std::array<std::byte, 4> hdr{};
-                            DWORD r = 0;
-                            BOOL ok = ::ReadFile(clientHandle, hdr.data(), 4, &r, nullptr);
-                            if (ok == 0 || r != 4) {
-                                ::CloseHandle(clientHandle);
+                            if (detail::readExact(clientHandle, std::span<std::byte>(hdr), ct,
+                                                  deadline) != detail::IoStatus::Ok) {
+                                closeClient();
                                 return;
                             }
                             std::uint32_t len =
@@ -344,17 +392,15 @@ void IpcServer::Impl::run(std::stop_token st,
                                 (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
                                 static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
                             if (len > kanariv::ipc::kMaxFrameBytes) {
-                                ::CloseHandle(clientHandle);
+                                closeClient();
                                 return;
                             }
                             std::vector<std::byte> payload(len);
-                            if (len > 0) {
-                                DWORD rr = 0;
-                                ok = ::ReadFile(clientHandle, payload.data(), len, &rr, nullptr);
-                                if (ok == 0 || rr != len) {
-                                    ::CloseHandle(clientHandle);
-                                    return;
-                                }
+                            if (len > 0 &&
+                                detail::readExact(clientHandle, std::span<std::byte>(payload), ct,
+                                                  deadline) != detail::IoStatus::Ok) {
+                                closeClient();
+                                return;
                             }
                             std::string reqStr;
                             reqStr.reserve(payload.size());
@@ -375,52 +421,44 @@ void IpcServer::Impl::run(std::stop_token st,
                             }
                             std::string repJson = kanariv::ipc::serializeReply(reply);
                             auto framed = kanariv::ipc::frame(repJson);
-                            if (!framed) {
-                                ::CloseHandle(clientHandle);
+                            if (!framed || writeReply(*framed) != detail::IoStatus::Ok) {
+                                closeClient();
                                 return;
                             }
-                            DWORD w2 = 0;
-                            BOOL okW =
-                                ::WriteFile(clientHandle, framed->data(),
-                                            static_cast<DWORD>(framed->size()), &w2, nullptr);
-                            if (!okW) {
-                                ::CloseHandle(clientHandle);
-                                return;
-                            }
-                            ::FlushFileBuffers(clientHandle);
-                            ::DisconnectNamedPipe(clientHandle);
-                            ::CloseHandle(clientHandle);
+                            // Close (not disconnect): the instance is not
+                            // reused, and closing keeps the buffered reply
+                            // readable by the client. Disconnecting here
+                            // would discard bytes the client has not read.
+                            closeClient();
+                            return;
                         } catch (const std::exception& e) {
                             // Last-resort fallback: a thrown handler used to
                             // just close the pipe, so the client could only
                             // report `ReadFile hdr failed: 109`
                             // (ERROR_BROKEN_PIPE). Try to answer with the
                             // cause first.
-                            try {
-                                kanariv::ipc::IpcReply errReply;
-                                errReply.id = 0;
-                                errReply.result = std::unexpected{kanariv::utils::makeError(
-                                    kanariv::utils::StatusCode::Internal,
-                                    std::string("server error: ") + e.what())};
-                                std::string errJson = kanariv::ipc::serializeReply(errReply);
-                                auto errFrame = kanariv::ipc::frame(errJson);
-                                if (errFrame) {
-                                    DWORD w3 = 0;
-                                    (void)::WriteFile(clientHandle, errFrame->data(),
-                                                      static_cast<DWORD>(errFrame->size()), &w3,
-                                                      nullptr);
-                                    (void)::FlushFileBuffers(clientHandle);
-                                    (void)::DisconnectNamedPipe(clientHandle);
-                                }
-                            } catch (...) {
-                            }
-                            ::CloseHandle(clientHandle);
+                            sendErrorFrame(writeReply, kanariv::utils::StatusCode::Internal,
+                                           std::string("server error: ") + e.what());
+                            closeClient();
                         } catch (...) {
-                            ::CloseHandle(clientHandle);
+                            closeClient();
                         }
                     });
-                // Reap exited connections: the list holds live threads only.
-                std::erase_if(clients_, [](const ClientSlot& s) { return s.done; });
+                }
+            }
+            if (refused) {
+                // Over the cap: answer with an error frame instead of spawning
+                // a thread, then drop the connection. Configure the instance
+                // first so the refusal write polls instead of blocking.
+                if (detail::setNonBlocking(clientHandle)) {
+                    auto writeRefusal = [clientHandle, st](std::span<const std::byte> bytes) {
+                        return detail::writeAll(clientHandle, bytes, st,
+                                                std::chrono::steady_clock::now() + kReplyTimeout);
+                    };
+                    sendErrorFrame(writeRefusal, kanariv::utils::StatusCode::Busy,
+                                   "server busy: too many concurrent connections");
+                }
+                ::CloseHandle(clientHandle);
             }
 #else
             int listenSnapshot = static_cast<int>(pipeHandle_.load());
@@ -449,126 +487,110 @@ void IpcServer::Impl::run(std::stop_token st,
                     continue;
                 continue;
             }
+            bool refused = false;
             {
                 std::lock_guard<std::mutex> lk(clientsMtx_);
-                clients_.emplace_back();
-                clients_.back().thread = std::jthread([this, cfd, dispatch](std::stop_token ct) {
-                    (void)ct;
-                    // Self-retire on every exit path (including
-                    // exceptions): the slot is swept by the accept loop.
-                    struct RetireGuard {
-                        Impl* self;
-                        ~RetireGuard() {
-                            self->retireClient();
-                        }
-                    } retire{this};
-                    try {
-                        std::array<std::byte, 4> hdr{};
-                        auto recvExact = [cfd](std::span<std::byte> out) -> bool {
-                            std::size_t got = 0;
-                            while (got < out.size()) {
-                                ::ssize_t n = ::recv(cfd, reinterpret_cast<char*>(out.data()) + got,
-                                                     out.size() - got, 0);
-                                if (n <= 0) {
-                                    if (n < 0 && errno == EINTR)
-                                        continue;
-                                    return false;
-                                }
-                                got += static_cast<std::size_t>(n);
-                            }
-                            return true;
-                        };
-                        auto sendAll = [cfd](std::span<const std::byte> data) -> bool {
-                            std::size_t sent = 0;
-                            while (sent < data.size()) {
-                                ::ssize_t n =
-                                    ::send(cfd, reinterpret_cast<const char*>(data.data()) + sent,
-                                           data.size() - sent, 0);
-                                if (n < 0) {
-                                    if (errno == EINTR)
-                                        continue;
-                                    return false;
-                                }
-                                sent += static_cast<std::size_t>(n);
-                            }
-                            return true;
-                        };
-                        if (!recvExact(std::span<std::byte>(hdr))) {
-                            ::close(cfd);
-                            return;
-                        }
-                        std::uint32_t len =
-                            (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
-                            (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
-                            (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
-                            static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-                        if (len > kanariv::ipc::kMaxFrameBytes) {
-                            ::close(cfd);
-                            return;
-                        }
-                        std::vector<std::byte> payload(len);
-                        if (len > 0 && !recvExact(std::span<std::byte>(payload))) {
-                            ::close(cfd);
-                            return;
-                        }
-                        std::string reqStr;
-                        reqStr.reserve(payload.size());
-                        for (auto b : payload)
-                            reqStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
-                        auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
-                        kanariv::ipc::IpcReply reply;
-                        if (!reqExp) {
-                            reply.id = 0;
-                            reply.result = std::unexpected{reqExp.error()};
-                        } else {
-                            reply.id = reqExp->id;
-                            auto resExp = dispatch(reqExp->cmd);
-                            if (!resExp)
-                                reply.result = std::unexpected{resExp.error()};
-                            else
-                                reply.result = *resExp;
-                        }
-                        std::string repJson = kanariv::ipc::serializeReply(reply);
-                        auto framed = kanariv::ipc::frame(repJson);
-                        if (!framed || !sendAll(*framed)) {
-                            ::close(cfd);
-                            return;
-                        }
-                        ::close(cfd);
-                    } catch (const std::exception& e) {
-                        // Answer with the cause instead of silently closing
-                        // (matches the Windows branch above).
-                        try {
-                            kanariv::ipc::IpcReply errReply;
-                            errReply.id = 0;
-                            errReply.result = std::unexpected{kanariv::utils::makeError(
-                                kanariv::utils::StatusCode::Internal,
-                                std::string("server error: ") + e.what())};
-                            std::string errJson = kanariv::ipc::serializeReply(errReply);
-                            auto errFrame = kanariv::ipc::frame(errJson);
-                            if (errFrame) {
-                                std::size_t sent = 0;
-                                while (sent < errFrame->size()) {
-                                    ::ssize_t n = ::send(
-                                        cfd, reinterpret_cast<const char*>(errFrame->data()) + sent,
-                                        errFrame->size() - sent, 0);
-                                    if (n <= 0) {
-                                        if (n < 0 && errno == EINTR)
-                                            continue;
-                                        break;
-                                    }
-                                    sent += static_cast<std::size_t>(n);
-                                }
-                            }
-                        } catch (...) {
-                        }
-                        ::close(cfd);
-                    } catch (...) {
-                        ::close(cfd);
-                    }
-                });
-                // Reap exited connections: the list holds live threads only.
+                // Reap exited connections first: the cap counts live threads.
                 std::erase_if(clients_, [](const ClientSlot& s) { return s.done; });
+                if (clients_.size() >= kMaxClients) {
+                    refused = true;
+                } else {
+                    clients_.emplace_back();
+                    clients_.back().thread = std::jthread([this, cfd,
+                                                           dispatch](std::stop_token ct) {
+                        // Self-retire on every exit path (including
+                        // exceptions): the slot is swept by the accept loop.
+                        struct RetireGuard {
+                            Impl* self;
+                            ~RetireGuard() {
+                                self->retireClient();
+                            }
+                        } retire{this};
+                        auto writeReply = [cfd, ct](std::span<const std::byte> bytes) {
+                            return detail::writeAll(
+                                cfd, bytes, ct, std::chrono::steady_clock::now() + kReplyTimeout);
+                        };
+                        try {
+                            // Short receive/send timeouts make a stalled
+                            // peer visible to the stop token instead of
+                            // blocking the join in shutdown().
+                            if (!detail::configureSocket(cfd)) {
+                                ::close(cfd);
+                                return;
+                            }
+                            const auto deadline =
+                                std::chrono::steady_clock::now() + kRequestTimeout;
+                            std::array<std::byte, 4> hdr{};
+                            if (detail::readExact(cfd, std::span<std::byte>(hdr), ct, deadline) !=
+                                detail::IoStatus::Ok) {
+                                ::close(cfd);
+                                return;
+                            }
+                            std::uint32_t len =
+                                (static_cast<std::uint32_t>(std::to_underlying(hdr[0])) << 24) |
+                                (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
+                                (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
+                                static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
+                            if (len > kanariv::ipc::kMaxFrameBytes) {
+                                ::close(cfd);
+                                return;
+                            }
+                            std::vector<std::byte> payload(len);
+                            if (len > 0 && detail::readExact(cfd, std::span<std::byte>(payload), ct,
+                                                             deadline) != detail::IoStatus::Ok) {
+                                ::close(cfd);
+                                return;
+                            }
+                            std::string reqStr;
+                            reqStr.reserve(payload.size());
+                            for (auto b : payload)
+                                reqStr.push_back(static_cast<char>(static_cast<unsigned char>(b)));
+                            auto reqExp = kanariv::ipc::deserializeRequest(reqStr);
+                            kanariv::ipc::IpcReply reply;
+                            if (!reqExp) {
+                                reply.id = 0;
+                                reply.result = std::unexpected{reqExp.error()};
+                            } else {
+                                reply.id = reqExp->id;
+                                auto resExp = dispatch(reqExp->cmd);
+                                if (!resExp)
+                                    reply.result = std::unexpected{resExp.error()};
+                                else
+                                    reply.result = *resExp;
+                            }
+                            std::string repJson = kanariv::ipc::serializeReply(reply);
+                            auto framed = kanariv::ipc::frame(repJson);
+                            if (!framed || writeReply(*framed) != detail::IoStatus::Ok) {
+                                ::close(cfd);
+                                return;
+                            }
+                            ::close(cfd);
+                            return;
+                        } catch (const std::exception& e) {
+                            // Answer with the cause instead of silently
+                            // closing (matches the Windows branch above).
+                            sendErrorFrame(writeReply, kanariv::utils::StatusCode::Internal,
+                                           std::string("server error: ") + e.what());
+                            ::close(cfd);
+                        } catch (...) {
+                            ::close(cfd);
+                        }
+                    });
+                }
+            }
+            if (refused) {
+                // Over the cap: answer with an error frame instead of spawning
+                // a thread, then drop the connection. Configure the socket
+                // first so the refusal write is bounded like a served reply.
+                if (detail::configureSocket(cfd)) {
+                    auto writeRefusal = [cfd, st](std::span<const std::byte> bytes) {
+                        return detail::writeAll(cfd, bytes, st,
+                                                std::chrono::steady_clock::now() + kReplyTimeout);
+                    };
+                    sendErrorFrame(writeRefusal, kanariv::utils::StatusCode::Busy,
+                                   "server busy: too many concurrent connections");
+                }
+                ::close(cfd);
             }
 #endif
             {

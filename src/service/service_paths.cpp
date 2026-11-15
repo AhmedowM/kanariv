@@ -31,6 +31,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <system_error>
 
 #ifndef _WIN32
@@ -49,8 +50,36 @@
 #include "config_detail.hpp"
 
 namespace kanariv::service::detail {
+namespace {
+
+/**
+ * @brief Builds a pid/lock path keyed by an explicit socket endpoint.
+ * @details The endpoint directory matches the database-derived one (so the
+ * daemon keeps writing next to its existing pid/lock files); only the name is
+ * re-keyed by the socket digest.
+ */
+std::filesystem::path socketScopedPath(const std::filesystem::path& dbPath,
+                                       const std::string& socketPath, std::string_view suffix) {
+    const std::string id =
+        kanariv::config::detail_paths::endpointIdForDb(std::filesystem::path(socketPath));
+    if (auto base = kanariv::config::pidPathFor(dbPath))
+        return base->parent_path() / ("kanariv-" + id + std::string(suffix));
+    auto pp = dbPath.parent_path();
+    if (pp.empty())
+        pp = std::filesystem::current_path();
+    return pp / ("kanariv-" + id + std::string(suffix));
+}
+
+} // namespace
+
 std::filesystem::path pidPathForSocket(const std::filesystem::path& dbPath,
-                                       const std::string& /*socketPath*/) {
+                                       const std::string& socketPath) {
+    if (!socketPath.empty()) {
+        // An explicit socket names a distinct daemon endpoint (S9): pid and
+        // lock files must be scoped to it, or a second daemon on the same
+        // database would fight the first over the database-derived names.
+        return socketScopedPath(dbPath, socketPath, ".pid");
+    }
     auto r = kanariv::config::pidPathFor(dbPath);
     if (r)
         return *r;
@@ -61,12 +90,14 @@ std::filesystem::path pidPathForSocket(const std::filesystem::path& dbPath,
 }
 
 std::filesystem::path lockPathForSocket(const std::filesystem::path& dbPath,
-                                        const std::string& /*socketPath*/) {
+                                        const std::string& socketPath) {
+    if (!socketPath.empty())
+        return socketScopedPath(dbPath, socketPath, ".lock");
     auto r = kanariv::config::lockPathFor(dbPath);
     if (r)
         return *r;
     std::string hex = kanariv::config::detail_paths::endpointIdForDb(dbPath);
-    auto pidPath = pidPathForSocket(dbPath, "");
+    auto pidPath = pidPathForSocket(dbPath, socketPath);
     return pidPath.parent_path() / ("kanariv-" + hex + ".lock");
 }
 

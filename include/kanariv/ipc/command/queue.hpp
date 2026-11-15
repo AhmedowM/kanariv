@@ -153,12 +153,15 @@ struct QueueAdd final {
  *
  * @json_example {"type": "QueueRemove", "idOrIndex": "5"}
  *
- * @param idOrIndex Queue position (0-based) or track ID.
+ * @param idOrIndex Explicit selector: a bare number or `#pos:<n>` is a
+ * zero-based queue position, `#id:<n>` is a track ID. The two spaces are never
+ * guessed from the value, so a removal can only affect the row the client
+ * named.
  * @return QueueTracks object with updated queue contents.
  */
 struct QueueRemove final {
     /**
-     * @brief Queue position (0-based) or track ID.
+     * @brief `<pos>`, `#pos:<n>` (zero-based position) or `#id:<n>` (track ID).
      */
     std::string idOrIndex{};
 };

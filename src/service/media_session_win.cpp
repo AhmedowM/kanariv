@@ -560,7 +560,7 @@ class WinImpl final : public Impl {
         Callbacks callbacks;
         {
             std::lock_guard lock(mtx_);
-            callbacks = callbacks_;
+            callbacks = Impl::callbacks();
         }
         if (callbacks.onRepeat)
             callbacks.onRepeat(repeat);
@@ -572,7 +572,7 @@ class WinImpl final : public Impl {
         Callbacks callbacks;
         {
             std::lock_guard lock(mtx_);
-            callbacks = callbacks_;
+            callbacks = Impl::callbacks();
         }
         if (callbacks.onShuffle)
             callbacks.onShuffle(args.RequestedShuffleEnabled());
@@ -584,7 +584,7 @@ class WinImpl final : public Impl {
         Callbacks callbacks;
         {
             std::lock_guard lock(mtx_);
-            callbacks = callbacks_;
+            callbacks = Impl::callbacks();
         }
         if (callbacks.onSeekTo) {
             const auto position = args.RequestedPlaybackPosition();
@@ -598,7 +598,7 @@ class WinImpl final : public Impl {
         Callbacks callbacks;
         {
             std::lock_guard lock(mtx_);
-            callbacks = callbacks_;
+            callbacks = Impl::callbacks();
         }
 
         switch (args.Button()) {
@@ -627,7 +627,7 @@ class WinImpl final : public Impl {
         bool playing = false;
         {
             std::lock_guard lock(mtx_);
-            callbacks = callbacks_;
+            callbacks = Impl::callbacks();
             playing = state_ == kanariv::types::PlaybackState::Playing;
         }
 

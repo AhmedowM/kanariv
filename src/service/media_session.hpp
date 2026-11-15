@@ -18,6 +18,7 @@
 #include <expected>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 
@@ -81,10 +82,27 @@ struct Impl {
     virtual kanariv::utils::Expected<void> setVolume(float, bool) = 0;
     virtual bool active() const noexcept = 0;
 
-    void setCallbacks(Callbacks cb) noexcept { callbacks_ = std::move(cb); }
-    const Callbacks& callbacks() const noexcept { return callbacks_; }
+    /**
+     * @brief Replace the callback set.
+     * @details Safe to call while backend threads are invoking callbacks: the
+     * write is serialized with copies taken by `callbacks()`.
+     */
+    void setCallbacks(Callbacks cb) noexcept {
+        std::lock_guard<std::mutex> lk(callbacksMtx_);
+        callbacks_ = std::move(cb);
+    }
+
+    /**
+     * @brief Take a copy of the callback set.
+     * @return Snapshot safe to invoke without holding any backend lock.
+     */
+    Callbacks callbacks() const {
+        std::lock_guard<std::mutex> lk(callbacksMtx_);
+        return callbacks_;
+    }
 
   protected:
+    mutable std::mutex callbacksMtx_;
     Callbacks callbacks_;
     bool active_{false};
 };

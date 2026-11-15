@@ -50,8 +50,9 @@ namespace kanariv::service {
  * the worker thread (it cannot join itself) and must not run concurrently with
  * each other.
  *
- * The wrapped Service is not thread-safe for concurrent command calls; a host
- * must serialize any command dispatch it performs through `service()`.
+ * The wrapped Service serializes command dispatch internally, so a host may
+ * dispatch commands from any thread; concurrent calls are queued on one
+ * dispatch mutex rather than racing Engine/Database.
  */
 class KANARIV_API Host final {
   public:
