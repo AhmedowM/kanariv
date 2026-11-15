@@ -91,7 +91,9 @@ constexpr std::array kCommandSchema{
     commandSchema<PlayFiles>("PlayFiles"),
     commandSchema<QueueSwitch>("QueueSwitch"),
     commandSchema<QueueAdd>("QueueAdd"),
+    commandSchema<QueueAddBatch>("QueueAddBatch"),
     commandSchema<QueueRemove>("QueueRemove"),
+    commandSchema<QueueRemoveBatch>("QueueRemoveBatch"),
     commandSchema<QueueMove>("QueueMove"),
     commandSchema<QueueClear>("QueueClear"),
     commandSchema<QueueShuffle>("QueueShuffle"),
@@ -224,8 +226,23 @@ Json toJson(const Command& cmd) {
             } else if constexpr (std::is_same_v<T, QueueAdd>) {
                 j["query"] = v.query;
                 j["search"] = v.search;
+            } else if constexpr (std::is_same_v<T, QueueAddBatch>) {
+                j["queries"] = Json::array();
+                for (const auto& q : v.queries) {
+                    Json e;
+                    e = q;
+                    j["queries"].push_back(e);
+                }
+                j["search"] = v.search;
             } else if constexpr (std::is_same_v<T, QueueRemove>) {
                 j["idOrIndex"] = v.idOrIndex;
+            } else if constexpr (std::is_same_v<T, QueueRemoveBatch>) {
+                j["selectors"] = Json::array();
+                for (const auto& s : v.selectors) {
+                    Json e;
+                    e = s;
+                    j["selectors"].push_back(e);
+                }
             } else if constexpr (std::is_same_v<T, QueueMove>) {
                 j["from"] = v.from;
                 j["to"] = v.to;
@@ -519,11 +536,39 @@ std::expected<T, kanariv::utils::Error> parseCommandPayload(const Json& j) {
             if (j.contains("search") && j["search"].isBoolean())
                 search = j["search"].get<bool>();
             return QueueAdd{std::move(q), search};
+        } else if constexpr (std::is_same_v<T, QueueAddBatch>) {
+            QueueAddBatch v{};
+            if (j.contains("queries") && j["queries"].isArray()) {
+                const Json arr = j["queries"];
+                for (std::size_t i = 0, n = arr.size(); i < n; ++i) {
+                    auto je = arr.at(i);
+                    if (!je)
+                        return std::unexpected{je.error()};
+                    if (je->isString())
+                        v.queries.push_back(je->get<std::string>());
+                }
+            }
+            if (j.contains("search") && j["search"].isBoolean())
+                v.search = j["search"].get<bool>();
+            return v;
         } else if constexpr (std::is_same_v<T, QueueRemove>) {
             std::string id;
             if (j.contains("idOrIndex") && j["idOrIndex"].isString())
                 id = j["idOrIndex"].get<std::string>();
             return QueueRemove{std::move(id)};
+        } else if constexpr (std::is_same_v<T, QueueRemoveBatch>) {
+            QueueRemoveBatch v{};
+            if (j.contains("selectors") && j["selectors"].isArray()) {
+                const Json arr = j["selectors"];
+                for (std::size_t i = 0, n = arr.size(); i < n; ++i) {
+                    auto je = arr.at(i);
+                    if (!je)
+                        return std::unexpected{je.error()};
+                    if (je->isString())
+                        v.selectors.push_back(je->get<std::string>());
+                }
+            }
+            return v;
         } else if constexpr (std::is_same_v<T, QueueMove>) {
             std::size_t from = 0, to = 0;
             if (j.contains("from") && j["from"].isNumber())

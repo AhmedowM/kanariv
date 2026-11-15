@@ -59,6 +59,36 @@ Json toJson(const Result& r) {
                 for (const auto& t : v.tracks)
                     j["tracks"].push_back(kanariv::utils::trackToJson(t));
                 return j;
+            } else if constexpr (std::is_same_v<T, QueueAddReport>) {
+                Json j;
+                j["type"] = "QueueAddReport";
+                j["items"] = Json::array();
+                for (const auto& it : v.items) {
+                    Json e = Json::object();
+                    e["query"] = it.query;
+                    if (it.track.id != 0)
+                        e["track"] = kanariv::utils::trackToJson(it.track);
+                    e["status"] = it.status;
+                    if (!it.detail.empty())
+                        e["detail"] = it.detail;
+                    j["items"].push_back(e);
+                }
+                return j;
+            } else if constexpr (std::is_same_v<T, QueueRemoveReport>) {
+                Json j;
+                j["type"] = "QueueRemoveReport";
+                j["items"] = Json::array();
+                for (const auto& it : v.items) {
+                    Json e = Json::object();
+                    e["selector"] = it.selector;
+                    if (it.track.id != 0)
+                        e["track"] = kanariv::utils::trackToJson(it.track);
+                    e["status"] = it.status;
+                    if (!it.detail.empty())
+                        e["detail"] = it.detail;
+                    j["items"].push_back(e);
+                }
+                return j;
             } else if constexpr (std::is_same_v<T, Queues>) {
                 Json j;
                 j["type"] = "Queues";
@@ -405,6 +435,52 @@ std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
                 }
             }
             return Result{std::move(qt)};
+        }
+        if (t == "QueueAddReport" || t == "QueueRemoveReport") {
+            const bool adding = t == "QueueAddReport";
+            QueueAddReport addReport{};
+            QueueRemoveReport removeReport{};
+            if (j.contains("items") && j["items"].isArray()) {
+                const Json items = j["items"];
+                for (std::size_t ii = 0, in = items.size(); ii < in; ++ii) {
+                    auto je = items.at(ii);
+                    if (!je)
+                        return std::unexpected{je.error()};
+                    const Json& item = *je;
+                    kanariv::types::Track track{};
+                    if (item.contains("track")) {
+                        auto tr = kanariv::utils::trackFromJson(item["track"]);
+                        if (!tr)
+                            return std::unexpected{tr.error()};
+                        track = std::move(*tr);
+                    }
+                    std::string detail;
+                    if (auto d = item.at("detail"); d && d->isString())
+                        detail = d->get<std::string>();
+                    if (adding) {
+                        QueueAddItem it{};
+                        if (auto q = item.at("query"); q && q->isString())
+                            it.query = q->get<std::string>();
+                        if (auto s = item.at("status"); s && s->isString())
+                            it.status = s->get<std::string>();
+                        it.track = std::move(track);
+                        it.detail = std::move(detail);
+                        addReport.items.push_back(std::move(it));
+                    } else {
+                        QueueRemoveItem it{};
+                        if (auto s = item.at("selector"); s && s->isString())
+                            it.selector = s->get<std::string>();
+                        if (auto st = item.at("status"); st && st->isString())
+                            it.status = st->get<std::string>();
+                        it.track = std::move(track);
+                        it.detail = std::move(detail);
+                        removeReport.items.push_back(std::move(it));
+                    }
+                }
+            }
+            if (adding)
+                return Result{std::move(addReport)};
+            return Result{std::move(removeReport)};
         }
         if (t == "Queues") {
             Queues qs{};

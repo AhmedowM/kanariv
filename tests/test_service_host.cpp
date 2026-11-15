@@ -718,6 +718,88 @@ TEST_CASE("queue remove distinguishes positions from track ids", "[service][queu
     REQUIRE(missing.error().code == kanariv::utils::StatusCode::NotFound);
 }
 
+TEST_CASE("queue batch commands report per-item outcomes", "[service][queue][a2b]") {
+    auto dir = tempDirPath("queue_batch_a2b");
+    std::filesystem::create_directories(dir / "logs");
+    auto dbRes = kanariv::db::Database::open((dir / "library.db").generic_string());
+    REQUIRE(dbRes.has_value());
+    std::shared_ptr<kanariv::db::Database> db(std::move(*dbRes));
+
+    std::vector<int64_t> ids;
+    for (int i = 0; i < 3; ++i) {
+        kanariv::types::Track t;
+        t.path = "track" + std::to_string(i) + ".wav";
+        t.duration = 1.0;
+        for (int b = 0; b < 32; ++b)
+            t.fingerprint[b] = static_cast<std::uint8_t>(i * 10 + b);
+        auto id = db->insertTrack(t);
+        REQUIRE(id.has_value());
+        ids.push_back(*id);
+    }
+
+    auto svcRes = Service::create(inProcessConfig(dir / "library.db", dir / "logs"),
+                                  kanariv::db::makeStorage(db));
+    REQUIRE(svcRes.has_value());
+    auto svc = std::move(*svcRes);
+
+    const auto queueIds = [&]() {
+        std::vector<int64_t> out;
+        auto res = svc->dispatchCommand(kanariv::ipc::QueueList{"added"});
+        if (!res)
+            return out;
+        if (auto* qt = std::get_if<kanariv::ipc::QueueTracks>(&*res))
+            for (const auto& t : qt->tracks)
+                out.push_back(t.id);
+        return out;
+    };
+
+    // One request for the whole batch: outcomes stay in request order, an
+    // already-queued id is reported, never duplicated, and an unknown id fails
+    // without aborting the rest.
+    auto add = svc->dispatchCommand(
+        kanariv::ipc::QueueAddBatch{.queries = {std::to_string(ids[0]), std::to_string(ids[1]),
+                                                "999999", std::to_string(ids[0])},
+                                    .search = false});
+    REQUIRE(add.has_value());
+    auto* addReport = std::get_if<kanariv::ipc::QueueAddReport>(&*add);
+    REQUIRE(addReport != nullptr);
+    REQUIRE(addReport->items.size() == 4);
+    REQUIRE(addReport->items[0].query == std::to_string(ids[0]));
+    REQUIRE(addReport->items[0].status == "added");
+    REQUIRE(addReport->items[0].track.id == ids[0]);
+    REQUIRE(addReport->items[1].status == "added");
+    REQUIRE(addReport->items[2].status == "failed");
+    REQUIRE(addReport->items[2].track.id == 0);
+    REQUIRE(addReport->items[2].detail == "not found");
+    REQUIRE(addReport->items[3].status == "duplicate");
+    REQUIRE(queueIds() == std::vector<int64_t>{ids[0], ids[1]});
+
+    // Re-adding the same queries is all duplicates and creates no rows.
+    auto again = svc->dispatchCommand(
+        kanariv::ipc::QueueAddBatch{.queries = {std::to_string(ids[1])}, .search = false});
+    REQUIRE(again.has_value());
+    auto* againReport = std::get_if<kanariv::ipc::QueueAddReport>(&*again);
+    REQUIRE(againReport != nullptr);
+    REQUIRE(againReport->items.size() == 1);
+    REQUIRE(againReport->items[0].status == "duplicate");
+    REQUIRE(queueIds() == std::vector<int64_t>{ids[0], ids[1]});
+
+    // Selectors apply in request order; a missing id and a malformed selector
+    // are reported per item and leave the rest of the batch intact.
+    auto rem = svc->dispatchCommand(
+        kanariv::ipc::QueueRemoveBatch{.selectors = {"#pos:0", "#id:999999", "nonsense"}});
+    REQUIRE(rem.has_value());
+    auto* remReport = std::get_if<kanariv::ipc::QueueRemoveReport>(&*rem);
+    REQUIRE(remReport != nullptr);
+    REQUIRE(remReport->items.size() == 3);
+    REQUIRE(remReport->items[0].status == "removed");
+    REQUIRE(remReport->items[0].track.id == ids[0]);
+    REQUIRE(remReport->items[1].status == "missing");
+    REQUIRE(remReport->items[2].status == "failed");
+    REQUIRE_FALSE(remReport->items[2].detail.empty());
+    REQUIRE(queueIds() == std::vector<int64_t>{ids[1]});
+}
+
 TEST_CASE("explicit sockets give daemons independent pid and lock files", "[service][s9]") {
     auto dir = tempDirPath("service_explicit_socket");
     auto dbPath = dir / "library.db";

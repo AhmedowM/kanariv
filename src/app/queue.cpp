@@ -14,21 +14,21 @@
 #include <app/detail.hpp>
 #include <app/format_internal.hpp>
 #include <app/paths_internal.hpp>
-#include <kanariv/app/app.hpp>
-#include <kanariv/app/paths.hpp>
-#include <kanariv/client/client.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/ipc/result.hpp>
-#include <kanariv/types/record.hpp>
-#include <kanariv/types/wire.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/parse.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <format>
+#include <kanariv/app/app.hpp>
+#include <kanariv/app/paths.hpp>
+#include <kanariv/client/client.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/types/record.hpp>
+#include <kanariv/types/wire.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/parse.hpp>
 #include <optional>
 #include <set>
 #include <string>
@@ -38,6 +38,27 @@
 #include <vector>
 
 namespace kanariv::app {
+
+namespace {
+
+/** Rebuilds the QueueTracks JSON shape from a batch add report. */
+kanariv::ipc::Result collectAddedTracks(const kanariv::ipc::Result& res) {
+    kanariv::ipc::QueueTracks qt{};
+    if (auto* ar = std::get_if<kanariv::ipc::QueueAddReport>(&res)) {
+        for (const auto& item : ar->items) {
+            if (item.track.id != 0)
+                qt.tracks.push_back(item.track);
+        }
+    }
+    return kanariv::ipc::Result{std::move(qt)};
+}
+
+bool anyItemFailed(const kanariv::ipc::QueueAddReport& report) {
+    return std::any_of(report.items.begin(), report.items.end(),
+                       [](const auto& item) { return item.status == "failed"; });
+}
+
+} // namespace
 
 AppResult App::queueList() {
     kanariv::ipc::Command cmd{kanariv::ipc::QueueQueues{}};
@@ -133,23 +154,17 @@ BatchResult App::queueAdd(const std::vector<std::string>& paths, const std::stri
         }
         if (pd->tracks.empty())
             return BatchReport::fail(std::format("queue add: playlist {} has no tracks", playlist));
-        int added = 0;
-        kanariv::ipc::QueueTracks collected{};
-        for (auto& t : pd->tracks) {
-            kanariv::ipc::Command cmd{
-                kanariv::ipc::QueueAdd{.query = std::to_string(t.id), .search = false}};
-            auto res = impl_->sendRaw(cmd);
-            if (!res) {
-                detail::renderErrorInto(rep.err, res.error());
-                continue;
-            }
-            if (auto* qt = std::get_if<kanariv::ipc::QueueTracks>(&*res)) {
-                for (auto& at : qt->tracks)
-                    collected.tracks.push_back(at);
-            }
-            added += detail::printAddedText(*res, seen, rep.out, rep.err);
-        }
-        rep.json = kanariv::ipc::Result{std::move(collected)};
+        std::vector<std::string> queries;
+        queries.reserve(pd->tracks.size());
+        for (auto& t : pd->tracks)
+            queries.push_back(std::to_string(t.id));
+        kanariv::ipc::Command cmd{
+            kanariv::ipc::QueueAddBatch{.queries = std::move(queries), .search = false}};
+        auto res = impl_->sendRaw(cmd);
+        if (!res)
+            return std::unexpected{res.error()};
+        int added = detail::printAddReportText(*res, seen, rep.out, rep.err);
+        rep.json = collectAddedTracks(*res);
         detail::countLineText(added, rep.out);
         rep.exitCode = (added == 0) ? 1 : 0;
         return rep;
@@ -191,22 +206,19 @@ BatchResult App::queueAdd(const std::vector<std::string>& paths, const std::stri
         }
     }
     int added = 0;
-    kanariv::ipc::QueueTracks collected{};
-    for (auto& f : files) {
-        kanariv::ipc::Command cmd{kanariv::ipc::QueueAdd{.query = f, .search = false}};
+    if (!files.empty()) {
+        kanariv::ipc::Command cmd{
+            kanariv::ipc::QueueAddBatch{.queries = std::move(files), .search = false}};
         auto res = impl_->sendRaw(cmd);
-        if (!res) {
-            detail::renderErrorInto(rep.err, res.error());
-            hardFail = true;
-            continue;
-        }
-        if (auto* qt = std::get_if<kanariv::ipc::QueueTracks>(&*res)) {
-            for (auto& at : qt->tracks)
-                collected.tracks.push_back(at);
-        }
-        added += detail::printAddedText(*res, seen, rep.out, rep.err);
+        if (!res)
+            return std::unexpected{res.error()};
+        if (auto* ar = std::get_if<kanariv::ipc::QueueAddReport>(&*res))
+            hardFail = hardFail || anyItemFailed(*ar);
+        added = detail::printAddReportText(*res, seen, rep.out, rep.err);
+        rep.json = collectAddedTracks(*res);
+    } else {
+        rep.json = kanariv::ipc::Result{kanariv::ipc::QueueTracks{}};
     }
-    rep.json = kanariv::ipc::Result{std::move(collected)};
     detail::countLineText(added, rep.out);
     rep.exitCode = (added == 0 && hardFail) ? 1 : 0;
     return rep;
@@ -331,25 +343,31 @@ BatchResult App::queueRemove(const std::string& id, const std::string& pos,
               [](const RemTarget& a, const RemTarget& b) { return a.pos > b.pos; });
     int removed = 0;
     std::vector<kanariv::types::Track> removedTracks;
+    std::vector<std::string> selectors;
+    selectors.reserve(targets.size());
     for (auto& t : targets) {
         // Always send the discriminator (A2a): a bare number would be resolved
         // as a position and could delete a different row. `#id:` is resolved
         // server-side under the queue lock, so an --id removal cannot be
         // retargeted by a concurrent change; `#pos:` targets stay valid because
-        // targets are removed in descending position order.
-        const std::string selector =
-            hasId ? std::format("#id:{}", t.track.id) : std::format("#pos:{}", t.pos);
-        kanariv::ipc::Command cmd{kanariv::ipc::QueueRemove{selector}};
+        // the batch applies selectors in request order and they are sorted
+        // descending, so earlier removals never shift a later target.
+        selectors.push_back(hasId ? std::format("#id:{}", t.track.id)
+                                  : std::format("#pos:{}", t.pos));
+    }
+    if (!selectors.empty()) {
+        kanariv::ipc::Command cmd{
+            kanariv::ipc::QueueRemoveBatch{.selectors = std::move(selectors)}};
         auto res = impl_->sendRaw(cmd);
-        if (!res) {
-            detail::renderErrorInto(rep.err, res.error());
-            hardFail = true;
-            continue;
+        if (!res)
+            return std::unexpected{res.error()};
+        removed = detail::printRemoveReportText(*res, rep.out, rep.err);
+        if (auto* rr = std::get_if<kanariv::ipc::QueueRemoveReport>(&*res)) {
+            for (auto& item : rr->items) {
+                if (item.status == "removed")
+                    removedTracks.push_back(item.track);
+            }
         }
-        detail::emitLine(rep.out,
-                         std::format("Removed from queue {}", kanariv::app::addedLabel(t.track)));
-        removedTracks.push_back(t.track);
-        ++removed;
     }
     rep.json = kanariv::ipc::Result{kanariv::ipc::QueueTracks{std::move(removedTracks)}};
     rep.exitCode = (removed == 0) ? ((targets.empty() && !hardFail) ? 0 : 1) : 0;

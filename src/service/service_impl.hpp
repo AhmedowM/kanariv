@@ -174,6 +174,8 @@ struct Service::Impl {
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::QueueAdd& qa);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    handle(const kanariv::ipc::QueueAddBatch& qb);
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::QueueClear&);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::QueueCreate& qc);
@@ -187,6 +189,8 @@ struct Service::Impl {
     handle(const kanariv::ipc::QueueQueues&);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::QueueRemove& qr);
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    handle(const kanariv::ipc::QueueRemoveBatch& qb);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::QueueRepeat& qr);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>

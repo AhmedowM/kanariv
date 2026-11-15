@@ -60,6 +60,22 @@ int printAddedText(const kanariv::ipc::Result& res, std::set<int64_t>& seen, std
                    std::string& err);
 
 /**
+ * @brief Builds per-item lines for a QueueAddReport result.
+ * @details Adds go to @p out, duplicates and failures to @p err; added ids
+ * join @p seen so a later batch does not repeat them.
+ * @return The newly added count.
+ */
+int printAddReportText(const kanariv::ipc::Result& res, std::set<int64_t>& seen, std::string& out,
+                       std::string& err);
+
+/**
+ * @brief Builds per-item lines for a QueueRemoveReport result.
+ * @details Removals go to @p out, missing selectors and failures to @p err.
+ * @return The removed count.
+ */
+int printRemoveReportText(const kanariv::ipc::Result& res, std::string& out, std::string& err);
+
+/**
  * @brief Builds the "N track(s) added" total line.
  */
 void countLineText(int added, std::string& out);

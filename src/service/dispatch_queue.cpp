@@ -91,15 +91,106 @@ ensureLibraryTrack(kanariv::contracts::ITrackStore& tracks, const std::filesyste
     return std::unexpected{ins.error()};
 }
 
-std::expected<void, kanariv::utils::Error>
-enqueueInChunks(kanariv::contracts::IQueueStore& queues, int64_t qid,
-                std::span<const int64_t> ids) {
+std::expected<void, kanariv::utils::Error> enqueueInChunks(kanariv::contracts::IQueueStore& queues,
+                                                           int64_t qid,
+                                                           std::span<const int64_t> ids) {
     for (std::size_t off = 0; off < ids.size(); off += kanariv::contracts::kQueueBatchChunk) {
         const std::size_t n = std::min(kanariv::contracts::kQueueBatchChunk, ids.size() - off);
         if (auto r = queues.queueEnqueueBatch(qid, ids.subspan(off, n)); !r)
             return std::unexpected{r.error()};
     }
     return {};
+}
+
+/** One parsed `#pos:<n>` / `#id:<n>` selector (A2a grammar). */
+struct QueueSelector final {
+    int64_t number{0};
+    bool byTrackId{false};
+};
+
+std::expected<QueueSelector, kanariv::utils::Error> parseQueueSelector(std::string_view raw) {
+    //   "#pos:<n>" = zero-based queue position, "#id:<n>" = track id. A bare
+    //   number used to mean "position", which silently removed a different row
+    //   when the client meant an id; it is rejected instead of guessed.
+    std::string_view spec = trimAscii(raw);
+    QueueSelector out;
+    if (spec.starts_with("#id:")) {
+        out.byTrackId = true;
+        spec.remove_prefix(4);
+    } else if (spec.starts_with("#pos:")) {
+        spec.remove_prefix(5);
+    } else {
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                      "ambiguous idOrIndex (use #pos:<n> or #id:<n>)")};
+    }
+    const auto number = kanariv::utils::parseId(spec);
+    if (!number) {
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, "invalid idOrIndex (use #pos:<n> or #id:<n>)")};
+    }
+    out.number = *number;
+    return out;
+}
+
+/**
+ * @brief Resolves one QueueAdd query to library tracks.
+ * @details Audio path, library id and path lookup behave as the direct-play
+ * branch; anything else falls back to a library search capped at 50 matches.
+ */
+std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+resolveAddQuery(kanariv::contracts::Storage& storage, std::string_view query, bool search) {
+    if (search) {
+        auto sr = storage.library->searchTracks(query, 50);
+        if (!sr)
+            return std::unexpected{sr.error()};
+        if (sr->empty()) {
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::NotFound, "no matches for: " + std::string(query))};
+        }
+        return std::move(*sr);
+    }
+    std::filesystem::path p(query);
+    std::error_code ec;
+    const bool exists = std::filesystem::exists(p, ec);
+    if (!ec && kanariv::media::hasAudioExt(p)) {
+        if (!exists) {
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::NotFound, "track not found: " + std::string(query))};
+        }
+        auto trRes = ensureLibraryTrack(*storage.tracks, p);
+        if (!trRes)
+            return std::unexpected{trRes.error()};
+        std::vector<kanariv::types::Track> single;
+        single.reserve(1);
+        single.push_back(std::move(*trRes));
+        return single;
+    }
+    // A numeric query is a library id (paths are resolved below).
+    const auto id = kanariv::utils::parseId(trimAscii(query));
+    if (id && *id != 0) {
+        auto tr = storage.tracks->getTrack(*id);
+        if (!tr)
+            return std::unexpected{tr.error()};
+        std::vector<kanariv::types::Track> single;
+        single.reserve(1);
+        single.push_back(std::move(*tr));
+        return single;
+    }
+    if (auto tr = storage.tracks->findByPath(query)) {
+        std::vector<kanariv::types::Track> single;
+        single.reserve(1);
+        single.push_back(std::move(*tr));
+        return single;
+    }
+    auto sr = storage.library->searchTracks(query, 50);
+    if (!sr)
+        return std::unexpected{sr.error()};
+    if (sr->empty()) {
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
+                                                         "track not found: " + std::string(query))};
+    }
+    return std::move(*sr);
 }
 
 double durationFromDecoder(const std::filesystem::path& path) noexcept {
@@ -301,102 +392,111 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
     auto q = storage_.queues->getQueue(qid);
     if (!q)
         return std::unexpected{q.error()};
-    if (!qa.search) {
-        std::filesystem::path p(qa.query);
-        std::error_code ec;
-        bool exists = std::filesystem::exists(p, ec);
-        if (!ec && kanariv::media::hasAudioExt(p)) {
-            if (!exists) {
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::NotFound, "track not found: " + qa.query)};
-            }
-            auto trRes = detail::ensureLibraryTrack(*storage_.tracks, p);
-            if (!trRes)
-                return std::unexpected{trRes.error()};
-            kanariv::types::Track t = std::move(*trRes);
-            int64_t newId = t.id;
-            // Skip the enqueue when already queued: duplicates warn
-            // client-side, they must not create rows.
-            auto present = storage_.queues->queueIndexOf(qid, newId);
-            if (!present)
-                return std::unexpected{present.error()};
-            if (!*present) {
-                auto eq = storage_.queues->queueEnqueue(qid, newId);
-                if (!eq)
-                    return std::unexpected{eq.error()};
-                ServiceAccess::noteEnqueued(*engine_, qid, 1);
-                noteStateChanged();
-            }
-            updateShmStatus();
-            std::vector<kanariv::types::Track> single;
-            single.reserve(1);
-            single.push_back(std::move(t));
-            return Result{QueueTracks{std::move(single)}};
+    auto resolved = detail::resolveAddQuery(storage_, qa.query, qa.search);
+    if (!resolved)
+        return std::unexpected{resolved.error()};
+    std::vector<kanariv::types::Track> toAdd = std::move(*resolved);
+    // Ids already queued are skipped: duplicates warn client-side, they must
+    // not create rows.
+    std::vector<int64_t> fresh;
+    fresh.reserve(toAdd.size());
+    std::vector<int64_t> have;
+    if (auto items = storage_.queues->listQueueItems(qid)) {
+        have.reserve(items->size());
+        for (auto& it : *items)
+            have.push_back(it.track_id);
+    }
+    for (auto& t : toAdd) {
+        if (std::find(have.begin(), have.end(), t.id) == have.end()) {
+            fresh.push_back(t.id);
+            have.push_back(t.id);
         }
     }
-    std::vector<kanariv::types::Track> toAdd;
-    if (qa.search) {
-        auto sr = storage_.library->searchTracks(qa.query, 50);
-        if (!sr)
-            return std::unexpected{sr.error()};
-        toAdd = std::move(*sr);
-        if (toAdd.empty()) {
-            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                             "no matches for: " + qa.query)};
-        }
-    } else {
-        // A numeric query is a library id (paths are resolved below).
-        const auto id = kanariv::utils::parseId(detail::trimAscii(qa.query));
-        if (id && *id != 0) {
-            auto tr = storage_.tracks->getTrack(*id);
-            if (!tr)
-                return std::unexpected{tr.error()};
-            toAdd.push_back(std::move(*tr));
-        } else {
-            // try findByPath
-            auto tr = storage_.tracks->findByPath(qa.query);
-            if (tr) {
-                toAdd.push_back(std::move(*tr));
-            } else {
-                // fallback to search via FTS (covers LIKE)
-                auto sr = storage_.library->searchTracks(qa.query, 50);
-                if (!sr)
-                    return std::unexpected{sr.error()};
-                toAdd = std::move(*sr);
-                if (toAdd.empty()) {
-                    return std::unexpected{kanariv::utils::makeError(
-                        kanariv::utils::StatusCode::NotFound, "track not found: " + qa.query)};
-                }
-            }
-        }
+    if (!fresh.empty()) {
+        auto er = detail::enqueueInChunks(*storage_.queues, qid, fresh);
+        if (!er)
+            return std::unexpected{er.error()};
+        ServiceAccess::noteEnqueued(*engine_, qid, fresh.size());
+        noteStateChanged();
     }
-    // Batch enqueue in single transaction: atomic to concurrent listQueueItems, rollback
-    // on failure. Ids already queued are skipped (warn-only duplicates).
-    {
-        std::vector<int64_t> fresh;
-        fresh.reserve(toAdd.size());
-        std::vector<int64_t> have;
-        if (auto items = storage_.queues->listQueueItems(qid)) {
-            have.reserve(items->size());
-            for (auto& it : *items)
-                have.push_back(it.track_id);
+    updateShmStatus();
+    return Result{QueueTracks{std::move(toAdd)}};
+}
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueAddBatch& qb) {
+    int64_t qid = engine_->activeQueueId();
+    auto q = storage_.queues->getQueue(qid);
+    if (!q)
+        return std::unexpected{q.error()};
+    std::vector<int64_t> have;
+    if (auto items = storage_.queues->listQueueItems(qid)) {
+        have.reserve(items->size());
+        for (auto& it : *items)
+            have.push_back(it.track_id);
+    }
+    QueueAddReport report;
+    std::vector<int64_t> fresh;
+    for (const auto& query : qb.queries) {
+        auto resolved = detail::resolveAddQuery(storage_, query, qb.search);
+        if (!resolved) {
+            QueueAddItem item;
+            item.query = query;
+            item.status = "failed";
+            // NotFound means the query matched nothing; the client echoes the
+            // query, so "not found" is the whole detail. Anything else keeps
+            // its own message.
+            item.detail = resolved.error().code == kanariv::utils::StatusCode::NotFound
+                              ? std::string{"not found"}
+                              : resolved.error().message;
+            report.items.push_back(std::move(item));
+            continue;
         }
-        for (auto& t : toAdd) {
-            if (std::find(have.begin(), have.end(), t.id) == have.end()) {
-                fresh.push_back(t.id);
+        for (auto& t : *resolved) {
+            QueueAddItem item;
+            item.query = query;
+            const bool queued = std::find(have.begin(), have.end(), t.id) != have.end();
+            item.status = queued ? "duplicate" : "added";
+            if (!queued) {
                 have.push_back(t.id);
+                fresh.push_back(t.id);
             }
+            item.track = std::move(t);
+            report.items.push_back(std::move(item));
         }
-        if (!fresh.empty()) {
-            auto er = detail::enqueueInChunks(*storage_.queues, qid, fresh);
-            if (!er)
+    }
+    if (!fresh.empty()) {
+        auto er = detail::enqueueInChunks(*storage_.queues, qid, fresh);
+        if (!er) {
+            // K5: chunks committed before the failure stay. Re-read the queue
+            // so each item reports what actually landed.
+            const auto landed = storage_.queues->listQueueItems(qid);
+            std::size_t landedCount = 0;
+            for (auto& item : report.items) {
+                if (item.status != "added")
+                    continue;
+                const bool present =
+                    landed && std::any_of(landed->begin(), landed->end(), [&](const auto& row) {
+                        return row.track_id == item.track.id;
+                    });
+                if (present) {
+                    ++landedCount;
+                    continue;
+                }
+                item.status = "failed";
+                item.detail = er.error().message;
+            }
+            if (landedCount == 0)
                 return std::unexpected{er.error()};
+            ServiceAccess::noteEnqueued(*engine_, qid, landedCount);
+            noteStateChanged();
+        } else {
             ServiceAccess::noteEnqueued(*engine_, qid, fresh.size());
             noteStateChanged();
         }
     }
     updateShmStatus();
-    return Result{QueueTracks{std::move(toAdd)}};
+    return Result{std::move(report)};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -405,31 +505,14 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
     auto q = storage_.queues->getQueue(qid);
     if (!q)
         return std::unexpected{q.error()};
-    // Resolve idOrIndex with a mandatory discriminator (A2a):
-    //   "#pos:<n>" = zero-based queue position, "#id:<n>" = track id. A bare
-    //   number used to mean "position", which silently removed a different row
-    //   when the client meant an id; it is now rejected instead of guessed.
-    std::string_view spec = detail::trimAscii(qr.idOrIndex);
-    bool byTrackId = false;
-    if (spec.starts_with("#id:")) {
-        byTrackId = true;
-        spec.remove_prefix(4);
-    } else if (spec.starts_with("#pos:")) {
-        spec.remove_prefix(5);
-    } else {
+    auto selector = detail::parseQueueSelector(qr.idOrIndex);
+    if (!selector) {
         return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg,
-            "queue remove: ambiguous idOrIndex (use #pos:<n> or #id:<n>)")};
+            selector.error().code, "queue remove: " + selector.error().message)};
     }
-    const auto number = kanariv::utils::parseId(spec);
-    if (!number) {
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                      "queue remove: invalid idOrIndex (use #pos:<n> or #id:<n>)")};
-    }
-    int64_t index = *number;
-    if (byTrackId) {
-        auto found = storage_.queues->queueIndexOf(qid, *number);
+    int64_t index = selector->number;
+    if (selector->byTrackId) {
+        auto found = storage_.queues->queueIndexOf(qid, selector->number);
         if (!found)
             return std::unexpected{found.error()};
         if (!*found)
@@ -446,6 +529,68 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
     updateShmStatus();
     noteStateChanged();
     return Result{QueueTracks{std::move(*tracks)}};
+}
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::QueueRemoveBatch& qb) {
+    int64_t qid = engine_->activeQueueId();
+    auto q = storage_.queues->getQueue(qid);
+    if (!q)
+        return std::unexpected{q.error()};
+    QueueRemoveReport report;
+    bool changed = false;
+    // Selectors apply in request order, each against the queue as left by the
+    // previous one; positions therefore shift between entries.
+    for (const auto& raw : qb.selectors) {
+        QueueRemoveItem item;
+        item.selector = raw;
+        auto selector = detail::parseQueueSelector(raw);
+        if (!selector) {
+            item.status = "failed";
+            item.detail = selector.error().message;
+            report.items.push_back(std::move(item));
+            continue;
+        }
+        auto tracks = storage_.queues->tracksForQueue(qid);
+        if (!tracks)
+            return std::unexpected{tracks.error()};
+        int64_t index = selector->number;
+        if (selector->byTrackId) {
+            auto found = storage_.queues->queueIndexOf(qid, selector->number);
+            if (!found)
+                return std::unexpected{found.error()};
+            if (!*found) {
+                item.status = "missing";
+                report.items.push_back(std::move(item));
+                continue;
+            }
+            index = static_cast<int64_t>(**found);
+        }
+        if (index < 0 || static_cast<std::size_t>(index) >= tracks->size()) {
+            item.status = "missing";
+            report.items.push_back(std::move(item));
+            continue;
+        }
+        item.track = (*tracks)[static_cast<std::size_t>(index)];
+        auto removedRes = storage_.queues->queueRemove(qid, index);
+        if (!removedRes) {
+            item.track = kanariv::types::Track{};
+            item.status = removedRes.error().code == kanariv::utils::StatusCode::NotFound
+                              ? "missing"
+                              : "failed";
+            item.detail = removedRes.error().message;
+            report.items.push_back(std::move(item));
+            continue;
+        }
+        item.status = "removed";
+        changed = true;
+        report.items.push_back(std::move(item));
+    }
+    if (changed) {
+        updateShmStatus();
+        noteStateChanged();
+    }
+    return Result{std::move(report)};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>

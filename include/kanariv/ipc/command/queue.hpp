@@ -6,10 +6,10 @@
  * @ingroup kanariv_ipc
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/types/wire.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/wire.hpp>
 #include <optional>
 #include <string>
 #include <vector>
@@ -164,6 +164,54 @@ struct QueueRemove final {
      * @brief `#pos:<n>` (zero-based position) or `#id:<n>` (track ID).
      */
     std::string idOrIndex{};
+};
+
+/**
+ * @struct QueueAddBatch
+ * @brief Add several tracks to the active queue in one round-trip.
+ * @ingroup kanariv_ipc
+ *
+ * Each query is resolved exactly like `QueueAdd` (search term, file path, or
+ * track id) against one snapshot of the queue, so the caller gets per-item
+ * status instead of racing one request per item.
+ *
+ * @json_example {"type": "QueueAddBatch", "queries": ["12", "13"], "search": false}
+ *
+ * @param queries Search query, file path, or track ID string per item.
+ * @param search If true, every query is a search term.
+ * @return QueueAddReport object with one entry per resolved track.
+ */
+struct QueueAddBatch final {
+    /**
+     * @brief Search query, file path, or track ID string per item.
+     */
+    std::vector<std::string> queries{};
+    /**
+     * @brief If true, every query is a search term.
+     */
+    bool search{false};
+};
+
+/**
+ * @struct QueueRemoveBatch
+ * @brief Remove several tracks from the active queue in one round-trip.
+ * @ingroup kanariv_ipc
+ *
+ * Selectors use the same mandatory `#pos:<n>` / `#id:<n>` grammar as
+ * `QueueRemove` and apply in request order, each against the queue as left by
+ * the previous one, so a `#pos:<n>` refers to positions after earlier entries.
+ * Ids are matched by track.
+ *
+ * @json_example {"type": "QueueRemoveBatch", "selectors": ["#pos:3", "#id:7"]}
+ *
+ * @param selectors `#pos:<n>` or `#id:<n>` per item.
+ * @return QueueRemoveReport object with one entry per selector.
+ */
+struct QueueRemoveBatch final {
+    /**
+     * @brief `#pos:<n>` (zero-based position) or `#id:<n>` (track ID) per item.
+     */
+    std::vector<std::string> selectors{};
 };
 
 /**

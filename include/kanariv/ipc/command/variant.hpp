@@ -43,17 +43,16 @@ namespace kanariv::ipc {
  * The variant owns its active command payload and is safe to move between
  * request-building and transport code.
  */
-using Command =
-    std::variant<Play, Pause, Resume, Restart, Stop, Next, Prev, Seek, SeekBy, StatusReq, VolumeSet,
-                 QueueList, QueueQueues, QueueCreate, QueueDelete, PlayFiles, QueueSwitch, QueueAdd,
-                 QueueRemove, QueueMove, QueueClear, QueueShuffle, QueueRepeat, PlaylistList,
-                 PlaylistCreate, PlaylistAdd, PlaylistTracks, PlaylistLoad, PlaylistSave,
-                 PlaylistDelete, PlaylistRename, PlaylistExport, PlaylistImport, LibraryScan,
-                 LibrarySearch, LibraryStats, LibraryAdd, LibraryRemove, LibraryList, TagEdit,
-                 TagGet, ConfigGet, ConfigSet, ConfigList, ConfigExport, ConfigImport, ConfigReset,
-                 HistoryList, HistoryClear, BookmarkList, BookmarkAdd, BookmarkRemove, BookmarkGoto,
-                 LyricsGet, LyricsSet, LyricsRemove, Shutdown, Preview, DeviceList, DeviceSet,
-                 DeviceTest, Info, TrackRate, LibraryMaintenance, StatusWait, TagBatchEdit>;
+using Command = std::variant<
+    Play, Pause, Resume, Restart, Stop, Next, Prev, Seek, SeekBy, StatusReq, VolumeSet, QueueList,
+    QueueQueues, QueueCreate, QueueDelete, PlayFiles, QueueSwitch, QueueAdd, QueueAddBatch,
+    QueueRemove, QueueRemoveBatch, QueueMove, QueueClear, QueueShuffle, QueueRepeat, PlaylistList,
+    PlaylistCreate, PlaylistAdd, PlaylistTracks, PlaylistLoad, PlaylistSave, PlaylistDelete,
+    PlaylistRename, PlaylistExport, PlaylistImport, LibraryScan, LibrarySearch, LibraryStats,
+    LibraryAdd, LibraryRemove, LibraryList, TagEdit, TagGet, ConfigGet, ConfigSet, ConfigList,
+    ConfigExport, ConfigImport, ConfigReset, HistoryList, HistoryClear, BookmarkList, BookmarkAdd,
+    BookmarkRemove, BookmarkGoto, LyricsGet, LyricsSet, LyricsRemove, Shutdown, Preview, DeviceList,
+    DeviceSet, DeviceTest, Info, TrackRate, LibraryMaintenance, StatusWait, TagBatchEdit>;
 
 // helper concepts
 namespace detail {
