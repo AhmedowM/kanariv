@@ -5,8 +5,8 @@
  * @brief Internal IPC JSON helpers -- not part of the public API.
  * @ingroup kanariv_ipc
  * @details Declares the JSON serialization helpers for enums, playlists,
- * and errors used by `src/ipc/protocol.cpp`. Lives in `src/` (not installed)
- * so downstream consumers never see them.
+ * and errors used by `src/ipc/protocol_common.cpp`. Lives in `src/` (not
+ * installed) so downstream consumers never see them.
  */
 
 #include <kanariv/ipc/command.hpp>

@@ -9,6 +9,9 @@ set(KANARIV_IPC_MODULE_SOURCES
 )
 set(KANARIV_IPC_SOURCES
   src/ipc/protocol.cpp
+  src/ipc/protocol_common.cpp
+  src/ipc/command_json.cpp
+  src/ipc/result_json.cpp
   src/ipc/shm_status.cpp
 )
 kanariv_add_component(ipc SOURCES ${KANARIV_IPC_SOURCES} MODULE_SOURCES ${KANARIV_IPC_MODULE_SOURCES} DEPS kanariv::utils Threads::Threads)
