@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <common.hpp>
 #include <cstdint>
+#include <engine/engine_access.hpp>
 #include <engine/queue_next.hpp>
 #include <engine/shuffle.hpp>
 #include <filesystem>
@@ -802,4 +803,64 @@ TEST_CASE("planNext resolves linear, repeat-one, wrap and shuffle without mutati
         REQUIRE(plan->position == plan->newPerm->front());
         REQUIRE(plan->cursor == 1);
     }
+}
+
+TEST_CASE("queue move remaps the shuffle permutation", "[engine_queue][shuffle][queue]") {
+    const std::string dbPath = tempDbPath("eng_q_move_perm").string();
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto sharedDb = std::shared_ptr<kanariv::db::Database>(std::move(dbRes.value()));
+    constexpr std::size_t kTracks = 5;
+    for (std::size_t i = 0; i < kTracks; ++i) {
+        kanariv::types::Track t;
+        t.path = "move_perm" + std::to_string(i) + ".wav";
+        t.duration = 1.0;
+        for (int b = 0; b < 32; ++b)
+            t.fingerprint[b] = (uint8_t)(0x40 + i * 16 + b);
+        auto r = sharedDb->insertTrack(t);
+        REQUIRE(r.has_value());
+        REQUIRE(sharedDb->queueEnqueue(1, *r, -1).has_value());
+    }
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = false;
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachStorage(kanariv::db::makeStorage(sharedDb)).has_value());
+    REQUIRE(eng->setShuffle(true).has_value());
+
+    const auto permBefore = kanariv::engine::detail::ServiceAccess::shufflePermFor(*eng, 1);
+    REQUIRE(permBefore.size() == kTracks);
+    constexpr std::size_t from = 3;
+    constexpr std::size_t to = 0;
+    const auto slotOf = [&permBefore](int64_t position) {
+        for (std::size_t i = 0; i < permBefore.size(); ++i)
+            if (permBefore[i] == position)
+                return i;
+        return permBefore.size();
+    };
+    const std::size_t movedSlot = slotOf(static_cast<int64_t>(from));
+    const std::size_t neighbourSlot = slotOf(static_cast<int64_t>(from - 1));
+    REQUIRE(movedSlot < permBefore.size());
+    REQUIRE(neighbourSlot < permBefore.size());
+
+    REQUIRE(sharedDb->queueMove(1, from, to).has_value());
+    kanariv::engine::detail::ServiceAccess::noteQueueMoved(*eng, 1, from, to);
+
+    const auto permAfter = kanariv::engine::detail::ServiceAccess::shufflePermFor(*eng, 1);
+    REQUIRE(permAfter.size() == permBefore.size());
+    std::set<int64_t> seen(permAfter.begin(), permAfter.end());
+    CHECK(seen.size() == kTracks);
+    for (std::size_t i = 0; i < kTracks; ++i)
+        CHECK(seen.count(static_cast<int64_t>(i)) == 1);
+    // The moved item keeps its slot in the play order, now addressing `to`.
+    CHECK(permAfter[movedSlot] == static_cast<int64_t>(to));
+    // The item it jumped over keeps its own slot at its shifted position.
+    CHECK(permAfter[neighbourSlot] == static_cast<int64_t>(from));
+    // The remapped permutation is persisted, not just held in memory.
+    CHECK(persistedPerm(dbPath) == permAfter);
+
+    eng.reset();
+    safeRemoveDb(dbPath);
 }

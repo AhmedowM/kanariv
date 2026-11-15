@@ -140,6 +140,39 @@ std::expected<std::vector<kanariv::types::QueueItem>, kanariv::utils::Error>
 queueListLocked(sqlite3* db, int64_t qid);
 
 /**
+ * @brief Lists the tracks of a queue in position order (caller holds DB mutex).
+ * @ingroup kanariv_db
+ * @param db SQLite handle.
+ * @param qid kanariv::types::Queue id (0 -> 1).
+ * @return Tracks ordered by queue position, or Error Internal.
+ * @details One join statement; matches queueListLocked row for row, so a track
+ * queued twice appears twice and an item with no track row is skipped.
+ * @par Thread safety
+ * Caller must hold Database::mutex() (shared or exclusive).
+ */
+std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+queueTracksLocked(sqlite3* db, int64_t qid);
+
+/**
+ * @brief Moves an item to another zero-based index (caller holds DB mutex).
+ * @ingroup kanariv_db
+ * @param db SQLite handle.
+ * @param qid kanariv::types::Queue id (0 -> kDefaultQueueId).
+ * @param from Zero-based index of the item to move.
+ * @param to Zero-based destination index, in `[0, count)`.
+ * @return Success or Error InvalidArg when an index is out of range, Internal
+ * for SQLite errors.
+ * @details Reorders the ordered id list and rewrites positions
+ * (0, GAP, 2*GAP, ...) in the same two-phase scheme as renormalization, so row
+ * ids and `added` timestamps survive. The caller wraps the call in a
+ * transaction; UNIQUE(queue_id, position) requires exclusive lock.
+ * @par Thread safety
+ * Caller must hold Database::mutex() exclusively.
+ */
+std::expected<void, kanariv::utils::Error> queueMoveLocked(sqlite3* db, int64_t qid,
+                                                           std::size_t from, std::size_t to);
+
+/**
  * @brief Counts items in a queue (caller holds DB mutex).
  * @ingroup kanariv_db
  * @param db SQLite handle.

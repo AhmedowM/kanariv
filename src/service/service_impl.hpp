@@ -30,6 +30,7 @@
 #include <optional>
 #include <service/ipc_server.hpp>
 #include <service/media_session.hpp>
+#include <span>
 #include <stop_token>
 #include <string>
 #include <utility>
@@ -39,6 +40,15 @@ namespace kanariv::service {
 
 std::optional<std::pair<std::vector<std::byte>, std::string>>
 extractEmbeddedCoverArt(const std::filesystem::path& path, kanariv::utils::Logger* logger);
+
+namespace detail {
+/**
+ * @brief Enqueues ids in transactions of at most kQueueBatchChunk (K5).
+ * @return Success, or the first error; chunks committed before it stay.
+ */
+std::expected<void, kanariv::utils::Error>
+enqueueInChunks(kanariv::contracts::IQueueStore& queues, int64_t qid, std::span<const int64_t> ids);
+} // namespace detail
 
 struct Service::Impl {
     Impl(const ServiceConfig& cfg, kanariv::contracts::Storage storage,

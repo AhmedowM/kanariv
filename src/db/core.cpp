@@ -223,42 +223,6 @@ Database::queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) {
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> Database::queueReplaceAll(int64_t qid,
-                                                                     std::span<const int64_t> ids) {
-    qid = kanariv::db::normalizeQueueId(qid);
-    std::unique_lock lk{impl_->dbMutex_};
-    if (!impl_->db_)
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
-    char* err = nullptr;
-    internal::SqliteErrGuard guard{err};
-    int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
-    if (rc != SQLITE_OK)
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
-                                                         err ? std::string(err) : "BEGIN failed")};
-    auto clr = kanariv::db::queueClearLocked(impl_->db_.get(), qid);
-    if (!clr) {
-        sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
-        return std::unexpected{clr.error()};
-    }
-    for (int64_t id : ids) {
-        auto r = kanariv::db::queueEnqueueLocked(impl_->db_.get(), qid, id, -1);
-        if (!r) {
-            sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
-            return std::unexpected{r.error()};
-        }
-    }
-    char* cErr = nullptr;
-    internal::SqliteErrGuard cGuard{cErr};
-    rc = sqlite3_exec(impl_->db_.get(), "COMMIT", nullptr, nullptr, &cErr);
-    if (rc != SQLITE_OK) {
-        sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, cErr ? std::string(cErr) : "commit failed")};
-    }
-    return {};
-}
-
 std::expected<kanariv::types::Track, kanariv::utils::Error>
 Database::Impl::findByPathLocked(std::string_view path) {
     if (!db_)
@@ -1273,6 +1237,35 @@ std::expected<void, kanariv::utils::Error> Database::queueRemove(int64_t qid, in
     return kanariv::db::queueRemoveLocked(impl_->db_.get(), qid, index);
 }
 
+std::expected<void, kanariv::utils::Error> Database::queueMove(int64_t qid, std::size_t from,
+                                                               std::size_t to) {
+    qid = kanariv::db::normalizeQueueId(qid);
+    std::unique_lock lk{impl_->dbMutex_};
+    if (!impl_->db_)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
+    char* err = nullptr;
+    internal::SqliteErrGuard guard{err};
+    int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
+    if (rc != SQLITE_OK)
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
+                                                         err ? std::string(err) : "BEGIN failed")};
+    auto moved = kanariv::db::queueMoveLocked(impl_->db_.get(), qid, from, to);
+    if (!moved) {
+        sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
+        return std::unexpected{moved.error()};
+    }
+    char* cErr = nullptr;
+    internal::SqliteErrGuard cGuard{cErr};
+    rc = sqlite3_exec(impl_->db_.get(), "COMMIT", nullptr, nullptr, &cErr);
+    if (rc != SQLITE_OK) {
+        sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Internal, cErr ? std::string(cErr) : "commit failed")};
+    }
+    return {};
+}
+
 std::expected<void, kanariv::utils::Error> Database::queueClear(int64_t qid) {
     qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
@@ -1284,6 +1277,13 @@ Database::listQueueItems(int64_t qid) {
     qid = kanariv::db::normalizeQueueId(qid);
     std::shared_lock lk{impl_->dbMutex_};
     return kanariv::db::queueListLocked(impl_->db_.get(), qid);
+}
+
+std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+Database::tracksForQueue(int64_t qid) {
+    qid = kanariv::db::normalizeQueueId(qid);
+    std::shared_lock lk{impl_->dbMutex_};
+    return kanariv::db::queueTracksLocked(impl_->db_.get(), qid);
 }
 
 std::expected<kanariv::types::Queue, kanariv::utils::Error> Database::getQueue(int64_t qid) {

@@ -14,6 +14,7 @@
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/result.hpp>
 #include <memory>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -860,6 +861,90 @@ TEST_CASE("queue remove takes a zero-based index", "[db][queue][position]") {
     auto pastEnd = db->queueRemove(0, 2);
     REQUIRE(!pastEnd.has_value());
     CHECK(pastEnd.error().code == StatusCode::NotFound);
+}
+
+TEST_CASE("queue tracks join lists tracks in queue order", "[db][queue][position]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    const auto a = db->insertTrack(makeTrack(1));
+    const auto b = db->insertTrack(makeTrack(2));
+    const auto c = db->insertTrack(makeTrack(3));
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    REQUIRE(c.has_value());
+    REQUIRE(db->queueEnqueueBatch(0, std::vector<int64_t>{*c, *a, *b, *c}).has_value());
+
+    auto tracks = db->tracksForQueue(0);
+    REQUIRE(tracks.has_value());
+    REQUIRE(tracks->size() == 4);
+    CHECK((*tracks)[0].id == *c);
+    CHECK((*tracks)[1].id == *a);
+    CHECK((*tracks)[2].id == *b);
+    CHECK((*tracks)[3].id == *c);
+}
+
+TEST_CASE("queue move reorders without rewriting rows", "[db][queue][position]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    const auto a = db->insertTrack(makeTrack(1));
+    const auto b = db->insertTrack(makeTrack(2));
+    const auto c = db->insertTrack(makeTrack(3));
+    const auto d = db->insertTrack(makeTrack(4));
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    REQUIRE(c.has_value());
+    REQUIRE(d.has_value());
+    REQUIRE(db->queueEnqueueBatch(0, std::vector<int64_t>{*a, *b, *c, *d}).has_value());
+    auto before = db->listQueueItems(0);
+    REQUIRE(before.has_value());
+
+    // Move to the front and to the back.
+    REQUIRE(db->queueMove(0, 2, 0).has_value());
+    auto items = db->listQueueItems(0);
+    REQUIRE(items.has_value());
+    REQUIRE(items->size() == 4);
+    CHECK((*items)[0].track_id == *c);
+    CHECK((*items)[1].track_id == *a);
+    CHECK((*items)[2].track_id == *b);
+    CHECK((*items)[3].track_id == *d);
+
+    REQUIRE(db->queueMove(0, 0, 3).has_value());
+    items = db->listQueueItems(0);
+    REQUIRE(items.has_value());
+    CHECK((*items)[0].track_id == *a);
+    CHECK((*items)[1].track_id == *b);
+    CHECK((*items)[2].track_id == *d);
+    CHECK((*items)[3].track_id == *c);
+
+    // Same rows, same insertion timestamps: only positions changed.
+    std::set<int64_t> idsBefore;
+    std::set<int64_t> idsAfter;
+    for (auto& it : *before)
+        idsBefore.insert(it.id);
+    for (auto& it : *items)
+        idsAfter.insert(it.id);
+    CHECK(idsBefore == idsAfter);
+    for (std::size_t i = 1; i < items->size(); ++i)
+        CHECK((*items)[i - 1].position < (*items)[i].position);
+
+    // A move to the same index is a no-op, and out-of-range is rejected.
+    REQUIRE(db->queueMove(0, 2, 2).has_value());
+    auto same = db->listQueueItems(0);
+    REQUIRE(same.has_value());
+    CHECK((*same)[2].track_id == *d);
+    auto tooFar = db->queueMove(0, 0, 4);
+    REQUIRE(!tooFar.has_value());
+    CHECK(tooFar.error().code == StatusCode::InvalidArg);
+    auto fromFar = db->queueMove(0, 4, 0);
+    REQUIRE(!fromFar.has_value());
+    CHECK(fromFar.error().code == StatusCode::InvalidArg);
+    auto tracks = db->tracksForQueue(0);
+    REQUIRE(tracks.has_value());
+    REQUIRE(tracks->size() == 4);
+    CHECK((*tracks)[0].id == *a);
+    CHECK((*tracks)[3].id == *c);
 }
 
 TEST_CASE("queue insertion renormalizes exhausted gaps without changing order",

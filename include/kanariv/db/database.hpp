@@ -138,23 +138,10 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * so concurrent listQueueItems never sees a partial batch.
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
-     * @see queueReplaceAll
+     * @see queueMove
      */
     std::expected<void, kanariv::utils::Error>
     queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) override;
-
-    /**
-     * @brief Replaces an entire queue atomically.
-     * @ingroup kanariv_db
-     * @param qid Queue id (0 defaults to 1).
-     * @param ids Track ids to set (clears then enqueues).
-     * @return Success or Error.
-     * @details Single transaction: queueClearLocked + queueEnqueueLocked per id.
-     * @par Thread safety
-     * Thread-safe: unique_lock on dbMutex_.
-     */
-    std::expected<void, kanariv::utils::Error>
-    queueReplaceAll(int64_t qid, std::span<const int64_t> ids) override;
 
   private:
     friend struct DatabaseAccess;
@@ -452,6 +439,21 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     std::expected<void, kanariv::utils::Error> queueRemove(int64_t qid, int64_t index) override;
 
     /**
+     * @brief Moves one queue item to another zero-based index atomically.
+     * @ingroup kanariv_db
+     * @param qid Queue id (0 selects the default queue).
+     * @param from Zero-based index of the item to move.
+     * @param to Zero-based destination index, in `[0, count)`.
+     * @return Success or Error InvalidArg/Internal.
+     * @details BEGIN IMMEDIATE / COMMIT around a position renumber, so no
+     * reader sees a half-moved queue and row ids survive the move.
+     * @par Thread safety
+     * Thread-safe: unique_lock.
+     */
+    std::expected<void, kanariv::utils::Error> queueMove(int64_t qid, std::size_t from,
+                                                         std::size_t to) override;
+
+    /**
      * @brief Clears a queue.
      * @ingroup kanariv_db
      * @param qid Queue id (0 -> 1).
@@ -471,6 +473,18 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      */
     std::expected<std::vector<kanariv::types::QueueItem>, kanariv::utils::Error>
     listQueueItems(int64_t qid) override;
+
+    /**
+     * @brief Lists the tracks of a queue in position order.
+     * @ingroup kanariv_db
+     * @param qid Queue id (0 -> 1).
+     * @return Tracks ordered by queue position, or Error.
+     * @details One join statement; matches listQueueItems() row for row.
+     * @par Thread safety
+     * Thread-safe: shared_lock.
+     */
+    std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    tracksForQueue(int64_t qid) override;
 
     /**
      * @brief Loads the track at a zero-based queue index.

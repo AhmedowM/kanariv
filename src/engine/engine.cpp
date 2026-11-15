@@ -190,6 +190,7 @@ struct Engine::Impl {
     // shuffle / repeat
     std::vector<int64_t> shufflePermFor(int64_t qid) noexcept;
     void noteEnqueued(int64_t qid, std::size_t count) noexcept;
+    void noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) noexcept;
     ExpectedVoid setShuffle(bool on);
     std::expected<void, kanariv::utils::Error> setShuffleLocked(bool on);
     ExpectedVoid setRepeat(kanariv::types::RepeatMode m);
@@ -470,6 +471,10 @@ std::vector<int64_t> Engine::shufflePermFor(int64_t qid) noexcept {
 
 void Engine::noteEnqueued(int64_t qid, std::size_t count) noexcept {
     impl_->noteEnqueued(qid, count);
+}
+
+void Engine::noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) noexcept {
+    impl_->noteQueueMoved(qid, from, to);
 }
 
 kanariv::types::RepeatMode Engine::repeat() const noexcept {
@@ -1073,6 +1078,28 @@ void Engine::Impl::noteEnqueued(int64_t qid, std::size_t count) noexcept {
         std::size_t start = (*n >= count) ? *n - count : 0;
         for (std::size_t i = start; i < *n; ++i)
             queue_.perm.push_back((int64_t)i);
+        (void)persistShuffleBlobLocked();
+    }
+    unlockQueue();
+}
+
+void Engine::Impl::noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) noexcept {
+    if (from == to || !hasDb() || !tryLockQueue())
+        return;
+    if (queue_.queue_id == qid && queue_.shuffle && !queue_.perm.empty()) {
+        // The permutation lists positions, so translate old indexes to the new
+        // numbering: the moved entry maps to `to`, entries it jumped over shift
+        // by one in the opposite direction. The relative play order is kept.
+        const auto f = static_cast<int64_t>(from);
+        const auto t = static_cast<int64_t>(to);
+        for (auto& p : queue_.perm) {
+            if (p == f)
+                p = t;
+            else if (f < t && p > f && p <= t)
+                --p;
+            else if (t < f && p >= t && p < f)
+                ++p;
+        }
         (void)persistShuffleBlobLocked();
     }
     unlockQueue();

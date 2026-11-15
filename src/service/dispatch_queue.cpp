@@ -5,6 +5,7 @@
 #include <engine/engine_access.hpp>
 #include <expected>
 #include <filesystem>
+#include <kanariv/contracts/queue_store.hpp>
 #include <kanariv/contracts/track_store.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -19,6 +20,7 @@
 #include <media/fingerprint.hpp>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -89,6 +91,17 @@ ensureLibraryTrack(kanariv::contracts::ITrackStore& tracks, const std::filesyste
     return std::unexpected{ins.error()};
 }
 
+std::expected<void, kanariv::utils::Error>
+enqueueInChunks(kanariv::contracts::IQueueStore& queues, int64_t qid,
+                std::span<const int64_t> ids) {
+    for (std::size_t off = 0; off < ids.size(); off += kanariv::contracts::kQueueBatchChunk) {
+        const std::size_t n = std::min(kanariv::contracts::kQueueBatchChunk, ids.size() - off);
+        if (auto r = queues.queueEnqueueBatch(qid, ids.subspan(off, n)); !r)
+            return std::unexpected{r.error()};
+    }
+    return {};
+}
+
 double durationFromDecoder(const std::filesystem::path& path) noexcept {
     try {
         auto readerRes = kanariv::media::FileReader::open(path);
@@ -135,16 +148,10 @@ Service::Impl::handle(const kanariv::ipc::QueueList& ql) {
         if (!q)
             return std::unexpected{q.error()};
     }
-    auto items = storage_.queues->listQueueItems(qid);
-    if (!items)
-        return std::unexpected{items.error()};
-    std::vector<kanariv::types::Track> tracks;
-    tracks.reserve(items->size());
-    for (auto& it : *items) {
-        auto tr = storage_.tracks->getTrack(it.track_id);
-        if (tr)
-            tracks.push_back(std::move(*tr));
-    }
+    auto fetched = storage_.queues->tracksForQueue(qid);
+    if (!fetched)
+        return std::unexpected{fetched.error()};
+    std::vector<kanariv::types::Track> tracks = std::move(*fetched);
     if (ql.order != "added") {
         // Playback (shuffle) order: perm holds queue positions. A stale perm
         // (queue mutated after shuffle) contributes its valid entries first;
@@ -178,9 +185,9 @@ Service::Impl::handle(const kanariv::ipc::QueueQueues&) {
     int64_t active = engine_->activeQueueId();
     kanariv::ipc::Queues out{};
     for (auto& q : *qs) {
-        auto items = storage_.queues->listQueueItems(q.id);
-        std::size_t n = items ? items->size() : 0;
-        out.entries.push_back(kanariv::ipc::QueueEntry{q.id, q.name, n, q.id == active, q.temp});
+        auto n = storage_.queues->queueCount(q.id);
+        out.entries.push_back(
+            kanariv::ipc::QueueEntry{q.id, q.name, n ? *n : 0, q.id == active, q.temp});
     }
     return Result{std::move(out)};
 }
@@ -253,7 +260,7 @@ Service::Impl::handle(const kanariv::ipc::PlayFiles& cmd) {
         if (!tr)
             return std::unexpected{tr.error()};
     }
-    auto er = storage_.queues->queueEnqueueBatch(*qid, ids);
+    auto er = detail::enqueueInChunks(*storage_.queues, *qid, ids);
     if (!er)
         return std::unexpected{er.error()};
     ServiceAccess::noteEnqueued(*engine_, *qid, ids.size());
@@ -310,16 +317,10 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
             int64_t newId = t.id;
             // Skip the enqueue when already queued: duplicates warn
             // client-side, they must not create rows.
-            bool present = false;
-            if (auto items = storage_.queues->listQueueItems(qid)) {
-                for (auto& it : *items) {
-                    if (it.track_id == newId) {
-                        present = true;
-                        break;
-                    }
-                }
-            }
-            if (!present) {
+            auto present = storage_.queues->queueIndexOf(qid, newId);
+            if (!present)
+                return std::unexpected{present.error()};
+            if (!*present) {
                 auto eq = storage_.queues->queueEnqueue(qid, newId);
                 if (!eq)
                     return std::unexpected{eq.error()};
@@ -387,7 +388,7 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
             }
         }
         if (!fresh.empty()) {
-            auto er = storage_.queues->queueEnqueueBatch(qid, fresh);
+            auto er = detail::enqueueInChunks(*storage_.queues, qid, fresh);
             if (!er)
                 return std::unexpected{er.error()};
             ServiceAccess::noteEnqueued(*engine_, qid, fresh.size());
@@ -439,63 +440,32 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
     auto removedRes = storage_.queues->queueRemove(qid, index);
     if (!removedRes)
         return std::unexpected{removedRes.error()};
-    auto items = storage_.queues->listQueueItems(qid);
-    if (!items)
-        return std::unexpected{items.error()};
-    std::vector<kanariv::types::Track> tracks;
-    for (auto& it : *items) {
-        auto tr = storage_.tracks->getTrack(it.track_id);
-        if (tr)
-            tracks.push_back(std::move(*tr));
-    }
+    auto tracks = storage_.queues->tracksForQueue(qid);
+    if (!tracks)
+        return std::unexpected{tracks.error()};
     updateShmStatus();
     noteStateChanged();
-    return Result{QueueTracks{std::move(tracks)}};
+    return Result{QueueTracks{std::move(*tracks)}};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::QueueMove& qm) {
-    // QueueMove: reorder within queue via playlistReorder? For queue we lack direct
-    // move. Simulate via remove+enqueue: fetch items, reorder vector, clear and
-    // re-enqueue
     int64_t qid = engine_->activeQueueId();
     auto q = storage_.queues->getQueue(qid);
     if (!q)
         return std::unexpected{q.error()};
-    auto items = storage_.queues->listQueueItems(qid);
-    if (!items)
-        return std::unexpected{items.error()};
-    if (qm.from >= items->size() || qm.to >= items->size()) {
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "move out of range")};
-    }
-    // collect track_ids in order
-    std::vector<int64_t> ids;
-    ids.reserve(items->size());
-    for (auto& it : *items)
-        ids.push_back(it.track_id);
-    int64_t mv = ids[qm.from];
-    ids.erase(ids.begin() + static_cast<std::ptrdiff_t>(qm.from));
-    ids.insert(ids.begin() + static_cast<std::ptrdiff_t>(qm.to), mv);
-    // Transactional clear+enqueue: single BEGIN IMMEDIATE/COMMIT so concurrent
-    // listQueueItems never sees empty
-    {
-        auto r = storage_.queues->queueReplaceAll(qid, ids);
-        if (!r)
-            return std::unexpected{r.error()};
-    }
-    auto nitems = storage_.queues->listQueueItems(qid);
-    if (!nitems)
-        return std::unexpected{nitems.error()};
-    std::vector<kanariv::types::Track> tracks;
-    for (auto& it : *nitems) {
-        auto tr = storage_.tracks->getTrack(it.track_id);
-        if (tr)
-            tracks.push_back(std::move(*tr));
-    }
+    auto moved = storage_.queues->queueMove(qid, qm.from, qm.to);
+    if (!moved)
+        return std::unexpected{moved.error()};
+    // Playback order is engine state: the row moved, so let the engine remap
+    // its permutation before the client reads the playback order back.
+    ServiceAccess::noteQueueMoved(*engine_, qid, qm.from, qm.to);
+    auto tracks = storage_.queues->tracksForQueue(qid);
+    if (!tracks)
+        return std::unexpected{tracks.error()};
     updateShmStatus();
     noteStateChanged();
-    return Result{QueueTracks{std::move(tracks)}};
+    return Result{QueueTracks{std::move(*tracks)}};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>

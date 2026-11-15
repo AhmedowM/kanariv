@@ -42,6 +42,16 @@
 namespace kanariv::contracts {
 
 /**
+ * @brief Largest identifier count one batch call should carry.
+ * @ingroup kanariv_contracts
+ * @details A batch call is atomic, so the whole span holds the backend write
+ * lock. Callers adding more identifiers must split the span into chunks of at
+ * most this size (K5): each chunk is atomic, a failure commits the chunks
+ * before it, and a caller that needs partial results must report them.
+ */
+inline constexpr std::size_t kQueueBatchChunk = 500;
+
+/**
  * @brief Queue container and item persistence.
  * @ingroup kanariv_contracts
  */
@@ -106,6 +116,17 @@ class IQueueStore : public IStore {
     listQueueItems(int64_t qid) = 0;
 
     /**
+     * @brief Lists the tracks of a queue in queue order.
+     * @param qid Queue identifier; zero selects the default queue.
+     * @return Tracks ordered by ascending position, or a backend error.
+     * @details One statement (a join), so the result matches
+     * `listQueueItems()` row for row: a track queued twice appears twice, and
+     * an item whose track row is missing is skipped.
+     */
+    virtual std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    tracksForQueue(int64_t qid) = 0;
+
+    /**
      * @brief Creates a queue container.
      * @param name Display name; implementations reject an empty name.
      * @param library_id Owning library identifier.
@@ -142,7 +163,9 @@ class IQueueStore : public IStore {
      * @brief Enqueues track identifiers atomically.
      * @param qid Queue identifier; zero selects the default queue.
      * @param tids Ordered track identifiers to append.
-     * @return Success, or an error; no partial batch is committed.
+     * @return Success, or an error; no part of this call is committed.
+     * @details Atomic per call. Callers passing more than `kQueueBatchChunk`
+     * identifiers must chunk the span so each write transaction stays bounded.
      */
     virtual std::expected<void, kanariv::utils::Error>
     queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) = 0;
@@ -169,13 +192,19 @@ class IQueueStore : public IStore {
     virtual std::expected<void, kanariv::utils::Error> queueRemove(int64_t qid, int64_t index) = 0;
 
     /**
-     * @brief Replaces all items in a queue from an ordered span of identifiers.
+     * @brief Moves one queue item to another zero-based index atomically.
      * @param qid Queue identifier; zero selects the default queue.
-     * @param ids New ordered track identifiers.
-     * @return Success, or an error; implementations must commit atomically.
+     * @param from Zero-based index of the item to move.
+     * @param to Zero-based index the item ends up at, in `[0, count)`.
+     * @return Success, or `InvalidArg` when an index is out of range, or a
+     * backend error.
+     * @details One backend transaction: item identity (row id, added
+     * timestamp) survives, only ordering changes. A no-op when
+     * `from == to`. Playback order is engine state, so callers notify the
+     * engine after a successful move.
      */
-    virtual std::expected<void, kanariv::utils::Error>
-    queueReplaceAll(int64_t qid, std::span<const int64_t> ids) = 0;
+    virtual std::expected<void, kanariv::utils::Error> queueMove(int64_t qid, std::size_t from,
+                                                                 std::size_t to) = 0;
 
     /**
      * @brief Removes all items from a queue.

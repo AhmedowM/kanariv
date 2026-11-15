@@ -982,7 +982,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistLoad& cmd) {
     for (auto& t : std::span<const kanariv::types::Track>(*tracks))
         ids.push_back(t.id);
     if (!ids.empty()) {
-        auto er = storage_.queues->queueEnqueueBatch(qid, ids);
+        auto er = detail::enqueueInChunks(*storage_.queues, qid, ids);
         if (!er)
             return std::unexpected{er.error()};
     }

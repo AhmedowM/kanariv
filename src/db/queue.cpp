@@ -8,8 +8,10 @@
 #include <cstdint>
 #include <db/queue.hpp>
 #include <db/statement.hpp>
+#include <db/stmt_helpers.hpp>
 #include <expected>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -65,6 +67,44 @@ std::expected<int64_t, kanariv::utils::Error> positionAtIndex(sqlite3* db, int64
 }
 
 /**
+ * @brief Writes dense positions (base, base+GAP, ...) to ids in vector order.
+ * @details The order of the writes is the vector order, so callers run a
+ * parking pass (a base above every current position) before the final pass
+ * when UNIQUE(queue_id, position) could otherwise see a transient collision.
+ */
+std::expected<void, kanariv::utils::Error>
+assignQueuePositions(sqlite3* db, const std::vector<int64_t>& ids, int64_t base) {
+    SqliteStatement upd;
+    if (auto e = upd.prepare(db, "UPDATE queue SET position=? WHERE id=?"); !e)
+        return std::unexpected{e.error()};
+    for (size_t i = 0; i < ids.size(); ++i) {
+        upd.reset();
+        upd.bindInt(1, base + static_cast<int64_t>(i) * kPositionGap);
+        upd.bindInt(2, ids[i]);
+        if (upd.stepDone() != SQLITE_DONE)
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                              sqlite3_errmsg(db))};
+    }
+    return {};
+}
+
+/**
+ * @brief Highest stored position in a queue (0 for an empty queue).
+ */
+std::expected<int64_t, kanariv::utils::Error> maxQueuePositionLocked(sqlite3* db, int64_t qid) {
+    SqliteStatement maxStmt;
+    if (auto e =
+            maxStmt.prepare(db, "SELECT COALESCE(MAX(position), 0) FROM queue WHERE queue_id=?");
+        !e) {
+        return std::unexpected{e.error()};
+    }
+    maxStmt.bindInt(1, qid);
+    if (!maxStmt.step())
+        return int64_t{0};
+    return maxStmt.columnInt(0);
+}
+
+/**
  * @brief Renumber all queue positions to restore full gaps (0, GAP, 2*GAP, ...).
  * @details Called only when midpoint insertion runs out of gap space
  * (~30 halvings). Runs in two phases because UNIQUE(queue_id, position) is
@@ -75,9 +115,7 @@ std::expected<int64_t, kanariv::utils::Error> positionAtIndex(sqlite3* db, int64
  */
 std::expected<void, kanariv::utils::Error> renormalizeQueueLocked(sqlite3* db, int64_t qid) {
     SqliteStatement sel;
-    if (auto e = sel.prepare(db,
-            "SELECT id FROM queue WHERE queue_id=? ORDER BY position");
-        !e) {
+    if (auto e = sel.prepare(db, "SELECT id FROM queue WHERE queue_id=? ORDER BY position"); !e) {
         return std::unexpected{e.error()};
     }
     sel.bindInt(1, qid);
@@ -85,39 +123,16 @@ std::expected<void, kanariv::utils::Error> renormalizeQueueLocked(sqlite3* db, i
     while (sel.step())
         ids.push_back(sel.columnInt(0));
 
-    int64_t maxPos = 0;
-    {
-        SqliteStatement maxStmt;
-        if (auto e = maxStmt.prepare(
-                db, "SELECT COALESCE(MAX(position), 0) FROM queue WHERE queue_id=?");
-            !e) {
-            return std::unexpected{e.error()};
-        }
-        maxStmt.bindInt(1, qid);
-        if (maxStmt.step())
-            maxPos = maxStmt.columnInt(0);
-    }
+    auto maxPos = maxQueuePositionLocked(db, qid);
+    if (!maxPos)
+        return std::unexpected{maxPos.error()};
     const int64_t tempBase =
-        std::max<int64_t>(maxPos, 0) + (static_cast<int64_t>(ids.size()) + 1) * kPositionGap;
+        std::max<int64_t>(*maxPos, 0) + (static_cast<int64_t>(ids.size()) + 1) * kPositionGap;
 
-    const auto assignPositions = [&](int64_t base) -> std::expected<void, kanariv::utils::Error> {
-        SqliteStatement upd;
-        if (auto e = upd.prepare(db, "UPDATE queue SET position=? WHERE id=?"); !e)
-            return std::unexpected{e.error()};
-        for (size_t i = 0; i < ids.size(); ++i) {
-            upd.reset();
-            upd.bindInt(1, base + static_cast<int64_t>(i) * kPositionGap);
-            upd.bindInt(2, ids[i]);
-            if (upd.stepDone() != SQLITE_DONE)
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::Internal, sqlite3_errmsg(db))};
-        }
-        return {};
-    };
     // Phase 1: park above every current value. Phase 2: dense final values.
-    if (auto parked = assignPositions(tempBase); !parked)
+    if (auto parked = assignQueuePositions(db, ids, tempBase); !parked)
         return parked;
-    return assignPositions(0);
+    return assignQueuePositions(db, ids, 0);
 }
 
 } // namespace
@@ -354,6 +369,63 @@ std::optional<size_t> queueIndexOfLocked(sqlite3* db, int64_t qid, int64_t track
             return std::nullopt;
         return static_cast<size_t>(st.columnInt(0));
     }
+}
+
+std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+queueTracksLocked(sqlite3* db, int64_t qid) {
+    qid = normalizeQueueId(qid);
+    if (!db)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
+    // The CTE exposes only track_id/position, so the canonical unqualified
+    // track column list stays unambiguous while duplicates survive the join.
+    const std::string sql =
+        std::string("WITH ordered AS (SELECT track_id, position FROM queue WHERE queue_id=? "
+                    "ORDER BY position) ") +
+        std::string(internal::selectTracksCols) +
+        " JOIN ordered ON tracks.id = ordered.track_id ORDER BY ordered.position";
+    SqliteStatement st;
+    if (auto e = st.prepare(db, sql); !e)
+        return std::unexpected{e.error()};
+    st.bindInt(1, qid);
+    std::vector<kanariv::types::Track> out;
+    while (st.step()) {
+        kanariv::types::Track t;
+        internal::fillTrackFromStmt(st.get(), t);
+        out.push_back(std::move(t));
+    }
+    return out;
+}
+
+std::expected<void, kanariv::utils::Error> queueMoveLocked(sqlite3* db, int64_t qid,
+                                                           std::size_t from, std::size_t to) {
+    qid = normalizeQueueId(qid);
+    if (!db)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
+    SqliteStatement sel;
+    if (auto e = sel.prepare(db, "SELECT id FROM queue WHERE queue_id=? ORDER BY position"); !e)
+        return std::unexpected{e.error()};
+    sel.bindInt(1, qid);
+    std::vector<int64_t> ids;
+    while (sel.step())
+        ids.push_back(sel.columnInt(0));
+    if (from >= ids.size() || to >= ids.size())
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, "queue move: index out of range")};
+    if (from == to)
+        return {};
+    const int64_t moved = ids[from];
+    ids.erase(ids.begin() + static_cast<std::ptrdiff_t>(from));
+    ids.insert(ids.begin() + static_cast<std::ptrdiff_t>(to), moved);
+    auto maxPos = maxQueuePositionLocked(db, qid);
+    if (!maxPos)
+        return std::unexpected{maxPos.error()};
+    const int64_t tempBase =
+        std::max<int64_t>(*maxPos, 0) + (static_cast<int64_t>(ids.size()) + 1) * kPositionGap;
+    if (auto parked = assignQueuePositions(db, ids, tempBase); !parked)
+        return parked;
+    return assignQueuePositions(db, ids, 0);
 }
 
 std::expected<kanariv::types::Queue, kanariv::utils::Error> getQueueLocked(sqlite3* db, int64_t qid) {

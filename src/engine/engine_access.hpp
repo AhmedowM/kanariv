@@ -96,6 +96,18 @@ struct ServiceAccess {
     static void noteEnqueued(Engine& eng, int64_t qid, std::size_t count) noexcept {
         eng.noteEnqueued(qid, count);
     }
+
+    /**
+     * @brief Forwards to Engine::noteQueueMoved().
+     * @ingroup kanariv_engine
+     * @param eng Engine instance.
+     * @param qid Queue id the item moved in.
+     * @param from Old zero-based queue index.
+     * @param to New zero-based queue index.
+     */
+    static void noteQueueMoved(Engine& eng, int64_t qid, std::size_t from, std::size_t to) noexcept {
+        eng.noteQueueMoved(qid, from, to);
+    }
 };
 
 } // namespace kanariv::engine::detail

@@ -549,6 +549,20 @@ class KANARIV_API Engine final {
      * Thread-safe; try_lock on queueMutex_. */
     void noteEnqueued(int64_t qid, std::size_t count) noexcept;
 
+    /** @brief Remaps the shuffle permutation after a queue item moved.
+     * @ingroup kanariv_engine
+     * @param qid Queue id the item moved in.
+     * @param from Old zero-based queue index.
+     * @param to New zero-based queue index.
+     * @details Playback order is engine state: the service moves the row, then
+     * reports the structural change. The permutation already lists the same
+     * items in the same play order, so only the position indexes are remapped
+     * (an item keeps its place in the shuffled sequence). Best-effort: no-op
+     * unless shuffle applies to qid or the queue lock is contended.
+     * @par Thread safety
+     * Thread-safe; try_lock on queueMutex_. */
+    void noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) noexcept;
+
     /**
      * @brief Monitor auto-advance: like next(), but halts at queue end.
      * @ingroup kanariv_engine
