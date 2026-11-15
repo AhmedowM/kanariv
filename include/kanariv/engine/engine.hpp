@@ -25,10 +25,23 @@
  *   and persistCursorLocked update the blob/cursor transactionally.
  * - History: doHistoryMark uses shouldMarkPlayed(historyThresholdPct/Secs)
  *   with atomic CAS on markedPlayed_ and a database-owned transaction.
- * Locking: queueMutex_ (timed mutex) for the queue state -- try_lock on fast
- * and monitor paths, bounded wait for transport commands (play/next/prev);
- * decodeMtx_ (mutex) for decoder_/ring_ vs seek/decodeLoop; persistence and
- * history operations go through the backend-neutral contracts::IDatabase.
+ * Locking: two engine mutexes with a documented ownership split and a fixed
+ * order -- `queueMutex_` then `decodeMtx_`, never the reverse.
+ * - `queueMutex_` (timed mutex) owns `state_`, `currentTrack_`, `startedMs_`
+ *   and the compound invariant of `queue_` (cursor + shuffle permutation).
+ *   Fast/monitor paths try_lock; transport commands (play/next/prev/pause/
+ *   stop/seek) wait boundedly (500 ms) and report Busy on timeout.
+ * - `decodeMtx_` (mutex) owns the audio graph (`reader_`/`decoder_`/`ring_`/
+ *   `output_`) plus `duration_`, `pausePos_`, `playStart_` and the fade /
+ *   crossfade counters. Control access to the graph happens under it.
+ * - Crossfade fields are mutated only by the decode thread under `decodeMtx_`;
+ *   `std::atomic<bool> crossfadeActive_` is the lock-free signal the monitor
+ *   thread observes (it never reads the crossfade members themselves).
+ * - Lock-free readers use only the atomics published by the owning writer
+ *   (`playbackState_`, `hasCurrent_`, `state_.currentTrackId`, `volume_`,
+ *   `markedPlayed_`, `gaplessArmed_`). Persistence and history operations go
+ *   through the backend-neutral contracts::IDatabase and never hold
+ *   `decodeMtx_` across a database write.
  * Events: a bounded event queue (64 slots) with drop-on-full, dispatched via
  * pushEvent to callbacks under cbMutex_.
  * Implementation details (atomics, threads, mpsc queue, ring, DB rows) live
@@ -66,21 +79,25 @@ struct ServiceAccess;
  * @ingroup kanariv_engine
  * @details See file-level docs for state machine, threading and persistence.
  * Public mutators that touch the queue state use `tryLockQueue()` (non-blocking,
- * `Busy` on contention); transport commands (play/next/prev) instead wait up
- * to 500 ms via `tryLockQueueFor()` so a colliding skip executes instead of
- * failing. Decode/ring access is serialized by `decodeMtx_`. State (`playbackState_`,
- * `hasCurrent_`, `volume_`, `markedPlayed_`, `gaplessArmed_`,
- * `lastProgressMs_`) is atomic.
+ * `Busy` on contention); transport commands (play/next/prev/pause/stop/seek)
+ * instead wait up to 500 ms via `tryLockQueueFor()` so a colliding command
+ * executes instead of failing. The lock order is `queueMutex_` then
+ * `decodeMtx_`. `currentTrack_`, `startedMs_` and `state_` are queue-lock
+ * state; `duration_`, `pausePos_`, `playStart_` and the audio graph are
+ * decode-lock state. Published atomics (`playbackState_`, `hasCurrent_`,
+ * `volume_`, `markedPlayed_`, `gaplessArmed_`, `crossfadeActive_` and the
+ * atomic fields of `state_`) keep the lock-free API surfaces consistent.
  *
  * Error codes: `InvalidArg` (null/empty args), `State` (no db / not
  * playing/paused), `NotFound` (empty queue / no event), `Busy` (queue
  * locked / transaction begin failed), `Internal` (SQLite / decoder),
  * `NoMem` (perm too large).
  *
- * Thread safety: thread-safe for concurrent play/pause/next/prev/seek
- * under the documented locks; `queueMutex_` is try_lock on fast paths and
- * bounded-wait on transport commands, so callers must still handle Busy
- * (budget exceeded).
+ * Thread safety: thread-safe for concurrent play/pause/next/prev/stop/seek/
+ * setVolume/position/currentTrackId and the other accessors; each call either
+ * takes the documented lock or reads a published atomic. `queueMutex_` is
+ * try_lock on fast paths and bounded-wait on transport commands, so callers
+ * must still handle Busy (budget exceeded).
  * @see kanariv::types::PlaybackState
  * @see kanariv::types::EngineConfig
  */
@@ -181,9 +198,15 @@ class KANARIV_API Engine final {
     /**
      * @brief Pauses playback.
      * @ingroup kanariv_engine
-     * @return Success or Error State if not playing.
+     * @return Success or Error State/Busy.
+     * @retval StatusCode::State if not playing.
+     * @retval StatusCode::Busy if `queueMutex_` stays contended past the wait
+     * budget; playback and the persisted state are left untouched (retry).
+     * @details Waits boundedly (500 ms) on `queueMutex_`, then stops the
+     * output and saves the paused position under `decodeMtx_`.
      * @par Thread safety
-     * Thread-safe; atomics only.
+     * Thread-safe; takes `queueMutex_` then `decodeMtx_` (the engine's
+     * queue-to-decode lock order).
      */
     ExpectedVoid pause();
 
@@ -221,15 +244,19 @@ class KANARIV_API Engine final {
      * @brief Seeks to a position in the current track.
      * @ingroup kanariv_engine
      * @param seconds Target position in seconds [0, duration].
-     * @return Success or Error State/InvalidArg/Internal.
+     * @return Success or Error State/InvalidArg/Internal/Busy.
      * @retval StatusCode::State if no current track.
      * @retval StatusCode::InvalidArg if seconds is NaN/inf/negative.
      * @retval StatusCode::Internal if decoder seek fails (state restored).
-     * @details Holds decodeMtx_ to serialize with decodeLoop (decoder_->decode
-     * / ring_->write). Temporarily Pauses, snapshots pausePos_/playStart_ so
-     * a failed seek restores the prior state and resumes Playing.
+     * @retval StatusCode::Busy if `queueMutex_` stays contended past the wait
+     * budget; nothing is changed (retry).
+     * @details Waits boundedly (500 ms) for `queueMutex_` (lock order
+     * queue-to-decode), then holds decodeMtx_ to serialize with decodeLoop
+     * (decoder_->decode / ring_->write) and to update `pausePos_`/`playStart_`.
+     * Temporarily Pauses, snapshots the transport counters so a failed seek
+     * restores the prior state and resumes Playing.
      * @par Thread safety
-     * Thread-safe; locks decodeMtx_.
+     * Thread-safe; takes `queueMutex_` then `decodeMtx_`.
      */
     ExpectedVoid seek(double seconds);
 
@@ -238,10 +265,13 @@ class KANARIV_API Engine final {
      * @ingroup kanariv_engine
      * @param g Volume in [0,1] (clamped; NaN/inf -> 0).
      * @return Success (always).
-     * @details Updates state_.volume, volume_ atomically and forwards to
-     * AudioOutput::setVolume; persists via saveState() if DB attached.
+     * @details Updates volume_ atomically first (so a contended lock never
+     * loses the new level), then takes `queueMutex_` best-effort to publish
+     * state_.volume and persist via saveState(), and `decodeMtx_` to forward
+     * to AudioOutput::setVolume. Returns success even when both locks are
+     * contended; the persisted value is refreshed by the next save.
      * @par Thread safety
-     * Thread-safe; atomic volume + saveState transaction.
+     * Thread-safe; atomic volume plus queue-then-decode locks.
      */
     ExpectedVoid setVolume(float g);
 
@@ -253,14 +283,17 @@ class KANARIV_API Engine final {
      * @return PlaybackState (atomic load, acquire). */
     kanariv::types::PlaybackState state() const noexcept;
     /** @brief Returns current track duration in seconds. @ingroup kanariv_engine
-     * @return Duration (cached from decoder or metadata). */
+     * @return Duration (cached from decoder or metadata; decodeMtx_ state, so
+     * the call takes that mutex briefly). */
     double duration() const noexcept;
     /** @brief Returns current playback position in seconds. @ingroup kanariv_engine
      * @return Position (persisted resume position if stopped with no loaded track;
-     * pausePos_ if paused; pausePos_ + elapsed if playing, clamped). */
+     * pausePos_ if paused; pausePos_ + elapsed if playing, clamped).
+     * Takes `decodeMtx_` briefly; queue-lock state is never read without it. */
     double position() const noexcept;
     /** @brief Returns current track id (or persisted one if no current). @ingroup kanariv_engine
-     * @return Track id if hasCurrent_, else state_.currentTrackId (persisted). */
+     * @return Track id if hasCurrent_, else state_.currentTrackId (persisted).
+     * Lock-free: reads the atomic published by the queue-lock writer. */
     int64_t currentTrackId() const noexcept;
 
     /** @brief Returns whether shuffle is enabled. @ingroup kanariv_engine
@@ -337,9 +370,10 @@ class KANARIV_API Engine final {
     /**
      * @brief Returns the active queue id.
      * @ingroup kanariv_engine
-     * @return queue_.queue_id if set, else state_.activeQueueId, else 1 (atomic under queueMutex_).
+     * @return queue_.queue_id if set, else 1 (atomic load; no lock).
      * @par Thread safety
-     * Thread-safe; locks queueMutex_.
+     * Thread-safe; lock-free. `queue_.queue_id` is atomic and written only
+     * under `queueMutex_`.
      * @see switchQueue
      */
     int64_t activeQueueId() const noexcept;

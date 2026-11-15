@@ -1,12 +1,7 @@
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
-#include <kanariv/db/database.hpp>
-#include <kanariv/types/db.hpp>
-#include <kanariv/engine/engine.hpp>
-#include <kanariv/types/engine.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/log.hpp>
 #include <chrono>
 #include <cmath>
 #include <common.hpp>
@@ -14,6 +9,12 @@
 #include <engine/fade.hpp>
 #include <filesystem>
 #include <fstream>
+#include <kanariv/db/database.hpp>
+#include <kanariv/engine/engine.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -315,13 +316,14 @@ TEST_CASE("fade envelope applies one gain per frame at mono, stereo and 5.1", "[
 namespace {
 
 /// @brief Writes a 16-bit mono PCM WAV of silence.
-/// @details Silence keeps the crossfade preload test quiet while still giving
-/// the engine a real file to decode (so `decodeLoop` runs and the preload path
-/// is exercised) without needing an audio device: `allowSimulatedPlayback`
-/// covers a missing `AudioOutput`.
-bool writeSilentWav(const std::filesystem::path& path, unsigned seconds) {
+/// @details Silence keeps the crossfade tests quiet while still giving the
+/// engine a real file to decode (so `decodeLoop` runs and the preload/completion
+/// paths are exercised) without needing an audio device: `allowSimulatedPlayback`
+/// covers a missing `AudioOutput` (silent null backend). Fractional lengths let
+/// a test make the incoming track shorter than the crossfade window.
+bool writeSilentWav(const std::filesystem::path& path, double seconds) {
     constexpr std::uint32_t rate = 8000;
-    const std::uint32_t frames = rate * seconds;
+    const std::uint32_t frames = static_cast<std::uint32_t>(rate * seconds);
     const std::uint32_t bytes = frames * 2;
     std::ofstream f(path, std::ios::binary);
     if (!f)
@@ -436,6 +438,223 @@ TEST_CASE("failed crossfade preload keeps the cursor on the unreadable track",
     // simulated backend can "play") instead of skipping to the third one.
     REQUIRE(eng->next().has_value());
     REQUIRE(eng->currentTrackId() == ids[1]);
+    eng.reset();
+    safeRemoveDb(dbPath);
+}
+
+namespace {
+
+/// @brief Builds a DB with two silent WAV tracks and returns their ids.
+/// @details Also returns the shared DB so a test can read the persisted engine
+/// state while the engine is still running (WAL allows concurrent readers).
+struct TwoSilentTracks {
+    std::shared_ptr<Database> db;
+    int64_t ids[2]{0, 0};
+};
+
+TwoSilentTracks makeTwoSilentTracks(const std::filesystem::path& dir, const std::string& dbPath,
+                                    double firstSec, double secondSec,
+                                    std::uint8_t fingerprintBase) {
+    TwoSilentTracks out;
+    auto dbRes = Database::open(dbPath);
+    INFO("open database");
+    REQUIRE(dbRes.has_value());
+    out.db = std::shared_ptr<Database>(std::move(dbRes.value()));
+    REQUIRE(writeSilentWav(dir / "first.wav", firstSec));
+    REQUIRE(writeSilentWav(dir / "second.wav", secondSec));
+    const std::string paths[2] = {kanariv::utils::detail::pathToUtf8(dir / "first.wav"),
+                                  kanariv::utils::detail::pathToUtf8(dir / "second.wav")};
+    const double durations[2] = {firstSec, secondSec};
+    for (int i = 0; i < 2; ++i) {
+        kanariv::types::Track t;
+        t.path = paths[i];
+        t.duration = durations[i];
+        for (int b = 0; b < 32; ++b)
+            t.fingerprint[b] = static_cast<std::uint8_t>(fingerprintBase + i * 16 + b);
+        auto r = out.db->insertTrack(t);
+        REQUIRE(r.has_value());
+        out.ids[i] = *r;
+        REQUIRE(out.db->queueEnqueue(1, *r, -1).has_value());
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("crossfade completion publishes the incoming track", "[engine_gapless][crossfade]") {
+    namespace fs = std::filesystem;
+    const fs::path dir = tempDirPath("xf_publish");
+    const std::string dbPath = tempDbPath("xf_publish").string();
+    TwoSilentTracks tracks = makeTwoSilentTracks(dir, dbPath, 1.0, 2.0, 0x10);
+    const int64_t* ids = tracks.ids;
+
+    std::mutex startedMutex;
+    std::vector<int64_t> started;
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = true;
+    cfg.pollMs = 10;
+    cfg.gaplessMs = 300;
+    cfg.interTrackGapMs = 100; // crossfade window
+    cfg.historyThresholdPct = 100;
+    cfg.historyThresholdSecs = 100;
+    cfg.callbacks.on_track_started = [&](int64_t id) {
+        std::lock_guard<std::mutex> lk(startedMutex);
+        started.push_back(id);
+    };
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachDatabase(tracks.db).has_value());
+    REQUIRE(eng->play(1).has_value());
+    REQUIRE(eng->currentTrackId() == ids[0]);
+    const double dur = eng->duration();
+    REQUIRE(dur == Catch::Approx(1.0).margin(0.01));
+    // Enter the crossfade window (remaining <= interTrackGapMs).
+    REQUIRE(eng->seek(dur - 0.05).has_value());
+    busyWaitUntil([&] { return eng->currentTrackId() == ids[1]; }, std::chrono::milliseconds(5000),
+                  std::chrono::milliseconds(20));
+    // E3: completion publishes the incoming track instead of leaving
+    // currentTrack_/duration_ describing the outgoing one.
+    REQUIRE(eng->currentTrackId() == ids[1]);
+    REQUIRE(eng->duration() == Catch::Approx(2.0).margin(0.01));
+    {
+        std::lock_guard<std::mutex> lk(startedMutex);
+        REQUIRE(std::find(started.begin(), started.end(), ids[1]) != started.end());
+    }
+    // The same publication persists the new current track and cursor.
+    const auto persistedIncoming = [&]() {
+        auto st = tracks.db->loadEngineState();
+        return st && st->current_track_id == ids[1];
+    };
+    busyWaitUntil(persistedIncoming, std::chrono::milliseconds(3000),
+                  std::chrono::milliseconds(20));
+    auto persisted = tracks.db->loadEngineState();
+    REQUIRE(persisted.has_value());
+    REQUIRE(persisted->current_track_id == ids[1]);
+    // The preload transaction already committed the cursor past the incoming
+    // entry (cursor addresses the NEXT entry), and publication persists it.
+    REQUIRE(persisted->cursor_pos == 2);
+    eng.reset();
+    safeRemoveDb(dbPath);
+}
+
+TEST_CASE("crossfade publishes when the incoming track ends before the overlap",
+          "[engine_gapless][crossfade]") {
+    namespace fs = std::filesystem;
+    const fs::path dir = tempDirPath("xf_earlyeof");
+    const std::string dbPath = tempDbPath("xf_earlyeof").string();
+    // 0.2 s incoming is shorter than the 500 ms crossfade window, so the
+    // incoming decoder hits EOF while the outgoing track still has frames:
+    // the early-EOF completion path must publish it all the same.
+    TwoSilentTracks tracks = makeTwoSilentTracks(dir, dbPath, 2.0, 0.2, 0x30);
+    const int64_t* ids = tracks.ids;
+
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = true;
+    cfg.pollMs = 10;
+    cfg.gaplessMs = 300;
+    cfg.interTrackGapMs = 500;
+    cfg.historyThresholdPct = 100;
+    cfg.historyThresholdSecs = 100;
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachDatabase(tracks.db).has_value());
+    REQUIRE(eng->play(1).has_value());
+    REQUIRE(eng->currentTrackId() == ids[0]);
+    const double dur = eng->duration();
+    REQUIRE(dur == Catch::Approx(2.0).margin(0.01));
+    REQUIRE(eng->seek(dur - 0.4).has_value()); // remaining 0.4 s < window
+    busyWaitUntil([&] { return eng->currentTrackId() == ids[1]; }, std::chrono::milliseconds(5000),
+                  std::chrono::milliseconds(20));
+    REQUIRE(eng->currentTrackId() == ids[1]);
+    REQUIRE(eng->duration() == Catch::Approx(0.2).margin(0.01));
+    eng.reset();
+    safeRemoveDb(dbPath);
+}
+
+TEST_CASE("a track change cancels an armed crossfade", "[engine_gapless][crossfade]") {
+    namespace fs = std::filesystem;
+    const fs::path dir = tempDirPath("xf_cancel");
+    const std::string dbPath = tempDbPath("xf_cancel").string();
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto sharedDb = std::shared_ptr<Database>(std::move(dbRes.value()));
+    int64_t ids[3] = {0, 0, 0};
+    // Lengths: outgoing 3 s, preloaded 8 s, skipped-to 8 s. The preloaded and
+    // skipped-to tracks must not enter their own crossfade window (remaining
+    // <= 2 s) during the 2.5 s observation, so a stale publication is stable
+    // and cannot self-correct.
+    const double secs[3] = {3.0, 8.0, 8.0};
+    for (int i = 0; i < 3; ++i) {
+        const fs::path wav = dir / ("track" + std::to_string(i) + ".wav");
+        REQUIRE(writeSilentWav(wav, secs[i]));
+        kanariv::types::Track t;
+        t.path = kanariv::utils::detail::pathToUtf8(wav);
+        t.duration = secs[i];
+        for (int b = 0; b < 32; ++b)
+            t.fingerprint[b] = static_cast<std::uint8_t>(0x58 + i * 16 + b);
+        auto r = sharedDb->insertTrack(t);
+        REQUIRE(r.has_value());
+        ids[i] = *r;
+        REQUIRE(sharedDb->queueEnqueue(1, *r, -1).has_value());
+    }
+
+    std::mutex logMutex;
+    std::vector<std::string> logs;
+    Logger logger(
+        [&](LogLevel, std::string_view msg) {
+            std::lock_guard<std::mutex> lk(logMutex);
+            logs.emplace_back(msg);
+        },
+        LogLevel::Trace);
+    const auto sawLog = [&](std::string_view needle) {
+        std::lock_guard<std::mutex> lk(logMutex);
+        for (const auto& line : logs)
+            if (line.find(needle) != std::string::npos)
+                return true;
+        return false;
+    };
+
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = true;
+    cfg.pollMs = 10;
+    cfg.gaplessMs = 300;
+    // A 2 s overlap cannot finish quickly: the decode thread may only run
+    // ~1 s (8192 frames at 8 kHz) ahead of the consuming output, so the
+    // transition stays in flight for roughly a second after it is armed.
+    cfg.interTrackGapMs = 2000;
+    cfg.historyThresholdPct = 100;
+    cfg.historyThresholdSecs = 100;
+    cfg.logger = &logger;
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachDatabase(sharedDb).has_value());
+    REQUIRE(eng->play(1).has_value());
+    REQUIRE(eng->currentTrackId() == ids[0]);
+    // Remaining 2.5 s: an engine tick arms the overlap ~0.5 s from now.
+    REQUIRE(eng->seek(eng->duration() - 2.5).has_value());
+    busyWaitUntil([&] { return sawLog("crossfade armed"); }, std::chrono::milliseconds(3000),
+                  std::chrono::milliseconds(10));
+    REQUIRE(sawLog("crossfade armed"));
+    REQUIRE(eng->currentTrackId() == ids[0]);
+
+    // Skip forward while the overlap is in flight: the preloaded track must not
+    // survive into the new track or be published over it later. A stale
+    // preload would complete its remaining ~2 s of mixing and publish ids[1].
+    REQUIRE(eng->next().has_value());
+    REQUIRE(eng->currentTrackId() == ids[2]);
+    // A stale preload would finish its remaining ~2 s of mixing and publish
+    // ids[1]; the real track keeps playing for the whole observation.
+    busyWaitUntil([&] { return eng->position() >= 2.0 || eng->currentTrackId() != ids[2]; },
+                  std::chrono::milliseconds(5000), std::chrono::milliseconds(10));
+    REQUIRE(eng->currentTrackId() == ids[2]);
+    REQUIRE(eng->position() >= 2.0);
+    REQUIRE(eng->state() == kanariv::types::PlaybackState::Playing);
     eng.reset();
     safeRemoveDb(dbPath);
 }
