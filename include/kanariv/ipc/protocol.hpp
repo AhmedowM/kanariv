@@ -64,13 +64,14 @@
  * @see kanariv::ipc::Result for result types
  */
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <expected>
 #include <span>
 #include <string>
 #include <string_view>
@@ -214,6 +215,35 @@ KANARIV_API std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std:
  * payload and `deframe` refuses to allocate one claimed by a peer.
  */
 inline constexpr std::size_t kMaxFrameBytes = 16 * 1024 * 1024;
+
+/**
+ * @brief Size of the framing header: one 4-byte big-endian payload length.
+ * @ingroup kanariv_ipc
+ * @details This constant, `encodeFrameLength` and `decodeFrameLength` are the
+ * single owner of the header layout and of the `kMaxFrameBytes` cap. Transports
+ * read/write the payload themselves but must not re-implement the header.
+ */
+inline constexpr std::size_t kFrameHeaderBytes = 4;
+
+/**
+ * @brief Encode a payload length as framing header bytes.
+ * @ingroup kanariv_ipc
+ * @param length Payload length in bytes; the caller guarantees it is within
+ * `kMaxFrameBytes` (`frame` checks before narrowing).
+ * @return The 4-byte big-endian header.
+ */
+KANARIV_API std::array<std::byte, kFrameHeaderBytes>
+encodeFrameLength(std::uint32_t length) noexcept;
+
+/**
+ * @brief Decode and validate a framing header.
+ * @ingroup kanariv_ipc
+ * @param header The first `kFrameHeaderBytes` bytes of a frame.
+ * @return The declared payload length, or `InvalidArg` when it exceeds
+ * `kMaxFrameBytes` (rejected before the caller allocates).
+ */
+KANARIV_API std::expected<std::uint32_t, kanariv::utils::Error>
+decodeFrameLength(std::span<const std::byte, kFrameHeaderBytes> header);
 
 /**
  * @brief Frame a JSON string with 4-byte big-endian length prefix.

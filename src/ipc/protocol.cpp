@@ -1,3 +1,10 @@
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <expected>
+#include <format>
+#include <ipc/protocol_internal.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -9,12 +16,6 @@
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/record_json.hpp>
 #include <kanariv/utils/result.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <exception>
-#include <expected>
-#include <format>
-#include <ipc/protocol_internal.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -1882,6 +1883,28 @@ std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view
     }
 }
 
+std::array<std::byte, kFrameHeaderBytes> encodeFrameLength(std::uint32_t length) noexcept {
+    return {static_cast<std::byte>((length >> 24) & 0xFF),
+            static_cast<std::byte>((length >> 16) & 0xFF),
+            static_cast<std::byte>((length >> 8) & 0xFF), static_cast<std::byte>(length & 0xFF)};
+}
+
+std::expected<std::uint32_t, kanariv::utils::Error>
+decodeFrameLength(std::span<const std::byte, kFrameHeaderBytes> header) {
+    const std::uint32_t len =
+        (static_cast<std::uint32_t>(std::to_integer<unsigned char>(header[0])) << 24) |
+        (static_cast<std::uint32_t>(std::to_integer<unsigned char>(header[1])) << 16) |
+        (static_cast<std::uint32_t>(std::to_integer<unsigned char>(header[2])) << 8) |
+        static_cast<std::uint32_t>(std::to_integer<unsigned char>(header[3]));
+    // Cap before any caller allocates: never honour a peer-claimed
+    // multi-gigabyte length.
+    if (len > kMaxFrameBytes) {
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
+    }
+    return len;
+}
+
 std::expected<std::vector<std::byte>, kanariv::utils::Error> frame(std::string_view json) {
     // Reject before narrowing size_t -> uint32_t: an oversized payload would
     // otherwise be framed with a bogus length and desync the stream.
@@ -1890,12 +1913,9 @@ std::expected<std::vector<std::byte>, kanariv::utils::Error> frame(std::string_v
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
     }
     std::vector<std::byte> out;
-    out.reserve(4 + json.size());
-    const uint32_t len = static_cast<uint32_t>(json.size());
-    out.push_back(static_cast<std::byte>((len >> 24) & 0xFF));
-    out.push_back(static_cast<std::byte>((len >> 16) & 0xFF));
-    out.push_back(static_cast<std::byte>((len >> 8) & 0xFF));
-    out.push_back(static_cast<std::byte>(len & 0xFF));
+    out.reserve(kFrameHeaderBytes + json.size());
+    const auto header = encodeFrameLength(static_cast<std::uint32_t>(json.size()));
+    out.insert(out.end(), header.begin(), header.end());
     // Bulk insert (M-2): the old per-byte push_back loop defeated the
     // reserve() above with per-byte size checks on some STLs.
     const auto* bytes = reinterpret_cast<const std::byte*>(json.data());
@@ -1904,21 +1924,16 @@ std::expected<std::vector<std::byte>, kanariv::utils::Error> frame(std::string_v
 }
 
 std::expected<std::string, kanariv::utils::Error> deframe(std::span<const std::byte> buf) {
-    if (buf.size() < 4) {
+    if (buf.size() < kFrameHeaderBytes) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too short")};
     }
-    const std::size_t len =
-        (static_cast<std::size_t>(std::to_integer<unsigned char>(buf[0])) << 24) |
-        (static_cast<std::size_t>(std::to_integer<unsigned char>(buf[1])) << 16) |
-        (static_cast<std::size_t>(std::to_integer<unsigned char>(buf[2])) << 8) |
-        static_cast<std::size_t>(std::to_integer<unsigned char>(buf[3]));
-    // Cap before reserve(): never honour a peer-claimed multi-gigabyte length.
-    if (len > kMaxFrameBytes) {
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too large")};
+    const auto declared = decodeFrameLength(buf.first<kFrameHeaderBytes>());
+    if (!declared) {
+        return std::unexpected{declared.error()};
     }
-    const std::size_t total = 4 + len;
+    const std::size_t len = *declared;
+    const std::size_t total = kFrameHeaderBytes + len;
     if (buf.size() < total) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame incomplete")};
@@ -1930,7 +1945,7 @@ std::expected<std::string, kanariv::utils::Error> deframe(std::span<const std::b
     std::string s;
     s.reserve(len);
     for (std::size_t i = 0; i < len; ++i) {
-        s.push_back(static_cast<char>(std::to_integer<unsigned char>(buf[4 + i])));
+        s.push_back(static_cast<char>(std::to_integer<unsigned char>(buf[kFrameHeaderBytes + i])));
     }
     return s;
 }

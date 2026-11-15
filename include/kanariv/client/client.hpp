@@ -58,6 +58,12 @@ struct KANARIV_API Config final {
  * length-prefixed IPC request, waits for its reply, and closes the
  * connection. The client does not own or start the daemon.
  *
+ * Every call is bounded: `probe()` gives up after a short connect deadline and
+ * `send()` enforces its timeout on the transport (not only on the daemon's own
+ * wait). A timeout cancels the in-flight command -- the connection is shut down
+ * and the worker is joined -- so no thread outlives the call. Reply ids are
+ * validated; a mismatched reply is reported as `Corrupt`.
+ *
  * @par Thread safety
  * A `Client` instance is safe for concurrent `probe()` and `send()` calls
  * because configuration is immutable after construction. Each call uses its
@@ -67,9 +73,18 @@ class KANARIV_API Client {
     Config config_;
 
   public:
-    /** @brief Constructs from an explicit transport config. @ingroup kanariv_client */
+    /**
+     * @brief Constructs from an explicit transport config.
+     * @ingroup kanariv_client
+     * @details A relative `dbPath` is resolved once here (see `dbPath()`).
+     */
     explicit Client(Config cfg);
-    /** @brief Constructs for a database path (socket path derived). @ingroup kanariv_client */
+    /**
+     * @brief Constructs for a database path (socket path derived).
+     * @ingroup kanariv_client
+     * @details A relative path is resolved once here, so it derives the same
+     * socket/pid/lock names as the absolute spelling.
+     */
     explicit Client(std::filesystem::path dbPath);
     /** @brief Constructs for a database path with explicit socket path. @ingroup kanariv_client */
     explicit Client(std::filesystem::path dbPath, std::string_view socketPath);
@@ -78,13 +93,22 @@ class KANARIV_API Client {
 
     /** @brief Returns the transport configuration used by this client. @ingroup kanariv_client */
     const Config& config() const noexcept;
-    /** @brief Returns the configured database path. @ingroup kanariv_client */
+    /**
+     * @brief Returns the database path used for endpoint derivation.
+     * @ingroup kanariv_client
+     * @details Same as the constructor argument except that a relative path is
+     * resolved against the current directory; a missing database is not an
+     * error (`probe()` must work before the first start).
+     */
     std::filesystem::path dbPath() const noexcept;
 
     /**
      * @brief One-shot liveness check for the daemon at the configured paths.
      * @ingroup kanariv_client
-     * @return True when a connection can be established; no command is sent.
+     * @return True when a connection can be established within the probe
+     * deadline (currently ~400 ms); no command is sent.
+     * @details Never blocks longer than the deadline, so a wedged daemon cannot
+     * stall startup.
      */
     bool probe() const;
 
@@ -92,14 +116,17 @@ class KANARIV_API Client {
      * @brief Sends one command to the daemon and waits for its result.
      * @ingroup kanariv_client
      * @param cmd Command to serialize and transmit synchronously.
-     * @param timeout Maximum time to wait for connection and response.
+     * @param timeout Maximum time to wait for connection and response; `0`
+     * selects the per-command default (2 s, extended for commands that are
+     * legitimately long such as `LibraryScan` or `PlaylistImport`).
      * @return Command result, or a transport/timeout error.
      * @par Thread safety
-     * The call blocks until the reply arrives or `timeout` expires.
+     * The call blocks until the reply arrives or `timeout` expires. On timeout
+     * the command is cancelled: the connection is shut down and the worker is
+     * joined before the error is returned.
      */
-    kanariv::utils::Expected<kanariv::ipc::Result>
-    send(const kanariv::ipc::Command& cmd,
-         std::chrono::milliseconds timeout = std::chrono::milliseconds{2000});
+    kanariv::utils::Expected<kanariv::ipc::Result> send(const kanariv::ipc::Command& cmd,
+                                                        std::chrono::milliseconds timeout = {});
 
     /**
      * @brief Wait for playback status to change, then return current status.
@@ -108,7 +135,9 @@ class KANARIV_API Client {
      * @return Current Status result, or timeout/error.
      * @details Sends a `StatusWait` command to the daemon. The daemon blocks
      * until the status changes or `timeout` elapses, then returns the current
-     * status. Use this for efficient status watching instead of polling.
+     * status. The transport wait allows `timeout` plus a small margin, so the
+     * daemon's own deadline is always the one that fires. Use this for
+     * efficient status watching instead of polling.
      */
     kanariv::utils::Expected<kanariv::ipc::Result>
     waitForStatus(std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});

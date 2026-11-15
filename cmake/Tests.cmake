@@ -90,6 +90,7 @@ if(KANARIV_ENABLE_TESTS)
   kanariv_add_catch_test(test_player_integration tests/test_player_integration.cpp LIBS kanariv::engine kanariv::db kanariv::player kanariv::utils kanariv::sqlite3 WITH_TEST_DATA)
 
   kanariv_add_catch_test(test_ipc tests/test_ipc.cpp LIBS kanariv::service kanariv::client kanariv::ipc kanariv::engine kanariv::db kanariv::player kanariv::utils kanariv::sqlite3 WITH_ALLOW_MULTIPLE_DEFINITION)
+  kanariv_add_catch_test(test_client tests/test_client.cpp LIBS kanariv::client kanariv::ipc kanariv::config kanariv::utils)
   kanariv_add_catch_test(test_config tests/test_config.cpp LIBS kanariv::config kanariv::utils)
   kanariv_add_catch_test(test_app_render tests/test_app_render.cpp LIBS kanariv::app kanariv::ipc kanariv::utils)
 
