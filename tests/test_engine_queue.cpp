@@ -9,11 +9,13 @@
 #include <kanariv/utils/result.hpp>
 #include <common.hpp>
 #include <cstdint>
+#include <engine/queue_next.hpp>
 #include <engine/shuffle.hpp>
 #include <filesystem>
 #include <memory>
 #include <random>
 #include <set>
+#include <span>
 #include <string>
 #include <support/engine_test_helpers.hpp>
 #include <utility>
@@ -537,5 +539,246 @@ TEST_CASE("engine switchQueue adopts the queue's stored repeat mode", "[engine_q
 
         eng.reset();
         safeRemoveDb(dbPath);
+    }
+}
+
+namespace {
+
+/// @brief Reads `engine_state.cursor_pos` from a separate read-only handle.
+/// @details The engine keeps the write handle; committed WAL state is visible
+/// to a second connection, which is how the other engine tests read it back.
+int64_t persistedCursorPos(const std::string& dbPath) {
+    sqlite3* h = nullptr;
+    if (sqlite3_open_v2(dbPath.c_str(), &h, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK)
+        return -1;
+    sqlite3_stmt* st = nullptr;
+    int64_t value = -1;
+    if (sqlite3_prepare_v2(h, "SELECT cursor_pos FROM engine_state WHERE id=1", -1, &st, nullptr) ==
+        SQLITE_OK) {
+        if (sqlite3_step(st) == SQLITE_ROW)
+            value = sqlite3_column_int64(st, 0);
+        sqlite3_finalize(st);
+    }
+    sqlite3_close(h);
+    return value;
+}
+
+/// @brief Reads the persisted shuffle permutation blob.
+std::vector<int64_t> persistedPerm(const std::string& dbPath) {
+    sqlite3* h = nullptr;
+    std::vector<int64_t> out;
+    if (sqlite3_open_v2(dbPath.c_str(), &h, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK)
+        return out;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(h, "SELECT shuffle_perm FROM engine_state WHERE id=1", -1, &st,
+                           nullptr) == SQLITE_OK) {
+        if (sqlite3_step(st) == SQLITE_ROW) {
+            const int bytes = sqlite3_column_bytes(st, 0);
+            const void* blob = sqlite3_column_blob(st, 0);
+            if (blob && bytes > 0 && bytes % static_cast<int>(sizeof(int64_t)) == 0) {
+                const auto* data = static_cast<const int64_t*>(blob);
+                out.assign(data, data + bytes / static_cast<int>(sizeof(int64_t)));
+            }
+        }
+        sqlite3_finalize(st);
+    }
+    sqlite3_close(h);
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("stop rewinds the cursor so play replays the stopped track", "[engine_queue][stop]") {
+    // Missing track paths + allowSimulatedPlayback keep this headless: no
+    // decoder, no audio device, only the cursor state machine under test.
+    std::string dbPath = tempDbPath("eng_stop_rewind").string();
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    for (int i = 0; i < 3; ++i) {
+        kanariv::types::Track t;
+        t.path = "stop_rewind" + std::to_string(i) + ".wav";
+        t.duration = 1.0;
+        for (int b = 0; b < 32; ++b)
+            t.fingerprint[b] = (uint8_t)(0x90 + i * 32 + b);
+        auto r = db->insertTrack(t);
+        REQUIRE(r.has_value());
+        REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
+    }
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = false;
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachDatabase(std::shared_ptr<kanariv::db::Database>(std::move(db))).has_value());
+    REQUIRE(eng->play(1).has_value());
+    int64_t first = eng->currentTrackId();
+    REQUIRE(eng->next().has_value());
+    int64_t second = eng->currentTrackId();
+    REQUIRE(second != first);
+    REQUIRE(persistedCursorPos(dbPath) == 2);
+
+    REQUIRE(eng->stop().has_value());
+    REQUIRE(eng->state() == kanariv::types::PlaybackState::Stopped);
+    // The cursor parks ON the stopped entry (list index 1), not past it (2).
+    REQUIRE(persistedCursorPos(dbPath) == 1);
+
+    REQUIRE(eng->play(1).has_value());
+    REQUIRE(eng->currentTrackId() == second);
+    REQUIRE(persistedCursorPos(dbPath) == 2);
+    eng.reset();
+    safeRemoveDb(dbPath);
+}
+
+TEST_CASE("stop with shuffle replays the stopped track and keeps the permutation",
+          "[engine_queue][stop][shuffle]") {
+    const std::string dbPath = tempDbPath("eng_stop_rewind_shuffle").string();
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto sharedDb = std::shared_ptr<kanariv::db::Database>(std::move(dbRes.value()));
+    constexpr int kTracks = 4;
+    for (int i = 0; i < kTracks; ++i) {
+        kanariv::types::Track t;
+        t.path = "stop_perm" + std::to_string(i) + ".wav";
+        t.duration = 1.0;
+        for (int b = 0; b < 32; ++b)
+            t.fingerprint[b] = (uint8_t)(0xE0 + i * 16 + b);
+        auto r = sharedDb->insertTrack(t);
+        REQUIRE(r.has_value());
+        REQUIRE(sharedDb->queueEnqueue(1, *r, -1).has_value());
+    }
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = false;
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachDatabase(sharedDb).has_value());
+    REQUIRE(eng->setShuffle(true).has_value());
+    REQUIRE(eng->play(1).has_value());
+    const int64_t first = eng->currentTrackId();
+    REQUIRE(eng->next().has_value());
+    const int64_t second = eng->currentTrackId();
+    REQUIRE(second != first);
+
+    const std::vector<int64_t> permBefore = persistedPerm(dbPath);
+    REQUIRE(permBefore.size() == kTracks);
+    std::set<int64_t> seen(permBefore.begin(), permBefore.end());
+    REQUIRE(seen.size() == kTracks);
+    for (int64_t i = 0; i < kTracks; ++i)
+        REQUIRE(seen.count(i) == 1);
+
+    // The stopped track's position in the permutation is what stop() must
+    // rewind to (not `cursor - 1`, which only coincides by accident).
+    const auto listing = sharedDb->queueIndexOf(1, second);
+    REQUIRE(listing.has_value());
+    size_t permIndex = permBefore.size();
+    for (size_t i = 0; i < permBefore.size(); ++i)
+        if (permBefore[i] == static_cast<int64_t>(*listing))
+            permIndex = i;
+    REQUIRE(permIndex < permBefore.size());
+    REQUIRE(persistedCursorPos(dbPath) == static_cast<int64_t>(permIndex) + 1);
+
+    REQUIRE(eng->stop().has_value());
+    REQUIRE(persistedCursorPos(dbPath) == static_cast<int64_t>(permIndex));
+    // The rewind only moves the cursor; the shuffle order is untouched.
+    REQUIRE(persistedPerm(dbPath) == permBefore);
+
+    REQUIRE(eng->play(1).has_value());
+    REQUIRE(eng->currentTrackId() == second);
+    eng.reset();
+    safeRemoveDb(dbPath);
+}
+
+TEST_CASE("planNext resolves linear, repeat-one, wrap and shuffle without mutating",
+          "[engine_queue][plan]") {
+    using kanariv::engine::detail::planNext;
+    using kanariv::types::RepeatMode;
+    constexpr size_t n = 5;
+    const std::vector<int64_t> noPerm;
+    const std::span<const int64_t> noPermSpan(noPerm);
+    // count/makePerm must only run when the plan needs them.
+    const auto count = [n] { return n; };
+    bool permRequested = false;
+    const auto makePerm = [&permRequested](std::size_t count) {
+        permRequested = true;
+        std::vector<int64_t> perm(count);
+        for (std::size_t i = 0; i < count; ++i)
+            perm[i] = static_cast<int64_t>(count - 1 - i);
+        return perm;
+    };
+
+    SECTION("linear walks and advances") {
+        auto plan = planNext(false, RepeatMode::Off, 2, noPermSpan, count, makePerm);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->position == 2);
+        REQUIRE(plan->cursor == 3);
+        REQUIRE(!plan->newPerm.has_value());
+        REQUIRE(!permRequested);
+    }
+    SECTION("linear wraps at the end and at a too-far cursor") {
+        for (const RepeatMode mode : {RepeatMode::Off, RepeatMode::All}) {
+            auto plan = planNext(false, mode, n, noPermSpan, count, makePerm);
+            REQUIRE(plan.has_value());
+            REQUIRE(plan->position == 0);
+            REQUIRE(plan->cursor == 1);
+            auto past = planNext(false, mode, n + 2, noPermSpan, count, makePerm);
+            REQUIRE(past.has_value());
+            REQUIRE(past->position == 0);
+            REQUIRE(past->cursor == 1);
+        }
+    }
+    SECTION("linear repeat-one replays without advancing the cursor") {
+        auto plan = planNext(false, RepeatMode::One, n, noPermSpan, count, makePerm);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->position == static_cast<int64_t>(n - 1));
+        REQUIRE(plan->cursor == n);
+        auto past = planNext(false, RepeatMode::One, n + 2, noPermSpan, count, makePerm);
+        REQUIRE(past.has_value());
+        REQUIRE(past->position == static_cast<int64_t>(n - 1));
+        REQUIRE(past->cursor == n + 2);
+    }
+    SECTION("empty queue is NotFound") {
+        const auto empty = [] { return size_t{0}; };
+        if (auto plan = planNext(false, RepeatMode::Off, 0, noPermSpan, empty, makePerm); !plan)
+            REQUIRE(plan.error().code == StatusCode::NotFound);
+        else
+            FAIL("empty queue resolved a plan");
+    }
+    SECTION("shuffle follows the permutation") {
+        const std::vector<int64_t> perm{3, 0, 2, 1};
+        const std::span<const int64_t> span(perm);
+        auto plan = planNext(true, RepeatMode::Off, 1, span, count, makePerm);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->position == 0);
+        REQUIRE(plan->cursor == 2);
+        REQUIRE(!plan->newPerm.has_value());
+    }
+    SECTION("shuffle repeat-one replays the last consumed entry") {
+        const std::vector<int64_t> perm{3, 0, 2, 1};
+        const std::span<const int64_t> span(perm);
+        auto plan = planNext(true, RepeatMode::One, perm.size(), span, count, makePerm);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->position == perm.back());
+        REQUIRE(plan->cursor == perm.size());
+    }
+    SECTION("shuffle wraps to the head of the current permutation") {
+        const std::vector<int64_t> perm{3, 0, 2, 1};
+        const std::span<const int64_t> span(perm);
+        auto plan = planNext(true, RepeatMode::All, perm.size(), span, count, makePerm);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->position == perm.front());
+        REQUIRE(plan->cursor == 1);
+        REQUIRE(!plan->newPerm.has_value());
+    }
+    SECTION("first shuffle use plans a fresh permutation") {
+        auto plan = planNext(true, RepeatMode::Off, 0, noPermSpan, count, makePerm);
+        REQUIRE(plan.has_value());
+        REQUIRE(permRequested);
+        REQUIRE(plan->newPerm.has_value());
+        REQUIRE(plan->newPerm->size() == n);
+        REQUIRE(plan->position == plan->newPerm->front());
+        REQUIRE(plan->cursor == 1);
     }
 }

@@ -199,9 +199,20 @@ class KANARIV_API Engine final {
     /**
      * @brief Stops playback and resets position/ring.
      * @ingroup kanariv_engine
-     * @return Success (always).
+     * @return Success, or Error Busy when the queue lock stays contended past
+     * the wait budget.
+     * @retval StatusCode::Busy if `queueMutex_` cannot be acquired; playback
+     * state, cursor and persisted position are left untouched so the caller
+     * can retry.
+     * @details Waits boundedly (500 ms) for `queueMutex_`, then, under that
+     * lock: clears the resume position, moves the queue cursor back onto the
+     * stopped track (by track identity, mapped through the shuffle
+     * permutation when one is active), persists the cursor, tears down
+     * decoder/output/ring under `decodeMtx_`, and saves state. An
+     * already-stopped engine returns success without touching anything.
      * @par Thread safety
-     * Thread-safe.
+     * Thread-safe; takes `queueMutex_` then `decodeMtx_` (the engine's
+     * queue-to-decode lock order).
      * @see play
      */
     ExpectedVoid stop();
