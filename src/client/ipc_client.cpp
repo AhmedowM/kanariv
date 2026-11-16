@@ -83,7 +83,7 @@ kanariv::utils::Error transferError(IoStatus status) {
     case IoStatus::Stopped:
         return kanariv::utils::makeError(kanariv::utils::StatusCode::Busy, "cancelled");
     case IoStatus::Timeout:
-        return kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "timeout");
+        return kanariv::utils::makeError(kanariv::utils::StatusCode::Timeout, "timeout");
     case IoStatus::Ok:
     case IoStatus::Closed:
         break;
@@ -306,8 +306,8 @@ kanariv::utils::Expected<IpcClient> IpcClient::connect(const std::filesystem::pa
         // daemon. Wait for one in short slices so the caller's deadline bounds
         // the whole attempt (one fixed wait could outlast it).
         if (deadlineExpired(deadline)) {
-            return std::unexpected{
-                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "connect timed out")};
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Timeout,
+                                                             "connect timed out")};
         }
         (void)::WaitNamedPipeW(w.c_str(), static_cast<DWORD>(waitSlice(deadline).count()));
     }

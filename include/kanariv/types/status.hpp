@@ -41,7 +41,8 @@ enum class StatusCode : std::uint8_t {
     AlreadyExists = 9, ///< Entity already exists.
     Busy = 10,         ///< Resource busy or queue full.
     Corrupt = 11,      ///< Data corruption detected.
-    NoSpace = 12       ///< No space left (buffer/queue full).
+    NoSpace = 12,      ///< No space left (buffer/queue full).
+    Timeout = 13       ///< Deadline expired before the operation completed.
 };
 
 } // namespace kanariv::types

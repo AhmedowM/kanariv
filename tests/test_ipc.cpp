@@ -598,6 +598,27 @@ TEST_CASE("reply decoding fails closed", "[ipc]") {
         REQUIRE_FALSE(back->result.has_value());
         CHECK(back->result.error().code == StatusCode::Busy);
     }
+
+    SECTION("a default reply fails closed instead of reporting success") {
+        // I12: an unset reply is an error, never a phantom `Empty` result.
+        const kanariv::ipc::IpcReply rep{};
+        REQUIRE_FALSE(rep.result.has_value());
+        CHECK(rep.result.error().code == StatusCode::Internal);
+        const auto text = serializeReply(rep);
+        const kanariv::utils::Json doc = kanariv::utils::Json::parse(text);
+        CHECK(doc["ok"].get<bool>() == false);
+        CHECK_FALSE(doc.contains("result"));
+    }
+
+    SECTION("Timeout round-trips as its own code") {
+        const kanariv::ipc::IpcReply rep{
+            5, std::unexpected{kanariv::utils::makeError(StatusCode::Timeout, "too slow")}};
+        const auto back = deserializeReply(serializeReply(rep));
+        REQUIRE(back.has_value());
+        REQUIRE_FALSE(back->result.has_value());
+        CHECK(back->result.error().code == StatusCode::Timeout);
+        CHECK(back->result.error().message == "too slow");
+    }
 }
 
 TEST_CASE("framing rejects oversized and trailing frames", "[ipc]") {
@@ -700,6 +721,111 @@ TEST_CASE("QueueDelete and QueueSwitch require an explicit qid", "[ipc]") {
         const auto* q = std::get_if<QueueSwitch>(&*r);
         REQUIRE(q != nullptr);
         CHECK(q->qid == 3);
+    }
+}
+
+TEST_CASE("command payloads reject missing and wrong-typed fields", "[ipc]") {
+    SECTION("a non-string entry in PlayFiles.paths is rejected") {
+        Json j;
+        j["type"] = "PlayFiles";
+        j["paths"] = Json::array();
+        Json good;
+        good = "/music/a.mp3";
+        j["paths"].push_back(good);
+        Json bad;
+        bad = 42;
+        j["paths"].push_back(bad);
+        j["save"] = false;
+        const auto r = commandFromJson(j);
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().code == StatusCode::InvalidArg);
+        CHECK(r.error().message.find("paths") != std::string::npos);
+    }
+
+    SECTION("a missing required field is rejected") {
+        Json j;
+        j["type"] = "QueueAdd";
+        j["search"] = false;
+        const auto r = commandFromJson(j);
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().code == StatusCode::InvalidArg);
+        CHECK(r.error().message.find("query") != std::string::npos);
+    }
+
+    SECTION("a wrong-typed required field is rejected") {
+        Json j;
+        j["type"] = "QueueAdd";
+        j["query"] = 7;
+        j["search"] = false;
+        const auto r = commandFromJson(j);
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().code == StatusCode::InvalidArg);
+    }
+
+    SECTION("Seek without seconds is rejected instead of seeking to zero") {
+        Json j;
+        j["type"] = "Seek";
+        const auto r = commandFromJson(j);
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().code == StatusCode::InvalidArg);
+    }
+
+    SECTION("a wrong-typed optional field is rejected") {
+        Json j;
+        j["type"] = "VolumeSet";
+        j["level"] = "loud";
+        j["mute"] = nullptr;
+        j["deltaPct"] = nullptr;
+        const auto r = commandFromJson(j);
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().code == StatusCode::InvalidArg);
+    }
+
+    SECTION("a fractional value is rejected for an integer field") {
+        Json j;
+        j["type"] = "QueueMove";
+        j["from"] = 1.5;
+        j["to"] = 0;
+        const auto r = commandFromJson(j);
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().code == StatusCode::InvalidArg);
+    }
+
+    SECTION("an integer beyond int64 is rejected as out of range") {
+        Json j;
+        j["type"] = "QueueDelete";
+        j["qid"] = (static_cast<uint64_t>(1) << 63);
+        const auto r = commandFromJson(j);
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().code == StatusCode::InvalidArg);
+        CHECK(r.error().message.find("range") != std::string::npos);
+    }
+
+    SECTION("explicit nulls keep optional fields unset") {
+        Json j;
+        j["type"] = "VolumeSet";
+        j["level"] = nullptr;
+        j["mute"] = nullptr;
+        j["deltaPct"] = nullptr;
+        const auto r = commandFromJson(j);
+        REQUIRE(r.has_value());
+        const auto* v = std::get_if<VolumeSet>(&*r);
+        REQUIRE(v != nullptr);
+        CHECK_FALSE(v->level.has_value());
+        CHECK_FALSE(v->mute.has_value());
+        CHECK_FALSE(v->deltaPct.has_value());
+    }
+
+    SECTION("the legacy LibraryScan mode alias still parses") {
+        Json j;
+        j["type"] = "LibraryScan";
+        j["path"] = nullptr;
+        j["mode"] = "full";
+        const auto r = commandFromJson(j);
+        REQUIRE(r.has_value());
+        const auto* v = std::get_if<LibraryScan>(&*r);
+        REQUIRE(v != nullptr);
+        CHECK(v->full_hash);
     }
 }
 

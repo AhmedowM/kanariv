@@ -423,7 +423,7 @@ TEST_CASE("send times out and closes a stalled connection", "[client][c2]") {
         std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
 
     REQUIRE_FALSE(res.has_value());
-    REQUIRE(res.error().code == kanariv::utils::StatusCode::Io);
+    REQUIRE(res.error().code == kanariv::utils::StatusCode::Timeout);
     REQUIRE(res.error().message == "timeout");
     // Bounded: the stalled peer must not hold the call past its own budget
     // (the worker is stopped and joined, never detached).

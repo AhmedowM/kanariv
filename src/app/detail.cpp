@@ -20,7 +20,6 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/print.hpp>
-#include <set>
 #include <sstream>
 #include <string>
 #include <variant>
@@ -239,29 +238,7 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
     appendBlock(blob, os.str());
 }
 
-int printAddedText(const kanariv::ipc::Result& res, std::set<int64_t>& seen, std::string& out,
-                   std::string& err) {
-    auto* qt = std::get_if<kanariv::ipc::QueueTracks>(&res);
-    if (!qt) {
-        renderInto(out, res);
-        return 0;
-    }
-    int added = 0;
-    for (auto& t : qt->tracks) {
-        std::string label = kanariv::app::addedLabel(t);
-        if (seen.contains(t.id)) {
-            emitLine(err, std::format("already in queue: {}", label));
-        } else {
-            emitLine(out, std::format("Added {}", label));
-            seen.insert(t.id);
-            ++added;
-        }
-    }
-    return added;
-}
-
-int printAddReportText(const kanariv::ipc::Result& res, std::set<int64_t>& seen, std::string& out,
-                       std::string& err) {
+int printAddReportText(const kanariv::ipc::Result& res, std::string& out, std::string& err) {
     auto* rep = std::get_if<kanariv::ipc::QueueAddReport>(&res);
     if (!rep) {
         renderInto(out, res);
@@ -271,7 +248,6 @@ int printAddReportText(const kanariv::ipc::Result& res, std::set<int64_t>& seen,
     for (const auto& item : rep->items) {
         if (item.status == "added") {
             emitLine(out, std::format("Added {}", kanariv::app::addedLabel(item.track)));
-            seen.insert(item.track.id);
             ++added;
         } else if (item.status == "duplicate") {
             emitLine(err,

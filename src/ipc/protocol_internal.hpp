@@ -13,13 +13,215 @@
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
+#include <cstddef>
 #include <expected>
+#include <format>
+#include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace kanariv::ipc::detail {
 
 using Json = kanariv::utils::Json;
+
+/**
+ * @brief Error for a command payload missing a field the serializer always writes.
+ * @ingroup kanariv_ipc
+ * @param key Wire field name.
+ * @return `InvalidArg` carrying the field name.
+ */
+inline kanariv::utils::Error missingFieldError(std::string_view key) {
+    return kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                     std::format("missing required '{}'", key));
+}
+
+/**
+ * @brief Error for a present field whose JSON type contradicts the schema.
+ * @ingroup kanariv_ipc
+ * @param key Wire field name.
+ * @param expected Human-readable expected type ("a string", "an integer", ...).
+ * @return `InvalidArg` naming the field and the expected type.
+ */
+inline kanariv::utils::Error typeMismatchError(std::string_view key, std::string_view expected) {
+    return kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                     std::format("field '{}' must be {}", key, expected));
+}
+
+/**
+ * @brief Error for a numeric field that does not fit its C++ destination type.
+ * @ingroup kanariv_ipc
+ * @param key Wire field name.
+ * @return `InvalidArg` naming the field.
+ */
+inline kanariv::utils::Error outOfRangeError(std::string_view key) {
+    return kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                     std::format("field '{}' is out of range", key));
+}
+
+/**
+ * @brief Reads a mandatory string field.
+ * @ingroup kanariv_ipc
+ * @details Strictness policy for command payloads: a field the serializer
+ * always writes is mandatory; a field the serializer emits as `null` (or
+ * omits) when unset stays optional; a present field of the wrong type is
+ * always `InvalidArg`, never a silent default.
+ */
+inline std::expected<void, kanariv::utils::Error> requiredString(const Json& j,
+                                                                 std::string_view key,
+                                                                 std::string& out) {
+    if (!j.contains(key))
+        return std::unexpected{missingFieldError(key)};
+    const Json v = j[key];
+    if (!v.isString())
+        return std::unexpected{typeMismatchError(key, "a string")};
+    out = v.get<std::string>();
+    return {};
+}
+
+/** @brief Reads an optional string field; absent or `null` keeps `out` unset. */
+inline std::expected<void, kanariv::utils::Error> optionalString(const Json& j,
+                                                                 std::string_view key,
+                                                                 std::optional<std::string>& out) {
+    if (!j.contains(key))
+        return {};
+    const Json v = j[key];
+    if (v.isNull())
+        return {};
+    if (!v.isString())
+        return std::unexpected{typeMismatchError(key, "a string or null")};
+    out = v.get<std::string>();
+    return {};
+}
+
+/** @brief Reads a mandatory boolean field. */
+inline std::expected<void, kanariv::utils::Error> requiredBool(const Json& j, std::string_view key,
+                                                               bool& out) {
+    if (!j.contains(key))
+        return std::unexpected{missingFieldError(key)};
+    const Json v = j[key];
+    if (!v.isBoolean())
+        return std::unexpected{typeMismatchError(key, "a boolean")};
+    out = v.get<bool>();
+    return {};
+}
+
+/** @brief Reads an optional boolean field; absent or `null` keeps `out` unset. */
+inline std::expected<void, kanariv::utils::Error> optionalBool(const Json& j, std::string_view key,
+                                                               std::optional<bool>& out) {
+    if (!j.contains(key))
+        return {};
+    const Json v = j[key];
+    if (v.isNull())
+        return {};
+    if (!v.isBoolean())
+        return std::unexpected{typeMismatchError(key, "a boolean or null")};
+    out = v.get<bool>();
+    return {};
+}
+
+/**
+ * @brief Converts an already type-checked JSON number into `T`.
+ * @ingroup kanariv_ipc
+ * @details The JSON backend reports unsigned integers as integers too and
+ * its signed conversion wraps past `int64_t::max` instead of throwing, so the
+ * unsigned magnitude is checked here before the conversion.
+ */
+template <typename T>
+    requires(std::is_arithmetic_v<T> && !std::is_same_v<T, bool>)
+std::expected<void, kanariv::utils::Error> readNumber(const Json& v, std::string_view key, T& out) {
+    try {
+        if constexpr (std::is_integral_v<T> && std::is_signed_v<T>) {
+            if (v.isUnsigned() && v.get<uint64_t>() >
+                                      static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+                return std::unexpected{outOfRangeError(key)};
+        }
+        out = v.get<T>();
+    } catch (const kanariv::utils::JsonError&) {
+        return std::unexpected{outOfRangeError(key)};
+    }
+    return {};
+}
+
+/**
+ * @brief Reads a mandatory numeric field, range-checked into `T`.
+ * @ingroup kanariv_ipc
+ * @tparam T Arithmetic destination type other than bool.
+ * @details Integral destinations accept only JSON integers; a fractional
+ * number for an id or position is a client bug, not something to truncate.
+ */
+template <typename T>
+    requires(std::is_arithmetic_v<T> && !std::is_same_v<T, bool>)
+std::expected<void, kanariv::utils::Error> requiredNumber(const Json& j, std::string_view key,
+                                                          T& out) {
+    if (!j.contains(key))
+        return std::unexpected{missingFieldError(key)};
+    const Json v = j[key];
+    if constexpr (std::is_floating_point_v<T>) {
+        if (!v.isNumber())
+            return std::unexpected{typeMismatchError(key, "a number")};
+    } else {
+        if (!v.isInteger() && !v.isUnsigned())
+            return std::unexpected{typeMismatchError(key, "an integer")};
+    }
+    return readNumber(v, key, out);
+}
+
+/** @brief Reads an optional numeric field; absent or `null` keeps `out` unset. */
+template <typename T>
+    requires(std::is_arithmetic_v<T> && !std::is_same_v<T, bool>)
+std::expected<void, kanariv::utils::Error> optionalNumber(const Json& j, std::string_view key,
+                                                          std::optional<T>& out) {
+    if (!j.contains(key))
+        return {};
+    const Json v = j[key];
+    if (v.isNull())
+        return {};
+    if constexpr (std::is_floating_point_v<T>) {
+        if (!v.isNumber())
+            return std::unexpected{typeMismatchError(key, "a number or null")};
+    } else {
+        if (!v.isInteger() && !v.isUnsigned())
+            return std::unexpected{typeMismatchError(key, "an integer or null")};
+    }
+    T value{};
+    if (auto r = readNumber(v, key, value); !r)
+        return r;
+    out = value;
+    return {};
+}
+
+/**
+ * @brief Reads a mandatory array of strings, rejecting non-string entries.
+ * @ingroup kanariv_ipc
+ * @details The previous parser dropped non-string items, so a malformed
+ * `paths` list played a subset of what the client sent.
+ */
+inline std::expected<void, kanariv::utils::Error> requiredStringArray(const Json& j,
+                                                                      std::string_view key,
+                                                                      std::vector<std::string>& out) {
+    if (!j.contains(key))
+        return std::unexpected{missingFieldError(key)};
+    const Json v = j[key];
+    if (!v.isArray())
+        return std::unexpected{typeMismatchError(key, "an array of strings")};
+    for (std::size_t i = 0; i < v.size(); ++i) {
+        auto item = v.at(i);
+        if (!item)
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::InvalidArg,
+                std::format("field '{}' item {} could not be read", key, i))};
+        if (!item->isString())
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::InvalidArg,
+                std::format("field '{}' item {} must be a string", key, i))};
+        out.push_back(item->get<std::string>());
+    }
+    return {};
+}
 
 /**
  * @brief Convert StatusCode enum to string representation.

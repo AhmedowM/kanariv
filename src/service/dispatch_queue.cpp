@@ -392,25 +392,34 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
     auto q = storage_.queues->getQueue(qid);
     if (!q)
         return std::unexpected{q.error()};
+    // A single query is one outcome for the whole command: an unresolvable
+    // query stays a command-level error (the batch form reports it per item
+    // because one bad entry must not hide the others).
     auto resolved = detail::resolveAddQuery(storage_, qa.query, qa.search);
     if (!resolved)
         return std::unexpected{resolved.error()};
-    std::vector<kanariv::types::Track> toAdd = std::move(*resolved);
-    // Ids already queued are skipped: duplicates warn client-side, they must
-    // not create rows.
-    std::vector<int64_t> fresh;
-    fresh.reserve(toAdd.size());
     std::vector<int64_t> have;
     if (auto items = storage_.queues->listQueueItems(qid)) {
         have.reserve(items->size());
         for (auto& it : *items)
             have.push_back(it.track_id);
     }
-    for (auto& t : toAdd) {
-        if (std::find(have.begin(), have.end(), t.id) == have.end()) {
-            fresh.push_back(t.id);
+    // Same report shape as QueueAddBatch (S10): the client renders
+    // added/duplicate from one vocabulary in every mode.
+    QueueAddReport report;
+    std::vector<int64_t> fresh;
+    fresh.reserve(resolved->size());
+    for (auto& t : *resolved) {
+        QueueAddItem item;
+        item.query = qa.query;
+        const bool queued = std::find(have.begin(), have.end(), t.id) != have.end();
+        item.status = queued ? "duplicate" : "added";
+        if (!queued) {
             have.push_back(t.id);
+            fresh.push_back(t.id);
         }
+        item.track = std::move(t);
+        report.items.push_back(std::move(item));
     }
     if (!fresh.empty()) {
         auto er = detail::enqueueInChunks(*storage_.queues, qid, fresh);
@@ -420,7 +429,7 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
         noteStateChanged();
     }
     updateShmStatus();
-    return Result{QueueTracks{std::move(toAdd)}};
+    return Result{std::move(report)};
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>

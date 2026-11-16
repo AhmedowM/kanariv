@@ -49,6 +49,8 @@ constexpr std::string_view toString(StatusCode r) noexcept {
         return "Corrupt";
     case NoSpace:
         return "NoSpace";
+    case Timeout:
+        return "Timeout";
     default:
         return "Unknown";
     }

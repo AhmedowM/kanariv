@@ -30,10 +30,11 @@ TEST_CASE("cli exit-code table maps status codes", "[cli][logic]") {
     // State carries daemon-down and other bad-state failures: a failed
     // daemon start reports State and therefore exits 105.
     REQUIRE(exitCodeForError(makeError(StatusCode::State, "daemon not running")) == 105);
-    // Everything else stays a generic runtime failure.
+    // Everything else stays a generic runtime failure, including a transport
+    // timeout (the CLI retries or reports it, it is not an argument error).
     for (auto code : {StatusCode::Io, StatusCode::Corrupt, StatusCode::Busy, StatusCode::Internal,
                       StatusCode::NoMem, StatusCode::AlreadyExists, StatusCode::Unsupported,
-                      StatusCode::Device, StatusCode::NoSpace, StatusCode::Ok}) {
+                      StatusCode::Device, StatusCode::NoSpace, StatusCode::Timeout}) {
         INFO("status code: " << kanariv::utils::toString(code));
         REQUIRE(exitCodeForError(Error{code, "x"}) == 1);
     }

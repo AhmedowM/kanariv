@@ -5,7 +5,6 @@
 #include <expected>
 #include <kanariv/fwd.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <set>
 #include <string>
 
 /**
@@ -52,21 +51,11 @@ void appendBlock(std::string& blob, const std::string& text);
 void renderInto(std::string& blob, const kanariv::ipc::Result& res);
 
 /**
- * @brief Builds Added lines for a QueueTracks result, warning on ids
- * already seen (pre-existing queue members).
- * @return The newly added count.
- */
-int printAddedText(const kanariv::ipc::Result& res, std::set<int64_t>& seen, std::string& out,
-                   std::string& err);
-
-/**
  * @brief Builds per-item lines for a QueueAddReport result.
- * @details Adds go to @p out, duplicates and failures to @p err; added ids
- * join @p seen so a later batch does not repeat them.
+ * @details Adds go to @p out, duplicates and failures to @p err.
  * @return The newly added count.
  */
-int printAddReportText(const kanariv::ipc::Result& res, std::set<int64_t>& seen, std::string& out,
-                       std::string& err);
+int printAddReportText(const kanariv::ipc::Result& res, std::string& out, std::string& err);
 
 /**
  * @brief Builds per-item lines for a QueueRemoveReport result.

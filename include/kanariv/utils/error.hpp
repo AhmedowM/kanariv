@@ -20,24 +20,29 @@ namespace kanariv::utils {
  * @details Intended as the error type for `std::expected<T, Error>`.
  * Equality is defaulted; message is owned (`std::string`) so the view
  * passed to the constructor is copied.
+ *
+ * An `Error` always describes a failure: the default constructor is deleted,
+ * so `std::unexpected(Error{})` (an error that claims success) cannot be
+ * written. `code` must not be `StatusCode::Ok`; that is asserted in debug
+ * builds and never produced by the library.
  * @see StatusCode
  * @see makeError
  * @see Expected
  */
 struct KANARIV_API Error {
-    StatusCode code{StatusCode::Ok}; ///< Machine-readable error code.
-    std::string message{};           ///< Human-readable context; may be empty.
+    StatusCode code;     ///< Machine-readable failure code; never `StatusCode::Ok`.
+    std::string message; ///< Human-readable context; may be empty.
 
     /**
-     * @brief Constructs a default success error (code Ok, empty message).
+     * @brief Deleted: an error cannot be success, so it must name a code.
      * @ingroup kanariv_utils
      */
-    Error() noexcept = default;
+    Error() = delete;
 
     /**
      * @brief Constructs an error with code and message view.
      * @ingroup kanariv_utils
-     * @param c Status code.
+     * @param c Failure status code (not `StatusCode::Ok`).
      * @param msg Diagnostic message view (copied).
      */
     explicit Error(StatusCode c, std::string_view msg);

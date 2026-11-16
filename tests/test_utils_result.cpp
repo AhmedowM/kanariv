@@ -30,6 +30,8 @@ bool result_toString_all() {
         return false;
     if (std::string(toString(StatusCode::NoSpace)).compare("NoSpace") != 0)
         return false;
+    if (std::string(toString(StatusCode::Timeout)).compare("Timeout") != 0)
+        return false;
     if (std::string(toString(static_cast<StatusCode>(99))).compare("Unknown") != 0)
         return false;
     return true;
@@ -61,6 +63,8 @@ bool result_enum_sequential() {
     if (static_cast<int>(StatusCode::Corrupt) != 11)
         return false;
     if (static_cast<int>(StatusCode::NoSpace) != 12)
+        return false;
+    if (static_cast<int>(StatusCode::Timeout) != 13)
         return false;
     return true;
 }

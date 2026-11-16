@@ -447,6 +447,10 @@ Json toJson(const Command& cmd) {
 
 template <CommandAlternative T>
 std::expected<T, kanariv::utils::Error> parseCommandPayload(const Json& j) {
+    // Strictness policy (I10): a field the serializer always writes is
+    // mandatory; a field it emits as `null` (or omits) when unset stays
+    // optional; a present field of the wrong type is InvalidArg -- never a
+    // silent default.
     try {
         if constexpr (std::is_same_v<T, Play>)
             return Play{};
@@ -463,437 +467,425 @@ std::expected<T, kanariv::utils::Error> parseCommandPayload(const Json& j) {
         else if constexpr (std::is_same_v<T, Prev>)
             return Prev{};
         else if constexpr (std::is_same_v<T, Seek>) {
-            double sec = 0;
-            if (j.contains("seconds") && j["seconds"].isNumber())
-                sec = j["seconds"].get<double>();
-            return Seek{sec};
+            Seek v{};
+            if (auto r = detail::requiredNumber(j, "seconds", v.seconds); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, SeekBy>) {
-            double delta = 0;
-            if (j.contains("delta") && j["delta"].isNumber())
-                delta = j["delta"].get<double>();
-            return SeekBy{delta};
+            SeekBy v{};
+            if (auto r = detail::requiredNumber(j, "delta", v.delta); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, StatusReq>)
             return StatusReq{};
         else if constexpr (std::is_same_v<T, StatusWait>) {
-            StatusWait sw{};
-            if (j.contains("timeout_ms") && j["timeout_ms"].isNumber())
-                sw.timeout_ms = j["timeout_ms"].get<int>();
-            return std::move(sw);
+            StatusWait v{};
+            if (auto r = detail::requiredNumber(j, "timeout_ms", v.timeout_ms); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, VolumeSet>) {
             VolumeSet v{};
-            if (j.contains("level") && !j["level"].isNull() && j["level"].isNumber())
-                v.level = j["level"].get<float>();
-            if (j.contains("mute") && !j["mute"].isNull() && j["mute"].isBoolean())
-                v.mute = j["mute"].get<bool>();
-            if (j.contains("deltaPct") && !j["deltaPct"].isNull() && j["deltaPct"].isNumber())
-                v.deltaPct = j["deltaPct"].get<int>();
-            return std::move(v);
+            if (auto r = detail::optionalNumber(j, "level", v.level); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalBool(j, "mute", v.mute); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalNumber(j, "deltaPct", v.deltaPct); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, QueueList>) {
-            QueueList q{};
-            if (j.contains("order") && j["order"].isString())
-                q.order = j["order"].get<std::string>();
-            return std::move(q);
+            QueueList v{};
+            if (auto r = detail::requiredString(j, "order", v.order); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, QueueQueues>)
             return QueueQueues{};
         else if constexpr (std::is_same_v<T, QueueCreate>) {
-            QueueCreate q{};
-            if (j.contains("name") && j["name"].isString())
-                q.name = j["name"].get<std::string>();
-            return std::move(q);
+            QueueCreate v{};
+            if (auto r = detail::requiredString(j, "name", v.name); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, QueueDelete>) {
             // Never fall back to queue 1 on a missing field: a malformed frame
             // must not delete a queue the client did not name.
-            if (!j.contains("qid") || !j["qid"].isNumber()) {
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg, "QueueDelete requires numeric qid")};
-            }
-            return QueueDelete{j["qid"].get<int64_t>()};
+            QueueDelete v{};
+            if (auto r = detail::requiredNumber(j, "qid", v.qid); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, PlayFiles>) {
-            PlayFiles p{};
-            if (j.contains("paths") && j["paths"].isArray()) {
-                const Json arr = j["paths"];
-                for (std::size_t i = 0, n = arr.size(); i < n; ++i) {
-                    auto je = arr.at(i);
-                    if (!je)
-                        return std::unexpected{je.error()};
-                    if (je->isString())
-                        p.paths.push_back(je->get<std::string>());
-                }
-            }
-            if (j.contains("save") && j["save"].isBoolean())
-                p.save = j["save"].get<bool>();
-            return std::move(p);
+            PlayFiles v{};
+            if (auto r = detail::requiredStringArray(j, "paths", v.paths); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredBool(j, "save", v.save); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, QueueSwitch>) {
             // Same fail-closed rule as QueueDelete: `qid` is mandatory.
-            if (!j.contains("qid") || !j["qid"].isNumber()) {
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg, "QueueSwitch requires numeric qid")};
-            }
-            return QueueSwitch{j["qid"].get<int64_t>()};
+            QueueSwitch v{};
+            if (auto r = detail::requiredNumber(j, "qid", v.qid); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, QueueAdd>) {
-            std::string q;
-            bool search = false;
-            if (j.contains("query") && j["query"].isString())
-                q = j["query"].get<std::string>();
-            if (j.contains("search") && j["search"].isBoolean())
-                search = j["search"].get<bool>();
-            return QueueAdd{std::move(q), search};
+            QueueAdd v{};
+            if (auto r = detail::requiredString(j, "query", v.query); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredBool(j, "search", v.search); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, QueueAddBatch>) {
             QueueAddBatch v{};
-            if (j.contains("queries") && j["queries"].isArray()) {
-                const Json arr = j["queries"];
-                for (std::size_t i = 0, n = arr.size(); i < n; ++i) {
-                    auto je = arr.at(i);
-                    if (!je)
-                        return std::unexpected{je.error()};
-                    if (je->isString())
-                        v.queries.push_back(je->get<std::string>());
-                }
-            }
-            if (j.contains("search") && j["search"].isBoolean())
-                v.search = j["search"].get<bool>();
+            if (auto r = detail::requiredStringArray(j, "queries", v.queries); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredBool(j, "search", v.search); !r)
+                return std::unexpected{std::move(r.error())};
             return v;
         } else if constexpr (std::is_same_v<T, QueueRemove>) {
-            std::string id;
-            if (j.contains("idOrIndex") && j["idOrIndex"].isString())
-                id = j["idOrIndex"].get<std::string>();
-            return QueueRemove{std::move(id)};
+            QueueRemove v{};
+            if (auto r = detail::requiredString(j, "idOrIndex", v.idOrIndex); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, QueueRemoveBatch>) {
             QueueRemoveBatch v{};
-            if (j.contains("selectors") && j["selectors"].isArray()) {
-                const Json arr = j["selectors"];
-                for (std::size_t i = 0, n = arr.size(); i < n; ++i) {
-                    auto je = arr.at(i);
-                    if (!je)
-                        return std::unexpected{je.error()};
-                    if (je->isString())
-                        v.selectors.push_back(je->get<std::string>());
-                }
-            }
+            if (auto r = detail::requiredStringArray(j, "selectors", v.selectors); !r)
+                return std::unexpected{std::move(r.error())};
             return v;
         } else if constexpr (std::is_same_v<T, QueueMove>) {
-            std::size_t from = 0, to = 0;
-            if (j.contains("from") && j["from"].isNumber())
-                from = j["from"].get<std::size_t>();
-            if (j.contains("to") && j["to"].isNumber())
-                to = j["to"].get<std::size_t>();
-            return QueueMove{from, to};
+            QueueMove v{};
+            if (auto r = detail::requiredNumber(j, "from", v.from); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredNumber(j, "to", v.to); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, QueueClear>)
             return QueueClear{};
         else if constexpr (std::is_same_v<T, QueueShuffle>) {
             QueueShuffle v{};
-            if (j.contains("on") && !j["on"].isNull() && j["on"].isBoolean())
-                v.on = j["on"].get<bool>();
-            return std::move(v);
+            if (auto r = detail::optionalBool(j, "on", v.on); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, QueueRepeat>) {
             QueueRepeat v{};
-            if (j.contains("mode") && !j["mode"].isNull() && j["mode"].isString()) {
-                auto m = kanariv::types::parseRepeatMode(j["mode"].get<std::string>());
-                if (!m)
+            std::optional<std::string> mode;
+            if (auto r = detail::optionalString(j, "mode", mode); !r)
+                return std::unexpected{std::move(r.error())};
+            if (mode) {
+                auto parsed = kanariv::types::parseRepeatMode(*mode);
+                if (!parsed)
                     return std::unexpected{kanariv::utils::makeError(
                         kanariv::utils::StatusCode::InvalidArg, "unknown RepeatMode")};
-                v.mode = *m;
+                v.mode = *parsed;
             }
-            return std::move(v);
+            return v;
         } else if constexpr (std::is_same_v<T, PlaylistList>)
             return PlaylistList{};
         else if constexpr (std::is_same_v<T, PlaylistTracks>) {
-            int64_t pid = 0;
-            if (j.contains("pid") && j["pid"].isNumber())
-                pid = j["pid"].get<int64_t>();
-            return PlaylistTracks{pid};
+            PlaylistTracks v{};
+            if (auto r = detail::requiredNumber(j, "pid", v.pid); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, PlaylistCreate>) {
-            PlaylistCreate pc;
-            if (j.contains("name") && j["name"].isString())
-                pc.name = j["name"].get<std::string>();
-            if (j.contains("smart_query") && j["smart_query"].isString())
-                pc.smart_query = j["smart_query"].get<std::string>();
-            return std::move(pc);
+            PlaylistCreate v{};
+            if (auto r = detail::requiredString(j, "name", v.name); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredString(j, "smart_query", v.smart_query); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, PlaylistAdd>) {
-            int64_t pid = 0;
-            int64_t tid = 0;
-            if (j.contains("pid") && j["pid"].isNumber())
-                pid = j["pid"].get<int64_t>();
-            if (j.contains("track_id") && j["track_id"].isNumber())
-                tid = j["track_id"].get<int64_t>();
-            return PlaylistAdd{pid, tid};
+            PlaylistAdd v{};
+            if (auto r = detail::requiredNumber(j, "pid", v.pid); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredNumber(j, "track_id", v.track_id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, PlaylistLoad>) {
-            int64_t pid = 0;
-            bool play = false;
-            bool replace = false;
-            if (j.contains("pid") && j["pid"].isNumber())
-                pid = j["pid"].get<int64_t>();
-            if (j.contains("play") && j["play"].isBoolean())
-                play = j["play"].get<bool>();
-            if (j.contains("replace") && j["replace"].isBoolean())
-                replace = j["replace"].get<bool>();
-            return PlaylistLoad{pid, play, replace};
+            PlaylistLoad v{};
+            if (auto r = detail::requiredNumber(j, "pid", v.pid); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredBool(j, "play", v.play); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredBool(j, "replace", v.replace); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, PlaylistSave>) {
-            std::string name;
-            std::optional<int64_t> qid;
-            if (j.contains("name") && j["name"].isString())
-                name = j["name"].get<std::string>();
-            if (j.contains("queue_id") && !j["queue_id"].isNull() && j["queue_id"].isNumber())
-                qid = j["queue_id"].get<int64_t>();
-            return PlaylistSave{std::move(name), qid};
+            PlaylistSave v{};
+            if (auto r = detail::requiredString(j, "name", v.name); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalNumber(j, "queue_id", v.queue_id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, PlaylistDelete>) {
-            int64_t pid = 0;
-            if (j.contains("pid") && j["pid"].isNumber())
-                pid = j["pid"].get<int64_t>();
-            return PlaylistDelete{pid};
+            PlaylistDelete v{};
+            if (auto r = detail::requiredNumber(j, "pid", v.pid); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, PlaylistRename>) {
-            int64_t pid = 0;
-            std::string newName;
-            if (j.contains("pid") && j["pid"].isNumber())
-                pid = j["pid"].get<int64_t>();
-            if (j.contains("newName") && j["newName"].isString())
-                newName = j["newName"].get<std::string>();
-            return PlaylistRename{pid, std::move(newName)};
+            PlaylistRename v{};
+            if (auto r = detail::requiredNumber(j, "pid", v.pid); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredString(j, "newName", v.newName); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, PlaylistExport>) {
-            int64_t pid = 0;
-            std::string path;
-            std::string format = "m3u";
-            if (j.contains("pid") && j["pid"].isNumber())
-                pid = j["pid"].get<int64_t>();
-            if (j.contains("path") && j["path"].isString())
-                path = j["path"].get<std::string>();
-            if (j.contains("format") && j["format"].isString())
-                format = j["format"].get<std::string>();
-            return PlaylistExport{pid, std::move(path), std::move(format)};
+            PlaylistExport v{};
+            if (auto r = detail::requiredNumber(j, "pid", v.pid); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredString(j, "path", v.path); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredString(j, "format", v.format); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, PlaylistImport>) {
-            std::string path;
-            std::optional<std::string> name;
-            if (j.contains("path") && j["path"].isString())
-                path = j["path"].get<std::string>();
-            if (j.contains("name") && !j["name"].isNull() && j["name"].isString())
-                name = j["name"].get<std::string>();
-            return PlaylistImport{std::move(path), name};
+            PlaylistImport v{};
+            if (auto r = detail::requiredString(j, "path", v.path); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalString(j, "name", v.name); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, LibraryScan>) {
             LibraryScan v{};
-            if (j.contains("path") && !j["path"].isNull() && j["path"].isString())
-                v.path = j["path"].get<std::string>();
-            if (j.contains("full_hash") && j["full_hash"].isBoolean())
-                v.full_hash = j["full_hash"].get<bool>();
-            else if (j.contains("mode") && j["mode"].isString())
-                v.full_hash = (j["mode"].get<std::string>() == "full");
-            return std::move(v);
+            if (auto r = detail::optionalString(j, "path", v.path); !r)
+                return std::unexpected{std::move(r.error())};
+            if (j.contains("full_hash")) {
+                if (auto r = detail::requiredBool(j, "full_hash", v.full_hash); !r)
+                    return std::unexpected{std::move(r.error())};
+            } else if (j.contains("mode")) {
+                // Pre-`full_hash` wire shape, still accepted from older clients.
+                std::string mode;
+                if (auto r = detail::requiredString(j, "mode", mode); !r)
+                    return std::unexpected{std::move(r.error())};
+                v.full_hash = mode == "full";
+            } else {
+                return std::unexpected{detail::missingFieldError("full_hash")};
+            }
+            return v;
         } else if constexpr (std::is_same_v<T, LibrarySearch>) {
-            std::string q;
-            int lim = 50;
-            if (j.contains("query") && j["query"].isString())
-                q = j["query"].get<std::string>();
-            if (j.contains("limit") && j["limit"].isNumber())
-                lim = j["limit"].get<int>();
-            return LibrarySearch{std::move(q), lim};
+            LibrarySearch v{};
+            if (auto r = detail::requiredString(j, "query", v.query); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredNumber(j, "limit", v.limit); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, LibraryStats>) {
             LibraryStats v{};
-            if (j.contains("top_tracks") && j["top_tracks"].isNumber())
-                v.top_tracks = j["top_tracks"].get<int>();
-            if (j.contains("top_albums") && j["top_albums"].isNumber())
-                v.top_albums = j["top_albums"].get<int>();
-            if (j.contains("top_genres") && j["top_genres"].isNumber())
-                v.top_genres = j["top_genres"].get<int>();
-            if (j.contains("top_artists") && j["top_artists"].isNumber())
-                v.top_artists = j["top_artists"].get<int>();
-            return std::move(v);
+            if (auto r = detail::optionalNumber(j, "top_tracks", v.top_tracks); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalNumber(j, "top_albums", v.top_albums); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalNumber(j, "top_genres", v.top_genres); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalNumber(j, "top_artists", v.top_artists); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, LibraryAdd>) {
-            std::string p;
-            bool rec = false;
-            if (j.contains("path") && j["path"].isString())
-                p = j["path"].get<std::string>();
-            if (j.contains("recursive") && j["recursive"].isBoolean())
-                rec = j["recursive"].get<bool>();
-            return LibraryAdd{std::move(p), rec};
+            LibraryAdd v{};
+            if (auto r = detail::requiredString(j, "path", v.path); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredBool(j, "recursive", v.recursive); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, LibraryRemove>) {
-            std::string q;
-            if (j.contains("query") && j["query"].isString())
-                q = j["query"].get<std::string>();
-            else if (j.contains("id") && j["id"].isString())
-                q = j["id"].get<std::string>();
-            else if (j.contains("id") && j["id"].isNumber())
-                q = std::to_string(j["id"].get<int64_t>());
-            return LibraryRemove{std::move(q)};
+            LibraryRemove v{};
+            if (j.contains("query")) {
+                if (auto r = detail::requiredString(j, "query", v.query); !r)
+                    return std::unexpected{std::move(r.error())};
+            } else if (j.contains("id")) {
+                // Legacy `id` alias: a track id as a JSON string or integer.
+                const Json id = j["id"];
+                if (id.isString())
+                    v.query = id.get<std::string>();
+                else if (id.isInteger() || id.isUnsigned())
+                    v.query = std::to_string(id.get<int64_t>());
+                else
+                    return std::unexpected{detail::typeMismatchError("id", "a string or integer")};
+            } else {
+                return std::unexpected{detail::missingFieldError("query")};
+            }
+            return v;
         } else if constexpr (std::is_same_v<T, LibraryList>) {
             LibraryList v{};
-            if (j.contains("query") && !j["query"].isNull() && j["query"].isString())
-                v.query = j["query"].get<std::string>();
-            if (j.contains("limit") && j["limit"].isNumber())
-                v.limit = j["limit"].get<int>();
-            if (j.contains("offset") && j["offset"].isNumber())
-                v.offset = j["offset"].get<int>();
-            if (j.contains("artist") && !j["artist"].isNull() && j["artist"].isString())
-                v.artist = j["artist"].get<std::string>();
-            if (j.contains("album") && !j["album"].isNull() && j["album"].isString())
-                v.album = j["album"].get<std::string>();
-            if (j.contains("genre") && !j["genre"].isNull() && j["genre"].isString())
-                v.genre = j["genre"].get<std::string>();
-            if (j.contains("rating") && !j["rating"].isNull() && j["rating"].isNumber())
-                v.rating = j["rating"].get<int32_t>();
-            return std::move(v);
+            if (auto r = detail::optionalString(j, "query", v.query); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredNumber(j, "limit", v.limit); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredNumber(j, "offset", v.offset); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalString(j, "artist", v.artist); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalString(j, "album", v.album); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalString(j, "genre", v.genre); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalNumber(j, "rating", v.rating); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, LibraryMaintenance>) {
             LibraryMaintenance v{};
-            if (j.contains("action") && j["action"].isString())
-                v.action = j["action"].get<std::string>();
-            if (j.contains("dry_run") && j["dry_run"].isBoolean())
-                v.dry_run = j["dry_run"].get<bool>();
-            if (j.contains("library_id") && j["library_id"].isNumber())
-                v.library_id = j["library_id"].get<int64_t>();
-            return std::move(v);
+            if (auto r = detail::requiredString(j, "action", v.action); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredBool(j, "dry_run", v.dry_run); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredNumber(j, "library_id", v.library_id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, TagEdit>) {
-            int64_t id = 0;
-            std::string field, value;
-            if (j.contains("id") && j["id"].isNumber())
-                id = j["id"].get<int64_t>();
-            if (j.contains("field") && j["field"].isString())
-                field = j["field"].get<std::string>();
-            if (j.contains("value") && j["value"].isString())
-                value = j["value"].get<std::string>();
-            return TagEdit{id, std::move(field), std::move(value)};
+            TagEdit v{};
+            if (auto r = detail::requiredNumber(j, "id", v.id); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredString(j, "field", v.field); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredString(j, "value", v.value); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, TagGet>) {
-            TagGet tg{};
-            if (j.contains("id") && j["id"].isNumber())
-                tg.id = j["id"].get<int64_t>();
-            if (j.contains("path") && j["path"].isString())
-                tg.path = j["path"].get<std::string>();
-            if (j.contains("cover") && j["cover"].isBoolean())
-                tg.cover = j["cover"].get<bool>();
-            return std::move(tg);
+            TagGet v{};
+            if (auto r = detail::optionalNumber(j, "id", v.id); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalString(j, "path", v.path); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredBool(j, "cover", v.cover); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, TagBatchEdit>) {
-            TagBatchEdit tbe{};
-            if (j.contains("dry_run") && j["dry_run"].isBoolean())
-                tbe.dry_run = j["dry_run"].get<bool>();
-            if (j.contains("entries") && j["entries"].isArray()) {
-                const Json arr = j["entries"];
-                for (std::size_t ei = 0, en = arr.size(); ei < en; ++ei) {
-                    auto jeExp = arr.at(ei);
-                    if (!jeExp)
-                        return std::unexpected{jeExp.error()};
-                    const Json je = std::move(*jeExp);
-                    TagBatchEditEntry e{};
-                    if (je.contains("id") && je["id"].isNumber())
-                        e.id = je["id"].get<int64_t>();
-                    if (je.contains("path") && je["path"].isString())
-                        e.path = je["path"].get<std::string>();
-                    if (je.contains("field") && je["field"].isString())
-                        e.field = je["field"].get<std::string>();
-                    if (je.contains("value") && je["value"].isString())
-                        e.value = je["value"].get<std::string>();
-                    tbe.entries.push_back(std::move(e));
-                }
+            TagBatchEdit v{};
+            if (auto r = detail::requiredBool(j, "dry_run", v.dry_run); !r)
+                return std::unexpected{std::move(r.error())};
+            if (!j.contains("entries"))
+                return std::unexpected{detail::missingFieldError("entries")};
+            const Json entries = j["entries"];
+            if (!entries.isArray())
+                return std::unexpected{detail::typeMismatchError("entries", "an array of objects")};
+            for (std::size_t i = 0; i < entries.size(); ++i) {
+                auto item = entries.at(i);
+                if (!item)
+                    return std::unexpected{kanariv::utils::makeError(
+                        kanariv::utils::StatusCode::InvalidArg,
+                        std::format("field 'entries' item {} could not be read", i))};
+                if (!item->isObject())
+                    return std::unexpected{kanariv::utils::makeError(
+                        kanariv::utils::StatusCode::InvalidArg,
+                        std::format("field 'entries' item {} must be an object", i))};
+                TagBatchEditEntry e{};
+                if (auto r = detail::optionalNumber(*item, "id", e.id); !r)
+                    return std::unexpected{std::move(r.error())};
+                if (auto r = detail::optionalString(*item, "path", e.path); !r)
+                    return std::unexpected{std::move(r.error())};
+                if (auto r = detail::requiredString(*item, "field", e.field); !r)
+                    return std::unexpected{std::move(r.error())};
+                if (auto r = detail::requiredString(*item, "value", e.value); !r)
+                    return std::unexpected{std::move(r.error())};
+                v.entries.push_back(std::move(e));
             }
-            return std::move(tbe);
+            return v;
         } else if constexpr (std::is_same_v<T, ConfigGet>) {
-            std::string k;
-            if (j.contains("key") && j["key"].isString())
-                k = j["key"].get<std::string>();
-            return ConfigGet{std::move(k)};
+            ConfigGet v{};
+            if (auto r = detail::requiredString(j, "key", v.key); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, ConfigSet>) {
-            std::string k, v;
-            if (j.contains("key") && j["key"].isString())
-                k = j["key"].get<std::string>();
-            if (j.contains("value") && j["value"].isString())
-                v = j["value"].get<std::string>();
-            return ConfigSet{std::move(k), std::move(v)};
+            ConfigSet v{};
+            if (auto r = detail::requiredString(j, "key", v.key); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredString(j, "value", v.value); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, ConfigList>)
             return ConfigList{};
         else if constexpr (std::is_same_v<T, ConfigExport>) {
-            std::string p;
-            if (j.contains("path") && j["path"].isString())
-                p = j["path"].get<std::string>();
-            return ConfigExport{std::move(p)};
+            ConfigExport v{};
+            if (auto r = detail::requiredString(j, "path", v.path); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, ConfigImport>) {
-            std::string p;
-            if (j.contains("path") && j["path"].isString())
-                p = j["path"].get<std::string>();
-            return ConfigImport{std::move(p)};
+            ConfigImport v{};
+            if (auto r = detail::requiredString(j, "path", v.path); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, ConfigReset>) {
-            std::optional<std::string> k;
-            if (j.contains("key") && !j["key"].isNull() && j["key"].isString())
-                k = j["key"].get<std::string>();
-            return ConfigReset{std::move(k)};
+            ConfigReset v{};
+            if (auto r = detail::optionalString(j, "key", v.key); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, HistoryList>) {
             HistoryList v{};
-            if (j.contains("limit") && !j["limit"].isNull() && j["limit"].isNumber())
-                v.limit = j["limit"].get<int>();
-            return std::move(v);
+            if (auto r = detail::optionalNumber(j, "limit", v.limit); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, HistoryClear>) {
             return HistoryClear{};
         } else if constexpr (std::is_same_v<T, BookmarkList>) {
             BookmarkList v{};
-            if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber())
-                v.track_id = j["track_id"].get<int64_t>();
-            return std::move(v);
+            if (auto r = detail::optionalNumber(j, "track_id", v.track_id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, BookmarkAdd>) {
             BookmarkAdd v{};
-            if (j.contains("position_ms") && j["position_ms"].isNumber())
-                v.position_ms = j["position_ms"].get<int64_t>();
-            if (j.contains("note") && j["note"].isString())
-                v.note = j["note"].get<std::string>();
-            if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber())
-                v.track_id = j["track_id"].get<int64_t>();
-            return std::move(v);
+            if (auto r = detail::requiredNumber(j, "position_ms", v.position_ms); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredString(j, "note", v.note); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalNumber(j, "track_id", v.track_id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, BookmarkRemove>) {
             BookmarkRemove v{};
-            if (j.contains("id") && j["id"].isNumber())
-                v.id = j["id"].get<int64_t>();
-            return std::move(v);
+            if (auto r = detail::requiredNumber(j, "id", v.id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, BookmarkGoto>) {
             BookmarkGoto v{};
-            if (j.contains("id") && j["id"].isNumber())
-                v.id = j["id"].get<int64_t>();
-            return std::move(v);
+            if (auto r = detail::requiredNumber(j, "id", v.id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, LyricsGet>) {
             LyricsGet v{};
-            if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber())
-                v.track_id = j["track_id"].get<int64_t>();
-            return std::move(v);
+            if (auto r = detail::optionalNumber(j, "track_id", v.track_id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, LyricsSet>) {
             LyricsSet v{};
-            if (j.contains("lrc_text") && j["lrc_text"].isString())
-                v.lrc_text = j["lrc_text"].get<std::string>();
-            if (j.contains("is_synced") && j["is_synced"].isBoolean())
-                v.is_synced = j["is_synced"].get<bool>();
-            if (j.contains("source") && j["source"].isString())
-                v.source = j["source"].get<std::string>();
-            if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber())
-                v.track_id = j["track_id"].get<int64_t>();
-            return std::move(v);
+            if (auto r = detail::requiredString(j, "lrc_text", v.lrc_text); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredBool(j, "is_synced", v.is_synced); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredString(j, "source", v.source); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::optionalNumber(j, "track_id", v.track_id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, LyricsRemove>) {
             LyricsRemove v{};
-            if (j.contains("track_id") && !j["track_id"].isNull() && j["track_id"].isNumber())
-                v.track_id = j["track_id"].get<int64_t>();
-            return std::move(v);
+            if (auto r = detail::optionalNumber(j, "track_id", v.track_id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, Shutdown>)
             return Shutdown{};
         else if constexpr (std::is_same_v<T, Preview>) {
-            std::string f;
-            if (j.contains("file") && j["file"].isString())
-                f = j["file"].get<std::string>();
-            return Preview{std::move(f)};
+            Preview v{};
+            if (auto r = detail::requiredString(j, "file", v.file); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, DeviceList>)
             return DeviceList{};
         else if constexpr (std::is_same_v<T, DeviceSet>) {
-            std::string id;
-            if (j.contains("id") && j["id"].isString())
-                id = j["id"].get<std::string>();
-            return DeviceSet{std::move(id)};
+            DeviceSet v{};
+            if (auto r = detail::requiredString(j, "id", v.id); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, DeviceTest>) {
-            std::optional<std::string> id;
-            if (j.contains("id") && !j["id"].isNull() && j["id"].isString())
-                id = j["id"].get<std::string>();
-            DeviceTest dt{std::move(id)};
-            if (j.contains("tone") && j["tone"].isBoolean())
-                dt.tone = j["tone"].get<bool>();
-            return std::move(dt);
+            DeviceTest v{};
+            if (auto r = detail::optionalString(j, "id", v.id); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredBool(j, "tone", v.tone); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else if constexpr (std::is_same_v<T, Info>)
             return Info{};
         else if constexpr (std::is_same_v<T, TrackRate>) {
-            TrackRate tr{};
-            if (j.contains("track_id") && j["track_id"].isNumber())
-                tr.track_id = j["track_id"].get<int64_t>();
-            if (j.contains("rating") && j["rating"].isNumber())
-                tr.rating = j["rating"].get<int32_t>();
-            return std::move(tr);
+            TrackRate v{};
+            if (auto r = detail::requiredNumber(j, "track_id", v.track_id); !r)
+                return std::unexpected{std::move(r.error())};
+            if (auto r = detail::requiredNumber(j, "rating", v.rating); !r)
+                return std::unexpected{std::move(r.error())};
+            return v;
         } else {
             static_assert(kAlwaysFalse<T>, "Command alternative has no JSON parser");
             return std::unexpected{

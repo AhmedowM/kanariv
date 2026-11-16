@@ -105,11 +105,16 @@ struct IpcRequest final {
  *
  * @param id Request identifier (matches the request).
  * @param result Result value on success, or error on failure.
+ * @details A reply always carries exactly one of the two outcomes. A
+ * default-constructed `IpcReply` is an *unset* reply and therefore fails
+ * closed as `Internal`: it must never be mistaken for a successful `Empty`
+ * result. Every producer assigns `result` on every path before serializing.
  */
 struct IpcReply final {
     uint32_t id{0}; ///< Request identifier copied from the originating request.
-    std::expected<Result, kanariv::utils::Error>
-        result{}; ///< Result on success or transport/dispatch error.
+    std::expected<Result, kanariv::utils::Error> result{
+        std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                  "reply result not populated")}};
 };
 // ---------------------------------------------------------------------------
 // Command JSON

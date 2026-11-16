@@ -196,7 +196,8 @@ kanariv::utils::Expected<kanariv::ipc::Result> Client::send(const kanariv::ipc::
     worker.request_stop();
     slot->cancel();
     worker.join();
-    return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "timeout")};
+    return std::unexpected{
+        kanariv::utils::makeError(kanariv::utils::StatusCode::Timeout, "timeout")};
 }
 
 kanariv::utils::Expected<kanariv::ipc::Result>

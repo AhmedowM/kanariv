@@ -799,6 +799,32 @@ TEST_CASE("queue batch commands report per-item outcomes", "[service][queue][a2b
     REQUIRE(remReport->items[2].status == "failed");
     REQUIRE_FALSE(remReport->items[2].detail.empty());
     REQUIRE(queueIds() == std::vector<int64_t>{ids[1]});
+
+    // A single-query add reports the same shape: added, then duplicate.
+    auto single = svc->dispatchCommand(
+        kanariv::ipc::QueueAdd{.query = std::to_string(ids[2]), .search = false});
+    REQUIRE(single.has_value());
+    auto* singleReport = std::get_if<kanariv::ipc::QueueAddReport>(&*single);
+    REQUIRE(singleReport != nullptr);
+    REQUIRE(singleReport->items.size() == 1);
+    REQUIRE(singleReport->items[0].status == "added");
+    REQUIRE(singleReport->items[0].track.id == ids[2]);
+    REQUIRE(queueIds() == std::vector<int64_t>{ids[1], ids[2]});
+
+    auto singleAgain = svc->dispatchCommand(
+        kanariv::ipc::QueueAdd{.query = std::to_string(ids[2]), .search = false});
+    REQUIRE(singleAgain.has_value());
+    auto* singleAgainReport = std::get_if<kanariv::ipc::QueueAddReport>(&*singleAgain);
+    REQUIRE(singleAgainReport != nullptr);
+    REQUIRE(singleAgainReport->items.size() == 1);
+    REQUIRE(singleAgainReport->items[0].status == "duplicate");
+    REQUIRE(queueIds() == std::vector<int64_t>{ids[1], ids[2]});
+
+    // An unresolvable single query stays a command-level error.
+    auto missing = svc->dispatchCommand(
+        kanariv::ipc::QueueAdd{.query = "999999", .search = false});
+    REQUIRE_FALSE(missing.has_value());
+    REQUIRE(missing.error().code == kanariv::utils::StatusCode::NotFound);
 }
 
 TEST_CASE("explicit sockets give daemons independent pid and lock files", "[service][s9]") {

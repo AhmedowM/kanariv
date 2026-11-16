@@ -59,6 +59,8 @@ resultCodeFromString(std::string_view sv) {
         return R::Corrupt;
     if (sv == "NoSpace")
         return R::NoSpace;
+    if (sv == "Timeout")
+        return R::Timeout;
     return std::unexpected{kanariv::utils::makeError(R::InvalidArg, "unknown Result code")};
 }
 
@@ -129,7 +131,7 @@ std::expected<kanariv::utils::Error, kanariv::utils::Error> errorFromJson(const 
                   kanariv::utils::StatusCode::State, kanariv::utils::StatusCode::NoMem,
                   kanariv::utils::StatusCode::Internal, kanariv::utils::StatusCode::AlreadyExists,
                   kanariv::utils::StatusCode::Busy, kanariv::utils::StatusCode::Corrupt,
-                  kanariv::utils::StatusCode::NoSpace}) {
+                  kanariv::utils::StatusCode::NoSpace, kanariv::utils::StatusCode::Timeout}) {
                 if (std::to_underlying(c) == v) {
                     codeStr = std::string(kanariv::utils::toString(c));
                     break;

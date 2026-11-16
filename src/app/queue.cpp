@@ -30,7 +30,6 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/parse.hpp>
 #include <optional>
-#include <set>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -129,17 +128,6 @@ BatchResult App::queueAdd(const std::vector<std::string>& paths, const std::stri
         if (!clr)
             return std::unexpected{clr.error()};
     }
-    // Seed the known-id set so re-adds warn instead of duplicating.
-    std::set<int64_t> seen;
-    {
-        auto probe = impl_->makeClient();
-        if (auto ps = probe.send(kanariv::ipc::Command{kanariv::ipc::QueueList{"added"}})) {
-            if (auto* qt = std::get_if<kanariv::ipc::QueueTracks>(&*ps)) {
-                for (auto& t : qt->tracks)
-                    seen.insert(t.id);
-            }
-        }
-    }
     BatchReport rep;
     if (hasPlaylist) {
         kanariv::ipc::Command tcmd{kanariv::ipc::PlaylistTracks{playlist}};
@@ -163,7 +151,7 @@ BatchResult App::queueAdd(const std::vector<std::string>& paths, const std::stri
         auto res = impl_->sendRaw(cmd);
         if (!res)
             return std::unexpected{res.error()};
-        int added = detail::printAddReportText(*res, seen, rep.out, rep.err);
+        int added = detail::printAddReportText(*res, rep.out, rep.err);
         rep.json = collectAddedTracks(*res);
         detail::countLineText(added, rep.out);
         rep.exitCode = (added == 0) ? 1 : 0;
@@ -175,10 +163,13 @@ BatchResult App::queueAdd(const std::vector<std::string>& paths, const std::stri
         auto res = impl_->sendRaw(cmd);
         if (!res)
             return std::unexpected{res.error()};
-        rep.json = std::move(*res);
-        int added = detail::printAddedText(*rep.json, seen, rep.out, rep.err);
+        bool failed = false;
+        if (auto* ar = std::get_if<kanariv::ipc::QueueAddReport>(&*res))
+            failed = anyItemFailed(*ar);
+        int added = detail::printAddReportText(*res, rep.out, rep.err);
+        rep.json = collectAddedTracks(*res);
         detail::countLineText(added, rep.out);
-        rep.exitCode = (added == 0) ? 1 : 0;
+        rep.exitCode = (added == 0 && failed) ? 1 : 0;
         return rep;
     }
     // PATH mode: expand globs/folders client-side.
@@ -214,7 +205,7 @@ BatchResult App::queueAdd(const std::vector<std::string>& paths, const std::stri
             return std::unexpected{res.error()};
         if (auto* ar = std::get_if<kanariv::ipc::QueueAddReport>(&*res))
             hardFail = hardFail || anyItemFailed(*ar);
-        added = detail::printAddReportText(*res, seen, rep.out, rep.err);
+        added = detail::printAddReportText(*res, rep.out, rep.err);
         rep.json = collectAddedTracks(*res);
     } else {
         rep.json = kanariv::ipc::Result{kanariv::ipc::QueueTracks{}};
