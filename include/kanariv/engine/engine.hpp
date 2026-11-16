@@ -257,8 +257,9 @@ class KANARIV_API Engine final {
      * @details Waits boundedly (500 ms) for `queueMutex_` (lock order
      * queue-to-decode), then holds decodeMtx_ to serialize with decodeLoop
      * (decoder_->decode / ring_->write) and to update `pausePos_`/`playStart_`.
-     * Temporarily Pauses, snapshots the transport counters so a failed seek
-     * restores the prior state and resumes Playing.
+     * The playback state found on entry is restored afterwards (and after a
+     * failed seek), so seeking while paused does not start audio and seeking
+     * while stopped does not begin playback.
      * @par Thread safety
      * Thread-safe; takes `queueMutex_` then `decodeMtx_`.
      */

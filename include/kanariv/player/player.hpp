@@ -52,6 +52,7 @@
 #include <expected>
 #include <kanariv/fwd.hpp>
 #include <memory>
+#include <string>
 #include <string_view>
 
 namespace kanariv::player {
@@ -121,7 +122,7 @@ struct PlayerOptions {
  * - Position tracking uses posBase + elapsed time (monotonic clock)
  *
  * Error Handling:
- * - Errors stored in lastError_, state set to Error
+ * - Errors are kept for lastError() and the state is set to Error
  * - All public methods return Expected<void> for explicit error handling
  * - Clean end of stream sets Stopped (and play() rewinds); a decoder or
  *   device failure sets Error and is never reported as a normal end
@@ -328,6 +329,20 @@ class KANARIV_API Player {
      * Thread-safe; reads position state atomically.
      */
     std::chrono::duration<double> position() const noexcept;
+
+    /**
+     * @brief Get the reason recorded for the most recent failure
+     * @return Last error message; empty when no failure was recorded
+     *
+     * Asynchronous failures (decode thread, audio device) surface only as
+     * `State::Error` at the call site; this accessor carries their reason.
+     * A later successful open()/play() replaces it.
+     *
+     * @par Thread safety
+     * Thread-safe; takes the control mutex, which may briefly wait for an
+     * in-flight decode chunk.
+     */
+    std::string lastError() const;
 
   private:
     /** @brief Private default ctor; use create() factory. */

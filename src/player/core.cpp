@@ -69,9 +69,9 @@ struct Player::Impl {
     // Threading
     std::jthread decodeThread_;
     /// Serializes control operations; see @par Lock protocol above.
-    std::mutex controlMutex_;
+    mutable std::mutex controlMutex_;
     /// Guards the playback graph; see @par Lock protocol above.
-    std::mutex graphMutex_;
+    mutable std::mutex graphMutex_;
     std::condition_variable cv_;
 
     // Atomic state (C ca_player.c atomic fields)
@@ -104,6 +104,7 @@ struct Player::Impl {
     Player::ExpectedVoid setVolume(float volume);
     [[nodiscard]] State state() const noexcept;
     [[nodiscard]] std::chrono::duration<double> position() const noexcept;
+    [[nodiscard]] std::string lastError() const;
 
     /// @pre `controlMutex_` is held by the caller.
     Player::ExpectedVoid stopInternalLocked();
@@ -171,6 +172,10 @@ State Player::state() const noexcept {
 
 std::chrono::duration<double> Player::position() const noexcept {
     return impl_->position();
+}
+
+std::string Player::lastError() const {
+    return impl_->lastError();
 }
 
 bool Player::Impl::init(const PlayerOptions& opts) {
@@ -522,6 +527,14 @@ Player::ExpectedVoid Player::Impl::setVolume(float volume) {
 
 State Player::Impl::state() const noexcept {
     return state_.load(std::memory_order_acquire);
+}
+
+std::string Player::Impl::lastError() const {
+    // Control calls write under controlMutex_, the decode thread under
+    // graphMutex_ (control-then-graph is the documented order).
+    std::lock_guard<std::mutex> control(controlMutex_);
+    std::lock_guard<std::mutex> graph(graphMutex_);
+    return lastError_;
 }
 
 std::chrono::duration<double> Player::Impl::position() const noexcept {
