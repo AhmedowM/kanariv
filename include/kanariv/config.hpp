@@ -74,8 +74,14 @@ struct Config {
     std::filesystem::path dbPath{};
     /** @brief Config file path. Default: derived from XDG/LOCALAPPDATA. */
     std::filesystem::path configPath{};
-    /** @brief Audio device ID ("auto" for default). */
+    /** @brief Audio device id ("auto" for default).
+     *  Opaque stable id from DeviceList; configs written before ids became
+     *  opaque stored a numeric enumeration index, which is still accepted. */
     std::string device{"auto"};
+    /** @brief Display name paired with `device`. Used when the id is no
+     *  longer enumerated (for example after a backend change); if neither
+     *  resolves, playback falls back to the default device with a warning. */
+    std::string deviceName{};
     /** @brief Log level (0=trace,1=debug,2=info,3=warn,4=error). Default: 2 (info). */
     int logLevel{2};
     /** @brief Optional explicit socket path. If empty, derived from dbPath. */

@@ -198,6 +198,9 @@ kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
         if (j.contains("device") && j["device"].isString()) {
             cfg.device = j["device"].get<std::string>();
         }
+        if (j.contains("deviceName") && j["deviceName"].isString()) {
+            cfg.deviceName = j["deviceName"].get<std::string>();
+        }
         if (j.contains("logLevel") && j["logLevel"].isInteger()) {
             cfg.logLevel = j["logLevel"].get<int>();
         } else if (j.contains("logLevel") && j["logLevel"].isString()) {
@@ -281,6 +284,7 @@ kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
         Json j;
         j["dbPath"] = cfg.dbPath.generic_string();
         j["device"] = cfg.device;
+        j["deviceName"] = cfg.deviceName;
         j["logLevel"] = cfg.logLevel;
         j["autoResumeOnPlay"] = cfg.autoResumeOnPlay;
         j["clearStopsPlayback"] = cfg.clearStopsPlayback;

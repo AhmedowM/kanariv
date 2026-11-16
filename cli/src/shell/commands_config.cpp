@@ -38,10 +38,11 @@ void declareConfig(CLI::App& cli, Options& o) {
     c.devList = c.device->add_subcommand("list", "List audio output devices");
     addJsonFlag(c.devList, c.devListJson);
     c.devSet = c.device->add_subcommand("set", "Set default audio device");
-    c.devSet->add_option("id", c.devSetId, "Device ID")->required();
+    c.devSet->add_option("id", c.devSetId, "Device index, name, or stable id")->required();
     addJsonFlag(c.devSet, c.devSetJson);
     c.devTest = c.device->add_subcommand("test", "Check audio device is available");
-    c.devTest->add_option("--id", c.devTestId, "Device ID (default: current config)");
+    c.devTest->add_option("--id", c.devTestId,
+                          "Device index, name, or stable id (default: current config)");
     c.devTest->add_flag("--tone", c.devTestTone, "Play an audible test tone");
     addJsonFlag(c.devTest, c.devTestJson);
     c.info = cli.add_subcommand("info", "Show current track info");

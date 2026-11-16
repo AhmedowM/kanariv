@@ -34,6 +34,9 @@
 #include <kanariv/fwd.hpp>
 #include <kanariv/types/record.hpp>
 #include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
 
 namespace kanariv::player {
 
@@ -45,8 +48,10 @@ namespace kanariv::player {
  * and returns a list of DeviceInfo structures. The miniaudio context
  * is created and destroyed within this function call.
  *
- * Device IDs are assigned as sequential indices (0, 1, 2...) for
- * user-friendly CLI selection. The default device is marked with
+ * Device IDs are opaque backend-qualified strings (`<backend>:<hex>`) derived
+ * from the backend's own device identifier, so they survive re-enumeration
+ * when the backend exposes a stable id; they are not guaranteed stable across
+ * backend or system changes. The default device is marked with
  * isDefault = true.
  *
  * @par Thread safety
@@ -63,6 +68,15 @@ namespace kanariv::player {
  * - Only returns playback devices (capture devices ignored)
  */
 KANARIV_API kanariv::types::DeviceList enumerateDevices();
+
+/**
+ * @brief Interprets a legacy numeric device id.
+ * @param id Candidate device id from an old config or command.
+ * @return The enumeration index when the whole string is decimal digits that
+ *         fit a uint32 (configs written before ids became opaque stored the
+ *         index), nullopt for every other spelling.
+ */
+KANARIV_API std::optional<std::uint32_t> legacyDeviceIndex(std::string_view id);
 
 /**
  * @class AudioOutput
@@ -132,6 +146,21 @@ class KANARIV_API AudioOutput {
          * is supported (the device format is fixed).
          */
         bool nullBackend = false;
+        /**
+         * @brief Configured playback device: an opaque id from
+         * enumerateDevices(), a device name, or a legacy numeric index.
+         *
+         * Empty and "auto" select the default device. A reference that no
+         * longer resolves logs a warning and falls back to the default device,
+         * so a stale config never blocks playback.
+         */
+        std::string deviceId{};
+        /** @brief Display name paired with deviceId.
+         *
+         * Tried when the id is not enumerated anymore (for example after a
+         * backend change) before falling back to the default device.
+         */
+        std::string deviceName{};
     };
 
     /** @brief Default-constructs an uninitialized output; use create(). */
@@ -236,6 +265,10 @@ class KANARIV_API AudioOutput {
      * object (calling it twice is rejected instead of leaking the device).
      * Sets up the data callback for lock-free ring buffer consumption.
      * Device starts in stopped state; caller must call start() after preroll.
+     *
+     * The configured deviceId is resolved against the current enumeration
+     * (then deviceName, then a legacy numeric index). A reference that does
+     * not resolve is logged as a warning and the default device is opened.
      *
      * @pre cfg.ring != nullptr, cfg.sampleRate > 0, 1 <= cfg.channels <= 32,
      * object not already initialized, and the fixed f32 format (only supported

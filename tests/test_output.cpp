@@ -4,12 +4,16 @@
 #include <cmath>
 #include <common.hpp>
 #include <cstddef>
+#include <cstdint>
 #include <kanariv/player/output.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/ring.hpp>
 #include <span>
+#include <string_view>
 #include <support/ring_fill.hpp>
 #include <vector>
+
+#include "player/device_id.hpp"
 
 TEST_CASE("output callback no alloc") {
     KANARIV_SKIP_IF_NOAUDIO();
@@ -191,4 +195,36 @@ TEST_CASE("output null backend drives the callback", "[output][null]") {
                                          std::chrono::milliseconds(5));
     REQUIRE(ring.availableRead() == 0);
     REQUIRE(out.stop().has_value());
+}
+
+TEST_CASE("device ids are opaque backend-qualified hex", "[output][devices]") {
+    using kanariv::player::detail::deviceIdBackend;
+    using kanariv::player::detail::formatDeviceId;
+    const std::array<std::uint8_t, 3> raw{0x68, 0x77, 0x3a};
+    REQUIRE(formatDeviceId("alsa", raw) == "alsa:68773a");
+    REQUIRE(formatDeviceId("alsa", {}) == "alsa:");
+    REQUIRE(deviceIdBackend("alsa:68773a") == std::string_view{"alsa"});
+    REQUIRE(deviceIdBackend("alsa:") == std::string_view{"alsa"});
+    REQUIRE_FALSE(deviceIdBackend("auto"));
+    REQUIRE_FALSE(deviceIdBackend("2"));
+    REQUIRE_FALSE(deviceIdBackend("Built-in Audio"));
+    REQUIRE_FALSE(deviceIdBackend(":00"));
+    REQUIRE_FALSE(deviceIdBackend("alsa:6"));  // odd payload
+    REQUIRE_FALSE(deviceIdBackend("alsa:zz")); // non-hex
+    REQUIRE_FALSE(deviceIdBackend("alsa:AB")); // the encoding is lowercase
+}
+
+TEST_CASE("legacy device indices parse decimal digits only", "[output][devices]") {
+    using kanariv::player::legacyDeviceIndex;
+    REQUIRE(legacyDeviceIndex("0") == 0u);
+    REQUIRE(legacyDeviceIndex("12") == 12u);
+    REQUIRE(legacyDeviceIndex("4294967295") == 4294967295u);
+    REQUIRE_FALSE(legacyDeviceIndex(""));
+    REQUIRE_FALSE(legacyDeviceIndex("4294967296")); // exceeds uint32
+    REQUIRE_FALSE(legacyDeviceIndex("99999999999")); // longer than any index
+    REQUIRE_FALSE(legacyDeviceIndex("-1"));
+    REQUIRE_FALSE(legacyDeviceIndex(" 1"));
+    REQUIRE_FALSE(legacyDeviceIndex("1a"));
+    REQUIRE_FALSE(legacyDeviceIndex("auto"));
+    REQUIRE_FALSE(legacyDeviceIndex("alsa:00"));
 }

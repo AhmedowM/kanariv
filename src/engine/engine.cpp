@@ -1949,6 +1949,8 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
                 }
                 cfg.volume = gain;
                 cfg.logger = cfg_.logger;
+                cfg.deviceId = cfg_.device;
+                cfg.deviceName = cfg_.deviceName;
                 auto oRes = kanariv::player::AudioOutput::create(cfg);
                 if (!oRes && cfg_.allowSimulatedPlayback) {
                     // Headless fallback: `allowSimulatedPlayback` already means

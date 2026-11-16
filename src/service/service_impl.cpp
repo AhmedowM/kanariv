@@ -185,6 +185,8 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
     ecfg.fadeOutMs = cfg.fadeOutMs;
     ecfg.crossfadeMs = cfg.crossfadeMs;
     ecfg.interTrackGapMs = cfg.interTrackGapMs;
+    ecfg.device = cfg.device;
+    ecfg.deviceName = cfg.deviceName;
     auto engRes = kanariv::engine::Engine::create(ecfg);
     if (!engRes) {
         detail::releaseLock(lockFd);

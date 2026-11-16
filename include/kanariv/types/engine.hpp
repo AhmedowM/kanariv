@@ -141,6 +141,12 @@ struct EngineConfig {
     /// Inter-track silence in ms (0 = gapless). Delay after the outgoing tail
     /// drains and before the next track starts; ignored when crossfadeMs > 0.
     int interTrackGapMs{0};
+    /// Configured playback device (opaque stable id, display name, legacy
+    /// index, or "auto"). The audio output falls back to the default device,
+    /// with a warning, when the reference no longer resolves.
+    std::string device{"auto"};
+    /// Display name paired with `device`; tried when the id is not enumerated.
+    std::string deviceName{};
     EngineCallbacks callbacks{}; ///< Initial callbacks (also via setCallbacks).
     /// Non-owning logger (may be null = silent). Must outlive the Engine;
     /// never emitted from destructors. Threaded through to decode paths.

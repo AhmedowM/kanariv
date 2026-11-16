@@ -20,7 +20,7 @@ namespace kanariv::ipc {
  * @brief List of audio output devices (returned by DeviceList).
  * @ingroup kanariv_ipc
  *
- * @json_example {"type": "Devices", "devices": [{"id": "hw:0,0", "name": "Built-in Audio",
+ * @json_example {"type": "Devices", "devices": [{"id": "alsa:68773a", "name": "Built-in Audio",
  * "isDefault": true}, ...]}
  *
  * @param devices Vector of device information.

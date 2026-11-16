@@ -15,6 +15,7 @@ helpers for socket, PID, lock, and log file locations.
   "dbPath": "~/.local/share/kanariv/library.db",
   "configPath": "~/.local/share/kanariv/config.json",
   "device": "auto",
+  "deviceName": "",
   "logLevel": 2,
   "socketPath": "",
   "autoResumeOnPlay": false,
@@ -28,7 +29,8 @@ helpers for socket, PID, lock, and log file locations.
 |---|---|---|---|
 | `dbPath` | path | XDG/LOCALAPPDATA derived | Database file path |
 | `configPath` | path | XDG/LOCALAPPDATA derived | Config file path |
-| `device` | string | `"auto"` | Audio device ID |
+| `device` | string | `"auto"` | Audio device id (opaque stable id, device name, or legacy index; `"auto"` = default) |
+| `deviceName` | string | `""` | Display name paired with `device`, used when the id stops resolving |
 | `logLevel` | int | `2` | 0=trace, 1=debug, 2=info, 3=warn, 4=error |
 | `socketPath` | string | derived from dbPath | Explicit socket path |
 | `autoResumeOnPlay` | bool | `false` | Resume persisted track on play after restart |

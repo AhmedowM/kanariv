@@ -238,7 +238,13 @@ struct Bookmark {
  * `Devices` result.
  */
 struct DeviceInfo {
-    std::string id;        ///< Unique device identifier.
+    /**
+     * @brief Opaque backend-qualified device id.
+     * @details Stable across runs when the backend exposes a stable device
+     * id, but may change after a backend or system change. Persist it
+     * together with `name` so callers can fall back when it stops resolving.
+     */
+    std::string id;
     std::string name;      ///< Human-readable device name.
     bool isDefault{false}; ///< True if this is the system default device.
 };

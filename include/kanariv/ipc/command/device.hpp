@@ -31,14 +31,17 @@ struct DeviceList final {};
  * @brief Set the active audio output device.
  * @ingroup kanariv_ipc
  *
- * @json_example {"type": "DeviceSet", "id": "hw:0,0"}
+ * @json_example {"type": "DeviceSet", "id": "alsa:68773a"}
  *
- * @param id Device ID to set as active.
+ * @param id Device reference: an opaque id from DeviceList, an exact device
+ * name, or a legacy numeric enumeration index.
  * @return Empty (success with no data).
+ * @details Persists the resolved stable id and its display name; loudspeaker
+ * playback falls back to the system default when neither resolves.
  */
 struct DeviceSet final {
     /**
-     * @brief Device ID to set as active.
+     * @brief Device id (or name, or legacy index) to set as active.
      */
     std::string id{};
 };
@@ -48,16 +51,17 @@ struct DeviceSet final {
  * @brief Check an audio output device is available.
  * @ingroup kanariv_ipc
  *
- * @json_example {"type": "DeviceTest", "id": "hw:0,0"}
+ * @json_example {"type": "DeviceTest", "id": "alsa:68773a"}
  *
- * @param id Device ID to check. If omitted, checks the default device.
+ * @param id Device reference to check. If omitted, checks the configured
+ * device (or the default one when none is configured).
  * @return Empty (success with no data).
- * @details Enumeration-only: verifies the id resolves against the listed
- * devices. Emits no sound.
+ * @details Enumeration-only: verifies the reference resolves against the
+ * listed devices. Emits no sound.
  */
 struct DeviceTest final {
     /**
-     * @brief Device ID to check. If omitted, checks the default device.
+     * @brief Device reference to check. If omitted, checks the configured device.
      */
     std::optional<std::string> id{};
     /**

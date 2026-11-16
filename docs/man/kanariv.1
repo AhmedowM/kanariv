@@ -305,10 +305,15 @@ Play the bookmarked track and seek to the bookmark position.
 .SS Device
 .TP
 .B device list [\-\-json]
-List audio output devices (via miniaudio enumeration).
+List audio output devices (via miniaudio enumeration). Device ids are opaque
+backend-qualified strings that stay stable across runs where the backend
+exposes a stable id; \fB\-\-json\fR prints them in full.
 .TP
 .B device set \fIID\fR
-Set default audio output device.
+Set default audio output device. \fIID\fR is the index shown by
+\fBdevice list\fR, a device name, or a stable id from \fBdevice list
+\-\-json\fR. The id and name are saved together, so a system change falls
+back to the matching name and then to the default device.
 .TP
 .B device test [\-\-id \fIID\fR]
 Check audio device is available (enumeration only, no sound). Defaults to current config device.

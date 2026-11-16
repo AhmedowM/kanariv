@@ -18,6 +18,7 @@ Default location: XDG/LOCALAPPDATA derived, e.g.
   "dbPath": "~/.local/share/kanariv/library.db",
   "configPath": "~/.local/share/kanariv/config.json",
   "device": "auto",
+  "deviceName": "",
   "logLevel": 2,
   "socketPath": "",
   "autoResumeOnPlay": false,
@@ -31,7 +32,8 @@ Default location: XDG/LOCALAPPDATA derived, e.g.
 |---|---|---|---|
 | `dbPath` | string | XDG/LOCALAPPDATA derived | SQLite database file path |
 | `configPath` | string | XDG/LOCALAPPDATA derived | Configuration file path |
-| `device` | string | `"auto"` | Audio device ID (`"auto"` for default) |
+| `device` | string | `"auto"` | Audio device id (`"auto"` for default). Opaque stable id from `kanariv device list --json`; a device name or a legacy numeric index is also accepted |
+| `deviceName` | string | `""` | Display name paired with `device`; used when the id is no longer enumerated, before falling back to the default device with a warning |
 | `logLevel` | integer | `2` | 0=trace, 1=debug, 2=info, 3=warn, 4=error |
 | `socketPath` | string | `""` | Explicit socket/named pipe path (empty = derived) |
 | `autoResumeOnPlay` | boolean | `false` | Resume persisted track on play after daemon restart |

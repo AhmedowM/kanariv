@@ -148,7 +148,7 @@ Service::Impl::handle(const kanariv::ipc::ConfigImport& cmd) {
                                                 "' must be a string");
         return std::nullopt;
     };
-    for (const char* k : {"dbPath", "device", "socketPath", "db_path"}) {
+    for (const char* k : {"dbPath", "device", "deviceName", "socketPath", "db_path"}) {
         if (auto e = checkString(k))
             return std::unexpected{*e};
     }
@@ -204,27 +204,46 @@ Service::Impl::handle(const kanariv::ipc::DeviceList&) {
     return Result{std::move(result)};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::DeviceSet& cmd) {
-    // Validate device exists
-    auto devList = kanariv::player::enumerateDevices();
-    bool found = false;
-    for (const auto& d : devList.devices) {
-        if (d.id == cmd.id) {
-            found = true;
-            break;
+namespace {
+
+/// Resolves a user-supplied device reference: an opaque id from DeviceList,
+/// an exact display name, or a legacy enumeration index.
+const kanariv::types::DeviceInfo* matchDevice(const kanariv::types::DeviceList& list,
+                                              std::string_view key) {
+    for (const auto& d : list.devices) {
+        if (d.id == key)
+            return &d;
+    }
+    if (!key.empty()) {
+        for (const auto& d : list.devices) {
+            if (d.name == key)
+                return &d;
         }
     }
-    if (!found) {
+    if (const auto idx = kanariv::player::legacyDeviceIndex(key); idx && *idx < list.devices.size())
+        return &list.devices[*idx];
+    return nullptr;
+}
+
+} // namespace
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::DeviceSet& cmd) {
+    // Persist the stable id and the display name together: the id survives
+    // re-enumeration on backends with stable ids, the name covers the ones
+    // whose id changes (and reports honestly when neither resolves).
+    auto devList = kanariv::player::enumerateDevices();
+    const auto* device = matchDevice(devList, cmd.id);
+    if (!device) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "device not found: " + cmd.id)};
     }
-    // Save to config
     auto cfgPath = detail::resolveConfigPath(config_.configPath, config_.dbPath);
-    auto res = kanariv::config::detail::configSetRaw(cfgPath, "device", cmd.id);
-    if (!res) {
+    if (auto res = kanariv::config::detail::configSetRaw(cfgPath, "device", device->id); !res)
         return std::unexpected{res.error()};
-    }
+    if (auto res = kanariv::config::detail::configSetRaw(cfgPath, "deviceName", device->name);
+        !res)
+        return std::unexpected{res.error()};
     // Update engine's device if running - the engine will pick it up on next playback
     // For now, just persist the config
     return Result{Empty{}};
@@ -248,14 +267,8 @@ Service::Impl::handle(const kanariv::ipc::DeviceTest& cmd) {
     }
     // Enumeration check: verify the id resolves against listed devices.
     auto devList = kanariv::player::enumerateDevices();
-    bool found = false;
-    for (const auto& d : devList.devices) {
-        if (d.id == testId || (testId == "auto" && d.isDefault)) {
-            found = true;
-            break;
-        }
-    }
-    if (!found && testId != "auto") {
+    const bool found = testId == "auto" || matchDevice(devList, testId) != nullptr;
+    if (!found) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "device not found: " + testId)};
     }
@@ -268,8 +281,15 @@ Service::Impl::handle(const kanariv::ipc::DeviceTest& cmd) {
         constexpr std::size_t ringCapacity = 2048; // ~42 ms of audio
 
         kanariv::utils::SpscRing<float> ring(ringCapacity, channels);
-        auto out = kanariv::player::AudioOutput::create(
-            kanariv::player::AudioOutput::Config{sampleRate, channels, &ring, 0.3f, nullptr});
+        kanariv::player::AudioOutput::Config outCfg{};
+        outCfg.sampleRate = sampleRate;
+        outCfg.channels = channels;
+        outCfg.ring = &ring;
+        outCfg.volume = 0.3f;
+        // Route the tone through the tested device, so "device available"
+        // means the configured one actually opens, not just enumerates.
+        outCfg.deviceId = testId;
+        auto out = kanariv::player::AudioOutput::create(outCfg);
         if (!out)
             return std::unexpected{out.error()};
 

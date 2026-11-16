@@ -163,6 +163,46 @@ TEST_CASE("config separates crossfade from inter-track gap", "[config]") {
     }
 }
 
+TEST_CASE("config keeps the device id and name together", "[config]") {
+    auto tmp = freshTempDir("kanariv_test_config_device");
+    auto cfgPath = tmp / "config.json";
+
+    SECTION("opaque id and display name round-trip") {
+        {
+            std::ofstream out(cfgPath);
+            REQUIRE(out.good());
+            out << R"({
+  "device": "alsa:68773a",
+  "deviceName": "Built-in Audio"
+})";
+        }
+        auto loaded = kanariv::config::loadConfig(cfgPath);
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->device == "alsa:68773a");
+        REQUIRE(loaded->deviceName == "Built-in Audio");
+
+        REQUIRE(kanariv::config::saveConfig(*loaded).has_value());
+        auto reloaded = kanariv::config::loadConfig(cfgPath);
+        REQUIRE(reloaded.has_value());
+        REQUIRE(reloaded->device == "alsa:68773a");
+        REQUIRE(reloaded->deviceName == "Built-in Audio");
+    }
+
+    SECTION("a legacy numeric id is preserved for the resolver") {
+        // Old configs stored the enumeration index; it is interpreted at open
+        // time, so loading must not guess a name or rewrite it.
+        {
+            std::ofstream out(cfgPath);
+            REQUIRE(out.good());
+            out << R"({"device": "1"})";
+        }
+        auto loaded = kanariv::config::loadConfig(cfgPath);
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->device == "1");
+        REQUIRE(loaded->deviceName.empty());
+    }
+}
+
 TEST_CASE("config defaults for playback-policy keys", "[config]") {
     auto tmp = freshTempDir("kanariv_test_config_defaults");
     auto cfgPath = tmp / "config.json";
