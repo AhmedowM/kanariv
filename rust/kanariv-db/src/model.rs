@@ -60,7 +60,7 @@ impl SourceRef {
 
 /// A single audio track row.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Track {
+pub struct TrackRow {
     pub id: i64,
     pub size: i64,
     pub mtime: i64,
@@ -91,7 +91,7 @@ pub struct Track {
     pub replay_gain_album: f64,
 }
 
-impl Track {
+impl TrackRow {
     /// Applies the C++ defaults: a zero library id means the default library.
     #[must_use]
     pub fn normalized_library_id(&self) -> i64 {

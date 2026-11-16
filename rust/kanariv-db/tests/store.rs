@@ -1,6 +1,6 @@
 //! Behavioural tests for the Rust store, mirroring the C++ `test_db*` suites.
 
-use kanariv_db::{DbError, SourceKind, SourceRef, Store, Track};
+use kanariv_db::{DbError, SourceKind, SourceRef, Store, TrackRow};
 
 fn fingerprint(seed: &str) -> [u8; 32] {
     let mut out = [0_u8; 32];
@@ -10,13 +10,13 @@ fn fingerprint(seed: &str) -> [u8; 32] {
     out
 }
 
-fn track(path: &str, title: &str) -> Track {
-    Track {
+fn track(path: &str, title: &str) -> TrackRow {
+    TrackRow {
         path: path.to_owned(),
         title: title.to_owned(),
         fingerprint: fingerprint(path),
         duration: 3.5,
-        ..Track::default()
+        ..TrackRow::default()
     }
 }
 

@@ -12,7 +12,7 @@ use std::ffi::{c_char, CStr, CString};
 use std::fmt::Write as _;
 use std::ptr;
 
-use kanariv_db::{DbError, Store, Track};
+use kanariv_db::{DbError, Store, TrackRow};
 use serde_json::{json, Value};
 
 /// Opaque handle owned by the C caller.
@@ -68,7 +68,7 @@ fn fingerprint_hex(bytes: &[u8; 32]) -> String {
     out
 }
 
-fn track_json(track: &Track) -> Value {
+fn track_json(track: &TrackRow) -> Value {
     json!({
         "id": track.id,
         "path": track.path,

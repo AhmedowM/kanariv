@@ -22,7 +22,7 @@ mod store;
 pub use error::{DbError, Result};
 pub use model::{
     Bookmark, HistoryEntry, Library, Lyrics, PlaybackStats, Playlist, Queue, QueueItem, SourceKind,
-    SourceRef, Track,
+    SourceRef, TrackRow,
 };
 pub use schema::SCHEMA;
 pub use store::Store;
