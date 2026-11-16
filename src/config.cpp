@@ -415,7 +415,7 @@ kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
 
 } // namespace kanariv::config
 
-namespace kanariv::config::detail_paths {
+namespace kanariv::config::detail {
 
 namespace {
 
@@ -528,17 +528,17 @@ kanariv::utils::Expected<std::filesystem::path> baseDirForSocket() {
 #endif
 }
 
-} // namespace kanariv::config::detail_paths
+} // namespace kanariv::config::detail
 
 namespace kanariv::config {
 
 kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path& dbPath) {
     try {
-        std::string id = detail_paths::endpointIdForDb(dbPath);
+        std::string id = detail::endpointIdForDb(dbPath);
 #ifdef _WIN32
         return std::string("\\\\.\\pipe\\kanariv-") + id;
 #else
-        auto base = detail_paths::baseDirForSocket();
+        auto base = detail::baseDirForSocket();
         if (!base)
             return std::unexpected{base.error()};
         return (*base / ("kanariv-" + id + ".sock")).generic_string();
@@ -553,8 +553,8 @@ kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path&
 
 kanariv::utils::Expected<std::filesystem::path> pidPathFor(const std::filesystem::path& dbPath) {
     try {
-        std::string id = detail_paths::endpointIdForDb(dbPath);
-        auto base = detail_paths::baseDirForSocket();
+        std::string id = detail::endpointIdForDb(dbPath);
+        auto base = detail::baseDirForSocket();
         if (!base)
             return std::unexpected{base.error()};
         return *base / ("kanariv-" + id + ".pid");
@@ -568,8 +568,8 @@ kanariv::utils::Expected<std::filesystem::path> pidPathFor(const std::filesystem
 
 kanariv::utils::Expected<std::filesystem::path> lockPathFor(const std::filesystem::path& dbPath) {
     try {
-        std::string id = detail_paths::endpointIdForDb(dbPath);
-        auto base = detail_paths::baseDirForSocket();
+        std::string id = detail::endpointIdForDb(dbPath);
+        auto base = detail::baseDirForSocket();
         if (!base)
             return std::unexpected{base.error()};
         return *base / ("kanariv-" + id + ".lock");

@@ -14,10 +14,10 @@
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/maintenance.hpp>
 #include <kanariv/library/scan.hpp>
+#include <kanariv/media/fingerprint.hpp>
 #include <kanariv/media/scan.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
-#include <media/fingerprint.hpp>
 #include <memory>
 #include <string>
 #include <string_view>

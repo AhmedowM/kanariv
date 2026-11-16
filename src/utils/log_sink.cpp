@@ -12,7 +12,8 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
-#include <utils/log_sink.hpp>
+
+#include "log_sink.hpp"
 
 namespace kanariv::utils {
 

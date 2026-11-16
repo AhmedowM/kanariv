@@ -26,6 +26,34 @@ namespace {
     throw JsonError(what);
 }
 
+/// True when no container nests deeper than @p maxDepth. Brackets inside
+/// strings are ignored (with backslash escapes), so this is a pure structural
+/// pre-scan: it never allocates and cannot itself overflow the stack.
+bool nestingWithinLimit(std::string_view text, std::size_t maxDepth) noexcept {
+    std::size_t depth = 0;
+    bool inString = false;
+    bool escaped = false;
+    for (const char ch : text) {
+        if (inString) {
+            if (escaped)
+                escaped = false;
+            else if (ch == '\\')
+                escaped = true;
+            else if (ch == '"')
+                inString = false;
+            continue;
+        }
+        if (ch == '"')
+            inString = true;
+        else if (ch == '[' || ch == '{') {
+            if (++depth > maxDepth)
+                return false;
+        } else if ((ch == ']' || ch == '}') && depth > 0)
+            --depth;
+    }
+    return true;
+}
+
 } // namespace
 
 Json::Impl& Json::resolveImpl(Json* owner, [[maybe_unused]] std::string_view key, std::size_t index,
@@ -168,6 +196,8 @@ Json Json::array() {
 }
 
 Json Json::parse(std::string_view text) {
+    if (!nestingWithinLimit(text, jsonMaxDepth))
+        throwJson("json parse: nesting deeper than " + std::to_string(jsonMaxDepth) + " levels");
     try {
         Json j;
         j.impl_->v = nlohmann::ordered_json::parse(text.begin(), text.end());

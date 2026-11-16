@@ -47,10 +47,6 @@ std::filesystem::path legacyConfigPath();
  */
 kanariv::utils::Expected<std::string> readFileString(const std::filesystem::path& p);
 
-} // namespace kanariv::config::detail
-
-namespace kanariv::config::detail_paths {
-
 /**
  * @brief Stable endpoint identifier used in socket/pid/lock/shm names.
  * @param dbPath Database path.
@@ -76,4 +72,5 @@ KANARIV_API std::string endpointIdForDb(const std::filesystem::path& dbPath);
  * shared temp fallback).
  */
 kanariv::utils::Expected<std::filesystem::path> baseDirForSocket();
-} // namespace kanariv::config::detail_paths
+
+} // namespace kanariv::config::detail

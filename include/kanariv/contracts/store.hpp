@@ -5,9 +5,9 @@
  * @brief Shared base for the persistence ports.
  * @defgroup kanariv_contracts kanariv persistence contracts
  * @details Every consumer port is served by the same backing store, so health
- * and diagnostics live on one small base instead of being repeated (or, worse,
- * reimplemented) per port. Callers that only need "is storage usable" depend on
- * this type and nothing else.
+ * lives on one small base instead of being repeated (or, worse, reimplemented)
+ * per port. Callers that only need "is storage usable" depend on this type and
+ * nothing else.
  */
 
 #include <kanariv/fwd.hpp>
@@ -15,7 +15,7 @@
 namespace kanariv::contracts {
 
 /**
- * @brief Health and diagnostics shared by every persistence port.
+ * @brief Health shared by every persistence port.
  * @ingroup kanariv_contracts
  * @details A store is one backend (today: one SQLite database) viewed through
  * several narrow ports. The base carries the questions that concern the
@@ -37,16 +37,6 @@ class IStore {
      * other public operations.
      */
     virtual bool isOpen() const noexcept = 0;
-
-    /**
-     * @brief Returns the logger associated with the backing store.
-     * @return A non-owning logger pointer, or `nullptr` when logging is
-     * disabled.
-     * @par Ownership
-     * The store retains no ownership of the returned logger. The logger must
-     * outlive the store and every call that uses it.
-     */
-    virtual kanariv::utils::Logger* logger() const noexcept = 0;
 };
 
 } // namespace kanariv::contracts

@@ -361,7 +361,7 @@ TEST_CASE("config reports unknown keys without failing the load", "[config]") {
 }
 
 TEST_CASE("endpoint id is a stable FNV-1a digest", "[config][endpoint]") {
-    using kanariv::config::detail_paths::endpointIdForDb;
+    using kanariv::config::detail::endpointIdForDb;
     // Fixed golden values: changing the digest or its canonicalisation renames every
     // on-disk endpoint, so an update here must be deliberate and documented.
     REQUIRE(endpointIdForDb(std::filesystem::path("data/library.db")) == "4f477ef70d3ca00b");
@@ -374,7 +374,7 @@ TEST_CASE("endpoint id is a stable FNV-1a digest", "[config][endpoint]") {
 
 TEST_CASE("socket/pid/lock share one endpoint digest", "[config][endpoint]") {
     const auto dbPath = std::filesystem::path("data") / "library.db";
-    const std::string id = kanariv::config::detail_paths::endpointIdForDb(dbPath);
+    const std::string id = kanariv::config::detail::endpointIdForDb(dbPath);
     REQUIRE(id.size() == 16);
 
     auto pid = kanariv::config::pidPathFor(dbPath);

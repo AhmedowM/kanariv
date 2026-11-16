@@ -36,7 +36,7 @@
 namespace kanariv::media {
 
 /**
- * @enum SourceKind
+ * @enum Transport
  * @brief Transport mechanism used to read a media source.
  * @ingroup kanariv_media
  *
@@ -46,7 +46,7 @@ namespace kanariv::media {
  * external identity is reopened by the host and handed over as a
  * `DescriptorSource`; the media layer never guesses a path for it.
  */
-enum class SourceKind : std::uint8_t {
+enum class Transport : std::uint8_t {
     path,      ///< Ordinary filesystem path.
     descriptor ///< Caller-supplied native descriptor.
 };
@@ -68,7 +68,7 @@ class KANARIV_API Source {
     virtual ~Source() = default;
 
     /** @brief Returns the transport mechanism used by this source. */
-    [[nodiscard]] virtual SourceKind kind() const noexcept = 0;
+    [[nodiscard]] virtual Transport kind() const noexcept = 0;
 
     /** @brief Returns a user-facing name that may be shown in diagnostics. */
     [[nodiscard]] virtual std::string_view displayName() const noexcept = 0;
@@ -106,8 +106,8 @@ class KANARIV_API PathSource final : public Source {
      */
     explicit PathSource(std::filesystem::path path);
 
-    /** @brief Returns SourceKind::path. */
-    [[nodiscard]] SourceKind kind() const noexcept override;
+    /** @brief Returns Transport::path. */
+    [[nodiscard]] Transport kind() const noexcept override;
 
     /** @brief Returns the path as UTF-8 for diagnostics (never ANSI). */
     [[nodiscard]] std::string_view displayName() const noexcept override;
@@ -161,8 +161,8 @@ class KANARIV_API DescriptorSource final : public Source {
      */
     ~DescriptorSource() override;
 
-    /** @brief Returns SourceKind::descriptor. */
-    [[nodiscard]] SourceKind kind() const noexcept override;
+    /** @brief Returns Transport::descriptor. */
+    [[nodiscard]] Transport kind() const noexcept override;
 
     /** @brief Returns the supplied display name. */
     [[nodiscard]] std::string_view displayName() const noexcept override;

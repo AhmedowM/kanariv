@@ -126,7 +126,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @details For free functions (scan) that act on the database but take
      * no logger of their own. Never null-dereference; check before use.
      */
-    kanariv::utils::Logger* logger() const noexcept override;
+    kanariv::utils::Logger* logger() const noexcept;
     /**
      * @brief Reports the filesystem path the database was opened with.
      * @ingroup kanariv_db

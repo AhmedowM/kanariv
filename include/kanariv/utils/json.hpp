@@ -30,6 +30,17 @@
 namespace kanariv::utils {
 
 /**
+ * @brief Maximum container nesting depth accepted by Json::parse/tryParse.
+ * @ingroup kanariv_utils
+ * @details The DOM parser is recursive, so an unconstrained depth lets a
+ * hostile peer overflow the parsing thread's stack with a frame made of
+ * brackets. Parsing pre-scans the text and rejects anything nested deeper
+ * before the parser runs. 64 levels is far beyond any protocol or config
+ * document this library produces.
+ */
+inline constexpr std::size_t jsonMaxDepth = 64;
+
+/**
  * @brief Thrown by `Json` on bounds/type violations (missing key, index
  * out of range, key access on non-object).
  * @ingroup kanariv_utils

@@ -251,10 +251,6 @@ bool JsonPlaybackStateStore::isOpen() const noexcept {
     return true;
 }
 
-kanariv::utils::Logger* JsonPlaybackStateStore::logger() const noexcept {
-    return logger_;
-}
-
 const std::filesystem::path& JsonPlaybackStateStore::path() const noexcept {
     return path_;
 }

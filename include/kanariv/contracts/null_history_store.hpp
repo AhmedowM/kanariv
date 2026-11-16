@@ -57,11 +57,6 @@ class NullHistoryStore final : public IHistoryStore {
     bool isOpen() const noexcept override {
         return true;
     }
-
-    /// @brief No logger.
-    kanariv::utils::Logger* logger() const noexcept override {
-        return nullptr;
-    }
 };
 
 } // namespace kanariv::contracts

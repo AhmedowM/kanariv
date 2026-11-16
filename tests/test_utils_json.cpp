@@ -119,3 +119,27 @@ TEST_CASE("Json tryParse reports Corrupt without terminating", "[utils][json]") 
     REQUIRE(good.has_value());
     REQUIRE(good->at("a")->get<int>() == 1);
 }
+
+TEST_CASE("Json rejects nesting deeper than jsonMaxDepth", "[utils][json]") {
+    using kanariv::utils::Json;
+    auto nested = [](std::size_t depth) {
+        std::string text;
+        text.reserve(depth * 2);
+        for (std::size_t i = 0; i < depth; ++i)
+            text.push_back('[');
+        for (std::size_t i = 0; i < depth; ++i)
+            text.push_back(']');
+        return text;
+    };
+    auto atLimit = Json::tryParse(nested(kanariv::utils::jsonMaxDepth));
+    REQUIRE(atLimit.has_value());
+    REQUIRE(atLimit->isArray());
+
+    auto overLimit = Json::tryParse(nested(kanariv::utils::jsonMaxDepth + 1));
+    REQUIRE(!overLimit.has_value());
+    REQUIRE(overLimit.error().code == kanariv::utils::StatusCode::Corrupt);
+
+    // Brackets inside strings are data, not nesting.
+    auto quoted = Json::tryParse(R"({"a": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[["})");
+    REQUIRE(quoted.has_value());
+}

@@ -70,7 +70,7 @@ TEST_CASE("PathSource opens a path repeatedly", "[media][source]") {
     const auto path = writeTempFile("repeat.wav", sampleBytes());
     PathSource source(path);
 
-    REQUIRE(source.kind() == SourceKind::path);
+    REQUIRE(source.kind() == Transport::path);
     REQUIRE(source.seekable());
     REQUIRE(source.displayName() == kanariv::utils::detail::pathToUtf8(path));
     REQUIRE(source.path() == path);
@@ -120,7 +120,7 @@ TEST_CASE("PathSource keeps non-ASCII names as UTF-8", "[media][source]") {
 
 TEST_CASE("DescriptorSource rejects negative descriptor", "[media][source]") {
     DescriptorSource source(FileDescriptor{-1, true, false, true}, "bad");
-    REQUIRE(source.kind() == SourceKind::descriptor);
+    REQUIRE(source.kind() == Transport::descriptor);
     REQUIRE_FALSE(source.seekable());
     auto reader = source.open();
     REQUIRE(!reader.has_value());
@@ -147,7 +147,7 @@ TEST_CASE("DescriptorSource single-use transfers ownership", "[media][source]") 
     REQUIRE(fd >= 0);
 
     DescriptorSource source(FileDescriptor{fd, true, true, true}, "owned fixture");
-    REQUIRE(source.kind() == SourceKind::descriptor);
+    REQUIRE(source.kind() == Transport::descriptor);
     REQUIRE(source.seekable());
     REQUIRE(source.displayName() == "owned fixture");
     REQUIRE_FALSE(source.consumed());

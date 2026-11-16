@@ -7,5 +7,5 @@ export namespace kanariv::media {
 using ::kanariv::media::DescriptorSource;
 using ::kanariv::media::PathSource;
 using ::kanariv::media::Source;
-using ::kanariv::media::SourceKind;
+using ::kanariv::media::Transport;
 } // namespace kanariv::media

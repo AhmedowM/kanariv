@@ -11,13 +11,13 @@
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/media/audio_ext.hpp>
 #include <kanariv/media/decoder.hpp>
+#include <kanariv/media/fingerprint.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/parse.hpp>
 #include <kanariv/utils/result.hpp>
-#include <media/fingerprint.hpp>
 #include <memory>
 #include <optional>
 #include <span>

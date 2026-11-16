@@ -1,17 +1,11 @@
 #pragma once
 
-#include <algorithm>
 #include <array>
-#include <kanariv/types/record.hpp>
-#include <kanariv/utils.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
-#include <fstream>
-#include <span>
-#include <string>
-#include <vector>
+#include <kanariv/utils/error.hpp>
 
 /**
  * @file fingerprint.hpp

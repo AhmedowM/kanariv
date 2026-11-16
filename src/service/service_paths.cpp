@@ -61,7 +61,7 @@ namespace {
 std::filesystem::path socketScopedPath(const std::filesystem::path& dbPath,
                                        const std::string& socketPath, std::string_view suffix) {
     const std::string id =
-        kanariv::config::detail_paths::endpointIdForDb(std::filesystem::path(socketPath));
+        kanariv::config::detail::endpointIdForDb(std::filesystem::path(socketPath));
     if (auto base = kanariv::config::pidPathFor(dbPath))
         return base->parent_path() / ("kanariv-" + id + std::string(suffix));
     auto pp = dbPath.parent_path();
@@ -96,7 +96,7 @@ std::filesystem::path lockPathForSocket(const std::filesystem::path& dbPath,
     auto r = kanariv::config::lockPathFor(dbPath);
     if (r)
         return *r;
-    std::string hex = kanariv::config::detail_paths::endpointIdForDb(dbPath);
+    std::string hex = kanariv::config::detail::endpointIdForDb(dbPath);
     auto pidPath = pidPathForSocket(dbPath, socketPath);
     return pidPath.parent_path() / ("kanariv-" + hex + ".lock");
 }
@@ -106,7 +106,7 @@ std::string socketPathForDb(const std::filesystem::path& dbPath) {
     if (r)
         return *r;
     // Fallback uses the canonical endpoint id (consistent with primary socketPathFor)
-    std::string hex = kanariv::config::detail_paths::endpointIdForDb(dbPath);
+    std::string hex = kanariv::config::detail::endpointIdForDb(dbPath);
 #ifdef _WIN32
     return std::string("\\\\.\\pipe\\kanariv-") + hex;
 #else

@@ -9,7 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
-#include <media/fingerprint.hpp>
+#include <kanariv/media/fingerprint.hpp>
 #include <system_error>
 
 namespace kanariv::media::internal {

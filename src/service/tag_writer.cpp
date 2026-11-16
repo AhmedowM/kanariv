@@ -27,7 +27,7 @@
 #include <kanariv/db/database.hpp>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/utils/error.hpp>
-#include <media/fingerprint.hpp>
+#include <kanariv/media/fingerprint.hpp>
 #include <string>
 #include <system_error>
 

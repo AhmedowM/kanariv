@@ -7,10 +7,10 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <kanariv/media/fingerprint.hpp>
 #include <kanariv/media/scan.hpp>
 #include <kanariv/utils/error.hpp>
 #include <media/convert_loop.hpp>
-#include <media/fingerprint.hpp>
 #include <media/scan_walker.hpp>
 #include <span>
 #include <string>

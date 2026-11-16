@@ -68,9 +68,6 @@ class KANARIV_API JsonPlaybackStateStore final : public kanariv::contracts::IPla
     /// @brief Always usable: the sidecar (or in-memory mode) needs no open step.
     bool isOpen() const noexcept override;
 
-    /// @brief Returns the logger supplied at construction.
-    kanariv::utils::Logger* logger() const noexcept override;
-
     /**
      * @brief Path of the sidecar document (empty in in-memory mode).
      * @return Borrowed path reference.

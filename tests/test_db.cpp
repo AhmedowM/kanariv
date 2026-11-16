@@ -1087,7 +1087,6 @@ TEST_CASE("queue insertion renormalizes exhausted gaps without changing order",
 TEST_CASE("NullHistoryStore accepts writes and lists nothing", "[db][contracts]") {
     kanariv::contracts::NullHistoryStore store;
     CHECK(store.isOpen());
-    CHECK(store.logger() == nullptr);
     CHECK(store.markPlayed(1, 10, 20, 1000, 50.0, 1).has_value());
     auto listed = store.listHistory(10);
     REQUIRE(listed.has_value());

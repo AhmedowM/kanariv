@@ -9,12 +9,12 @@
 #include <kanariv/db/database.hpp>
 #include <kanariv/library/scan.hpp>
 #include <kanariv/media/decoder.hpp>
+#include <kanariv/media/fingerprint.hpp>
 #include <kanariv/media/scan.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/result.hpp>
-#include <media/fingerprint.hpp>
 #include <mutex>
 #include <optional>
 #include <string>

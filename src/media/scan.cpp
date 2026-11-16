@@ -10,13 +10,13 @@
 #include <ios>
 #include <kanariv/media/audio_ext.hpp>
 #include <kanariv/media/decoder.hpp>
+#include <kanariv/media/fingerprint.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/media/scan.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/generator.hpp>
 #include <media/convert_loop.hpp>
 #include <media/ffmpeg_error.hpp>
-#include <media/fingerprint.hpp>
 #include <media/scan_walker.hpp>
 #include <span>
 #include <string>

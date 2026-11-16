@@ -36,8 +36,8 @@ void closeDescriptor(int fd) noexcept {
 PathSource::PathSource(std::filesystem::path path)
     : path_(std::move(path)), displayName_(kanariv::utils::detail::pathToUtf8(path_)) {}
 
-SourceKind PathSource::kind() const noexcept {
-    return SourceKind::path;
+Transport PathSource::kind() const noexcept {
+    return Transport::path;
 }
 
 std::string_view PathSource::displayName() const noexcept {
@@ -88,8 +88,8 @@ DescriptorSource::~DescriptorSource() {
         closeDescriptor(descriptor_.value);
 }
 
-SourceKind DescriptorSource::kind() const noexcept {
-    return SourceKind::descriptor;
+Transport DescriptorSource::kind() const noexcept {
+    return Transport::descriptor;
 }
 
 std::string_view DescriptorSource::displayName() const noexcept {

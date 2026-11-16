@@ -25,7 +25,7 @@ namespace kanariv::types {
  * @brief Durable identity category for a track's bytes.
  * @ingroup kanariv_types
  *
- * This is deliberately separate from `kanariv::media::SourceKind`, which
+ * This is deliberately separate from `kanariv::media::Transport`, which
  * describes a read transport (path or descriptor). A persisted source may be
  * an ordinary path, a host-issued stable identifier (for example an Android
  * document URI or MediaStore id), an app-private imported copy, or a source
