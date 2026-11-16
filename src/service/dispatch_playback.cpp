@@ -97,21 +97,26 @@ Service::Impl::handle(const kanariv::ipc::Resume&) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::Restart&) {
-    // restart: seek to 0, ensure playing
-    auto r = engine_->seek(0.0);
-    if (!r) {
-        // if no track, try play
-        int64_t aq = engine_->activeQueueId();
-        auto pr = engine_->play(aq);
-        if (!pr)
-            return std::unexpected{pr.error()};
+    // Restart always begins at the head of the current track. Stopped is the
+    // only state without a loaded track (stop, natural end and loadState all
+    // clear it), so that is the one case that starts the active queue instead
+    // of seeking. Every other seek or resume failure is reported: treating it
+    // as "no track" used to replay the queue and hide the real error.
+    if (engine_->state() == kanariv::types::PlaybackState::Stopped) {
+        auto r = engine_->play(engine_->activeQueueId());
+        if (!r)
+            return std::unexpected{r.error()};
         updateShmStatus();
         requestMediaSessionRefresh();
         return statusAfterChange();
     }
-    // ensure playing
+    auto seeked = engine_->seek(0.0);
+    if (!seeked)
+        return std::unexpected{seeked.error()};
     if (engine_->state() == kanariv::types::PlaybackState::Paused) {
-        (void)engine_->resume();
+        auto resumed = engine_->resume();
+        if (!resumed)
+            return std::unexpected{resumed.error()};
     }
     updateShmStatus();
     requestMediaSessionRefresh();

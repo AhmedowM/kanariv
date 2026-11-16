@@ -62,6 +62,8 @@ struct Service::Impl {
          std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName);
 
     kanariv::utils::Expected<void> run(std::stop_token st);
+    /** Blocks until run() publishes readiness or exits; see Service::waitUntilRunning. */
+    bool waitUntilRunning() const;
     void shutdown();
     void updateShmStatus();
     /** Status snapshot; a pure read that does not touch the change sequence. */
@@ -253,6 +255,13 @@ struct Service::Impl {
     std::atomic<bool> shutdownRequested_{false};
     /** Set once shutdown() starts; late media-key intents are rejected. */
     std::atomic<bool> shuttingDown_{false};
+    // Startup handshake for Host::create(): run() publishes readiness or exit
+    // under lifeMtx_ and notifies, so the host blocks instead of polling
+    // running() every millisecond.
+    mutable std::mutex lifeMtx_;
+    mutable std::condition_variable lifeCv_;
+    bool ready_{false};
+    bool loopExited_{false};
 
     // Media-session worker: owns every mediaSession_ update and the art cache.
     // Requests are counted, so a burst collapses into one publish per wake-up.

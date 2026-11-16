@@ -26,8 +26,6 @@ struct HostImpl {
     std::jthread worker;
     /** @brief Set once the service loop is observed running. */
     std::atomic<bool> started{false};
-    /** @brief Set when the worker function returns (success or failure). */
-    std::atomic<bool> finished{false};
     /** @brief Guards `terminalError`. */
     mutable std::mutex mutex;
     /** @brief Serializes `wait()` callers without being held during `join()`. */
@@ -35,7 +33,7 @@ struct HostImpl {
     /** @brief Error returned by `Service::run`, when it failed. */
     std::optional<kanariv::utils::Error> terminalError;
 
-    /** @brief Worker body: signal readiness, run, record error, signal completion. */
+    /** @brief Worker body: run the loop, record the terminal error. */
     void run() {
         auto result = service->run(stopSource.get_token());
         {
@@ -43,7 +41,6 @@ struct HostImpl {
             if (!result)
                 terminalError = result.error();
         }
-        finished.store(true, std::memory_order_release);
     }
 };
 
@@ -81,22 +78,19 @@ Host::ExpectedHost Host::create(ServiceConfig cfg, kanariv::contracts::Storage s
     impl->worker = std::jthread([state = impl.get()] { state->run(); });
 
     // Wait until run() has entered its loop (or failed immediately) so callers
-    // can safely use the service as soon as create() returns.
-    for (;;) {
-        if (impl->service->running()) {
-            impl->started.store(true, std::memory_order_release);
-            break;
-        }
-        if (impl->finished.load(std::memory_order_acquire)) {
-            auto err = copyError(*impl);
-            if (impl->worker.joinable())
-                impl->worker.join();
-            if (err)
-                return std::unexpected{*err};
-            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::State,
-                                                             "service loop exited during startup")};
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    // can safely use the service as soon as create() returns. The worker
+    // publishes both outcomes through the service's readiness condition
+    // variable; when it reports an exit the worker has already left run().
+    if (impl->service->waitUntilRunning()) {
+        impl->started.store(true, std::memory_order_release);
+    } else {
+        if (impl->worker.joinable())
+            impl->worker.join();
+        auto err = copyError(*impl);
+        if (err)
+            return std::unexpected{*err};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                         "service loop exited during startup")};
     }
 
     return std::unique_ptr<Host>(new Host(std::move(impl)));

@@ -208,7 +208,7 @@ struct Engine::Impl {
     std::vector<int64_t> shufflePermFor(int64_t qid) noexcept;
     void noteEnqueued(int64_t qid, std::size_t count) noexcept;
     void noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) noexcept;
-    ExpectedVoid setShuffle(bool on);
+    ExpectedVoid setShuffle(std::optional<bool> on);
     std::expected<void, kanariv::utils::Error> setShuffleLocked(bool on);
     ExpectedVoid setRepeat(kanariv::types::RepeatMode m);
 
@@ -536,6 +536,10 @@ std::expected<void, kanariv::utils::Error> Engine::clearHistory() {
 
 Engine::ExpectedVoid Engine::setShuffle(bool on) {
     return impl_->setShuffle(on);
+}
+
+Engine::ExpectedVoid Engine::toggleShuffle() {
+    return impl_->setShuffle(std::nullopt);
 }
 
 Engine::ExpectedVoid Engine::setRepeat(kanariv::types::RepeatMode m) {
@@ -1209,13 +1213,16 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::clearHistory() {
     return hist.clearHistory();
 }
 
-Engine::ExpectedVoid Engine::Impl::setShuffle(bool on) {
+Engine::ExpectedVoid Engine::Impl::setShuffle(std::optional<bool> on) {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     if (!tryLockQueue())
         return queueBusy("setShuffle", "busy");
-    auto r = setShuffleLocked(on);
+    // Resolve a toggle while holding the lock: reading the mode before the
+    // acquisition let two toggles observe the same value and both write it.
+    const bool want = on.value_or(!queue_.shuffle.load(std::memory_order_relaxed));
+    auto r = setShuffleLocked(want);
     unlockQueue();
     if (!r)
         return std::unexpected(r.error());

@@ -633,14 +633,7 @@ Service::Impl::handle(const kanariv::ipc::QueueClear&) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::QueueShuffle& qs) {
-    bool on;
-    if (qs.on.has_value()) {
-        on = *qs.on;
-    } else {
-        // toggle: get current state and flip
-        on = !engine_->shuffle();
-    }
-    auto r = engine_->setShuffle(on);
+    auto r = qs.on ? engine_->setShuffle(*qs.on) : engine_->toggleShuffle();
     if (!r)
         return std::unexpected{r.error()};
     updateShmStatus();

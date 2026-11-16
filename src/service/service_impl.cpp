@@ -343,11 +343,30 @@ bool Service::running() const noexcept {
     return impl_->running_.load(std::memory_order_acquire);
 }
 
+bool Service::waitUntilRunning() const {
+    return impl_->waitUntilRunning();
+}
+
 kanariv::utils::Expected<void> Service::Impl::run(std::stop_token st) {
+    auto signalLoopExit = [this] {
+        {
+            std::lock_guard<std::mutex> lk(lifeMtx_);
+            loopExited_ = true;
+        }
+        lifeCv_.notify_all();
+    };
     if (running_.exchange(true)) {
+        signalLoopExit();
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "already running")};
     }
+    {
+        // Publish readiness under the lock the waiter reads it under, so a
+        // waiter cannot miss the notification between predicate and sleep.
+        std::lock_guard<std::mutex> lk(lifeMtx_);
+        ready_ = true;
+    }
+    lifeCv_.notify_all();
     // build dispatcher
     auto dispatcher = [this](const kanariv::ipc::Command& cmd)
         -> std::expected<kanariv::ipc::Result, kanariv::utils::Error> {
@@ -366,7 +385,14 @@ kanariv::utils::Expected<void> Service::Impl::run(std::stop_token st) {
     // truthful state. shutdown() is idempotent; the destructor re-entry is
     // harmless.
     this->shutdown();
+    signalLoopExit();
     return {};
+}
+
+bool Service::Impl::waitUntilRunning() const {
+    std::unique_lock<std::mutex> lk(lifeMtx_);
+    lifeCv_.wait(lk, [this] { return ready_ || loopExited_; });
+    return ready_ && !loopExited_;
 }
 
 void Service::shutdown() {
@@ -792,15 +818,18 @@ Service::Impl::dispatch(const kanariv::ipc::Command& cmd) {
         }
         return std::visit(DispatchVisitor{this}, cmd);
     } catch (const std::exception& e) {
+        // The reply text is fixed: what() can embed user paths, locale text or
+        // library internals, and clients branch on the status code, not the
+        // message. The log keeps the detail.
         if (logger_)
             logger_->error("dispatch failed: {}", e.what());
         return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, std::string("dispatch failed: ") + e.what())};
+            kanariv::utils::StatusCode::Internal, "internal error handling command")};
     } catch (...) {
         if (logger_)
             logger_->error("dispatch failed with unknown exception");
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                         "dispatch failed with unknown exception")};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Internal, "internal error handling command")};
     }
 }
 

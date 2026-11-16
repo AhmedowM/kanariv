@@ -64,6 +64,44 @@ TEST_CASE("engine queue shuffle creates perm via mt19937", "[engine_queue]") {
     safeRemoveDb(dbPath);
 }
 
+TEST_CASE("engine toggleShuffle flips the current mode", "[engine_queue][shuffle]") {
+    std::string dbPath = tempDbPath("eng_q_toggle").string();
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    for (int i = 0; i < 2; ++i) {
+        kanariv::types::Track t;
+        t.path = "p" + std::to_string(i) + ".wav";
+        t.duration = 1.0;
+        for (int b = 0; b < 32; ++b)
+            t.fingerprint[b] = (uint8_t)(i + 1 + b);
+        auto r = db->insertTrack(t);
+        REQUIRE(r.has_value());
+        REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
+    }
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = false;
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
+    CHECK_FALSE(eng->shuffle());
+    REQUIRE(eng->toggleShuffle().has_value());
+    CHECK(eng->shuffle());
+    REQUIRE(eng->toggleShuffle().has_value());
+    CHECK_FALSE(eng->shuffle());
+    // Explicit set then toggle: the toggle resolves against the stored mode,
+    // not against a value read before the engine lock was taken.
+    REQUIRE(eng->setShuffle(true).has_value());
+    REQUIRE(eng->toggleShuffle().has_value());
+    CHECK_FALSE(eng->shuffle());
+    eng.reset();
+    safeRemoveDb(dbPath);
+}
+
 TEST_CASE("engine queue repeat Off stops at end", "[engine_queue]") {
     KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("eng_q_off").string();

@@ -360,6 +360,17 @@ class KANARIV_API Engine final {
     ExpectedVoid setShuffle(bool on);
 
     /**
+     * @brief Inverts the current shuffle mode.
+     * @ingroup kanariv_engine
+     * @return Success or Error State/Busy/Internal.
+     * @details Reads and rewrites the mode under one queueMutex_ acquisition,
+     * so a concurrent setShuffle cannot slip between the read and the write.
+     * @par Thread safety
+     * Thread-safe; try_lock on queueMutex_.
+     */
+    ExpectedVoid toggleShuffle();
+
+    /**
      * @brief Sets repeat mode and persists it.
      * @ingroup kanariv_engine
      * @param m RepeatMode (Off/All/One).

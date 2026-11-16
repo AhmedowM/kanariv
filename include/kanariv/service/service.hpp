@@ -146,6 +146,18 @@ class KANARIV_API Service final {
     [[nodiscard]] bool running() const noexcept;
 
     /**
+     * @brief Blocks until the service loop is running or has already exited.
+     * @ingroup kanariv_service
+     * @return True when the loop is running; false when `run()` returned before
+     * readiness was observed (startup failure or an early stop).
+     *
+     * Host implementations call this instead of polling running(): the worker
+     * publishes readiness (and loop exit) through a condition variable, so a
+     * fast start costs no wake-up loop.
+     */
+    [[nodiscard]] bool waitUntilRunning() const;
+
+    /**
      * @brief Replaces the attached persistence ports and reloads engine state.
      * @ingroup kanariv_service
      * @param storage Complete port aggregate (every port populated and open).
