@@ -1220,7 +1220,7 @@ Engine::ExpectedVoid Engine::Impl::setShuffle(std::optional<bool> on) {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    if (!tryLockQueue())
+    if (!tryLockQueueFor(queueLockWait))
         return queueBusy("setShuffle", "busy");
     // Resolve a toggle while holding the lock: reading the mode before the
     // acquisition let two toggles observe the same value and both write it.
@@ -1242,7 +1242,7 @@ Engine::ExpectedVoid Engine::Impl::setRepeat(kanariv::types::RepeatMode m) {
         m != kanariv::types::RepeatMode::One)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "bad repeat"));
-    if (!tryLockQueue())
+    if (!tryLockQueueFor(queueLockWait))
         return queueBusy("setRepeat", "busy");
     const auto prevRepeat = queue_.repeat.load(std::memory_order_relaxed);
     const auto prevStateRepeat = state_.repeatMode.load(std::memory_order_relaxed);
@@ -1279,7 +1279,7 @@ Engine::ExpectedVoid Engine::Impl::switchQueue(int64_t qid) {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    if (!tryLockQueue())
+    if (!tryLockQueueFor(queueLockWait))
         return queueBusy("switchQueue", "busy");
     // Validate the queue while holding queueMutex_.
     auto exists = storage_.queues->queueExists(qid);

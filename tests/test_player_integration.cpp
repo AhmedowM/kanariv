@@ -297,6 +297,60 @@ TEST_CASE("player seek-while-playing race via Engine", "[player_integration][see
     std::filesystem::remove(dbPath + "-shm", ec);
 }
 
+TEST_CASE("control APIs wait for the queue lock", "[player_integration][race]") {
+    KANARIV_SKIP_IF_NOAUDIO();
+    std::string dbPath = tempDbPath("control_lock_wait").string();
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto db = std::move(dbRes.value());
+    kanariv::types::TrackRow t;
+    t.path = fixturePath("sample.wav");
+    t.duration = 5.0;
+    for (int b = 0; b < 32; ++b)
+        t.fingerprint[b] = (uint8_t)(0xA0 + b);
+    auto ins = db->insertTrack(t);
+    REQUIRE(ins.has_value());
+    REQUIRE(db->queueEnqueue(1, *ins, -1).has_value());
+    kanariv::types::EngineConfig cfg;
+    cfg.enableMonitorThread = true;
+    cfg.pollMs = 1;
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachStorage(
+                   kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                .has_value());
+    REQUIRE(eng->play(1).has_value());
+    REQUIRE(eng->setRepeat(kanariv::types::RepeatMode::All).has_value());
+    // A seeker and the 1 ms monitor thread keep the queue lock hot; control
+    // calls must wait for it instead of failing with Busy on a momentary hold.
+    std::atomic<bool> run{true};
+    std::thread seeker([&eng, &run] {
+        while (run.load(std::memory_order_relaxed)) {
+            (void)eng->seek(0.5);
+            std::this_thread::yield();
+        }
+    });
+    int failed = 0;
+    for (int i = 0; i < 100; ++i) {
+        const auto repeat =
+            i % 2 ? kanariv::types::RepeatMode::All : kanariv::types::RepeatMode::One;
+        if (!eng->setRepeat(repeat))
+            ++failed;
+        if (!eng->setShuffle(i % 2 == 0))
+            ++failed;
+    }
+    run.store(false, std::memory_order_relaxed);
+    seeker.join();
+    REQUIRE(failed == 0);
+    REQUIRE(eng->stop().has_value());
+    eng.reset();
+    std::error_code ec;
+    std::filesystem::remove(dbPath, ec);
+    std::filesystem::remove(dbPath + "-wal", ec);
+    std::filesystem::remove(dbPath + "-shm", ec);
+}
+
 TEST_CASE("race player open concurrent", "[player_integration][race]") {
     // concurrent FileReader::open on same file should not crash and at least some succeed
     std::string path = fixturePath("sample.wav");
