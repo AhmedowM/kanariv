@@ -447,7 +447,7 @@ std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
                     if (!je)
                         return std::unexpected{je.error()};
                     const Json& item = *je;
-                    kanariv::types::Track track{};
+                    kanariv::types::TrackRow track{};
                     if (item.contains("track")) {
                         auto tr = kanariv::utils::trackFromJson(item["track"]);
                         if (!tr)

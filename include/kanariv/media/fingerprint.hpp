@@ -25,7 +25,7 @@ namespace kanariv::media::internal {
 /**
  * @brief The all-zero digest that must never be persisted.
  * @ingroup kanariv_media
- * @details `Track::fingerprint` is value-initialised, so a scan that failed to
+ * @details `TrackRow::fingerprint` is value-initialised, so a scan that failed to
  * hash a file used to yield 32 zero bytes. `tracks.fingerprint` is
  * `NOT NULL UNIQUE`, so that sentinel makes the second unreadable file collide
  * or overwrite the first. Scan discovery refuses to emit it and the DB scan

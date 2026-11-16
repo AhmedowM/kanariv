@@ -52,7 +52,7 @@ class ArtCache final {
 
     /**
      * @brief Looks up art for a track/source pair.
-     * @param track_id Track the art belongs to.
+     * @param track_id TrackRow the art belongs to.
      * @param source File the art came from (cover file or audio file).
      * @param mtime Current modification time of @p source.
      * @param size Current size of @p source.
@@ -63,7 +63,7 @@ class ArtCache final {
 
     /**
      * @brief Inserts or replaces an entry, evicting least-recent entries.
-     * @param track_id Track the art belongs to.
+     * @param track_id TrackRow the art belongs to.
      * @param source File the art came from.
      * @param mtime Modification time of @p source at encode time.
      * @param size Size of @p source at encode time.

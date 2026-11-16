@@ -25,7 +25,7 @@
  * gap-based ordering value (0, GAP, 2*GAP, ... with holes after removals). It
  * is an implementation detail and is only valid for ordering the listing.
  * Every public parameter or return value named `index`/`ordinal` is a
- * zero-based index into that ordering. `kAppendIndex` (-1) is accepted only by
+ * zero-based index into that ordering. `appendIndex` (-1) is accepted only by
  * insertion helpers and means "append after the last item".
  *
  * Positions use gap-based indexing: enqueue computes a midpoint between
@@ -33,7 +33,7 @@
  * leave gaps (ordering is by position value, so gaps are harmless). A rare
  * renormalization restores full gaps when midpoint space is exhausted
  * (~30 insertions between the same two items). Every function normalizes
- * qid == 0 to `kDefaultQueueId` (the default queue).
+ * qid == 0 to `defaultQueueId` (the default queue).
  */
 
 // Forward declarations for SQLite handles (sqlite3.h stays in .cpp files).
@@ -43,17 +43,17 @@ struct sqlite3_stmt;
 namespace kanariv::db {
 
 /// Queue used when a caller passes 0 (the `queues` table's default row).
-inline constexpr int64_t kDefaultQueueId = 1;
+inline constexpr int64_t defaultQueueId = kanariv::types::defaultQueueId;
 
 /// Insertion index meaning "after the last item".
-inline constexpr int64_t kAppendIndex = -1;
+inline constexpr int64_t appendIndex = -1;
 
 /**
  * @brief Maps a caller-supplied queue id to the default queue when 0.
  * @ingroup kanariv_db
  */
 [[nodiscard]] inline constexpr int64_t normalizeQueueId(int64_t qid) noexcept {
-    return qid == 0 ? kDefaultQueueId : qid;
+    return qid == 0 ? defaultQueueId : qid;
 }
 
 /**
@@ -61,16 +61,16 @@ inline constexpr int64_t kAppendIndex = -1;
  * @ingroup kanariv_db
  */
 [[nodiscard]] inline constexpr bool isAppendIndex(int64_t index) noexcept {
-    return index == kAppendIndex;
+    return index == appendIndex;
 }
 
 /**
  * @brief Enqueues a track (caller holds DB mutex).
  * @ingroup kanariv_db
  * @param db SQLite handle.
- * @param qid kanariv::types::Queue id (0 -> kDefaultQueueId).
- * @param tid Track id (must be non-zero).
- * @param index Zero-based insertion index in `[0, count]`, or `kAppendIndex`
+ * @param qid kanariv::types::Queue id (0 -> defaultQueueId).
+ * @param tid TrackRow id (must be non-zero).
+ * @param index Zero-based insertion index in `[0, count]`, or `appendIndex`
  * (-1) to append after the last item.
  * @return Success or Error with StatusCode::InvalidArg if tid==0 or the index
  * is out of range, StatusCode::Internal if no handle or a SQLite error.
@@ -83,7 +83,7 @@ inline constexpr int64_t kAppendIndex = -1;
  * Caller must hold Database::mutex().
  */
 std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64_t qid, int64_t tid,
-                                                              int64_t index = kAppendIndex);
+                                                              int64_t index = appendIndex);
 
 /**
  * @brief Dequeues the head item (caller holds DB mutex).
@@ -103,7 +103,7 @@ std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLock
  * @brief Removes the item at a zero-based index (caller holds DB mutex).
  * @ingroup kanariv_db
  * @param db SQLite handle.
- * @param qid kanariv::types::Queue id (0 -> kDefaultQueueId).
+ * @param qid kanariv::types::Queue id (0 -> defaultQueueId).
  * @param index Zero-based index of the item to remove (must be >= 0).
  * @return Success or Error InvalidArg for a negative index, NotFound when the
  * index is outside the queue, Internal for SQLite errors.
@@ -150,14 +150,14 @@ queueListLocked(sqlite3* db, int64_t qid);
  * @par Thread safety
  * Caller must hold Database::mutex() (shared or exclusive).
  */
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 queueTracksLocked(sqlite3* db, int64_t qid);
 
 /**
  * @brief Moves an item to another zero-based index (caller holds DB mutex).
  * @ingroup kanariv_db
  * @param db SQLite handle.
- * @param qid kanariv::types::Queue id (0 -> kDefaultQueueId).
+ * @param qid kanariv::types::Queue id (0 -> defaultQueueId).
  * @param from Zero-based index of the item to move.
  * @param to Zero-based destination index, in `[0, count)`.
  * @return Success or Error InvalidArg when an index is out of range, Internal
@@ -188,7 +188,7 @@ size_t queueCountLocked(sqlite3* db, int64_t qid);
  * @ingroup kanariv_db
  * @param db SQLite handle.
  * @param qid kanariv::types::Queue id (0 -> 1).
- * @param trackId Track id to locate (first occurrence by position).
+ * @param trackId TrackRow id to locate (first occurrence by position).
  * @return 0-based index into the ORDER BY position listing, or std::nullopt
  * if the track is not in the queue (or on prepare failure / null handle).
  * @details O(log n) via the queue position index: resolves the track's

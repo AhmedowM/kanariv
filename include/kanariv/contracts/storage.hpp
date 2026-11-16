@@ -32,7 +32,7 @@ namespace kanariv::contracts {
  * builds it with `kanariv::db::Database`; tests may substitute fakes per port.
  */
 struct Storage {
-    std::shared_ptr<ITrackStore> tracks;        ///< Track rows and annotations.
+    std::shared_ptr<ITrackStore> tracks;        ///< TrackRow rows and annotations.
     std::shared_ptr<IPlaylistStore> playlists;  ///< Playlist containers.
     std::shared_ptr<IQueueStore> queues;        ///< Queues and their items.
     std::shared_ptr<ILibraryStore> library;     ///< Libraries, queries, stats.

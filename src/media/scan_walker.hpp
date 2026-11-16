@@ -79,7 +79,7 @@ class KANARIV_API ScanWalker {
      * @return A track, or `std::nullopt` once the walk is exhausted *or* was
      * truncated by an error -- check `walkError()` to tell the two apart.
      */
-    std::optional<kanariv::types::Track> next();
+    std::optional<kanariv::types::TrackRow> next();
 
     /**
      * @brief Error that ended the walk early, if any.

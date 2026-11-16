@@ -207,7 +207,7 @@ TEST_CASE("devices protocol roundtrip", "[ipc]") {
 }
 
 TEST_CASE("library stats detailed protocol roundtrip", "[ipc]") {
-    kanariv::types::Track track{};
+    kanariv::types::TrackRow track{};
     track.id = 7;
     track.path = "/music/song.mp3";
     track.title = "Song";
@@ -218,7 +218,7 @@ TEST_CASE("library stats detailed protocol roundtrip", "[ipc]") {
                                      .playlists = 20,
                                      .total_duration_ms = 36000000,
                                      .total_play_time_ms = 7200000,
-                                     .top_tracks = std::vector<kanariv::types::Track>{track}}};
+                                     .top_tracks = std::vector<kanariv::types::TrackRow>{track}}};
     auto resJson = toJson(res);
     REQUIRE(resJson["type"].snapshot().get<std::string>() == "LibraryStats");
     auto resBack = resultFromJson(resJson);
@@ -659,7 +659,7 @@ TEST_CASE("framing rejects oversized and trailing frames", "[ipc]") {
     }
 
     SECTION("frame refuses an oversized payload") {
-        const std::string big(kMaxFrameBytes + 1, 'x');
+        const std::string big(maxFrameBytes + 1, 'x');
         const auto r = frame(big);
         REQUIRE_FALSE(r.has_value());
         CHECK(r.error().code == StatusCode::InvalidArg);
@@ -979,7 +979,7 @@ TEST_CASE("daemon track rate and smart playlist roundtrip", "[ipc][cli]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
 
-    kanariv::types::Track t{};
+    kanariv::types::TrackRow t{};
     t.path = "/tmp/track_rate.mp3";
     t.title = "Rate Me";
     t.artist = "Test Artist";
@@ -1064,7 +1064,7 @@ TEST_CASE("daemon library list rating filter and maintenance", "[ipc][cli]") {
     auto db = std::move(dbRes.value());
 
     // Insert tracks: some rated, some not.
-    kanariv::types::Track t1{};
+    kanariv::types::TrackRow t1{};
     t1.path = "/tmp/track_a.mp3";
     t1.title = "Track A";
     t1.rating = 5;
@@ -1073,7 +1073,7 @@ TEST_CASE("daemon library list rating filter and maintenance", "[ipc][cli]") {
     auto ins1 = db->insertTrack(t1);
     REQUIRE(ins1.has_value());
 
-    kanariv::types::Track t2{};
+    kanariv::types::TrackRow t2{};
     t2.path = "/tmp/track_b.mp3";
     t2.title = "Track B";
     t2.rating = 0;

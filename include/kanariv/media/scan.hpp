@@ -7,7 +7,7 @@
  * @details Library scanning is split at the persistence seam:
  * - `kanariv::media` owns the pure, DB-free half: filesystem walk,
  *   extension filter, BLAKE3 fingerprinting and metadata extraction,
- *   producing `kanariv::types::Track` records.
+ *   producing `kanariv::types::TrackRow` records.
  * - `kanariv::library` keeps the DB-coupled half: `kanariv::library::Scanner`
  *   (batched upsert of the discovered tracks under the database mutex).
  *
@@ -77,21 +77,21 @@ using ScanIssueSink = std::function<void(const ScanIssue&)>;
  * @ingroup kanariv_media
  * @param root Root directory to traverse recursively.
  * @param mode Fingerprinting mode (Sampled vs Full).
- * @return Generator yielding one `Track` per *readable, fingerprinted* audio
+ * @return Generator yielding one `TrackRow` per *readable, fingerprinted* audio
  * file. Files that cannot be hashed are skipped; a missing root or a failing
  * walk ends the generator early. Neither condition is reported by this
  * overload -- use the issue-taking overload for that.
  * @details Uses `recursive_directory_iterator` with `skip_permission_denied`
  * and checks the iterator's `error_code` after every increment, so a walk
  * stopped by an I/O error looks like the walk ended, not like an empty
- * directory. The generator stays lazy (one `Track` at a time, constant
+ * directory. The generator stays lazy (one `TrackRow` at a time, constant
  * memory), which is what makes it suitable for very large libraries.
  * @par Thread safety
  * Not thread-safe with concurrent filesystem mutation; otherwise re-entrant.
  * @see ScanMode
  * @see scanTracksToVector
  */
-KANARIV_API kanariv::utils::Generator<kanariv::types::Track>
+KANARIV_API kanariv::utils::Generator<kanariv::types::TrackRow>
 scanTracks(const std::filesystem::path& root, ScanMode mode = ScanMode::Sampled);
 
 /**
@@ -100,7 +100,7 @@ scanTracks(const std::filesystem::path& root, ScanMode mode = ScanMode::Sampled)
  * @param root Root directory to traverse recursively.
  * @param mode Fingerprinting mode (Sampled vs Full).
  * @param onIssue Invoked for every skipped file and for a walk error. May be empty.
- * @return Generator yielding one `Track` per readable, fingerprinted audio file,
+ * @return Generator yielding one `TrackRow` per readable, fingerprinted audio file,
  * in the same order as the plain overload.
  * @details Same semantics as `scanTracks(root, mode)`, plus reporting: a
  * missing root produces a single `WalkError` issue and no tracks, a file that
@@ -112,7 +112,7 @@ scanTracks(const std::filesystem::path& root, ScanMode mode = ScanMode::Sampled)
  * @see ScanIssue
  * @see scanTracksToVector
  */
-KANARIV_API kanariv::utils::Generator<kanariv::types::Track>
+KANARIV_API kanariv::utils::Generator<kanariv::types::TrackRow>
 scanTracks(const std::filesystem::path& root, ScanMode mode, ScanIssueSink onIssue);
 
 /**
@@ -131,7 +131,7 @@ scanTracks(const std::filesystem::path& root, ScanMode mode, ScanIssueSink onIss
  * Re-entrant; not thread-safe with concurrent filesystem mutation.
  * @see scanTracks
  */
-KANARIV_API std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+KANARIV_API std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode = ScanMode::Sampled);
 
 /**
@@ -149,7 +149,7 @@ scanTracksToVector(const std::filesystem::path& root, ScanMode mode = ScanMode::
  * concurrent filesystem mutation.
  * @see ScanIssue
  */
-KANARIV_API std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+KANARIV_API std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode, ScanIssueSink onIssue);
 
 /**

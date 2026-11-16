@@ -11,6 +11,6 @@ using ::kanariv::types::HistoryEntry;
 using ::kanariv::types::LibraryStats;
 using ::kanariv::types::Playlist;
 using ::kanariv::types::QueueItem;
-using ::kanariv::types::Track;
 using ::kanariv::types::TrackMetadata;
+using ::kanariv::types::TrackRow;
 } // namespace kanariv::types

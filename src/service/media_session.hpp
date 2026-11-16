@@ -29,13 +29,13 @@ namespace kanariv::media_session {
  * @ingroup kanariv_service
  */
 struct Metadata {
-    std::string title;                ///< Track title.
-    std::string artist;               ///< Track artist.
-    std::optional<std::string> album;        ///< Album (optional).
-    std::optional<std::string> artworkPath;  ///< Local artwork file path (optional).
+    std::string title;                        ///< TrackRow title.
+    std::string artist;                       ///< TrackRow artist.
+    std::optional<std::string> album;         ///< Album (optional).
+    std::optional<std::string> artworkPath;   ///< Local artwork file path (optional).
     std::optional<std::string> artworkBase64; ///< RFC 4648 artwork bytes.
-    std::string artworkMime;                 ///< Artwork MIME type.
-    std::int64_t trackId{0};          ///< kanariv track id for correlation.
+    std::string artworkMime;                  ///< Artwork MIME type.
+    std::int64_t trackId{0};                  ///< kanariv track id for correlation.
 };
 
 /**

@@ -57,7 +57,7 @@ class SqliteStatement;
 namespace kanariv::contracts {
 /** @brief Health and diagnostics shared by the persistence ports. */
 class IStore;
-/** @brief Track rows and their per-track annotations. */
+/** @brief TrackRow rows and their per-track annotations. */
 class ITrackStore;
 /** @brief Playlist containers and membership. */
 class IPlaylistStore;
@@ -117,7 +117,7 @@ enum class RepeatMode : std::uint8_t;
 /** @brief Playback state-machine value. */
 enum class PlaybackState : std::uint8_t;
 /** @brief Persisted audio track record. */
-struct Track;
+struct TrackRow;
 /** @brief Persisted playlist record. */
 struct Playlist;
 /** @brief Queue entry record. */
@@ -130,7 +130,7 @@ struct Bookmark;
 struct Queue;
 /** @brief Library summary record. */
 struct Library;
-/** @brief Track search query. */
+/** @brief TrackRow search query. */
 struct TrackQuery;
 /** @brief History search query. */
 struct HistoryQuery;

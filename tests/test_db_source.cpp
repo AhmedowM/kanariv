@@ -15,8 +15,8 @@ using namespace kanariv::db;
 using namespace kanariv::utils;
 using namespace kanariv::types;
 
-static Track makeSourceTrack(int idx, SourceKind kind, std::string key) {
-    Track t;
+static TrackRow makeSourceTrack(int idx, SourceKind kind, std::string key) {
+    TrackRow t;
     t.path = "/tmp/track_" + std::to_string(idx) + ".mp3";
     t.title = "Title" + std::to_string(idx);
     t.artist = "Artist" + std::to_string(idx);
@@ -36,7 +36,7 @@ TEST_CASE("findBySource not found", "[db][source]") {
     auto db = std::move(dbRes.value());
 
     SourceRef source;
-    source.kind = SourceKind::external;
+    source.kind = SourceKind::External;
     source.key = "doc://never";
     auto r = db->findBySource(source);
     REQUIRE(!r.has_value());
@@ -49,7 +49,7 @@ TEST_CASE("findBySource invalid empty key", "[db][source]") {
     auto db = std::move(dbRes.value());
 
     SourceRef empty;
-    empty.kind = SourceKind::external;
+    empty.kind = SourceKind::External;
     auto r = db->findBySource(empty);
     REQUIRE(!r.has_value());
     REQUIRE(r.error().code == StatusCode::InvalidArg);
@@ -60,13 +60,13 @@ TEST_CASE("insert then find by source kind/key", "[db][source]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
 
-    Track t = makeSourceTrack(1, SourceKind::external, "doc://abc");
+    TrackRow t = makeSourceTrack(1, SourceKind::External, "doc://abc");
     auto id = db->insertTrack(t);
     REQUIRE(id.has_value());
     REQUIRE(*id > 0);
 
     SourceRef probe;
-    probe.kind = SourceKind::external;
+    probe.kind = SourceKind::External;
     probe.key = "doc://abc";
     auto found = db->findBySource(probe);
     REQUIRE(found.has_value());
@@ -81,8 +81,8 @@ TEST_CASE("source dedup keyed on kind and key", "[db][source]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
 
-    Track a = makeSourceTrack(10, SourceKind::path, "/Music/song.mp3");
-    Track b = makeSourceTrack(11, SourceKind::external, "/Music/song.mp3");
+    TrackRow a = makeSourceTrack(10, SourceKind::Path, "/Music/song.mp3");
+    TrackRow b = makeSourceTrack(11, SourceKind::External, "/Music/song.mp3");
     auto idA = db->insertTrack(a);
     REQUIRE(idA.has_value());
     auto idB = db->insertTrack(b);
@@ -90,13 +90,13 @@ TEST_CASE("source dedup keyed on kind and key", "[db][source]") {
     // Same key, different kind => distinct rows.
     REQUIRE(*idA != *idB);
 
-    Track c = makeSourceTrack(12, SourceKind::path, "/Music/song.mp3");
+    TrackRow c = makeSourceTrack(12, SourceKind::Path, "/Music/song.mp3");
     auto idC = db->insertTrack(c);
     REQUIRE(idC.has_value());
     // Same kind + same key => another row (no unique constraint on source key
     // alone), but findBySource returns one match.
     SourceRef probe;
-    probe.kind = SourceKind::path;
+    probe.kind = SourceKind::Path;
     probe.key = "/Music/song.mp3";
     auto found = db->findBySource(probe);
     REQUIRE(found.has_value());
@@ -107,7 +107,7 @@ TEST_CASE("updateTrack preserves source columns", "[db][source]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
 
-    Track t = makeSourceTrack(3, SourceKind::imported, "import://song");
+    TrackRow t = makeSourceTrack(3, SourceKind::Imported, "import://song");
     auto id = db->insertTrack(t);
     REQUIRE(id.has_value());
 
@@ -121,31 +121,31 @@ TEST_CASE("updateTrack preserves source columns", "[db][source]") {
     found = db->getTrack(*id);
     REQUIRE(found.has_value());
     REQUIRE(found->title == "Renamed");
-    REQUIRE(found->source.kind == SourceKind::imported);
+    REQUIRE(found->source.kind == SourceKind::Imported);
     REQUIRE(found->source.key == "import://song");
     REQUIRE(found->source.available == false);
 }
 
 TEST_CASE("normalizedSource fills path key", "[db][source]") {
-    Track t;
+    TrackRow t;
     t.path = "/Music/song.mp3";
-    t.source.kind = SourceKind::path;
+    t.source.kind = SourceKind::Path;
     t.source.key = "";
 
     auto source = normalizedSource(t);
-    REQUIRE(source.kind == SourceKind::path);
+    REQUIRE(source.kind == SourceKind::Path);
     REQUIRE(source.key == "/Music/song.mp3");
     REQUIRE(source.display_name == "/Music/song.mp3");
 }
 
 TEST_CASE("normalizedSource leaves external key intact", "[db][source]") {
-    Track t;
+    TrackRow t;
     t.path = "/Music/song.mp3";
-    t.source.kind = SourceKind::external;
+    t.source.kind = SourceKind::External;
     t.source.key = "doc://xyz";
 
     auto source = normalizedSource(t);
-    REQUIRE(source.kind == SourceKind::external);
+    REQUIRE(source.kind == SourceKind::External);
     REQUIRE(source.key == "doc://xyz");
 }
 
@@ -157,10 +157,10 @@ TEST_CASE("legacy path-only migration backfills source", "[db][source]") {
     // Insert with kind/path defaults; the migration path only applies to
     // legacy rows where source_kind == 0 and source_key == ''. Fresh rows
     // inserted via insertTrack carry normalized keys already.
-    Track t;
+    TrackRow t;
     t.path = "/tmp/migrated.mp3";
     t.title = "M";
-    t.source.kind = SourceKind::path;
+    t.source.kind = SourceKind::Path;
     t.source.key = ""; // unnormalized before insert
     auto id = db->insertTrack(t);
     REQUIRE(id.has_value());

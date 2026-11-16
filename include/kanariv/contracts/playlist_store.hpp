@@ -40,9 +40,9 @@ class IPlaylistStore : public IStore {
     /**
      * @brief Lists tracks in a playlist ordered by position.
      * @param pid Playlist identifier.
-     * @return Track values, or `NotFound`/a backend error.
+     * @return TrackRow values, or `NotFound`/a backend error.
      */
-    virtual std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    virtual std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
     playlistGetTracks(int64_t pid) = 0;
 
     /**
@@ -66,7 +66,7 @@ class IPlaylistStore : public IStore {
     /**
      * @brief Adds a track to a playlist.
      * @param pid Playlist identifier.
-     * @param tid Track identifier.
+     * @param tid TrackRow identifier.
      * @param pos Zero-based insertion position, or `-1` to append.
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
@@ -76,7 +76,7 @@ class IPlaylistStore : public IStore {
     /**
      * @brief Removes a track from a playlist.
      * @param pid Playlist identifier.
-     * @param tid Track identifier.
+     * @param tid TrackRow identifier.
      * @return Success, or `NotFound`/a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> playlistRemoveTrack(int64_t pid,
@@ -104,7 +104,7 @@ class IPlaylistStore : public IStore {
     /**
      * @brief Creates a playlist from an ordered list of track identifiers.
      * @param name Display name.
-     * @param trackIds Track identifiers in playlist order.
+     * @param trackIds TrackRow identifiers in playlist order.
      * @return New playlist identifier, or an error; implementations must
      * create the playlist and its items atomically.
      */

@@ -32,7 +32,7 @@ TEST_CASE("engine queue shuffle creates perm via mt19937", "[engine_queue]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 4; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "p" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -70,7 +70,7 @@ TEST_CASE("engine toggleShuffle flips the current mode", "[engine_queue][shuffle
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "p" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -109,7 +109,7 @@ TEST_CASE("engine queue repeat Off stops at end", "[engine_queue]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "p" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -170,7 +170,7 @@ TEST_CASE("engine queue repeat All loops", "[engine_queue]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "q" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -227,7 +227,7 @@ TEST_CASE("engine queue repeat One seek without dequeue", "[engine_queue]") {
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "one.wav";
     t.duration = 5.0;
     for (int b = 0; b < 32; ++b)
@@ -237,7 +237,7 @@ TEST_CASE("engine queue repeat One seek without dequeue", "[engine_queue]") {
     REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
     // add second track to have queue non-empty for non-shuffle One path? But One with !shuffle uses
     // seek path, not queue
-    kanariv::types::Track t2;
+    kanariv::types::TrackRow t2;
     t2.path = "two.wav";
     t2.duration = 5.0;
     for (int b = 0; b < 32; ++b)
@@ -272,7 +272,7 @@ TEST_CASE("engine queue perm persistence blob cursor qid", "[engine_queue]") {
         REQUIRE(dbRes.has_value());
         auto db = std::move(dbRes.value());
         for (int i = 0; i < 3; ++i) {
-            kanariv::types::Track t;
+            kanariv::types::TrackRow t;
             t.path = "persist" + std::to_string(i) + ".wav";
             t.duration = 1.0;
             for (int b = 0; b < 32; ++b)
@@ -366,7 +366,7 @@ TEST_CASE("engine play resumes when paused", "[engine_queue]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "resume" + std::to_string(i) + ".wav";
         t.duration = 10.0;
         for (int b = 0; b < 32; ++b)
@@ -406,7 +406,7 @@ TEST_CASE("engine prev non-shuffle", "[engine_queue]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 3; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "prev" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -444,7 +444,7 @@ TEST_CASE("engine queue persists via cursor non-shuffle", "[engine_queue]") {
         REQUIRE(dbRes.has_value());
         auto db = std::move(dbRes.value());
         for (int i = 0; i < 4; ++i) {
-            kanariv::types::Track t;
+            kanariv::types::TrackRow t;
             t.path = "persist_cursor" + std::to_string(i) + ".wav";
             t.duration = 1.0;
             for (int b = 0; b < 32; ++b)
@@ -510,7 +510,7 @@ TEST_CASE("engine play missing file fails without simulation", "[engine_queue]")
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "no-such-file.wav";
     t.duration = 1.0;
     for (int b = 0; b < 32; ++b)
@@ -607,7 +607,7 @@ TEST_CASE("stop rewinds the cursor so play replays the stopped track", "[engine_
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 3; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "stop_rewind" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -650,9 +650,9 @@ TEST_CASE("stop with shuffle replays the stopped track and keeps the permutation
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto sharedDb = std::shared_ptr<kanariv::db::Database>(std::move(dbRes.value()));
-    constexpr int kTracks = 4;
-    for (int i = 0; i < kTracks; ++i) {
-        kanariv::types::Track t;
+    constexpr int tracks = 4;
+    for (int i = 0; i < tracks; ++i) {
+        kanariv::types::TrackRow t;
         t.path = "stop_perm" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -676,10 +676,10 @@ TEST_CASE("stop with shuffle replays the stopped track and keeps the permutation
     REQUIRE(second != first);
 
     const std::vector<int64_t> permBefore = persistedPerm(dbPath);
-    REQUIRE(permBefore.size() == kTracks);
+    REQUIRE(permBefore.size() == tracks);
     std::set<int64_t> seen(permBefore.begin(), permBefore.end());
-    REQUIRE(seen.size() == kTracks);
-    for (int64_t i = 0; i < kTracks; ++i)
+    REQUIRE(seen.size() == tracks);
+    for (int64_t i = 0; i < tracks; ++i)
         REQUIRE(seen.count(i) == 1);
 
     // The stopped track's position in the permutation is what stop() must
@@ -802,9 +802,9 @@ TEST_CASE("queue move remaps the shuffle permutation", "[engine_queue][shuffle][
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto sharedDb = std::shared_ptr<kanariv::db::Database>(std::move(dbRes.value()));
-    constexpr std::size_t kTracks = 5;
-    for (std::size_t i = 0; i < kTracks; ++i) {
-        kanariv::types::Track t;
+    constexpr std::size_t tracks = 5;
+    for (std::size_t i = 0; i < tracks; ++i) {
+        kanariv::types::TrackRow t;
         t.path = "move_perm" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -823,7 +823,7 @@ TEST_CASE("queue move remaps the shuffle permutation", "[engine_queue][shuffle][
     REQUIRE(eng->setShuffle(true).has_value());
 
     const auto permBefore = kanariv::engine::detail::ServiceAccess::shufflePermFor(*eng, 1);
-    REQUIRE(permBefore.size() == kTracks);
+    REQUIRE(permBefore.size() == tracks);
     constexpr std::size_t from = 3;
     constexpr std::size_t to = 0;
     const auto slotOf = [&permBefore](int64_t position) {
@@ -843,8 +843,8 @@ TEST_CASE("queue move remaps the shuffle permutation", "[engine_queue][shuffle][
     const auto permAfter = kanariv::engine::detail::ServiceAccess::shufflePermFor(*eng, 1);
     REQUIRE(permAfter.size() == permBefore.size());
     std::set<int64_t> seen(permAfter.begin(), permAfter.end());
-    CHECK(seen.size() == kTracks);
-    for (std::size_t i = 0; i < kTracks; ++i)
+    CHECK(seen.size() == tracks);
+    for (std::size_t i = 0; i < tracks; ++i)
         CHECK(seen.count(static_cast<int64_t>(i)) == 1);
     // The moved item keeps its slot in the play order, now addressing `to`.
     CHECK(permAfter[movedSlot] == static_cast<int64_t>(to));

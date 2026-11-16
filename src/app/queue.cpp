@@ -230,7 +230,7 @@ BatchResult App::queueRemove(const std::string& id, const std::string& pos,
     // Snapshot insertion-order positions with labels for output.
     struct RemTarget {
         std::size_t pos{0};
-        kanariv::types::Track track{};
+        kanariv::types::TrackRow track{};
     };
     std::vector<RemTarget> all;
     {
@@ -333,7 +333,7 @@ BatchResult App::queueRemove(const std::string& id, const std::string& pos,
     std::sort(targets.begin(), targets.end(),
               [](const RemTarget& a, const RemTarget& b) { return a.pos > b.pos; });
     int removed = 0;
-    std::vector<kanariv::types::Track> removedTracks;
+    std::vector<kanariv::types::TrackRow> removedTracks;
     std::vector<std::string> selectors;
     selectors.reserve(targets.size());
     for (auto& t : targets) {

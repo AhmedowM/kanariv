@@ -13,11 +13,11 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use crate::error::{DbError, Result};
 use crate::model::{
     Bookmark, HistoryEntry, Library, Lyrics, PlaybackStats, Playlist, Queue, QueueItem, SourceRef,
-    Track,
+    TrackRow,
 };
 use crate::schema::{INSERT_TRACK, SCHEMA, UPDATE_TRACK};
 
-/// Gap between queue positions, matching `kPositionGap` in `src/db/queue.cpp`.
+/// Gap between queue positions, matching `positionGap` in `src/db/queue.cpp`.
 const POSITION_GAP: i64 = 1_000_000_000;
 
 /// Canonical track column order (`internal::selectTracksCols`).
@@ -57,7 +57,7 @@ impl Store {
     // ---------------------------------------------------------------- tracks
 
     /// Inserts a track and returns its row id.
-    pub fn insert_track(&self, t: &Track) -> Result<i64> {
+    pub fn insert_track(&self, t: &TrackRow) -> Result<i64> {
         let source = t.source.normalized(&t.path);
         let date_added = (t.date_added != 0).then_some(t.date_added);
         let stored = self.conn.execute(
@@ -101,7 +101,7 @@ impl Store {
     }
 
     /// Updates all mutable columns of an existing track.
-    pub fn update_track(&self, t: &Track) -> Result<()> {
+    pub fn update_track(&self, t: &TrackRow) -> Result<()> {
         if t.id == 0 {
             return Err(DbError::invalid_arg("id 0"));
         }
@@ -147,7 +147,7 @@ impl Store {
     }
 
     /// Loads a track by id.
-    pub fn get_track(&self, id: i64) -> Result<Track> {
+    pub fn get_track(&self, id: i64) -> Result<TrackRow> {
         self.one_track(
             &format!("SELECT {TRACK_FIELDS} FROM tracks WHERE id=?"),
             [id],
@@ -156,7 +156,7 @@ impl Store {
     }
 
     /// Finds a track by filesystem path (first row, as the C++ lookup does).
-    pub fn find_by_path(&self, path: &str) -> Result<Track> {
+    pub fn find_by_path(&self, path: &str) -> Result<TrackRow> {
         self.one_track(
             &format!("SELECT {TRACK_FIELDS} FROM tracks WHERE path=?"),
             [path],
@@ -165,7 +165,7 @@ impl Store {
     }
 
     /// Finds a track by its 32-byte content fingerprint.
-    pub fn find_by_fingerprint(&self, fingerprint: &[u8; 32]) -> Result<Track> {
+    pub fn find_by_fingerprint(&self, fingerprint: &[u8; 32]) -> Result<TrackRow> {
         self.one_track(
             &format!("SELECT {TRACK_FIELDS} FROM tracks WHERE fingerprint=?"),
             [&fingerprint[..]],
@@ -174,7 +174,7 @@ impl Store {
     }
 
     /// Finds a track by durable source identity.
-    pub fn find_by_source(&self, source: &SourceRef) -> Result<Track> {
+    pub fn find_by_source(&self, source: &SourceRef) -> Result<TrackRow> {
         if source.key.is_empty() {
             return Err(DbError::invalid_arg("empty source key"));
         }
@@ -230,7 +230,7 @@ impl Store {
     }
 
     /// Lists live tracks, optionally scoped to one library, ordered by id.
-    pub fn list_tracks(&self, library_id: Option<i64>) -> Result<Vec<Track>> {
+    pub fn list_tracks(&self, library_id: Option<i64>) -> Result<Vec<TrackRow>> {
         let (sql, filter) = match library_id {
             Some(lib) => (
                 format!("SELECT {TRACK_FIELDS} FROM tracks WHERE library_id=? ORDER BY id"),
@@ -249,7 +249,7 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    fn one_track<P: rusqlite::Params>(&self, sql: &str, params: P) -> Result<Option<Track>> {
+    fn one_track<P: rusqlite::Params>(&self, sql: &str, params: P) -> Result<Option<TrackRow>> {
         Ok(self
             .conn
             .query_row(sql, params, track_from_row)
@@ -259,7 +259,7 @@ impl Store {
     // ---------------------------------------------------------------- search
 
     /// Three-stage search: exact FTS, prefix FTS, then LIKE fallback.
-    pub fn search_tracks(&self, query: &str, limit: i64) -> Result<Vec<Track>> {
+    pub fn search_tracks(&self, query: &str, limit: i64) -> Result<Vec<TrackRow>> {
         if query.is_empty() {
             return Ok(Vec::new());
         }
@@ -282,7 +282,7 @@ impl Store {
         Ok(out)
     }
 
-    fn fts_query(&self, query: &str, limit: i64) -> Result<Vec<Track>> {
+    fn fts_query(&self, query: &str, limit: i64) -> Result<Vec<TrackRow>> {
         // `tracks_fts` mirrors column names, so the shared field list must be
         // qualified to avoid "ambiguous column name" errors that would
         // otherwise force every FTS hit through the LIKE fallback.
@@ -301,7 +301,7 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    fn like_query(&self, escaped: &str, limit: i64) -> Result<Vec<Track>> {
+    fn like_query(&self, escaped: &str, limit: i64) -> Result<Vec<TrackRow>> {
         let sql = format!(
             "SELECT {TRACK_FIELDS} FROM tracks WHERE title LIKE ? ESCAPE '\\' COLLATE NOCASE \
              OR artist LIKE ? ESCAPE '\\' COLLATE NOCASE \
@@ -579,7 +579,7 @@ impl Store {
     }
 
     /// Lists the tracks of a manual playlist in position order.
-    pub fn playlist_tracks(&self, pid: i64) -> Result<Vec<Track>> {
+    pub fn playlist_tracks(&self, pid: i64) -> Result<Vec<TrackRow>> {
         if pid == 0 {
             return Err(DbError::invalid_arg("playlist id 0"));
         }
@@ -954,8 +954,8 @@ fn fingerprint_at(row: &Row<'_>, index: usize) -> rusqlite::Result<[u8; 32]> {
     Ok(out)
 }
 
-fn track_from_row(row: &Row<'_>) -> rusqlite::Result<Track> {
-    Ok(Track {
+fn track_from_row(row: &Row<'_>) -> rusqlite::Result<TrackRow> {
+    Ok(TrackRow {
         id: int_at(row, 0)?,
         fingerprint: fingerprint_at(row, 1)?,
         path: text_at(row, 2)?,

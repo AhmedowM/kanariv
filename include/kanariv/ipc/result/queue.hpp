@@ -31,7 +31,7 @@ struct QueueTracks final {
     /**
      * @brief Vector of tracks in the queue.
      */
-    std::vector<kanariv::types::Track> tracks{};
+    std::vector<kanariv::types::TrackRow> tracks{};
 };
 
 /**
@@ -52,7 +52,7 @@ struct QueueAddItem final {
     /**
      * @brief Resolved track (empty id when the query did not resolve).
      */
-    kanariv::types::Track track{};
+    kanariv::types::TrackRow track{};
     /**
      * @brief "added", "duplicate", or "failed".
      */
@@ -99,7 +99,7 @@ struct QueueRemoveItem final {
     /**
      * @brief Resolved track (empty id when the selector did not match).
      */
-    kanariv::types::Track track{};
+    kanariv::types::TrackRow track{};
     /**
      * @brief "removed", "missing", or "failed".
      */

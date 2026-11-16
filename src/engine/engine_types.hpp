@@ -13,9 +13,10 @@
  * Internal header: lives in `src/`, not installed.
  */
 
-#include <kanariv/types/wire.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/types/record.hpp>
+#include <kanariv/types/wire.hpp>
 #include <vector>
 
 namespace kanariv::engine {
@@ -35,7 +36,7 @@ struct QueueState {
     kanariv::types::RepeatMode repeat{kanariv::types::RepeatMode::Off}; ///< Repeat mode.
     std::vector<int64_t> perm{}; ///< Shuffle permutation (positions, not track_ids).
     size_t cursor{0};            ///< Next position index in perm or linear queue.
-    int64_t queue_id{1};         ///< Active queue id.
+    int64_t queue_id{kanariv::types::defaultQueueId}; ///< Active queue id.
 };
 
 } // namespace kanariv::engine

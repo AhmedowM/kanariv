@@ -104,7 +104,7 @@ class ILibraryStore : public IStore {
      * matches common text metadata. An empty filter lists all tracks ordered
      * by id.
      */
-    virtual std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    virtual std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
     listTracks(std::optional<kanariv::types::TrackQuery> q = std::nullopt) = 0;
 
     /**
@@ -117,7 +117,7 @@ class ILibraryStore : public IStore {
      * @details Implementations fall back to a substring match when the
      * full-text index yields nothing.
      */
-    virtual std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    virtual std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
     searchTracks(std::string_view query, int limit = 50) = 0;
 
     /**

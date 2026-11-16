@@ -84,7 +84,7 @@ struct StmtGuard {
 };
 
 /**
- * @brief Maps the current row of a `selectTracksCols` statement into a Track.
+ * @brief Maps the current row of a `selectTracksCols` statement into a TrackRow.
  * @ingroup kanariv_db
  * @param stmt Prepared statement positioned on a row (via `step()`).
  * @param t Output track to populate.
@@ -100,6 +100,6 @@ struct StmtGuard {
  * Caller must hold the DB lock protecting the statement's connection.
  * @see selectTracksCols
  */
-void fillTrackFromStmt(sqlite3_stmt* stmt, kanariv::types::Track& t);
+void fillTrackFromStmt(sqlite3_stmt* stmt, kanariv::types::TrackRow& t);
 
 } // namespace kanariv::db::internal

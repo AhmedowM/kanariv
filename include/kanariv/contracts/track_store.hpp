@@ -2,9 +2,9 @@
 
 /**
  * @file track_store.hpp
- * @brief Track record, bookmark and lyrics persistence port.
+ * @brief TrackRow record, bookmark and lyrics persistence port.
  * @ingroup kanariv_contracts
- * @details Track identity (id, fingerprint, path, durable source), the track
+ * @details TrackRow identity (id, fingerprint, path, durable source), the track
  * record itself, and the per-track annotations (bookmarks, lyrics).
  *
  * @par Error behavior
@@ -27,32 +27,32 @@
 namespace kanariv::contracts {
 
 /**
- * @brief Track rows and their per-track annotations.
+ * @brief TrackRow rows and their per-track annotations.
  * @ingroup kanariv_contracts
  */
 class ITrackStore : public IStore {
   public:
     /**
      * @brief Loads a track by id.
-     * @return Track on success, or NotFound when no row has this id.
+     * @return TrackRow on success, or NotFound when no row has this id.
      */
-    virtual std::expected<kanariv::types::Track, kanariv::utils::Error> getTrack(int64_t id) = 0;
+    virtual std::expected<kanariv::types::TrackRow, kanariv::utils::Error> getTrack(int64_t id) = 0;
 
     /**
      * @brief Inserts a track and returns its new row identifier.
-     * @param t Track value to persist.
+     * @param t TrackRow value to persist.
      * @return The new identifier, or an error such as `AlreadyExists`,
      * `InvalidArg`, or `Internal`.
      */
     virtual std::expected<int64_t, kanariv::utils::Error>
-    insertTrack(const kanariv::types::Track& t) = 0;
+    insertTrack(const kanariv::types::TrackRow& t) = 0;
 
     /**
      * @brief Finds a track by its 32-byte content fingerprint.
      * @param fp Fingerprint to look up.
      * @return The matching track, or `NotFound` when no row matches.
      */
-    virtual std::expected<kanariv::types::Track, kanariv::utils::Error>
+    virtual std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findByFingerprint(const std::array<uint8_t, 32>& fp) = 0;
 
     /**
@@ -60,36 +60,36 @@ class ITrackStore : public IStore {
      * @param path Path key used by the store.
      * @return The matching track, or `NotFound` when no row matches.
      */
-    virtual std::expected<kanariv::types::Track, kanariv::utils::Error>
+    virtual std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findByPath(std::string_view path) = 0;
 
     /**
      * @brief Finds a track by durable source identity.
      * @param source Source kind and stable key; path rows use the filesystem
      * path as the key after normalization.
-     * @return Track on success, or NotFound.
+     * @return TrackRow on success, or NotFound.
      */
-    virtual std::expected<kanariv::types::Track, kanariv::utils::Error>
+    virtual std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findBySource(const kanariv::types::SourceRef& source) = 0;
 
     /**
      * @brief Updates an existing track row.
-     * @param t Track containing the row identifier and fields to persist.
+     * @param t TrackRow containing the row identifier and fields to persist.
      * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error>
-    updateTrack(const kanariv::types::Track& t) = 0;
+    updateTrack(const kanariv::types::TrackRow& t) = 0;
 
     /**
      * @brief Deletes a track by identifier.
-     * @param id Track identifier.
+     * @param id TrackRow identifier.
      * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
      */
     virtual std::expected<void, kanariv::utils::Error> deleteTrack(int64_t id) = 0;
 
     /**
      * @brief Sets the user rating for a track.
-     * @param id Track identifier.
+     * @param id TrackRow identifier.
      * @param rating Rating value (0..5).
      * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
      */
@@ -97,7 +97,7 @@ class ITrackStore : public IStore {
 
     /**
      * @brief Lists bookmarks belonging to a track.
-     * @param tid Track identifier.
+     * @param tid TrackRow identifier.
      * @return Bookmarks ordered by the implementation, or a backend error.
      */
     virtual std::expected<std::vector<kanariv::types::Bookmark>, kanariv::utils::Error>
@@ -113,7 +113,7 @@ class ITrackStore : public IStore {
 
     /**
      * @brief Adds a bookmark at a position in milliseconds.
-     * @param tid Track identifier.
+     * @param tid TrackRow identifier.
      * @param pos Position in milliseconds.
      * @param note Optional user note.
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
@@ -130,7 +130,7 @@ class ITrackStore : public IStore {
 
     /**
      * @brief Sets lyrics for a track (upsert by track id).
-     * @param tid Track id.
+     * @param tid TrackRow id.
      * @param lrc_text Lyrics text (LRC format when synced).
      * @param is_synced True when lrc_text contains time-coded lines.
      * @param source Provenance label (e.g. "local", "import").
@@ -141,14 +141,14 @@ class ITrackStore : public IStore {
 
     /**
      * @brief Gets lyrics for a track.
-     * @param tid Track id.
+     * @param tid TrackRow id.
      * @return Lyrics, or NotFound when no lyrics exist for the track.
      */
     virtual std::expected<kanariv::types::Lyrics, kanariv::utils::Error> lyricsGet(int64_t tid) = 0;
 
     /**
      * @brief Removes lyrics for a track.
-     * @param tid Track id.
+     * @param tid TrackRow id.
      * @return Success, or NotFound when no lyrics exist for the track.
      */
     virtual std::expected<void, kanariv::utils::Error> lyricsRemove(int64_t tid) = 0;

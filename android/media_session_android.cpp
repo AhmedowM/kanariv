@@ -16,21 +16,21 @@ namespace {
 // Stable android.media.session.PlaybackState state values. The C++ engine
 // enum has different ordinals, so translate here rather than exposing the
 // wire enum to Java.
-constexpr jint kAndroidStateNone = 0;
-constexpr jint kAndroidStateStopped = 1;
-constexpr jint kAndroidStatePaused = 2;
-constexpr jint kAndroidStatePlaying = 3;
+constexpr jint androidStateNone = 0;
+constexpr jint androidStateStopped = 1;
+constexpr jint androidStatePaused = 2;
+constexpr jint androidStatePlaying = 3;
 
 jint androidPlaybackState(kanariv::types::PlaybackState state) noexcept {
     switch (state) {
     case kanariv::types::PlaybackState::Playing:
-        return kAndroidStatePlaying;
+        return androidStatePlaying;
     case kanariv::types::PlaybackState::Paused:
-        return kAndroidStatePaused;
+        return androidStatePaused;
     case kanariv::types::PlaybackState::Stopped:
-        return kAndroidStateStopped;
+        return androidStateStopped;
     default:
-        return kAndroidStateNone;
+        return androidStateNone;
     }
 }
 

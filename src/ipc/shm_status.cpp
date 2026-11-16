@@ -36,7 +36,7 @@ struct ShmRaw {
 // crashed/wedged. A live publish() only holds an odd sequence for a few
 // hundred byte stores, so this budget is generous for real contention while
 // keeping a dead writer from pinning a client core.
-constexpr std::uint32_t kSnapshotAttempts = 1024;
+constexpr std::uint32_t snapshotAttempts = 1024;
 
 // Publishes `src` into a fixed seqlock-protected byte buffer. Always rewrites
 // the whole buffer: the payload, a terminator, and zero padding. Byte-wise
@@ -149,10 +149,10 @@ std::string openShmRaw(const std::string& name, bool create, ShmRaw& raw) {
         // 183 == ERROR_ALREADY_EXISTS. A stale/lingering mapping survives when
         // a reader still holds it after a daemon crash; a fresh one is already
         // zero-filled, so only the pre-existing mapping needs an explicit reset.
-        constexpr DWORD kErrorAlreadyExists = 183UL;
+        constexpr DWORD errorAlreadyExists = 183UL;
         hMap = ::CreateFileMappingW(invalidHandleValue, nullptr, protect, 0,
                                     sizeof(AtomicShmStatus), wname.c_str());
-        if (hMap && ::GetLastError() == kErrorAlreadyExists)
+        if (hMap && ::GetLastError() == errorAlreadyExists)
             raw.reset = true;
     } else {
         hMap = ::OpenFileMappingW(access, boolFalse, wname.c_str());
@@ -268,7 +268,7 @@ ShmStatus ShmStatusReader::snapshot() const {
     if (!map_)
         return out;
     AtomicShmStatus* s = map_;
-    for (uint32_t attempt = 0; attempt < kSnapshotAttempts; ++attempt) {
+    for (uint32_t attempt = 0; attempt < snapshotAttempts; ++attempt) {
         const uint64_t seq = s->seq.load(std::memory_order_acquire);
         if (seq & 1) {
             // Writer busy (or crashed mid-publish): yield occasionally, retry.

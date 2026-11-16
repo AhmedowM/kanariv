@@ -75,7 +75,7 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath) {
     std::cout << "[engine_demo] queue empty, populating 2 demo tracks sample='" << samplePath
               << "'\n";
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         for (int b = 0; b < 32; ++b)
             t.fingerprint[b] = static_cast<uint8_t>(0xC0 + i * 32 + b);
         t.path = samplePath;

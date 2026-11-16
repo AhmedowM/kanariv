@@ -22,7 +22,7 @@ using namespace kanariv::utils;
 using namespace kanariv::test_helpers;
 
 TEST_CASE("trackToJson and trackFromJson roundtrip ordered", "[db_json]") {
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.id = 1;
     t.path = "/music/a.mp3";
     t.title = "Title";
@@ -64,7 +64,7 @@ TEST_CASE("exportJson and importJson roundtrip", "[db_json]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/j.mp3";
     t.title = "JsonTrack";
     t.artist = "JsonArtist";
@@ -106,7 +106,7 @@ TEST_CASE("importJson handles duplicate fingerprint upsert", "[db_json]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/dup.mp3";
     t.title = "Dup";
     for (int b = 0; b < 32; ++b)
@@ -128,7 +128,7 @@ TEST_CASE("importJson handles duplicate fingerprint upsert", "[db_json]") {
 }
 
 TEST_CASE("track JSON roundtrip preserves every field", "[db_json]") {
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.id = 7;
     t.size = 1001;
     t.mtime = 1002;
@@ -157,7 +157,7 @@ TEST_CASE("track JSON roundtrip preserves every field", "[db_json]") {
     t.cover_art_path = "/covers/x.jpg";
     for (int b = 0; b < 32; ++b)
         t.fingerprint[static_cast<std::size_t>(b)] = static_cast<uint8_t>(0x40 + b);
-    t.source.kind = kanariv::types::SourceKind::external;
+    t.source.kind = kanariv::types::SourceKind::External;
     t.source.key = "content://track/7";
     t.source.display_name = "Display X";
     t.source.available = false;
@@ -245,7 +245,7 @@ TEST_CASE("importJson reports the failing row and imports nothing", "[db_json]")
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
 
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/good.mp3";
     t.title = "Good";
     for (int b = 0; b < 32; ++b)
@@ -276,7 +276,7 @@ TEST_CASE("importJson surfaces update failures", "[db_json]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/upsert.mp3";
     t.title = "Upsert";
     for (int b = 0; b < 32; ++b)

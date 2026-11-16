@@ -13,7 +13,7 @@
 #include "../src/service/tag_writer.hpp"
 
 using namespace kanariv::service::detail;
-using kanariv::types::Track;
+using kanariv::types::TrackRow;
 
 namespace {
 
@@ -26,8 +26,8 @@ std::filesystem::path copyFixture(const std::string& name) {
     return dst;
 }
 
-kanariv::types::Track taggedRow(const std::filesystem::path& p) {
-    kanariv::types::Track t;
+kanariv::types::TrackRow taggedRow(const std::filesystem::path& p) {
+    kanariv::types::TrackRow t;
     t.path = p.generic_string();
     t.title = "TagTitle";
     t.artist = "TagArtist";
@@ -42,7 +42,7 @@ kanariv::types::Track taggedRow(const std::filesystem::path& p) {
 
 void requireRoundTrip(const std::string& fixture) {
     auto p = copyFixture(fixture);
-    kanariv::types::Track t = taggedRow(p);
+    kanariv::types::TrackRow t = taggedRow(p);
     auto w = writeFileTags(p, t);
     REQUIRE(w.has_value());
     auto meta = kanariv::media::extractMetadata(p.generic_string());
@@ -107,7 +107,7 @@ TEST_CASE("tag write round-trips wavpack", "[tag_write]") {
 }
 
 TEST_CASE("tag write rejects unsupported format", "[tag_write]") {
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "song.tak";
     auto w = writeFileTags(t.path, t);
     REQUIRE(!w.has_value());
@@ -119,7 +119,7 @@ TEST_CASE("reregister keeps id and refreshes row", "[tag_write]") {
     auto dbRes = kanariv::db::Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto& db = *dbRes.value();
-    kanariv::types::Track t = taggedRow(p);
+    kanariv::types::TrackRow t = taggedRow(p);
     auto ins = db.insertTrack(t);
     REQUIRE(ins.has_value());
     t.id = *ins;

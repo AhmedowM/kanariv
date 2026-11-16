@@ -33,7 +33,7 @@ struct Queue {
     std::string name;                        ///< Display name.
     RepeatMode repeat_mode{RepeatMode::Off}; ///< Repeat mode.
     bool temp{};                             ///< Ephemeral direct-play queue (purged on shutdown).
-    int64_t library_id{1};                   ///< Owning library id.
+    int64_t library_id{defaultLibraryId};    ///< Owning library id.
 };
 
 /**
@@ -129,8 +129,8 @@ struct HistoryQuery {
  */
 struct LibraryMaintenanceReport {
     std::size_t tracks_checked{}; ///< Live rows examined.
-    std::vector<kanariv::types::Track> missing_tracks{}; ///< Rows whose paths no longer exist.
-    std::vector<std::vector<kanariv::types::Track>>
+    std::vector<kanariv::types::TrackRow> missing_tracks{}; ///< Rows whose paths no longer exist.
+    std::vector<std::vector<kanariv::types::TrackRow>>
         duplicate_groups{}; ///< Groups sharing a path.
 
     /**

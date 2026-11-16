@@ -32,7 +32,7 @@ class IHistoryStore : public IStore {
   public:
     /**
      * @brief Records a completed or partially completed track play.
-     * @param track_id Track identifier.
+     * @param track_id TrackRow identifier.
      * @param started_at Start timestamp in the implementation's persisted time
      * unit.
      * @param completed_at Completion timestamp in the same unit.

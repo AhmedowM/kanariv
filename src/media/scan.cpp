@@ -71,7 +71,7 @@ FingerprintProvider defaultFingerprintProvider(ScanMode mode) {
 
 /// Copies the tags FFmpeg can supply into `t`; a metadata failure is not fatal
 /// (the file is still usable without tags), so it leaves them empty.
-void applyMetadata(kanariv::types::Track& t) {
+void applyMetadata(kanariv::types::TrackRow& t) {
     auto meta = kanariv::media::extractMetadata(t.path);
     if (!meta)
         return;
@@ -89,12 +89,12 @@ void applyMetadata(kanariv::types::Track& t) {
     t.bitrate = meta->bitrate;
 }
 
-/// Builds a Track for one audio file. Never returns a Track without a usable
+/// Builds a TrackRow for one audio file. Never returns a TrackRow without a usable
 /// fingerprint: a hashing failure (or the all-zero sentinel) is an error.
-std::expected<kanariv::types::Track, Error> buildTrack(const std::filesystem::path& path,
+std::expected<kanariv::types::TrackRow, Error> buildTrack(const std::filesystem::path& path,
                                                        ScanMode mode,
                                                        const FingerprintProvider& fingerprint) {
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     // UTF-8, not generic_string(): the latter throws on Windows for characters
     // outside the ANSI code page, which aborted the whole scan at the first
     // such file (and surfaced as a broken pipe).
@@ -186,7 +186,7 @@ std::expected<void, kanariv::utils::Error> ScanWalker::open() {
     return {};
 }
 
-std::optional<kanariv::types::Track> ScanWalker::next() {
+std::optional<kanariv::types::TrackRow> ScanWalker::next() {
     if (!impl_ || !impl_->opened)
         return std::nullopt;
     while (impl_->it != impl_->end) {
@@ -196,7 +196,7 @@ std::optional<kanariv::types::Track> ScanWalker::next() {
         const auto path = impl_->it->path();
         std::error_code entryEc;
         const bool regular = impl_->it->is_regular_file(entryEc);
-        std::optional<kanariv::types::Track> result;
+        std::optional<kanariv::types::TrackRow> result;
         if (entryEc) {
             impl_->report(ScanIssueKind::FileSkipped, kanariv::utils::detail::pathToUtf8(path),
                           entryEc.message());
@@ -228,13 +228,13 @@ const std::optional<kanariv::utils::Error>& ScanWalker::walkError() const noexce
 
 namespace kanariv::media {
 
-kanariv::utils::Generator<kanariv::types::Track> scanTracks(const std::filesystem::path& root,
+kanariv::utils::Generator<kanariv::types::TrackRow> scanTracks(const std::filesystem::path& root,
                                                             ScanMode mode) {
     return scanTracks(root, mode, ScanIssueSink{});
 }
 
-kanariv::utils::Generator<kanariv::types::Track> scanTracks(const std::filesystem::path& root,
-                                                            ScanMode mode, ScanIssueSink onIssue) {
+kanariv::utils::Generator<kanariv::types::TrackRow>
+scanTracks(const std::filesystem::path& root, ScanMode mode, ScanIssueSink onIssue) {
     // The sink is taken by value: a coroutine body runs only once iteration
     // starts, so a reference to a caller temporary could dangle by then.
     internal::ScanWalker walker(root, mode, std::move(onIssue));
@@ -247,17 +247,17 @@ kanariv::utils::Generator<kanariv::types::Track> scanTracks(const std::filesyste
         co_yield std::move(*track);
 }
 
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode) {
     return scanTracksToVector(root, mode, ScanIssueSink{});
 }
 
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode, ScanIssueSink onIssue) {
     internal::ScanWalker walker(root, mode, std::move(onIssue));
     if (auto opened = walker.open(); !opened)
         return std::unexpected{opened.error()};
-    std::vector<kanariv::types::Track> out;
+    std::vector<kanariv::types::TrackRow> out;
     while (auto track = walker.next())
         out.push_back(std::move(*track));
     // Discard the partial vector: a truncated walk must not look like a

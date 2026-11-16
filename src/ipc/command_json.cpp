@@ -34,7 +34,7 @@ std::expected<T, kanariv::utils::Error> parseCommandPayload(const Json& j);
 // Kept out of the anonymous namespace: nothing odr-uses it when coverage is
 // complete, and an internal-linkage template would be flagged unused.
 template <typename>
-inline constexpr bool kAlwaysFalse = false;
+inline constexpr bool alwaysFalse = false;
 
 namespace {
 
@@ -74,7 +74,7 @@ constexpr CommandSchema commandSchema(std::string_view name,
 /// One row per Command alternative, in variant order. The assertions below turn
 /// a missing row, a reordered row or a duplicate wire name into a compile
 /// error instead of a runtime "unknown Command type".
-constexpr std::array kCommandSchema{
+constexpr std::array commandSchemas{
     commandSchema<Play>("Play"),
     commandSchema<Pause>("Pause"),
     commandSchema<Resume>("Resume"),
@@ -145,22 +145,22 @@ constexpr std::array kCommandSchema{
     commandSchema<TagBatchEdit>("TagBatchEdit", TransportPolicy::Batch),
 };
 
-static_assert(kCommandSchema.size() == std::variant_size_v<Command>,
-              "every Command alternative needs a kCommandSchema row");
+static_assert(commandSchemas.size() == std::variant_size_v<Command>,
+              "every Command alternative needs a commandSchemas row");
 
 template <std::size_t... I>
 constexpr bool schemaRowsMatchVariant(std::index_sequence<I...>) {
-    return ((kCommandSchema[I].index == I) && ...);
+    return ((commandSchemas[I].index == I) && ...);
 }
-static_assert(schemaRowsMatchVariant(std::make_index_sequence<kCommandSchema.size()>{}),
-              "kCommandSchema rows must sit at their alternative's index");
+static_assert(schemaRowsMatchVariant(std::make_index_sequence<commandSchemas.size()>{}),
+              "commandSchemas rows must sit at their alternative's index");
 
 constexpr bool schemaNamesUnique() {
-    for (std::size_t i = 0; i < kCommandSchema.size(); ++i) {
-        if (kCommandSchema[i].name.empty())
+    for (std::size_t i = 0; i < commandSchemas.size(); ++i) {
+        if (commandSchemas[i].name.empty())
             return false;
-        for (std::size_t k = i + 1; k < kCommandSchema.size(); ++k)
-            if (kCommandSchema[i].name == kCommandSchema[k].name)
+        for (std::size_t k = i + 1; k < commandSchemas.size(); ++k)
+            if (commandSchemas[i].name == commandSchemas[k].name)
                 return false;
     }
     return true;
@@ -169,15 +169,15 @@ static_assert(schemaNamesUnique(), "command wire names must be unique and non-em
 
 /// Pre-registry name still accepted from old clients: same payload as
 /// LibraryStats, but an absent `top_tracks` defaults to 10.
-inline constexpr std::string_view kLibraryStatsDetailedAlias = "LibraryStatsDetailed";
+inline constexpr std::string_view libraryStatsDetailedAlias = "LibraryStatsDetailed";
 
 } // namespace
 
 Json toJson(const Command& cmd) {
     Json j;
-    // Wire names have exactly one source (kCommandSchema); the visitor below
+    // Wire names have exactly one source (commandSchemas); the visitor below
     // only fills payload fields.
-    j["type"] = kCommandSchema[cmd.index()].name;
+    j["type"] = commandSchemas[cmd.index()].name;
     std::visit(
         [&j](const auto& v) {
             using T = std::decay_t<decltype(v)>;
@@ -438,7 +438,7 @@ Json toJson(const Command& cmd) {
                 j["track_id"] = v.track_id;
                 j["rating"] = v.rating;
             } else {
-                static_assert(kAlwaysFalse<T>, "Command alternative has no JSON body");
+                static_assert(alwaysFalse<T>, "Command alternative has no JSON body");
             }
         },
         cmd);
@@ -887,7 +887,7 @@ std::expected<T, kanariv::utils::Error> parseCommandPayload(const Json& j) {
                 return std::unexpected{std::move(r.error())};
             return v;
         } else {
-            static_assert(kAlwaysFalse<T>, "Command alternative has no JSON parser");
+            static_assert(alwaysFalse<T>, "Command alternative has no JSON parser");
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no parser")};
         }
@@ -904,7 +904,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "missing type")};
         }
         const std::string t = j["type"].get<std::string>();
-        if (t == kLibraryStatsDetailedAlias) {
+        if (t == libraryStatsDetailedAlias) {
             auto detailed = parseCommandPayload<LibraryStats>(j);
             if (!detailed)
                 return std::unexpected{std::move(detailed.error())};
@@ -912,7 +912,7 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
                 detailed->top_tracks = 10;
             return Command{std::move(*detailed)};
         }
-        for (const auto& row : kCommandSchema)
+        for (const auto& row : commandSchemas)
             if (row.name == t)
                 return row.parse(j);
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -928,6 +928,6 @@ std::string toJsonString(const Command& c) {
 }
 
 TransportPolicy transportPolicyFor(const Command& cmd) noexcept {
-    return kCommandSchema[cmd.index()].policy;
+    return commandSchemas[cmd.index()].policy;
 }
 } // namespace kanariv::ipc

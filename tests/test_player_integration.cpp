@@ -171,7 +171,7 @@ TEST_CASE("player position time-based via Engine steady_clock", "[player_integra
         auto dbRes = Database::open(dbPath);
         REQUIRE(dbRes.has_value());
         auto db = std::move(dbRes.value());
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = fixturePath("sample.wav");
         t.duration = 2.0;
         for (int b = 0; b < 32; ++b)
@@ -247,7 +247,7 @@ TEST_CASE("player seek-while-playing race via Engine", "[player_integration][see
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = fixturePath("sample.wav");
     t.duration = 5.0;
     for (int b = 0; b < 32; ++b)
@@ -347,7 +347,7 @@ TEST_CASE("gapless via Player Engine 300ms lookahead", "[player_integration][gap
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = fixturePath("sample.wav");
         t.duration = 0.9;
         for (int b = 0; b < 32; ++b)

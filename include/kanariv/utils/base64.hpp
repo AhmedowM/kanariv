@@ -56,7 +56,7 @@ class Base64 {
     [[nodiscard]] static std::string mimeTypeFromPath(std::string_view path);
 
   private:
-    static constexpr char kEncodeTable[65] =
+    static constexpr char encodeTable[65] =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     static std::array<std::int8_t, 256> buildDecodeTable() {
@@ -64,14 +64,14 @@ class Base64 {
         for (std::size_t i = 0; i < 256; ++i)
             table[i] = -1;
         for (std::size_t i = 0; i < 64; ++i)
-            table[static_cast<std::size_t>(kEncodeTable[i])] = static_cast<std::int8_t>(i);
+            table[static_cast<std::size_t>(encodeTable[i])] = static_cast<std::int8_t>(i);
         return table;
     }
 
-    static inline std::array<std::int8_t, 256> kDecodeTable = buildDecodeTable();
+    static inline std::array<std::int8_t, 256> decodeTable = buildDecodeTable();
 
     static std::int8_t decodeChar(char c) noexcept {
-        return kDecodeTable[static_cast<std::size_t>(static_cast<std::uint8_t>(c))];
+        return decodeTable[static_cast<std::size_t>(static_cast<std::uint8_t>(c))];
     }
 };
 
@@ -85,27 +85,27 @@ inline std::string Base64::encode(std::span<const std::byte> data) {
             (static_cast<std::uint32_t>(data[i]) << 16) |
             (static_cast<std::uint32_t>(data[i + 1]) << 8) |
             static_cast<std::uint32_t>(data[i + 2]);
-        out.push_back(kEncodeTable[(triple >> 18) & 0x3F]);
-        out.push_back(kEncodeTable[(triple >> 12) & 0x3F]);
-        out.push_back(kEncodeTable[(triple >> 6) & 0x3F]);
-        out.push_back(kEncodeTable[triple & 0x3F]);
+        out.push_back(encodeTable[(triple >> 18) & 0x3F]);
+        out.push_back(encodeTable[(triple >> 12) & 0x3F]);
+        out.push_back(encodeTable[(triple >> 6) & 0x3F]);
+        out.push_back(encodeTable[triple & 0x3F]);
         i += 3;
     }
 
     std::size_t remaining = data.size() - i;
     if (remaining == 1) {
         std::uint32_t triple = static_cast<std::uint32_t>(data[i]) << 16;
-        out.push_back(kEncodeTable[(triple >> 18) & 0x3F]);
-        out.push_back(kEncodeTable[(triple >> 12) & 0x3F]);
+        out.push_back(encodeTable[(triple >> 18) & 0x3F]);
+        out.push_back(encodeTable[(triple >> 12) & 0x3F]);
         out.push_back('=');
         out.push_back('=');
     } else if (remaining == 2) {
         std::uint32_t triple =
             (static_cast<std::uint32_t>(data[i]) << 16) |
             (static_cast<std::uint32_t>(data[i + 1]) << 8);
-        out.push_back(kEncodeTable[(triple >> 18) & 0x3F]);
-        out.push_back(kEncodeTable[(triple >> 12) & 0x3F]);
-        out.push_back(kEncodeTable[(triple >> 6) & 0x3F]);
+        out.push_back(encodeTable[(triple >> 18) & 0x3F]);
+        out.push_back(encodeTable[(triple >> 12) & 0x3F]);
+        out.push_back(encodeTable[(triple >> 6) & 0x3F]);
         out.push_back('=');
     }
 

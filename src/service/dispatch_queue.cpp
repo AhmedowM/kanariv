@@ -46,12 +46,12 @@ inline std::string_view trimAscii(std::string_view s) {
     return s;
 }
 
-inline std::expected<kanariv::types::Track, kanariv::utils::Error>
+inline std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 ensureLibraryTrack(kanariv::contracts::ITrackStore& tracks, const std::filesystem::path& p) {
     auto fpRes = kanariv::media::internal::computeFingerprint(p);
     if (!fpRes)
         return std::unexpected{fpRes.error()};
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = kanariv::utils::detail::pathToUtf8(p);
     t.fingerprint = *fpRes;
     t.duration = durationFromDecoder(p);
@@ -94,8 +94,8 @@ ensureLibraryTrack(kanariv::contracts::ITrackStore& tracks, const std::filesyste
 std::expected<void, kanariv::utils::Error> enqueueInChunks(kanariv::contracts::IQueueStore& queues,
                                                            int64_t qid,
                                                            std::span<const int64_t> ids) {
-    for (std::size_t off = 0; off < ids.size(); off += kanariv::contracts::kQueueBatchChunk) {
-        const std::size_t n = std::min(kanariv::contracts::kQueueBatchChunk, ids.size() - off);
+    for (std::size_t off = 0; off < ids.size(); off += kanariv::contracts::queueBatchChunk) {
+        const std::size_t n = std::min(kanariv::contracts::queueBatchChunk, ids.size() - off);
         if (auto r = queues.queueEnqueueBatch(qid, ids.subspan(off, n)); !r)
             return std::unexpected{r.error()};
     }
@@ -138,7 +138,7 @@ std::expected<QueueSelector, kanariv::utils::Error> parseQueueSelector(std::stri
  * @details Audio path, library id and path lookup behave as the direct-play
  * branch; anything else falls back to a library search capped at 50 matches.
  */
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 resolveAddQuery(kanariv::contracts::Storage& storage, std::string_view query, bool search) {
     if (search) {
         auto sr = storage.library->searchTracks(query, 50);
@@ -161,7 +161,7 @@ resolveAddQuery(kanariv::contracts::Storage& storage, std::string_view query, bo
         auto trRes = ensureLibraryTrack(*storage.tracks, p);
         if (!trRes)
             return std::unexpected{trRes.error()};
-        std::vector<kanariv::types::Track> single;
+        std::vector<kanariv::types::TrackRow> single;
         single.reserve(1);
         single.push_back(std::move(*trRes));
         return single;
@@ -172,13 +172,13 @@ resolveAddQuery(kanariv::contracts::Storage& storage, std::string_view query, bo
         auto tr = storage.tracks->getTrack(*id);
         if (!tr)
             return std::unexpected{tr.error()};
-        std::vector<kanariv::types::Track> single;
+        std::vector<kanariv::types::TrackRow> single;
         single.reserve(1);
         single.push_back(std::move(*tr));
         return single;
     }
     if (auto tr = storage.tracks->findByPath(query)) {
-        std::vector<kanariv::types::Track> single;
+        std::vector<kanariv::types::TrackRow> single;
         single.reserve(1);
         single.push_back(std::move(*tr));
         return single;
@@ -242,14 +242,14 @@ Service::Impl::handle(const kanariv::ipc::QueueList& ql) {
     auto fetched = storage_.queues->tracksForQueue(qid);
     if (!fetched)
         return std::unexpected{fetched.error()};
-    std::vector<kanariv::types::Track> tracks = std::move(*fetched);
+    std::vector<kanariv::types::TrackRow> tracks = std::move(*fetched);
     if (ql.order != "added") {
         // Playback (shuffle) order: perm holds queue positions. A stale perm
         // (queue mutated after shuffle) contributes its valid entries first;
         // anything missing follows in insertion order.
         auto perm = ServiceAccess::shufflePermFor(*engine_, qid);
         if (!perm.empty()) {
-            std::vector<kanariv::types::Track> ordered;
+            std::vector<kanariv::types::TrackRow> ordered;
             ordered.reserve(tracks.size());
             std::vector<char> seen(tracks.size(), 0);
             for (int64_t p : perm) {
@@ -583,7 +583,7 @@ Service::Impl::handle(const kanariv::ipc::QueueRemoveBatch& qb) {
         item.track = (*tracks)[static_cast<std::size_t>(index)];
         auto removedRes = storage_.queues->queueRemove(qid, index);
         if (!removedRes) {
-            item.track = kanariv::types::Track{};
+            item.track = kanariv::types::TrackRow{};
             item.status = removedRes.error().code == kanariv::utils::StatusCode::NotFound
                               ? "missing"
                               : "failed";

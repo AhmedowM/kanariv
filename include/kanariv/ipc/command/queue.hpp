@@ -27,13 +27,13 @@ namespace kanariv::ipc {
  *
  * @json_example {"type": "QueueList", "order": "playback"}
  *
- * @param order Track order: "playback" (shuffle order, default) or "added"
+ * @param order TrackRow order: "playback" (shuffle order, default) or "added"
  * (insertion order).
  * @return QueueTracks object with vector of tracks.
  */
 struct QueueList final {
     /**
-     * @brief Track order ("playback" or "added").
+     * @brief TrackRow order ("playback" or "added").
      */
     std::string order{"playback"};
 };

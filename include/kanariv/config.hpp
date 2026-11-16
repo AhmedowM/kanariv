@@ -105,7 +105,7 @@ struct Config {
      * @brief ReplayGain normalization mode. Default: Off.
      * @details Loaded from `"off"`, `"track"`, or `"album"` (case-insensitive;
      * unknown text falls back to Off without failing the load) and written
-     * back by saveConfig in lowercase. Reads `Track::replayGainTrack` /
+     * back by saveConfig in lowercase. Reads `TrackRow::replayGainTrack` /
      * `replayGainAlbum` at load time. Nothing populates those columns yet (the
      * scanner does not measure loudness and no tag importer exists), so all
      * modes currently behave as Off.

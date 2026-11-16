@@ -17,14 +17,14 @@ namespace kanariv::player::detail {
 /// stable, but may change when the backend or the system changes. An empty
 /// payload means the backend's default device.
 inline std::string formatDeviceId(std::string_view backend, std::span<const std::uint8_t> raw) {
-    static constexpr char kHex[] = "0123456789abcdef";
+    static constexpr char hex[] = "0123456789abcdef";
     std::string out;
     out.reserve(backend.size() + 1 + raw.size() * 2);
     out.append(backend);
     out.push_back(':');
     for (const std::uint8_t b : raw) {
-        out.push_back(kHex[b >> 4]);
-        out.push_back(kHex[b & 0x0f]);
+        out.push_back(hex[b >> 4]);
+        out.push_back(hex[b & 0x0f]);
     }
     return out;
 }

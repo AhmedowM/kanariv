@@ -25,7 +25,7 @@ namespace {
  * @approx 1e9 allows ~30 midpoint insertions between any two adjacent items
  * before a renormalization is required.
  */
-constexpr int64_t kPositionGap = 1000000000LL;
+constexpr int64_t positionGap = 1000000000LL;
 
 /**
  * @brief Maps a stored `queues.repeat_mode` integer to the wire enum.
@@ -79,7 +79,7 @@ assignQueuePositions(sqlite3* db, const std::vector<int64_t>& ids, int64_t base)
         return std::unexpected{e.error()};
     for (size_t i = 0; i < ids.size(); ++i) {
         upd.reset();
-        upd.bindInt(1, base + static_cast<int64_t>(i) * kPositionGap);
+        upd.bindInt(1, base + static_cast<int64_t>(i) * positionGap);
         upd.bindInt(2, ids[i]);
         if (upd.stepDone() != SQLITE_DONE)
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
@@ -127,7 +127,7 @@ std::expected<void, kanariv::utils::Error> renormalizeQueueLocked(sqlite3* db, i
     if (!maxPos)
         return std::unexpected{maxPos.error()};
     const int64_t tempBase =
-        std::max<int64_t>(*maxPos, 0) + (static_cast<int64_t>(ids.size()) + 1) * kPositionGap;
+        std::max<int64_t>(*maxPos, 0) + (static_cast<int64_t>(ids.size()) + 1) * positionGap;
 
     // Phase 1: park above every current value. Phase 2: dense final values.
     if (auto parked = assignQueuePositions(db, ids, tempBase); !parked)
@@ -163,7 +163,7 @@ std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64
         } else {
             return std::unexpected{e.error()};
         }
-        newPos = (newPos < 0) ? 0 : newPos + kPositionGap;
+        newPos = (newPos < 0) ? 0 : newPos + positionGap;
     } else if (index < 0) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "queue insertion index below -1")};
@@ -196,10 +196,10 @@ std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64
             newPos = (prevPos + nextPos) / 2;
         } else if (prevPos >= 0) {
             // Only predecessor: append after it.
-            newPos = prevPos + kPositionGap;
+            newPos = prevPos + positionGap;
         } else if (nextPos >= 0) {
             // Only successor: insert before it.
-            newPos = nextPos - kPositionGap;
+            newPos = nextPos - positionGap;
         } else {
             // Empty queue.
             newPos = 0;
@@ -371,7 +371,7 @@ std::optional<size_t> queueIndexOfLocked(sqlite3* db, int64_t qid, int64_t track
     }
 }
 
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 queueTracksLocked(sqlite3* db, int64_t qid) {
     qid = normalizeQueueId(qid);
     if (!db)
@@ -388,9 +388,9 @@ queueTracksLocked(sqlite3* db, int64_t qid) {
     if (auto e = st.prepare(db, sql); !e)
         return std::unexpected{e.error()};
     st.bindInt(1, qid);
-    std::vector<kanariv::types::Track> out;
+    std::vector<kanariv::types::TrackRow> out;
     while (st.step()) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         internal::fillTrackFromStmt(st.get(), t);
         out.push_back(std::move(t));
     }
@@ -422,7 +422,7 @@ std::expected<void, kanariv::utils::Error> queueMoveLocked(sqlite3* db, int64_t 
     if (!maxPos)
         return std::unexpected{maxPos.error()};
     const int64_t tempBase =
-        std::max<int64_t>(*maxPos, 0) + (static_cast<int64_t>(ids.size()) + 1) * kPositionGap;
+        std::max<int64_t>(*maxPos, 0) + (static_cast<int64_t>(ids.size()) + 1) * positionGap;
     if (auto parked = assignQueuePositions(db, ids, tempBase); !parked)
         return parked;
     return assignQueuePositions(db, ids, 0);

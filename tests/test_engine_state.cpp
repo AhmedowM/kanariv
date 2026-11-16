@@ -30,7 +30,7 @@ TEST_CASE("engine state save and load roundtrip", "[engine_state]") {
         REQUIRE(dbRes.has_value());
         auto db = std::move(dbRes.value());
         for (int i = 0; i < 2; ++i) {
-            kanariv::types::Track t;
+            kanariv::types::TrackRow t;
             t.path = "state" + std::to_string(i) + ".wav";
             t.duration = 1.0;
             for (int b = 0; b < 32; ++b)
@@ -127,7 +127,7 @@ TEST_CASE("engine state shuffle toggle clears perm", "[engine_state]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "tog" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -169,7 +169,7 @@ TEST_CASE("engine persists resume position across restart", "[engine_state]") {
         auto dbRes = Database::open(dbPath);
         REQUIRE(dbRes.has_value());
         auto db = std::move(dbRes.value());
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "pos.wav";
         t.duration = 10.0;
         for (int b = 0; b < 32; ++b)
@@ -224,7 +224,7 @@ TEST_CASE("concurrent transport commands keep the engine usable", "[engine_state
     REQUIRE(dbRes.has_value());
     auto sharedDb = std::shared_ptr<Database>(std::move(dbRes.value()));
     for (int i = 0; i < 3; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "stress" + std::to_string(i) + ".wav";
         t.duration = 30.0;
         for (int b = 0; b < 32; ++b)
@@ -246,17 +246,17 @@ TEST_CASE("concurrent transport commands keep the engine usable", "[engine_state
     auto eng = std::move(eRes.value());
     REQUIRE(eng->attachStorage(kanariv::db::makeStorage(sharedDb)).has_value());
 
-    constexpr int kThreads = 4;
-    constexpr int kIterations = 100;
+    constexpr int threadCount = 4;
+    constexpr int iterations = 100;
     std::atomic<bool> go{false};
     std::atomic<int> calls{0};
     std::vector<std::thread> threads;
-    threads.reserve(kThreads);
-    for (int t = 0; t < kThreads; ++t) {
+    threads.reserve(threadCount);
+    for (int t = 0; t < threadCount; ++t) {
         threads.emplace_back([&, t] {
             while (!go.load(std::memory_order_acquire))
                 std::this_thread::yield();
-            for (int i = 0; i < kIterations; ++i) {
+            for (int i = 0; i < iterations; ++i) {
                 switch ((i + t * 3) % 11) {
                 case 0:
                     (void)eng->play(1);
@@ -306,7 +306,7 @@ TEST_CASE("concurrent transport commands keep the engine usable", "[engine_state
     go.store(true, std::memory_order_release);
     for (auto& th : threads)
         th.join();
-    REQUIRE(calls.load() == kThreads * kIterations);
+    REQUIRE(calls.load() == threadCount * iterations);
     // Still usable after the storm: stop, start again, stop again.
     REQUIRE(eng->stop().has_value());
     REQUIRE(eng->state() == kanariv::types::PlaybackState::Stopped);
@@ -324,7 +324,7 @@ TEST_CASE("explicit stop clears the resume position", "[engine_state]") {
         auto dbRes = Database::open(dbPath);
         REQUIRE(dbRes.has_value());
         auto db = std::move(dbRes.value());
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "stop_pos.wav";
         t.duration = 10.0;
         for (int b = 0; b < 32; ++b)
@@ -364,7 +364,7 @@ TEST_CASE("suspended track rejects resume play and seek", "[engine_state]") {
         auto dbRes = Database::open(dbPath);
         REQUIRE(dbRes.has_value());
         auto db = std::move(dbRes.value());
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "suspended.wav";
         t.duration = 10.0;
         for (int b = 0; b < 32; ++b)

@@ -4,7 +4,7 @@
  * @file format_internal.hpp
  * @brief App-internal display formatting helpers (NOT public API).
  * @ingroup kanariv_app
- * @details Track labels and the playlist writers used inside the app layer.
+ * @details TrackRow labels and the playlist writers used inside the app layer.
  * The public `kanariv/app/format.hpp` exposes only the clock formatter, so
  * frontends cannot depend on these helpers.
  *
@@ -34,20 +34,20 @@ std::string trackWho(const kanariv::ipc::Status& st);
  * @details Artist/title parts omitted when empty, bare filename when both
  * are, "track <id>" when nothing else exists.
  */
-std::string addedLabel(const kanariv::types::Track& t);
+std::string addedLabel(const kanariv::types::TrackRow& t);
 
 /**
  * @brief Writes tracks as M3U/PLS/plain text.
  * @ingroup kanariv_app
  * @param format "m3u", "pls", or anything else for plain paths.
  */
-void writePlaylistText(std::ostream& os, const std::vector<kanariv::types::Track>& tracks,
+void writePlaylistText(std::ostream& os, const std::vector<kanariv::types::TrackRow>& tracks,
                        std::string_view format);
 
 /**
  * @brief Writes tracks as `{"format":"kanariv-playlist",...}` JSON.
  * @ingroup kanariv_app
  */
-void writePlaylistJson(std::ostream& os, const std::vector<kanariv::types::Track>& tracks);
+void writePlaylistJson(std::ostream& os, const std::vector<kanariv::types::TrackRow>& tracks);
 
 } // namespace kanariv::app

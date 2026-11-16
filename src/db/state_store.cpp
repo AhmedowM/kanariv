@@ -30,7 +30,7 @@ namespace {
 using kanariv::utils::Json;
 
 /// Bumped when a field changes meaning; files with another version are ignored.
-constexpr int kStateVersion = 1;
+constexpr int stateVersion = 1;
 
 std::filesystem::path withSuffix(const std::filesystem::path& base, std::string_view suffix) {
     std::filesystem::path out = base;
@@ -60,7 +60,7 @@ kanariv::types::RepeatMode repeatFromName(std::string_view name) noexcept {
 
 Json toJson(const kanariv::types::EngineState& state) {
     Json doc = Json::object();
-    doc["version"] = kStateVersion;
+    doc["version"] = stateVersion;
     doc["queue_name"] = state.queue_name.empty() ? std::string{"default"} : state.queue_name;
     doc["cursor"] = state.cursor_pos;
     doc["current_path"] = state.current_path;
@@ -87,7 +87,7 @@ std::optional<kanariv::types::EngineState> parseState(std::string_view text) {
         return std::nullopt;
     const Json& doc = *parsed;
     try {
-        if (!doc.contains("version") || doc["version"].get<int>() != kStateVersion)
+        if (!doc.contains("version") || doc["version"].get<int>() != stateVersion)
             return std::nullopt;
         kanariv::types::EngineState state;
         if (doc.contains("queue_name") && doc["queue_name"].isString())

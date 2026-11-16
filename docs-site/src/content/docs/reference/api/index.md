@@ -19,7 +19,7 @@ return documentation are rendered in the same shell as the rest of this site.
 | Component | Description |
 |---|---|
 | [Utils](/reference/api/utils) | Errors, logging, JSON, queues, threads, versioning |
-| [Types](/reference/api/types) | Shared value types (Track, Playlist, QueueItem, etc.) |
+| [Types](/reference/api/types) | Shared value types (TrackRow, Playlist, QueueItem, etc.) |
 | [Contracts](/reference/api/contracts) | Backend-neutral persistence interface |
 | [Media](/reference/api/media) | Reading, decoding, metadata, library discovery |
 | [Player](/reference/api/player) | Audio output and playback primitives |

@@ -66,7 +66,7 @@ struct PlaylistData final {
     /**
      * @brief Tracks in the playlist.
      */
-    std::vector<kanariv::types::Track> tracks{};
+    std::vector<kanariv::types::TrackRow> tracks{};
     /**
      * @brief Export format (e.g., "m3u").
      */
@@ -120,7 +120,7 @@ struct PlaylistImportReport final {
     /**
      * @brief Imported tracks.
      */
-    std::vector<kanariv::types::Track> tracks{};
+    std::vector<kanariv::types::TrackRow> tracks{};
     /**
      * @brief Lines matched to library tracks.
      */

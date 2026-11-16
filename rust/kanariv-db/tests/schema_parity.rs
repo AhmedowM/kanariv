@@ -1,7 +1,7 @@
 //! Guards the Rust schema against drift from the C++ migration ladder.
 //!
 //! The base schema moved from `src/db/core.cpp` into `src/db/migration.cpp`
-//! (`kBaseSchema`) when the versioned migrations landed. Every statement of
+//! (`baseSchema`) when the versioned migrations landed. Every statement of
 //! that constant must also appear in [`kanariv_db::SCHEMA`]: the crate may add
 //! its own tables and pragmas, but it must not miss a C++ table, index or
 //! trigger, because both sides open files the other created.
@@ -13,7 +13,7 @@ use std::path::PathBuf;
 fn base_schema_statements_are_present() {
     let cpp = extract_literal(
         &cpp_source(),
-        "inline constexpr std::string_view kBaseSchema =",
+        "inline constexpr std::string_view baseSchema =",
     );
     let rust = statements(kanariv_db::SCHEMA);
     for statement in statements(&cpp) {

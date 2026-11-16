@@ -68,7 +68,7 @@ TEST_CASE("history insert increments play_count and last_played", "[engine_histo
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "hist.wav";
     t.duration = 10.0;
     for (int b = 0; b < 32; ++b)
@@ -195,7 +195,7 @@ TEST_CASE("next() starts with fresh playback accounting", "[engine_history]") {
     auto db = std::move(dbRes.value());
 
     auto addTrack = [&](const char* path, uint8_t seed) -> int64_t {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = path;
         t.duration = 10.0;
         for (int b = 0; b < 32; ++b)
@@ -241,7 +241,7 @@ TEST_CASE("next() starts with fresh playback accounting", "[engine_history]") {
     };
 
     REQUIRE(eng->play(1).has_value());
-    // Track A counts once 2 s of playback have accumulated.
+    // TrackRow A counts once 2 s of playback have accumulated.
     busyWaitUntil([&] { return playCount(a) >= 1; }, std::chrono::milliseconds(4000),
                   std::chrono::milliseconds(50));
     REQUIRE(playCount(a) >= 1);

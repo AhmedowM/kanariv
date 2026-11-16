@@ -29,13 +29,13 @@ namespace kanariv::media_session {
 
 namespace {
 
-constexpr const char* kObjectPath = "/org/mpris/MediaPlayer2";
-constexpr const char* kMediaPlayerInterface = "org.mpris.MediaPlayer2";
-constexpr const char* kPlayerInterface = "org.mpris.MediaPlayer2.Player";
-constexpr const char* kPropertiesInterface = "org.freedesktop.DBus.Properties";
-constexpr const char* kIntrospectableInterface = "org.freedesktop.DBus.Introspectable";
-constexpr const char* kNoTrack = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
-constexpr const char* kTrackPrefix = "/org/kanariv/Track/";
+constexpr const char* objectPath = "/org/mpris/MediaPlayer2";
+constexpr const char* mediaPlayerInterface = "org.mpris.MediaPlayer2";
+constexpr const char* playerInterface = "org.mpris.MediaPlayer2.Player";
+constexpr const char* propertiesInterface = "org.freedesktop.DBus.Properties";
+constexpr const char* introspectableInterface = "org.freedesktop.DBus.Introspectable";
+constexpr const char* noTrack = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
+constexpr const char* trackPrefix = "/org/kanariv/Track/";
 
 /**
  * @brief RAII helper around dbus_message_iter_open_container().
@@ -94,8 +94,8 @@ class OpenContainer {
 
 std::string trackPath(std::int64_t trackId) {
     if (trackId <= 0)
-        return kNoTrack;
-    return std::string{kTrackPrefix} + std::to_string(trackId);
+        return noTrack;
+    return std::string{trackPrefix} + std::to_string(trackId);
 }
 
 // MPRIS mpris:artUrl is a URI, not a bare path. Percent-encode everything
@@ -230,7 +230,7 @@ class LinuxImpl final : public Impl {
             .dbus_internal_pad3 = nullptr,
             .dbus_internal_pad4 = nullptr,
         };
-        if (!dbus_connection_register_object_path(conn, kObjectPath, &vtable, this)) {
+        if (!dbus_connection_register_object_path(conn, objectPath, &vtable, this)) {
             dbus_error_init(&error);
             dbus_bus_release_name(conn, requestedName.c_str(), &error);
             dbus_error_free(&error);
@@ -279,7 +279,7 @@ class LinuxImpl final : public Impl {
         conn_ = nullptr;
         busName_.clear();
 
-        dbus_connection_unregister_object_path(conn, kObjectPath);
+        dbus_connection_unregister_object_path(conn, objectPath);
         DBusError error;
         dbus_error_init(&error);
         if (!busName.empty())
@@ -858,7 +858,7 @@ class LinuxImpl final : public Impl {
             return;
 
         DBusMessage* signal =
-            dbus_message_new_signal(kObjectPath, kPropertiesInterface, "PropertiesChanged");
+            dbus_message_new_signal(objectPath, propertiesInterface, "PropertiesChanged");
         if (!signal)
             return;
 
@@ -866,7 +866,7 @@ class LinuxImpl final : public Impl {
         do {
             DBusMessageIter iter;
             dbus_message_iter_init_append(signal, &iter);
-            const char* iface = kPlayerInterface;
+            const char* iface = playerInterface;
             if (!dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &iface))
                 break;
 
@@ -905,12 +905,12 @@ class LinuxImpl final : public Impl {
         if (!iface || !method)
             return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
-        if (std::strcmp(iface, kIntrospectableInterface) == 0 &&
+        if (std::strcmp(iface, introspectableInterface) == 0 &&
             std::strcmp(method, "Introspect") == 0) {
             return sendStringReply(connection, message, introspectionXml());
         }
 
-        if (std::strcmp(iface, kPropertiesInterface) == 0) {
+        if (std::strcmp(iface, propertiesInterface) == 0) {
             if (std::strcmp(method, "Get") == 0)
                 return handlePropertiesGet(connection, message);
             if (std::strcmp(method, "GetAll") == 0)
@@ -921,9 +921,9 @@ class LinuxImpl final : public Impl {
                              "Unknown Properties method");
         }
 
-        if (std::strcmp(iface, kPlayerInterface) == 0)
+        if (std::strcmp(iface, playerInterface) == 0)
             return handlePlayerMethod(connection, message, method);
-        if (std::strcmp(iface, kMediaPlayerInterface) == 0)
+        if (std::strcmp(iface, mediaPlayerInterface) == 0)
             return handleMediaPlayerMethod(connection, message, method);
 
         return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
@@ -1066,8 +1066,8 @@ class LinuxImpl final : public Impl {
         }
         dbus_error_free(&error);
 
-        if (std::strcmp(iface, kPlayerInterface) != 0 &&
-            std::strcmp(iface, kMediaPlayerInterface) != 0) {
+        if (std::strcmp(iface, playerInterface) != 0 &&
+            std::strcmp(iface, mediaPlayerInterface) != 0) {
             return sendError(connection, message, DBUS_ERROR_UNKNOWN_INTERFACE,
                              "Unknown interface");
         }
@@ -1089,11 +1089,11 @@ class LinuxImpl final : public Impl {
         do {
             DBusMessageIter iter;
             dbus_message_iter_init_append(reply, &iter);
-            if (std::strcmp(iface, kPlayerInterface) == 0) {
+            if (std::strcmp(iface, playerInterface) == 0) {
                 const auto result = appendPlayerPropertyValue(iter, property, snapshot);
                 known = result.has_value();
                 ok = result.value_or(false);
-            } else if (std::strcmp(iface, kMediaPlayerInterface) == 0) {
+            } else if (std::strcmp(iface, mediaPlayerInterface) == 0) {
                 const auto result = appendMediaPlayerPropertyValue(iter, property, appName);
                 known = result.has_value();
                 ok = result.value_or(false);
@@ -1125,8 +1125,8 @@ class LinuxImpl final : public Impl {
         }
         dbus_error_free(&error);
 
-        const bool player = std::strcmp(iface, kPlayerInterface) == 0;
-        const bool mediaPlayer = std::strcmp(iface, kMediaPlayerInterface) == 0;
+        const bool player = std::strcmp(iface, playerInterface) == 0;
+        const bool mediaPlayer = std::strcmp(iface, mediaPlayerInterface) == 0;
         if (!player && !mediaPlayer)
             return sendError(connection, message, DBUS_ERROR_UNKNOWN_INTERFACE,
                              "Unknown interface");
@@ -1214,8 +1214,8 @@ class LinuxImpl final : public Impl {
         DBusMessageIter variant;
         dbus_message_iter_recurse(&iter, &variant);
 
-        if (std::strcmp(iface, kPlayerInterface) != 0) {
-            if (std::strcmp(iface, kMediaPlayerInterface) == 0)
+        if (std::strcmp(iface, playerInterface) != 0) {
+            if (std::strcmp(iface, mediaPlayerInterface) == 0)
                 return sendError(connection, message, DBUS_ERROR_PROPERTY_READ_ONLY,
                                  "Property is read-only");
             return sendError(connection, message, DBUS_ERROR_UNKNOWN_INTERFACE,
@@ -1316,8 +1316,7 @@ class LinuxImpl final : public Impl {
     }
 
     static void emitSeeked(DBusConnection* connection, double positionSeconds) {
-        DBusMessage* signal =
-            dbus_message_new_signal(kObjectPath, kPlayerInterface, "Seeked");
+        DBusMessage* signal = dbus_message_new_signal(objectPath, playerInterface, "Seeked");
         if (!signal)
             return;
         dbus_int64_t positionUs = static_cast<dbus_int64_t>(

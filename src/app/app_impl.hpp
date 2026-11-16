@@ -117,7 +117,7 @@ struct App::Impl {
 
     /**
      * @brief Human track label for the last transport result.
-     * @return Track label, or "unknown track" for non-status results.
+     * @return TrackRow label, or "unknown track" for non-status results.
      */
     std::string transportWho(const std::expected<kanariv::ipc::Result, kanariv::utils::Error>& res);
 

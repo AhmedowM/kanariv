@@ -23,7 +23,7 @@ using kanariv::utils::StatusCode;
  * @details `journal_mode` and `page_size` cannot change inside a transaction,
  * so these run once on the raw handle in `Database::open()`.
  */
-inline constexpr std::string_view kConnectionPragmas = "PRAGMA journal_mode=WAL;"
+inline constexpr std::string_view connectionPragmas = "PRAGMA journal_mode=WAL;"
                                                        "PRAGMA synchronous=NORMAL;"
                                                        "PRAGMA cache_size=-8000;"
                                                        "PRAGMA busy_timeout=5000;"
@@ -38,7 +38,7 @@ inline constexpr std::string_view kConnectionPragmas = "PRAGMA journal_mode=WAL;
  * part of this step -- legacy rows may hold duplicate positions and are
  * normalised by version 2 first. The row-update trigger is created by version 4.
  */
-inline constexpr std::string_view kBaseSchema =
+inline constexpr std::string_view baseSchema =
     "CREATE TABLE IF NOT EXISTS libraries ("
     "id INTEGER PRIMARY KEY,"
     "path TEXT NOT NULL UNIQUE,"
@@ -170,7 +170,7 @@ inline constexpr std::string_view kBaseSchema =
  * every row a unique `(queue_id, position)`. The rank is computed once into a
  * temporary table so the correlated UPDATE cannot see its own intermediate rows.
  */
-inline constexpr std::string_view kQueuePositionUniqueness =
+inline constexpr std::string_view queuePositionUniqueness =
     "CREATE TEMP TABLE IF NOT EXISTS queue_rank AS "
     "SELECT id, (ROW_NUMBER() OVER (PARTITION BY queue_id ORDER BY position, id) - 1) * 1000000000 "
     "AS pos FROM queue;"
@@ -185,7 +185,7 @@ inline constexpr std::string_view kQueuePositionUniqueness =
  * The trigger is dropped first because `CREATE TRIGGER IF NOT EXISTS` would
  * keep an older, unscoped definition on an existing database.
  */
-inline constexpr std::string_view kScopedFtsUpdateTrigger =
+inline constexpr std::string_view scopedFtsUpdateTrigger =
     "DROP TRIGGER IF EXISTS tracks_au;"
     "CREATE TRIGGER tracks_au AFTER UPDATE OF title, artist, album, album_artist, genre ON tracks "
     "BEGIN "
@@ -203,7 +203,7 @@ inline constexpr std::string_view kScopedFtsUpdateTrigger =
  * `(source_kind, source_key)` since version 3, and making path unique would
  * reject rows instead of letting the scanner resolve them.
  */
-inline constexpr std::string_view kDropRedundantIndexes =
+inline constexpr std::string_view dropRedundantIndexes =
     "DROP INDEX IF EXISTS idx_tracks_fingerprint;"
     "DROP INDEX IF EXISTS idx_queue_queue_pos;";
 
@@ -309,22 +309,22 @@ std::expected<void, kanariv::utils::Error> dropDeletedAt(sqlite3* db) {
 std::expected<void, kanariv::utils::Error> configureConnection(sqlite3* db) {
     if (!db)
         return std::unexpected{makeError(StatusCode::InvalidArg, "null db")};
-    return execSql(db, kConnectionPragmas, "connection pragmas");
+    return execSql(db, connectionPragmas, "connection pragmas");
 }
 
 std::span<const MigrationStep> schemaMigrations() noexcept {
     static constexpr std::array<MigrationStep, 8> steps{{
-        MigrationStep{1, "base schema", kBaseSchema, nullptr},
-        MigrationStep{2, "queue position uniqueness", kQueuePositionUniqueness, nullptr},
+        MigrationStep{1, "base schema", baseSchema, nullptr},
+        MigrationStep{2, "queue position uniqueness", queuePositionUniqueness, nullptr},
         MigrationStep{3, "track source identity", {}, &migrateSourceIdentity},
-        MigrationStep{4, "scoped fts update trigger", kScopedFtsUpdateTrigger, nullptr},
+        MigrationStep{4, "scoped fts update trigger", scopedFtsUpdateTrigger, nullptr},
         // Older scans wrote a mis-scaled loudness heuristic into both gain
         // columns; the scanner no longer produces gain values at all (M10), so
         // the stale numbers are cleared rather than reinterpreted. The columns
         // are reserved for tag-imported values, which nothing writes yet.
         MigrationStep{5, "clear mis-scaled replay gain",
                       "UPDATE tracks SET replay_gain_track=0, replay_gain_album=0", nullptr},
-        MigrationStep{6, "drop redundant indexes", kDropRedundantIndexes, nullptr},
+        MigrationStep{6, "drop redundant indexes", dropRedundantIndexes, nullptr},
         MigrationStep{7, "drop soft-delete column", {}, &dropDeletedAt},
         // Per-track history lookups already walk idx_history_track_started; the
         // global "recently played" query had no index and scanned the table.

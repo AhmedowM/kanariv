@@ -14,7 +14,7 @@ std::string_view columnText(sqlite3_stmt* stmt, int col) noexcept {
     return p ? reinterpret_cast<const char*>(p) : "";
 }
 
-void fillTrackFromStmt(sqlite3_stmt* stmt, kanariv::types::Track& t) {
+void fillTrackFromStmt(sqlite3_stmt* stmt, kanariv::types::TrackRow& t) {
     t.id = sqlite3_column_int64(stmt, 0);
     t.fingerprint.fill(0);
     if (sqlite3_column_bytes(stmt, 1) == 32) {

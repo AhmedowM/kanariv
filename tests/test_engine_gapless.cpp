@@ -36,7 +36,7 @@ TEST_CASE("gapless CAS arms once via Engine", "[engine_gapless]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "cas" + std::to_string(i) + ".wav";
         t.duration = 0.8;
         for (int b = 0; b < 32; ++b)
@@ -85,7 +85,7 @@ TEST_CASE("gapless 300ms lookahead triggers next once", "[engine_gapless]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "gap" + std::to_string(i) + ".wav";
         t.duration = 0.8;
         for (int b = 0; b < 32; ++b)
@@ -135,7 +135,7 @@ TEST_CASE("gapless not triggered when remaining > gap", "[engine_gapless]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "gap_n" + std::to_string(i) + ".wav";
         t.duration = 5.0;
         for (int b = 0; b < 32; ++b)
@@ -177,7 +177,7 @@ TEST_CASE("gapless not triggered when remaining > gap", "[engine_gapless]") {
 namespace {
 
 /// Chunks in these tests run at a fixed rate so frame counts are exact.
-constexpr double kFadeRate = 48000.0;
+constexpr double fadeRate = 48000.0;
 
 /// @brief Interleaved buffer with a trailing canary region.
 /// @details `applyFadeEnvelope()` only sees the first `used` floats as its
@@ -187,12 +187,12 @@ constexpr double kFadeRate = 48000.0;
 /// `frames*ch*ch` floats (ch <= 6 in these tests), i.e. six times the payload.
 class CanaryBuffer {
   public:
-    static constexpr float kSentinel = -12345.0f;
+    static constexpr float sentinel = -12345.0f;
 
     explicit CanaryBuffer(std::size_t used, float value)
-        : used_(used), data_(used * 6 + kGuard, value) {
+        : used_(used), data_(used * 6 + guard, value) {
         for (std::size_t i = used_; i < data_.size(); ++i)
-            data_[i] = kSentinel;
+            data_[i] = sentinel;
     }
 
     std::span<float> span() {
@@ -206,13 +206,13 @@ class CanaryBuffer {
     }
     [[nodiscard]] bool canaryIntact() const {
         for (std::size_t i = used_; i < data_.size(); ++i)
-            if (data_[i] != kSentinel)
+            if (data_[i] != sentinel)
                 return false;
         return true;
     }
 
   private:
-    static constexpr std::size_t kGuard = 64;
+    static constexpr std::size_t guard = 64;
     std::size_t used_;
     std::vector<float> data_;
 };
@@ -232,8 +232,8 @@ TEST_CASE("fade envelope applies one gain per frame at mono, stereo and 5.1", "[
         p.startFrame = 0;
         p.fadeInFrames = 256;
         p.fadeOutFrames = 256;
-        p.fadeOutStartSec = 256.0 / kFadeRate;
-        p.sampleRate = kFadeRate;
+        p.fadeOutStartSec = 256.0 / fadeRate;
+        p.sampleRate = fadeRate;
         REQUIRE(applyFadeEnvelope(out.span(), frames, ch, p) == samples);
         REQUIRE(out.canaryIntact());
         for (std::uint32_t c = 0; c < ch; ++c) {
@@ -261,7 +261,7 @@ TEST_CASE("fade envelope applies one gain per frame at mono, stereo and 5.1", "[
         FadeParams p;
         p.startFrame = 1000; // past the fade-in ramp; no fade-out configured
         p.fadeInFrames = 256;
-        p.sampleRate = kFadeRate;
+        p.sampleRate = fadeRate;
         REQUIRE(applyFadeEnvelope(out.span(), frames, ch, p) == samples);
         REQUIRE(out.canaryIntact());
         for (std::size_t i = 0; i < samples; ++i) {
@@ -279,7 +279,7 @@ TEST_CASE("fade envelope applies one gain per frame at mono, stereo and 5.1", "[
         p.startFrame = 0;
         p.fadeOutFrames = 256;
         p.fadeOutStartSec = 0.0; // fade out over the first 256 frames, then silence
-        p.sampleRate = kFadeRate;
+        p.sampleRate = fadeRate;
         REQUIRE(applyFadeEnvelope(out.span(), frames, ch, p) == samples);
         REQUIRE(out.canaryIntact());
         for (std::uint32_t c = 0; c < ch; ++c) {
@@ -300,7 +300,7 @@ TEST_CASE("fade envelope applies one gain per frame at mono, stereo and 5.1", "[
                 in[f * ch + c] = 0.04f * static_cast<float>(c + 1);
         FadeParams p;
         p.startFrame = 1000; // no envelope gain, isolates the mix
-        p.sampleRate = kFadeRate;
+        p.sampleRate = fadeRate;
         constexpr double progress = 0.25;
         REQUIRE(applyFadeEnvelope(out.span(), frames, ch, p, in.span(), progress) == samples);
         REQUIRE(out.canaryIntact());
@@ -328,7 +328,7 @@ TEST_CASE("crossfade mixes incoming tracks with their own channel count", "[engi
     const double inWeight = std::sqrt(progress);
     FadeParams p;
     p.startFrame = 1000; // past any envelope ramp, isolates the mix
-    p.sampleRate = kFadeRate;
+    p.sampleRate = fadeRate;
 
     SECTION("mono incoming feeds every outgoing channel") {
         constexpr std::uint32_t outCh = 2;
@@ -441,7 +441,7 @@ TEST_CASE("failed crossfade preload keeps the cursor on the unreadable track",
                                   kanariv::utils::detail::pathToUtf8(dir / "missing1.wav"),
                                   kanariv::utils::detail::pathToUtf8(dir / "missing2.wav")};
     for (int i = 0; i < 3; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = paths[i];
         t.duration = i == 0 ? 2.0 : 1.0;
         for (int b = 0; b < 32; ++b)
@@ -533,7 +533,7 @@ TwoSilentTracks makeTwoSilentTracks(const std::filesystem::path& dir, const std:
                                   kanariv::utils::detail::pathToUtf8(dir / "second.wav")};
     const double durations[2] = {firstSec, secondSec};
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = paths[i];
         t.duration = durations[i];
         for (int b = 0; b < 32; ++b)
@@ -710,7 +710,7 @@ TEST_CASE("a track change cancels an armed crossfade", "[engine_gapless][crossfa
     for (int i = 0; i < 3; ++i) {
         const fs::path wav = dir / ("track" + std::to_string(i) + ".wav");
         REQUIRE(writeSilentWav(wav, secs[i]));
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = kanariv::utils::detail::pathToUtf8(wav);
         t.duration = secs[i];
         for (int b = 0; b < 32; ++b)

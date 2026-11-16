@@ -130,11 +130,11 @@ class WinImpl final : public Impl {
 
   private:
     static constexpr UINT WM_UPDATE_SMTC = WM_APP + 1;
-    static constexpr UINT_PTR kTimelineTimer = 1;
+    static constexpr UINT_PTR timelineTimer = 1;
     // Microsoft recommends refreshing the SMTC timeline about every 5
     // seconds while playing so the seek bar (and PositionChangeRequested)
     // stays in sync with the real playback position.
-    static constexpr UINT kTimelineIntervalMs = 5'000;
+    static constexpr UINT timelineIntervalMs = 5'000;
 
     static LRESULT CALLBACK wndProc(HWND hwnd, UINT message, WPARAM wParam,
                                     LPARAM lParam) {
@@ -152,23 +152,23 @@ class WinImpl final : public Impl {
             return DefWindowProcW(hwnd, message, wParam, lParam);
 
         switch (message) {
-            case WM_UPDATE_SMTC:
-                self->publishToSmtc();
+        case WM_UPDATE_SMTC:
+            self->publishToSmtc();
+            return 0;
+        case WM_TIMER:
+            if (wParam == timelineTimer) {
+                self->updateTimeline();
                 return 0;
-            case WM_TIMER:
-                if (wParam == kTimelineTimer) {
-                    self->updateTimeline();
-                    return 0;
-                }
-                return DefWindowProcW(hwnd, message, wParam, lParam);
-            case WM_HOTKEY:
-                self->handleHotkey(static_cast<int>(wParam));
-                return 0;
-            case WM_DESTROY:
-                PostQuitMessage(0);
-                return 0;
-            default:
-                return DefWindowProcW(hwnd, message, wParam, lParam);
+            }
+            return DefWindowProcW(hwnd, message, wParam, lParam);
+        case WM_HOTKEY:
+            self->handleHotkey(static_cast<int>(wParam));
+            return 0;
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
+        default:
+            return DefWindowProcW(hwnd, message, wParam, lParam);
         }
     }
 
@@ -223,7 +223,7 @@ class WinImpl final : public Impl {
             }
 
             if (smtc_)
-                SetTimer(hwnd, kTimelineTimer, kTimelineIntervalMs, nullptr);
+                SetTimer(hwnd, timelineTimer, timelineIntervalMs, nullptr);
 
             MSG message{};
             while (!stopRequested_.load(std::memory_order_acquire)) {
@@ -234,7 +234,7 @@ class WinImpl final : public Impl {
                 DispatchMessageW(&message);
             }
 
-            KillTimer(hwnd, kTimelineTimer);
+            KillTimer(hwnd, timelineTimer);
 
             if (enableMediaKeys_) {
                 UnregisterHotKey(hwnd, 1);
@@ -523,7 +523,7 @@ class WinImpl final : public Impl {
         smtc_.UpdateTimelineProperties(timeline);
     }
 
-    // Called every kTimelineIntervalMs from the message-loop WM_TIMER so the
+    // Called every timelineIntervalMs from the message-loop WM_TIMER so the
     // system seek bar tracks the real position (and keeps PositionChangeRequested
     // enabled) without waiting for the next daemon state sync.
     void updateTimeline() {

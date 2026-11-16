@@ -35,7 +35,7 @@ kanariv::media::ScanMode toMediaMode(kanariv::contracts::ScanMode mode) {
 // Fills the tag and stream-parameter columns from a scan result, moving values
 // out of it. Returns false when the extract failed or carried no usable field.
 bool applyMetadata(kanariv::utils::Expected<kanariv::types::TrackMetadata>& meta,
-                   kanariv::types::Track& t) {
+                   kanariv::types::TrackRow& t) {
     if (!meta)
         return false;
     auto& m = *meta;
@@ -93,7 +93,7 @@ bool applyMetadata(kanariv::utils::Expected<kanariv::types::TrackMetadata>& meta
 
 // A row whose tags could not be re-read must not keep the previous scan's text:
 // those values may describe a different file that used to live at this path.
-void clearMetadata(kanariv::types::Track& t) {
+void clearMetadata(kanariv::types::TrackRow& t) {
     t.title.clear();
     t.artist.clear();
     t.album.clear();
@@ -225,7 +225,7 @@ Scanner::scanLibrary(int64_t libraryId,
         }
         auto byFp = kanariv::db::DatabaseAccess::findByFingerprintLocked(db, trk.fingerprint);
         if (byFp) {
-            kanariv::types::Track upd = *byFp;
+            kanariv::types::TrackRow upd = *byFp;
             upd.path = trk.path;
             upd.size = trk.size;
             upd.mtime = trk.mtime;
@@ -245,7 +245,7 @@ Scanner::scanLibrary(int64_t libraryId,
                     (void)kanariv::db::DatabaseAccess::deleteTrackLocked(db, existingPath->id);
             }
         } else if (existingPath) {
-            kanariv::types::Track upd = *existingPath;
+            kanariv::types::TrackRow upd = *existingPath;
             int64_t keepPlay = upd.play_count;
             int keepRating = upd.rating;
             int64_t keepAdded = upd.date_added;

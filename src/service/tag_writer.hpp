@@ -29,23 +29,23 @@ bool canWriteFileTags(const std::filesystem::path& p);
 /**
  * @brief Writes a track row's tag fields into its audio file.
  * @param p Audio file path.
- * @param t Track row carrying the desired tag state (id/path ignored).
+ * @param t TrackRow row carrying the desired tag state (id/path ignored).
  * @return Success or Error (InvalidArg for unsupported formats, Io for
  * TagLib open/save failures).
  */
 kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
-                                             const kanariv::types::Track& t);
+                                             const kanariv::types::TrackRow& t);
 
 /**
  * @brief Re-registers a track row after its file was tag-edited.
- * @param tracks Track store.
+ * @param tracks TrackRow store.
  * @param t Row carrying the merged tag fields, path, and id.
  * @return Updated row or Error.
  * @details Tag fields stay as merged (what was written); fingerprint, size,
  * mtime, and audio technicals refresh from the new bytes. The id is stable:
  * lookup is path-keyed, never fingerprint-keyed (the fingerprint changed).
  */
-kanariv::utils::Expected<kanariv::types::Track>
-reregisterTrackRow(kanariv::contracts::ITrackStore& tracks, kanariv::types::Track t);
+kanariv::utils::Expected<kanariv::types::TrackRow>
+reregisterTrackRow(kanariv::contracts::ITrackStore& tracks, kanariv::types::TrackRow t);
 
 } // namespace kanariv::service::detail

@@ -35,7 +35,7 @@ uint64_t wallMs() noexcept;
 
 /**
  * @brief Tests whether playback should count as "played" for history.
- * @param duration Track duration in seconds (0 if unknown).
+ * @param duration TrackRow duration in seconds (0 if unknown).
  * @param played Current accumulated playback time in seconds.
  * @param marked Whether already marked (true => always false).
  * @param pctThr Percentage threshold 0..100 (60 => 0.6); 0 defaults to 60.

@@ -385,11 +385,11 @@ bool writeFrame(RawConnection& conn, std::span<const std::byte> bytes, bool spli
         return conn.write(bytes, std::stop_token{}, deadline) == svcd::IoStatus::Ok;
     // Split inside the 4-byte length prefix: the server used to assume one
     // ReadFile returns the whole header (S1).
-    constexpr std::size_t kSplit = 2;
-    if (conn.write(bytes.first(kSplit), std::stop_token{}, deadline) != svcd::IoStatus::Ok)
+    constexpr std::size_t split = 2;
+    if (conn.write(bytes.first(split), std::stop_token{}, deadline) != svcd::IoStatus::Ok)
         return false;
     std::this_thread::sleep_for(std::chrono::milliseconds{80});
-    return conn.write(bytes.subspan(kSplit), std::stop_token{}, deadline) == svcd::IoStatus::Ok;
+    return conn.write(bytes.subspan(split), std::stop_token{}, deadline) == svcd::IoStatus::Ok;
 }
 
 std::optional<ipc::IpcReply>
@@ -403,7 +403,7 @@ readReply(RawConnection& conn,
                               (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
                               (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
                               static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-    if (len == 0 || len > ipc::kMaxFrameBytes)
+    if (len == 0 || len > ipc::maxFrameBytes)
         return std::nullopt;
     std::vector<std::byte> payload(len);
     if (conn.read(payload, std::stop_token{}, deadline) != svcd::IoStatus::Ok)
@@ -659,7 +659,7 @@ TEST_CASE("queue remove distinguishes positions from track ids", "[service][queu
 
     std::vector<int64_t> ids;
     for (int i = 0; i < 3; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "track" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -728,7 +728,7 @@ TEST_CASE("queue batch commands report per-item outcomes", "[service][queue][a2b
 
     std::vector<int64_t> ids;
     for (int i = 0; i < 3; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "track" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)

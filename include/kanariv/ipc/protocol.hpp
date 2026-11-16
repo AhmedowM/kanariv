@@ -80,7 +80,7 @@
 namespace kanariv::ipc {
 
 // JSON vocabulary: the opaque Json (nlohmann stays in src/).
-// Track conversion lives in kanariv::utils (utils/record_json.hpp) -- single
+// TrackRow conversion lives in kanariv::utils (utils/record_json.hpp) -- single
 // definition, no ipc::detail duplicate.
 /** @brief Opaque JSON value used by the IPC serializers. */
 using Json = kanariv::utils::Json;
@@ -219,43 +219,43 @@ KANARIV_API std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std:
  * @details Enforced in both directions: `frame` refuses to emit an oversized
  * payload and `deframe` refuses to allocate one claimed by a peer.
  */
-inline constexpr std::size_t kMaxFrameBytes = 16 * 1024 * 1024;
+inline constexpr std::size_t maxFrameBytes = 16 * 1024 * 1024;
 
 /**
  * @brief Size of the framing header: one 4-byte big-endian payload length.
  * @ingroup kanariv_ipc
  * @details This constant, `encodeFrameLength` and `decodeFrameLength` are the
- * single owner of the header layout and of the `kMaxFrameBytes` cap. Transports
+ * single owner of the header layout and of the `maxFrameBytes` cap. Transports
  * read/write the payload themselves but must not re-implement the header.
  */
-inline constexpr std::size_t kFrameHeaderBytes = 4;
+inline constexpr std::size_t frameHeaderBytes = 4;
 
 /**
  * @brief Encode a payload length as framing header bytes.
  * @ingroup kanariv_ipc
  * @param length Payload length in bytes; the caller guarantees it is within
- * `kMaxFrameBytes` (`frame` checks before narrowing).
+ * `maxFrameBytes` (`frame` checks before narrowing).
  * @return The 4-byte big-endian header.
  */
-KANARIV_API std::array<std::byte, kFrameHeaderBytes>
+KANARIV_API std::array<std::byte, frameHeaderBytes>
 encodeFrameLength(std::uint32_t length) noexcept;
 
 /**
  * @brief Decode and validate a framing header.
  * @ingroup kanariv_ipc
- * @param header The first `kFrameHeaderBytes` bytes of a frame.
+ * @param header The first `frameHeaderBytes` bytes of a frame.
  * @return The declared payload length, or `InvalidArg` when it exceeds
- * `kMaxFrameBytes` (rejected before the caller allocates).
+ * `maxFrameBytes` (rejected before the caller allocates).
  */
 KANARIV_API std::expected<std::uint32_t, kanariv::utils::Error>
-decodeFrameLength(std::span<const std::byte, kFrameHeaderBytes> header);
+decodeFrameLength(std::span<const std::byte, frameHeaderBytes> header);
 
 /**
  * @brief Frame a JSON string with 4-byte big-endian length prefix.
  * @ingroup kanariv_ipc
  * @param json JSON payload to frame.
  * @return Vector of bytes `[len_be][json...]`, or `InvalidArg` when the
- * payload exceeds `kMaxFrameBytes` (no silent `uint32_t` truncation).
+ * payload exceeds `maxFrameBytes` (no silent `uint32_t` truncation).
  */
 KANARIV_API std::expected<std::vector<std::byte>, kanariv::utils::Error>
 frame(std::string_view json);
@@ -265,7 +265,7 @@ frame(std::string_view json);
  * @ingroup kanariv_ipc
  * @param buf Buffer containing exactly one `[4-byte BE len][json...]` frame.
  * @return JSON string payload, or an error when the buffer is short, the
- * declared length exceeds `kMaxFrameBytes`, the frame is incomplete, or bytes
+ * declared length exceeds `maxFrameBytes`, the frame is incomplete, or bytes
  * trail the declared frame (protocol desync).
  */
 KANARIV_API std::expected<std::string, kanariv::utils::Error>

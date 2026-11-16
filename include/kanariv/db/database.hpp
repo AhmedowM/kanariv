@@ -140,7 +140,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @brief Enqueues multiple tracks atomically (single transaction).
      * @ingroup kanariv_db
      * @param qid Queue id (0 defaults to 1).
-     * @param tids Track ids to enqueue.
+     * @param tids TrackRow ids to enqueue.
      * @return Success or Error (Internal/Busy/NotFound).
      * @details Holds dbMutex_ exclusively and uses BEGIN IMMEDIATE / COMMIT
      * so concurrent listQueueItems never sees a partial batch.
@@ -169,35 +169,36 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     std::optional<kanariv::types::EngineState> legacyEngineState();
 
   public:
-    // Track CRUD and search
+    // TrackRow CRUD and search
     /**
-     * @brief Track CRUD -- inserts, updates, deletes and queries tracks.
+     * @brief TrackRow CRUD -- inserts, updates, deletes and queries tracks.
      * @ingroup kanariv_db
      */
     /**
      * @brief Inserts a track.
      * @ingroup kanariv_db
-     * @param t Track to insert (fingerprint must be unique).
+     * @param t TrackRow to insert (fingerprint must be unique).
      * @return New row id or Error AlreadyExists/Internal.
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      * @see insertTrackLocked
      */
     std::expected<int64_t, kanariv::utils::Error>
-    insertTrack(const kanariv::types::Track& t) override;
+    insertTrack(const kanariv::types::TrackRow& t) override;
     /**
      * @brief Updates a track by id.
      * @ingroup kanariv_db
-     * @param t Track with fields to persist (id must be non-zero).
+     * @param t TrackRow with fields to persist (id must be non-zero).
      * @return Success or Error InvalidArg/NotFound/Internal.
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<void, kanariv::utils::Error> updateTrack(const kanariv::types::Track& t) override;
+    std::expected<void, kanariv::utils::Error>
+    updateTrack(const kanariv::types::TrackRow& t) override;
     /**
      * @brief Deletes a track by id.
      * @ingroup kanariv_db
-     * @param id Track id (0 is InvalidArg).
+     * @param id TrackRow id (0 is InvalidArg).
      * @return Success or Error NotFound/Internal.
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
@@ -206,39 +207,39 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     /**
      * @brief Gets a track by id.
      * @ingroup kanariv_db
-     * @param id Track id.
-     * @return Track or Error InvalidArg/NotFound/Internal.
+     * @param id TrackRow id.
+     * @return TrackRow or Error InvalidArg/NotFound/Internal.
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<kanariv::types::Track, kanariv::utils::Error> getTrack(int64_t id) override;
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error> getTrack(int64_t id) override;
 
     /**
      * @brief Finds a track by fingerprint.
      * @ingroup kanariv_db
      * @param fp Fingerprint to search.
-     * @return Track or Error NotFound/Internal.
+     * @return TrackRow or Error NotFound/Internal.
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<kanariv::types::Track, kanariv::utils::Error>
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findByFingerprint(const std::array<uint8_t, 32>& fp) override;
     /**
      * @brief Finds a track by path.
      * @ingroup kanariv_db
      * @param path Path to search.
-     * @return Track or Error NotFound/Internal.
+     * @return TrackRow or Error NotFound/Internal.
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<kanariv::types::Track, kanariv::utils::Error>
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findByPath(std::string_view path) override;
     /**
      * @brief Finds a track by durable source identity.
      * @ingroup kanariv_db
      * @param source Source kind and stable key. Path rows normally use the
      * filesystem path as the key after `normalizedSource()`.
-     * @return Track or Error InvalidArg (empty key)/NotFound/Internal.
+     * @return TrackRow or Error InvalidArg (empty key)/NotFound/Internal.
      * @details Implements deterministic source deduplication: callers compare
      * `(source.kind, source.key)` instead of guessing a filesystem path for a
      * content URI. A transient descriptor number is never part of this key.
@@ -246,7 +247,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe: unique_lock on dbMutex_.
      * @see kanariv::types::normalizedSource
      */
-    std::expected<kanariv::types::Track, kanariv::utils::Error>
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findBySource(const kanariv::types::SourceRef& source) override;
     /**
      * @brief Lists tracks with optional filters.
@@ -259,7 +260,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe: unique_lock on dbMutex_.
      * @see kanariv::types::TrackQuery
      */
-    std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
     listTracks(std::optional<kanariv::types::TrackQuery> q = std::nullopt) override;
     /**
      * @brief Searches track metadata with FTS5 and a LIKE fallback.
@@ -270,12 +271,12 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe: unique_lock for the whole operation.
      * @ingroup kanariv_db
      */
-    std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
     searchTracks(std::string_view query, int limit = 50) override;
     /**
      * @brief Sets the dirty flag for a track.
      * @ingroup kanariv_db
-     * @param id Track id.
+     * @param id TrackRow id.
      * @param dirty Dirty value (0/1).
      * @return Success or Error NotFound/Internal.
      * @par Thread safety
@@ -285,7 +286,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     /**
      * @brief Sets the user rating for a track.
      * @ingroup kanariv_db
-     * @param id Track id.
+     * @param id TrackRow id.
      * @param rating Rating value (0..5).
      * @return Success or Error InvalidArg/NotFound/Internal.
      * @par Thread safety
@@ -348,7 +349,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     /**
      * @brief Creates a manual playlist and populates it in one operation.
      * @param name Playlist display name; must be non-empty.
-     * @param trackIds Track identifiers in their desired order.
+     * @param trackIds TrackRow identifiers in their desired order.
      * @return New playlist identifier, or an error; no partial playlist is
      * retained when population fails.
      * @par Thread safety
@@ -368,7 +369,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     /**
      * @brief Adds a track to a playlist.
      * @param pid Playlist identifier.
-     * @param tid Track identifier.
+     * @param tid TrackRow identifier.
      * @param pos Zero-based insertion position, or `-1` to append.
      * @return Success, or `InvalidArg`, `NotFound`, or a backend error.
      * @par Thread safety
@@ -380,7 +381,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     /**
      * @brief Removes a track from a playlist.
      * @param pid Playlist identifier.
-     * @param tid Track identifier.
+     * @param tid TrackRow identifier.
      * @return Success, or `NotFound`/a backend error.
      * @par Thread safety
      * Thread-safe; takes the database write lock.
@@ -408,7 +409,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
     playlistGetTracks(int64_t pid) override;
 
     /**
@@ -428,7 +429,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @brief Enqueues a track.
      * @ingroup kanariv_db
      * @param qid Queue id (0 selects the default queue).
-     * @param tid Track id.
+     * @param tid TrackRow id.
      * @param index Zero-based insertion index, or -1 to append.
      * @return Success or Error InvalidArg (bad index), NotFound, Busy, Internal.
      * @par Thread safety
@@ -503,19 +504,19 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
     tracksForQueue(int64_t qid) override;
 
     /**
      * @brief Loads the track at a zero-based queue index.
      * @param qid Queue identifier; zero selects the default queue.
      * @param index Zero-based index into the ORDER BY position listing.
-     * @return Track, or `NotFound` when the index is beyond the queue.
+     * @return TrackRow, or `NotFound` when the index is beyond the queue.
      * @par Thread safety
      * Thread-safe; takes a shared database lock.
      * @ingroup kanariv_db
      */
-    std::expected<kanariv::types::Track, kanariv::utils::Error>
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     queueTrackAt(int64_t qid, int64_t index) override;
 
     /**
@@ -606,7 +607,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @brief Finds the 0-based index of a track in a queue.
      * @ingroup kanariv_db
      * @param qid Queue id (0 -> 1).
-     * @param trackId Track id to locate (first occurrence by position).
+     * @param trackId TrackRow id to locate (first occurrence by position).
      * @return Index into the ORDER BY position listing, `std::nullopt` if the
      * track is not in the queue, or a backend error.
      * @details O(log n) via the queue position index (see
@@ -644,7 +645,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     /**
      * @brief Adds a bookmark.
      * @ingroup kanariv_db
-     * @param tid Track id.
+     * @param tid TrackRow id.
      * @param pos Position in ms.
      * @param note Optional note.
      * @return Success or Error InvalidArg/Internal.
@@ -656,7 +657,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     /**
      * @brief Lists bookmarks for a track.
      * @ingroup kanariv_db
-     * @param tid Track id.
+     * @param tid TrackRow id.
      * @return Bookmarks or Error.
      * @par Thread safety
      * Thread-safe: unique_lock.
@@ -686,7 +687,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     /**
      * @brief Sets lyrics for a track (upsert by track id).
      * @ingroup kanariv_db
-     * @param tid Track id.
+     * @param tid TrackRow id.
      * @param lrc_text Lyrics text (LRC format when synced).
      * @param is_synced True when lrc_text contains time-coded lines.
      * @param source Provenance label (e.g. "local", "import").
@@ -700,7 +701,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     /**
      * @brief Gets lyrics for a track.
      * @ingroup kanariv_db
-     * @param tid Track id.
+     * @param tid TrackRow id.
      * @return Lyrics, or NotFound when no lyrics exist for the track.
      * @par Thread safety
      * Thread-safe: unique_lock.
@@ -709,7 +710,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     /**
      * @brief Removes lyrics for a track.
      * @ingroup kanariv_db
-     * @param tid Track id.
+     * @param tid TrackRow id.
      * @return Success, InvalidArg, NotFound or Internal.
      * @par Thread safety
      * Thread-safe: unique_lock.
@@ -841,7 +842,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     // Playback history
     /**
      * @brief Records a completed or partially completed track play.
-     * @param track_id Track identifier.
+     * @param track_id TrackRow identifier.
      * @param started_at Start timestamp.
      * @param completed_at Completion timestamp.
      * @param position_ms Position reached in milliseconds.

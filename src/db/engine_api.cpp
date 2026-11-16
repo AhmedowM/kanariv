@@ -41,8 +41,8 @@ bool Database::isOpen() const noexcept {
     return DatabaseAccess::handle(const_cast<Database&>(*this)) != nullptr;
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error> Database::queueTrackAt(int64_t qid,
-                                                                                   int64_t index) {
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+Database::queueTrackAt(int64_t qid, int64_t index) {
     qid = normalizeQueueId(qid);
     if (index < 0)
         return std::unexpected(

@@ -24,7 +24,7 @@
 #include <vector>
 
 namespace fs = std::filesystem;
-using kanariv::types::Track;
+using kanariv::types::TrackRow;
 using kanariv::utils::Json;
 
 namespace {
@@ -56,7 +56,7 @@ class RustString {
     char* value_{nullptr};
 };
 
-std::string fingerprintHex(const Track& track) {
+std::string fingerprintHex(const TrackRow& track) {
     std::string out;
     out.reserve(64);
     std::array<char, 3> buf{};
@@ -78,8 +78,8 @@ std::array<uint8_t, 32> parseFingerprint(const std::string& hex) {
     return out;
 }
 
-Track makeTrack(std::string path, std::string title, std::string artist, uint8_t seed) {
-    Track track;
+TrackRow makeTrack(std::string path, std::string title, std::string artist, uint8_t seed) {
+    TrackRow track;
     track.path = std::move(path);
     track.title = std::move(title);
     track.artist = std::move(artist);
@@ -100,14 +100,15 @@ Track makeTrack(std::string path, std::string title, std::string artist, uint8_t
     return track;
 }
 
-std::vector<Track> searchCpp(kanariv::contracts::ILibraryStore& db, const std::string& query) {
+std::vector<TrackRow> searchCpp(kanariv::contracts::ILibraryStore& db, const std::string& query) {
     auto result = db.searchTracks(query, 10);
     if (!result) {
         check(false, "C++ search failed for \"" + query + "\": " + result.error().message);
         return {};
     }
     auto tracks = std::move(*result);
-    std::sort(tracks.begin(), tracks.end(), [](const Track& a, const Track& b) { return a.id < b.id; });
+    std::sort(tracks.begin(), tracks.end(),
+              [](const TrackRow& a, const TrackRow& b) { return a.id < b.id; });
     return tracks;
 }
 
@@ -126,8 +127,8 @@ T field(const Json& object, std::string_view key, const std::string& context) {
     }
 }
 
-std::vector<Track> parseRustTracks(const char* jsonText, const std::string& context) {
-    std::vector<Track> tracks;
+std::vector<TrackRow> parseRustTracks(const char* jsonText, const std::string& context) {
+    std::vector<TrackRow> tracks;
     if (jsonText == nullptr) {
         check(false, context + ": null JSON");
         return tracks;
@@ -143,7 +144,7 @@ std::vector<Track> parseRustTracks(const char* jsonText, const std::string& cont
             check(false, context + ": element is not an object");
             continue;
         }
-        Track track;
+        TrackRow track;
         track.id = field<int64_t>(*item, "id", context);
         track.path = field<std::string>(*item, "path", context);
         track.title = field<std::string>(*item, "title", context);
@@ -166,11 +167,12 @@ std::vector<Track> parseRustTracks(const char* jsonText, const std::string& cont
         track.fingerprint = parseFingerprint(field<std::string>(*item, "fingerprint", context));
         tracks.push_back(std::move(track));
     }
-    std::sort(tracks.begin(), tracks.end(), [](const Track& a, const Track& b) { return a.id < b.id; });
+    std::sort(tracks.begin(), tracks.end(),
+              [](const TrackRow& a, const TrackRow& b) { return a.id < b.id; });
     return tracks;
 }
 
-void compareTrack(const Track& cpp, const Track& rust, const std::string& context) {
+void compareTrack(const TrackRow& cpp, const TrackRow& rust, const std::string& context) {
     check(cpp.id == rust.id, context + ": id " + std::to_string(cpp.id) + " != " +
                                 std::to_string(rust.id));
     check(cpp.path == rust.path, context + ": path");
@@ -194,7 +196,7 @@ void compareTrack(const Track& cpp, const Track& rust, const std::string& contex
     check(fingerprintHex(cpp) == fingerprintHex(rust), context + ": fingerprint");
 }
 
-void compareSearch(const std::vector<Track>& cpp, const std::vector<Track>& rust,
+void compareSearch(const std::vector<TrackRow>& cpp, const std::vector<TrackRow>& rust,
                    const std::string& query) {
     const std::string context = "search \"" + query + "\"";
     check(cpp.size() == rust.size(), context + ": result count " + std::to_string(cpp.size()) +
@@ -217,10 +219,10 @@ int main() {
     const fs::path dbPath =
         fs::temp_directory_path() / ("kanariv_ffi_" + std::to_string(stamp) + ".db");
 
-    std::vector<std::pair<int64_t, Track>> inserted;
+    std::vector<std::pair<int64_t, TrackRow>> inserted;
     std::vector<std::string> queries = {"Abbey Road", "Abb", "hello", "100%", "Abbey OR Road",
                                         "\"Abbey Road\"", "", "   ", "zzz"};
-    std::vector<std::vector<Track>> cppResults;
+    std::vector<std::vector<TrackRow>> cppResults;
 
     {
         auto opened = kanariv::db::Database::open(dbPath.string());
@@ -229,19 +231,19 @@ int main() {
             return 1;
         }
         auto db = std::move(*opened);
-        const std::vector<Track> seeds = {
+        const std::vector<TrackRow> seeds = {
             makeTrack((dbPath.parent_path() / "abbey.mp3").string(), "Abbey Road", "Beatles", 0x10),
             makeTrack((dbPath.parent_path() / "abbeville.mp3").string(), "Abbeville", "Other", 0x40),
             makeTrack((dbPath.parent_path() / "hello.mp3").string(), "Hello World", "Artist", 0x70),
             makeTrack((dbPath.parent_path() / "percent.mp3").string(), "100% Pure", "Percent", 0xA0),
         };
-        for (const Track& seed : seeds) {
+        for (const TrackRow& seed : seeds) {
             auto id = db->insertTrack(seed);
             if (!id) {
                 std::cerr << "setup: insert failed: " << id.error().message << '\n';
                 return 1;
             }
-            Track stored = seed;
+            TrackRow stored = seed;
             stored.id = *id;
             inserted.emplace_back(*id, std::move(stored));
         }
@@ -327,22 +329,22 @@ int main() {
         if (!reopened) {
             check(false, "timing: cannot reopen the C++ database");
         } else {
-            constexpr int kIterations = 2000;
+            constexpr int iterations = 2000;
             using Clock = std::chrono::steady_clock;
             using Micros = std::chrono::duration<double, std::micro>;
 
             auto started = Clock::now();
-            for (int i = 0; i < kIterations; ++i) {
+            for (int i = 0; i < iterations; ++i) {
                 auto result = (*reopened)->searchTracks("Abb", 10);
                 if (!result) {
                     check(false, "timing: C++ search failed");
                     break;
                 }
             }
-            const double cppMicros = Micros(Clock::now() - started).count() / kIterations;
+            const double cppMicros = Micros(Clock::now() - started).count() / iterations;
 
             started = Clock::now();
-            for (int i = 0; i < kIterations; ++i) {
+            for (int i = 0; i < iterations; ++i) {
                 RustString json;
                 RustString error;
                 if (callSearch(handle, "Abb", json, error) != 0) {
@@ -350,7 +352,7 @@ int main() {
                     break;
                 }
             }
-            const double ffiMicros = Micros(Clock::now() - started).count() / kIterations;
+            const double ffiMicros = Micros(Clock::now() - started).count() / iterations;
 
             std::cout << "timing: cpp=" << cppMicros << " us, ffi=" << ffiMicros
                       << " us per search (JSON included)\n";

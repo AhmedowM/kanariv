@@ -35,7 +35,7 @@ std::string trackWho(const kanariv::ipc::Status& st) {
     return "unknown track";
 }
 
-std::string addedLabel(const kanariv::types::Track& t) {
+std::string addedLabel(const kanariv::types::TrackRow& t) {
     std::string fn = kanariv::utils::detail::pathToUtf8(
         kanariv::utils::detail::pathFromUtf8(t.path).filename());
     std::string who;
@@ -52,7 +52,7 @@ std::string addedLabel(const kanariv::types::Track& t) {
     return "track " + std::to_string(t.id);
 }
 
-void writePlaylistText(std::ostream& os, const std::vector<kanariv::types::Track>& tracks,
+void writePlaylistText(std::ostream& os, const std::vector<kanariv::types::TrackRow>& tracks,
                        std::string_view format) {
     if (format == "m3u") {
         os << "#EXTM3U\n";
@@ -86,7 +86,7 @@ void writePlaylistText(std::ostream& os, const std::vector<kanariv::types::Track
     }
 }
 
-void writePlaylistJson(std::ostream& os, const std::vector<kanariv::types::Track>& tracks) {
+void writePlaylistJson(std::ostream& os, const std::vector<kanariv::types::TrackRow>& tracks) {
     kanariv::utils::Json j;
     j["format"] = "kanariv-playlist";
     j["version"] = 1;

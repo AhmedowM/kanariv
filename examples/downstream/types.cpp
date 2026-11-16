@@ -3,7 +3,7 @@
 #include <iostream>
 
 int main() {
-    kanariv::types::Track track;
+    kanariv::types::TrackRow track;
     track.title = "An in-memory track";
     track.artist = "kanariv";
     kanariv::types::EngineConfig config;

@@ -23,12 +23,12 @@ namespace kanariv::ipc {
  *
  * @json_example {"type": "BookmarkList", "track_id": 123}
  *
- * @param track_id Track id. If omitted, uses the current/persisted track.
+ * @param track_id TrackRow id. If omitted, uses the current/persisted track.
  * @return Bookmarks object.
  */
 struct BookmarkList final {
     /**
-     * @brief Track id. If omitted, uses the current/persisted track.
+     * @brief TrackRow id. If omitted, uses the current/persisted track.
      */
     std::optional<int64_t> track_id{};
 };
@@ -42,7 +42,7 @@ struct BookmarkList final {
  *
  * @param position_ms Position in milliseconds.
  * @param note Optional note.
- * @param track_id Track id. If omitted, uses the current/persisted track.
+ * @param track_id TrackRow id. If omitted, uses the current/persisted track.
  * @return Empty (success with no data).
  */
 struct BookmarkAdd final {
@@ -55,7 +55,7 @@ struct BookmarkAdd final {
      */
     std::string note{};
     /**
-     * @brief Track id. If omitted, uses the current/persisted track.
+     * @brief TrackRow id. If omitted, uses the current/persisted track.
      */
     std::optional<int64_t> track_id{};
 };

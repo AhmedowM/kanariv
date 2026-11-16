@@ -44,12 +44,12 @@ struct ServiceAccess {
      * @brief Forwards to Engine::resumeAfterTagWrite().
      * @ingroup kanariv_engine
      * @param eng Engine instance.
-     * @param t Track row to open (usually re-registered after a tag write).
+     * @param t TrackRow row to open (usually re-registered after a tag write).
      * @param pos Seconds to resume from (clamped to duration).
      * @param wasPaused Restore Paused instead of Playing when true.
      * @return Success or Error Busy/NotFound/Device/Internal.
      */
-    static Engine::ExpectedVoid resumeAfterTagWrite(Engine& eng, const kanariv::types::Track& t,
+    static Engine::ExpectedVoid resumeAfterTagWrite(Engine& eng, const kanariv::types::TrackRow& t,
                                                     double pos, bool wasPaused) {
         return eng.resumeAfterTagWrite(t, pos, wasPaused);
     }

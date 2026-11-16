@@ -71,7 +71,8 @@ struct QueueState {
         kanariv::types::RepeatMode::Off}; ///< Repeat mode.
     std::vector<int64_t> perm{};          ///< Shuffle permutation (positions, not track_ids).
     size_t cursor{0};                     ///< Next position index in perm or linear queue.
-    std::atomic<int64_t> queue_id{1};     ///< Active queue id (never persisted as 0).
+    std::atomic<int64_t> queue_id{
+        kanariv::types::defaultQueueId}; ///< Active queue id (never persisted as 0).
 };
 
 /**
@@ -147,8 +148,8 @@ struct Engine::Impl {
     persistShuffleBlobLocked(std::optional<int64_t> livePositionMs = std::nullopt);
     std::expected<void, kanariv::utils::Error>
     persistCursorLocked(std::optional<int64_t> livePositionMs = std::nullopt);
-    std::expected<kanariv::types::Track, kanariv::utils::Error> fetchTrackByPosLocked(int64_t qid,
-                                                                                      int64_t pos);
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    fetchTrackByPosLocked(int64_t qid, int64_t pos);
 
     // queue locking
     bool tryLockQueue() noexcept;
@@ -167,7 +168,7 @@ struct Engine::Impl {
     ExpectedVoid stop();
     ExpectedVoid seek(double seconds);
     ExpectedVoid suspendCurrentTrack();
-    ExpectedVoid resumeAfterTagWrite(const kanariv::types::Track& t, double pos, bool wasPaused);
+    ExpectedVoid resumeAfterTagWrite(const kanariv::types::TrackRow& t, double pos, bool wasPaused);
     ExpectedVoid next();
     ExpectedVoid autoNext();
     /**
@@ -219,15 +220,15 @@ struct Engine::Impl {
     std::expected<void, kanariv::utils::Error> clearHistory();
 
     // queue traversal
-    std::expected<void, kanariv::utils::Error> queueNextLocked(kanariv::types::Track& out);
-    std::expected<void, kanariv::utils::Error> queuePrevLocked(kanariv::types::Track& out);
+    std::expected<void, kanariv::utils::Error> queueNextLocked(kanariv::types::TrackRow& out);
+    std::expected<void, kanariv::utils::Error> queuePrevLocked(kanariv::types::TrackRow& out);
     /**
      * @brief Resolved next entry plus the cursor change that selects it.
      * @details Produced read-only by peekNextLocked(), applied by
      * commitNextLocked() under the same lock.
      */
     struct PeekedNext {
-        kanariv::types::Track track{}; ///< Entry at `plan.position`.
+        kanariv::types::TrackRow track{}; ///< Entry at `plan.position`.
         detail::NextPlan plan{};       ///< Cursor/permutation change to commit.
         int64_t queueId{1};            ///< Effective queue id (0 normalized to 1).
     };
@@ -256,7 +257,7 @@ struct Engine::Impl {
      * never fire under the queue lock (E8).
      */
     std::expected<kanariv::types::EngineEvent, kanariv::utils::Error>
-    doPlayTrack(kanariv::types::Track& t, double startSec = 0.0);
+    doPlayTrack(kanariv::types::TrackRow& t, double startSec = 0.0);
     void preroll();
 
     // callbacks / events
@@ -275,12 +276,12 @@ struct Engine::Impl {
      * released.
      */
     struct TickSnapshot {
-        bool hasCurrent{false}; ///< hasCurrent_ at tick time.
-        int64_t trackId{0};     ///< Published current track id.
-        int64_t queueId{1};     ///< Active queue id.
-        int64_t startedMs{0};   ///< Track start wall clock (ms).
-        double duration{0};     ///< duration_ at tick time.
-        double position{0};     ///< currentPositionLocked() at tick time.
+        bool hasCurrent{false};      ///< hasCurrent_ at tick time.
+        int64_t trackId{0};          ///< Published current track id.
+        int64_t queueId{1};          ///< Active queue id.
+        int64_t startedMs{0};        ///< TrackRow start wall clock (ms).
+        double duration{0};          ///< duration_ at tick time.
+        double position{0};          ///< currentPositionLocked() at tick time.
         uint64_t transitionEpoch{0}; ///< transitionEpoch_ at tick time.
         kanariv::types::PlaybackState playback{kanariv::types::PlaybackState::Stopped};
     };
@@ -333,7 +334,7 @@ struct Engine::Impl {
     kanariv::types::EngineConfig cfg_{};
     EngineState state_{};
     QueueState queue_{};
-    kanariv::types::Track currentTrack_{}; ///< queueMutex_ only.
+    kanariv::types::TrackRow currentTrack_{}; ///< queueMutex_ only.
     std::atomic<bool> hasCurrent_{false};
     double duration_{0}; ///< decodeMtx_ only.
     std::atomic<float> volume_{1.0f};
@@ -420,7 +421,7 @@ struct Engine::Impl {
     // unlocked to avoid arming a second crossfade.
     std::unique_ptr<kanariv::media::Decoder> crossfadeDecoder_; ///< decodeMtx_ only.
     std::unique_ptr<kanariv::media::Reader> crossfadeReader_;   ///< decodeMtx_ only.
-    kanariv::types::Track crossfadeTrack_{};                    ///< decodeMtx_ only.
+    kanariv::types::TrackRow crossfadeTrack_{};                 ///< decodeMtx_ only.
     uint64_t crossfadeSamples_{0}; ///< decodeMtx_ only: total crossfade length in frames.
     uint64_t crossfadeSample_{0};  ///< decodeMtx_ only: current frame within crossfade.
     std::atomic<bool> crossfadeActive_{false};  ///< Written under decodeMtx_, read lock-free.
@@ -466,7 +467,7 @@ Engine::ExpectedVoid Engine::suspendCurrentTrack() {
     return impl_->suspendCurrentTrack();
 }
 
-Engine::ExpectedVoid Engine::resumeAfterTagWrite(const kanariv::types::Track& t, double pos,
+Engine::ExpectedVoid Engine::resumeAfterTagWrite(const kanariv::types::TrackRow& t, double pos,
                                                  bool wasPaused) {
     return impl_->resumeAfterTagWrite(t, pos, wasPaused);
 }
@@ -698,7 +699,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
     if (!tryLockQueueFor(queueLockWait))
         return queueBusy("play", "queue busy");
     queue_.queue_id = queueId;
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     // Resume persisted track if config enabled and track available
     if (cfg_.autoResumeOnPlay && state_.currentTrackId != 0 && state_.positionMs > 0) {
         auto idx = storage_.queues->queueIndexOf(queue_.queue_id, state_.currentTrackId);
@@ -779,7 +780,7 @@ Engine::ExpectedVoid Engine::Impl::playTrack(int64_t trackId) {
         }
     }
     queue_.cursor = cursor;
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     auto r = queueNextLocked(t);
     if (!r) {
         unlockQueue();
@@ -1017,8 +1018,8 @@ Engine::ExpectedVoid Engine::Impl::suspendCurrentTrack() {
     return {};
 }
 
-Engine::ExpectedVoid Engine::Impl::resumeAfterTagWrite(const kanariv::types::Track& t, double pos,
-                                                       bool wasPaused) {
+Engine::ExpectedVoid Engine::Impl::resumeAfterTagWrite(const kanariv::types::TrackRow& t,
+                                                       double pos, bool wasPaused) {
     if (!tryLockQueueFor(queueLockWait)) {
         return queueBusy("resume", "queue busy");
     }
@@ -1031,7 +1032,7 @@ Engine::ExpectedVoid Engine::Impl::resumeAfterTagWrite(const kanariv::types::Tra
     }
     bool marked = markedPlayed_.load(std::memory_order_acquire);
     uint64_t accumulated = accumulatedPlaybackMs_.load(std::memory_order_acquire);
-    kanariv::types::Track reopen = t;
+    kanariv::types::TrackRow reopen = t;
     auto r = doPlayTrack(reopen, pos);
     markedPlayed_.store(marked, std::memory_order_release);
     accumulatedPlaybackMs_.store(accumulated, std::memory_order_release);
@@ -1461,7 +1462,7 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
             return {};
         }
     }
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     auto r = queueNextLocked(t);
     if (!r) {
         unlockQueue();
@@ -1481,7 +1482,7 @@ Engine::ExpectedVoid Engine::Impl::prev() {
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     if (!tryLockQueueFor(queueLockWait))
         return queueBusy("prev", "busy");
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     auto r = queuePrevLocked(t);
     if (!r) {
         unlockQueue();
@@ -1759,7 +1760,7 @@ Engine::Impl::persistCursorLocked(std::optional<int64_t> livePositionMs) {
     return saveStateLocked(livePositionMs);
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 Engine::Impl::fetchTrackByPosLocked(int64_t qid, int64_t pos) {
     if (!hasDb())
         return std::unexpected(
@@ -1898,7 +1899,7 @@ bool Engine::Impl::commitNextLocked(const QueueFingerprint& expected, PeekedNext
 }
 
 std::expected<void, kanariv::utils::Error>
-Engine::Impl::queueNextLocked(kanariv::types::Track& out) {
+Engine::Impl::queueNextLocked(kanariv::types::TrackRow& out) {
     auto peeked = peekNextLocked();
     if (!peeked)
         return std::unexpected(peeked.error());
@@ -1911,7 +1912,7 @@ Engine::Impl::queueNextLocked(kanariv::types::Track& out) {
 }
 
 std::expected<void, kanariv::utils::Error>
-Engine::Impl::queuePrevLocked(kanariv::types::Track& out) {
+Engine::Impl::queuePrevLocked(kanariv::types::TrackRow& out) {
     const int64_t qid = queue_.queue_id.load(std::memory_order_relaxed);
     if (!queue_.shuffle.load(std::memory_order_relaxed)) {
         auto counted = storage_.queues->queueCount(qid);
@@ -1963,7 +1964,7 @@ Engine::Impl::queuePrevLocked(kanariv::types::Track& out) {
 }
 
 std::expected<kanariv::types::EngineEvent, kanariv::utils::Error>
-Engine::Impl::doPlayTrack(kanariv::types::Track& t, double startSec) {
+Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
     // try to open decoder path
     std::string path = t.path;
     if (!std::isfinite(startSec) || startSec < 0.0)
@@ -1995,7 +1996,7 @@ Engine::Impl::doPlayTrack(kanariv::types::Track& t, double startSec) {
     // unplayable track is an error, never silent timer playback
     bool opened = false;
     if (!path.empty()) {
-        // Track paths are stored UTF-8; decode them as UTF-8 rather than the
+        // TrackRow paths are stored UTF-8; decode them as UTF-8 rather than the
         // Windows ANSI code page so non-ASCII filenames resolve.
         auto rRes = kanariv::media::FileReader::open(kanariv::utils::detail::pathFromUtf8(path));
         if (rRes) {

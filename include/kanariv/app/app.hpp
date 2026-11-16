@@ -462,7 +462,7 @@ class KANARIV_API App {
     /**
      * @brief Reads the full track tag record.
      * @ingroup kanariv_app
-     * @param id Track id.
+     * @param id TrackRow id.
      * @param cover When true, include cover art (base64-encoded) and MIME type.
      * @return Outcome data; result carries SingleTrack with cover_mime/cover_data
      *   populated when cover=true and cover art is available.
@@ -472,7 +472,7 @@ class KANARIV_API App {
     /**
      * @brief Reads one tag field as human text plus single-key JSON.
      * @ingroup kanariv_app
-     * @param id Track id.
+     * @param id TrackRow id.
      * @param field Must name a known field (see isTagField); frontends
      * validate before calling, unknown names fail as InvalidArg.
      */
@@ -513,7 +513,7 @@ class KANARIV_API App {
      * @param lrc_text Lyrics text (LRC format when synced).
      * @param is_synced True when lrc_text contains time-coded lines.
      * @param source Provenance label (e.g. "local", "import").
-     * @param track Track id or path; if empty, uses the current track.
+     * @param track TrackRow id or path; if empty, uses the current track.
      */
     AppResult lyricsSet(std::string lrc_text, bool is_synced, std::string source,
                         std::optional<std::string> track = {});
@@ -521,14 +521,14 @@ class KANARIV_API App {
     /**
      * @brief Gets lyrics for a track (default: current track).
      * @ingroup kanariv_app
-     * @param track Track id or path; if empty, uses the current track.
+     * @param track TrackRow id or path; if empty, uses the current track.
      */
     AppResult lyricsGet(std::optional<std::string> track = {});
 
     /**
      * @brief Removes lyrics for a track (default: current track).
      * @ingroup kanariv_app
-     * @param track Track id or path; if empty, uses the current track.
+     * @param track TrackRow id or path; if empty, uses the current track.
      */
     AppResult lyricsRemove(std::optional<std::string> track = {});
 

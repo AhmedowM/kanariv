@@ -5,7 +5,7 @@
  * @brief JSON import/export for tracks.
  * @ingroup kanariv_db
  * @details Implements `exportJson` and `importJson` for JSON serialization of
- * Track rows. The Track codec itself lives in `kanariv::utils`
+ * TrackRow rows. The TrackRow codec itself lives in `kanariv::utils`
  * (`utils/record_json.hpp`). Uses ordered JSON (keys in insertion order) to
  * preserve field order across export/import.
  */

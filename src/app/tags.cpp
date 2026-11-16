@@ -1,6 +1,6 @@
 /**
  * @file tags.cpp
- * @brief Track tag command handlers.
+ * @brief TrackRow tag command handlers.
  * @ingroup kanariv_app
  * @details Phase 1: returns outcome data; the frontend renders.
  */

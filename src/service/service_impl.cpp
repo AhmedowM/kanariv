@@ -627,7 +627,7 @@ void Service::Impl::mediaWorkerLoop() {
     }
 }
 
-std::optional<ArtCacheEntry> Service::Impl::artworkFor(const kanariv::types::Track& track) {
+std::optional<ArtCacheEntry> Service::Impl::artworkFor(const kanariv::types::TrackRow& track) {
     std::filesystem::path source;
     bool embedded = false;
     if (!track.cover_art_path.empty())

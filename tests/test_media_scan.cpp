@@ -76,7 +76,7 @@ TEST_CASE("ScanWalker rejects the all-zero fingerprint sentinel", "[media_scan]"
         dir, ScanMode::Sampled, [&](const ScanIssue& i) { issues.push_back(i); }, zeroProvider());
     REQUIRE(walker.open().has_value());
     // A zero digest would collide with every other zero digest in the UNIQUE
-    // index, so it must never reach a Track.
+    // index, so it must never reach a TrackRow.
     CHECK_FALSE(walker.next().has_value());
     CHECK_FALSE(walker.walkError().has_value());
     REQUIRE(issues.size() == 1);
@@ -94,7 +94,7 @@ TEST_CASE("ScanWalker with the real provider yields every audio file", "[media_s
     ScanWalker walker(dir, ScanMode::Sampled, [&](const ScanIssue& i) { issues.push_back(i); });
     REQUIRE(walker.open().has_value());
 
-    std::vector<kanariv::types::Track> tracks;
+    std::vector<kanariv::types::TrackRow> tracks;
     while (auto track = walker.next())
         tracks.push_back(std::move(*track));
 

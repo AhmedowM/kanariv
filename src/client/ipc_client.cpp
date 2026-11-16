@@ -475,7 +475,7 @@ kanariv::utils::Expected<std::string> IpcClient::Impl::rawRecv(Deadline deadline
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "not connected")};
     }
-    std::array<std::byte, kanariv::ipc::kFrameHeaderBytes> header{};
+    std::array<std::byte, kanariv::ipc::frameHeaderBytes> header{};
 #ifdef _WIN32
     const auto pipe = reinterpret_cast<HANDLE>(handle);
     const auto headerStatus = readExact(pipe, header, deadline, st);

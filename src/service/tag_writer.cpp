@@ -54,12 +54,12 @@ void setXiphText(TagLib::Ogg::XiphComment* xc, const char* key, const std::strin
     xc->addField(key, toTagString(v), true);
 }
 
-void setXiphExtras(TagLib::Ogg::XiphComment* xc, const kanariv::types::Track& t) {
+void setXiphExtras(TagLib::Ogg::XiphComment* xc, const kanariv::types::TrackRow& t) {
     setXiphText(xc, "ALBUMARTIST", t.album_artist);
     setXiphText(xc, "DISCNUMBER", t.disc_num > 0 ? std::to_string(t.disc_num) : std::string{});
 }
 
-void setId3v2Extras(TagLib::ID3v2::Tag* t2, const kanariv::types::Track& t) {
+void setId3v2Extras(TagLib::ID3v2::Tag* t2, const kanariv::types::TrackRow& t) {
     setId3v2Text(t2, "TPE2", t.album_artist);
     if (t.disc_num > 0)
         setId3v2Text(t2, "TPOS", std::to_string(t.disc_num));
@@ -67,7 +67,7 @@ void setId3v2Extras(TagLib::ID3v2::Tag* t2, const kanariv::types::Track& t) {
         t2->removeFrames("TPOS");
 }
 
-void setApeExtras(TagLib::APE::Tag* ape, const kanariv::types::Track& t) {
+void setApeExtras(TagLib::APE::Tag* ape, const kanariv::types::TrackRow& t) {
     if (t.album_artist.empty())
         ape->removeItem("Album Artist");
     else
@@ -94,7 +94,7 @@ bool canWriteFileTags(const std::filesystem::path& p) {
 }
 
 kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
-                                             const kanariv::types::Track& t) {
+                                             const kanariv::types::TrackRow& t) {
     if (!canWriteFileTags(p)) {
         return std::unexpected(kanariv::utils::makeError(
             kanariv::utils::StatusCode::InvalidArg,
@@ -185,8 +185,8 @@ kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
     return {};
 }
 
-kanariv::utils::Expected<kanariv::types::Track>
-reregisterTrackRow(kanariv::contracts::ITrackStore& tracks, kanariv::types::Track t) {
+kanariv::utils::Expected<kanariv::types::TrackRow>
+reregisterTrackRow(kanariv::contracts::ITrackStore& tracks, kanariv::types::TrackRow t) {
     auto fpRes = kanariv::media::internal::computeFingerprint(t.path);
     if (!fpRes)
         return std::unexpected{fpRes.error()};

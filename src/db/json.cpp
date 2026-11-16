@@ -128,7 +128,7 @@ std::expected<void, kanariv::utils::Error> importJson(Database& db,
         auto tr = kanariv::utils::trackFromJson(*jt);
         if (!tr)
             return rowError(tr.error().message);
-        kanariv::types::Track t = *tr;
+        kanariv::types::TrackRow t = *tr;
         // A row without a path cannot be a track: reject it explicitly instead
         // of storing an unusable empty-path row.
         if (t.path.empty())

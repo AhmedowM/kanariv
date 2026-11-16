@@ -46,7 +46,7 @@ TEST_CASE("Engine pollEvent and drainEvents", "[engine_events]") {
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "ev.wav";
     t.duration = 1.0;
     for (int b = 0; b < 32; ++b)
@@ -72,7 +72,7 @@ TEST_CASE("Engine pollEvent and drainEvents", "[engine_events]") {
     REQUIRE(!ev2.has_value());
     REQUIRE(ev2.error().code == StatusCode::NotFound);
     // trigger another event via setShuffle -> QueueChanged
-    kanariv::types::Track t2;
+    kanariv::types::TrackRow t2;
     t2.path = "ev2.wav";
     t2.duration = 1.0;
     for (int b = 0; b < 32; ++b)
@@ -96,7 +96,7 @@ TEST_CASE("Engine drainEvents batch", "[engine_events]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 3; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "drain" + std::to_string(i) + ".wav";
         t.duration = 1.0;
         for (int b = 0; b < 32; ++b)
@@ -142,7 +142,7 @@ TEST_CASE("Engine callbacks dispatched outside lock", "[engine_events]") {
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "cb.wav";
     t.duration = 1.0;
     for (int b = 0; b < 32; ++b)
@@ -188,7 +188,7 @@ TEST_CASE("Engine callbacks dispatch when event queue is full", "[engine_events]
     auto dbRes = Database::open(dbPath);
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "ev_full.wav";
     t.duration = 1.0;
     for (int b = 0; b < 32; ++b)

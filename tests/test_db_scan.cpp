@@ -293,20 +293,20 @@ TEST_CASE("library maintenance reports missing and duplicate rows", "[db_scan]")
     auto library = db->libraryAdd(root.string(), "maintenance");
     REQUIRE(library.has_value());
 
-    kanariv::types::Track first;
+    kanariv::types::TrackRow first;
     first.path = present.string();
     first.library_id = *library;
     first.fingerprint.fill(0x11);
     auto firstId = db->insertTrack(first);
     REQUIRE(firstId.has_value());
 
-    kanariv::types::Track duplicate = first;
+    kanariv::types::TrackRow duplicate = first;
     duplicate.path = present.string();
     duplicate.fingerprint.fill(0x33);
     auto duplicateId = db->insertTrack(duplicate);
     REQUIRE(duplicateId.has_value());
 
-    kanariv::types::Track missing = first;
+    kanariv::types::TrackRow missing = first;
     missing.path = (root / "missing.mp3").string();
     missing.fingerprint.fill(0x22);
     auto missingId = db->insertTrack(missing);
@@ -542,14 +542,14 @@ TEST_CASE("maintenance reports non-ASCII paths without pruning representable row
     auto library = db->libraryAdd(kanariv::utils::detail::pathToUtf8(root), "utf8 maintenance");
     REQUIRE(library.has_value());
 
-    kanariv::types::Track presentTrack;
+    kanariv::types::TrackRow presentTrack;
     presentTrack.path = kanariv::utils::detail::pathToUtf8(present);
     presentTrack.library_id = *library;
     presentTrack.fingerprint.fill(0x44);
     auto presentId = db->insertTrack(presentTrack);
     REQUIRE(presentId.has_value());
 
-    kanariv::types::Track missingTrack = presentTrack;
+    kanariv::types::TrackRow missingTrack = presentTrack;
     missingTrack.path = kanariv::utils::detail::pathToUtf8(
         root / kanariv::utils::detail::pathFromUtf8("İ missing.mp3"));
     missingTrack.fingerprint.fill(0x55);

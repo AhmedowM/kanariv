@@ -6,6 +6,7 @@
  * @ingroup kanariv_ipc
  */
 
+#include <kanariv/types/record.hpp>
 #include <optional>
 #include <string>
 
@@ -122,12 +123,12 @@ struct LibraryAdd final {
  *
  * @json_example {"type": "LibraryRemove", "query": "123"}
  *
- * @param query Track ID or path to remove.
+ * @param query TrackRow ID or path to remove.
  * @return Empty (success with no data).
  */
 struct LibraryRemove final {
     /**
-     * @brief Track ID or path to remove.
+     * @brief TrackRow ID or path to remove.
      */
     std::string query{};
 };
@@ -212,7 +213,7 @@ struct LibraryMaintenance final {
     /**
      * @brief Library id to inspect (default: 1).
      */
-    int64_t library_id{1};
+    int64_t library_id{kanariv::types::defaultLibraryId};
 };
 
 } // namespace kanariv::ipc

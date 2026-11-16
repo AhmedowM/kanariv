@@ -71,8 +71,7 @@ class MediaSessionAndroid : public Impl {
     bool callCallbackVoid(const char* methodName, const char* sig, ...);
 
     /** @brief Java-side class that owns the MediaSession instance. */
-    static constexpr const char* kCallbackClass =
-        "com/kanariv/app/KanarivBridge";
+    static constexpr const char* callbackClass = "com/kanariv/app/KanarivBridge";
 
     /** @brief Whether activate() has succeeded. */
     std::atomic_bool active_{false};

@@ -41,11 +41,11 @@ namespace {
 
 /// Concurrent connections served at once; beyond this the server refuses the
 /// connection instead of spawning an unbounded number of threads.
-constexpr std::size_t kMaxClients = 32;
+constexpr std::size_t maxClients = 32;
 /// Time allowed for one whole framed request to arrive.
-constexpr std::chrono::milliseconds kRequestTimeout{5000};
+constexpr std::chrono::milliseconds requestTimeout{5000};
 /// Time allowed for one whole framed reply to leave the daemon.
-constexpr std::chrono::milliseconds kReplyTimeout{5000};
+constexpr std::chrono::milliseconds replyTimeout{5000};
 
 /// Frames an out-of-band error reply (unsolicited id 0), used for refusals and
 /// last-resort handler failures. Never throws.
@@ -350,7 +350,7 @@ void IpcServer::Impl::run(std::stop_token st,
                 std::lock_guard<std::mutex> lk(clientsMtx_);
                 // Reap exited connections first: the cap counts live threads.
                 std::erase_if(clients_, [](const ClientSlot& s) { return s.done; });
-                if (clients_.size() >= kMaxClients) {
+                if (clients_.size() >= maxClients) {
                     refused = true;
                 } else {
                     clients_.emplace_back();
@@ -368,7 +368,7 @@ void IpcServer::Impl::run(std::stop_token st,
                         auto writeReply = [clientHandle, ct](std::span<const std::byte> bytes) {
                             return detail::writeAll(clientHandle, bytes, ct,
                                                     std::chrono::steady_clock::now() +
-                                                        kReplyTimeout);
+                                                        replyTimeout);
                         };
                         try {
                             // Nonblocking byte mode: an idle or stalled
@@ -379,11 +379,11 @@ void IpcServer::Impl::run(std::stop_token st,
                                 return;
                             }
                             // Keep-alive: serve requests until the peer closes
-                            // or stays idle past kRequestTimeout, so a polling
+                            // or stays idle past requestTimeout, so a polling
                             // client reuses one connection (and one thread).
                             for (;;) {
                                 const auto deadline =
-                                    std::chrono::steady_clock::now() + kRequestTimeout;
+                                    std::chrono::steady_clock::now() + requestTimeout;
                                 std::array<std::byte, 4> hdr{};
                                 if (detail::readExact(clientHandle, std::span<std::byte>(hdr), ct,
                                                       deadline) != detail::IoStatus::Ok) {
@@ -395,7 +395,7 @@ void IpcServer::Impl::run(std::stop_token st,
                                     (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
                                     (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
                                     static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-                                if (len > kanariv::ipc::kMaxFrameBytes) {
+                                if (len > kanariv::ipc::maxFrameBytes) {
                                     closeClient();
                                     return;
                                 }
@@ -453,7 +453,7 @@ void IpcServer::Impl::run(std::stop_token st,
                 if (detail::setNonBlocking(clientHandle)) {
                     auto writeRefusal = [clientHandle, st](std::span<const std::byte> bytes) {
                         return detail::writeAll(clientHandle, bytes, st,
-                                                std::chrono::steady_clock::now() + kReplyTimeout);
+                                                std::chrono::steady_clock::now() + replyTimeout);
                     };
                     sendErrorFrame(writeRefusal, kanariv::utils::StatusCode::Busy,
                                    "server busy: too many concurrent connections");
@@ -492,7 +492,7 @@ void IpcServer::Impl::run(std::stop_token st,
                 std::lock_guard<std::mutex> lk(clientsMtx_);
                 // Reap exited connections first: the cap counts live threads.
                 std::erase_if(clients_, [](const ClientSlot& s) { return s.done; });
-                if (clients_.size() >= kMaxClients) {
+                if (clients_.size() >= maxClients) {
                     refused = true;
                 } else {
                     clients_.emplace_back();
@@ -508,7 +508,7 @@ void IpcServer::Impl::run(std::stop_token st,
                         } retire{this};
                         auto writeReply = [cfd, ct](std::span<const std::byte> bytes) {
                             return detail::writeAll(
-                                cfd, bytes, ct, std::chrono::steady_clock::now() + kReplyTimeout);
+                                cfd, bytes, ct, std::chrono::steady_clock::now() + replyTimeout);
                         };
                         try {
                             // Short receive/send timeouts make a stalled
@@ -519,11 +519,11 @@ void IpcServer::Impl::run(std::stop_token st,
                                 return;
                             }
                             // Keep-alive: serve requests until the peer closes
-                            // or stays idle past kRequestTimeout, so a polling
+                            // or stays idle past requestTimeout, so a polling
                             // client reuses one connection (and one thread).
                             for (;;) {
                                 const auto deadline =
-                                    std::chrono::steady_clock::now() + kRequestTimeout;
+                                    std::chrono::steady_clock::now() + requestTimeout;
                                 std::array<std::byte, 4> hdr{};
                                 if (detail::readExact(cfd, std::span<std::byte>(hdr), ct,
                                                       deadline) != detail::IoStatus::Ok) {
@@ -535,7 +535,7 @@ void IpcServer::Impl::run(std::stop_token st,
                                     (static_cast<std::uint32_t>(std::to_underlying(hdr[1])) << 16) |
                                     (static_cast<std::uint32_t>(std::to_underlying(hdr[2])) << 8) |
                                     static_cast<std::uint32_t>(std::to_underlying(hdr[3]));
-                                if (len > kanariv::ipc::kMaxFrameBytes) {
+                                if (len > kanariv::ipc::maxFrameBytes) {
                                     ::close(cfd);
                                     return;
                                 }
@@ -590,7 +590,7 @@ void IpcServer::Impl::run(std::stop_token st,
                 if (detail::configureSocket(cfd)) {
                     auto writeRefusal = [cfd, st](std::span<const std::byte> bytes) {
                         return detail::writeAll(cfd, bytes, st,
-                                                std::chrono::steady_clock::now() + kReplyTimeout);
+                                                std::chrono::steady_clock::now() + replyTimeout);
                     };
                     sendErrorFrame(writeRefusal, kanariv::utils::StatusCode::Busy,
                                    "server busy: too many concurrent connections");

@@ -24,7 +24,7 @@ namespace kanariv::ipc {
  *
  * @json_example {"type": "TagEdit", "id": 123, "field": "artist", "value": "New Artist"}
  *
- * @param id Track ID.
+ * @param id TrackRow ID.
  * @param field Tag field name (e.g., "title", "artist", "album", "genre", "year", "track_number",
  * "disc_number", "album_artist").
  * @param value New value for the tag.
@@ -32,7 +32,7 @@ namespace kanariv::ipc {
  */
 struct TagEdit final {
     /**
-     * @brief Track ID.
+     * @brief TrackRow ID.
      */
     int64_t id{0};
     /**
@@ -53,14 +53,14 @@ struct TagEdit final {
  *
  * @json_example {"type": "TagGet", "id": 123}
  *
- * @param id Track ID.
+ * @param id TrackRow ID.
  * @param cover When true, include base64-encoded cover art and MIME type.
  * @return SingleTrack object with full track metadata; cover_mime and
  *   cover_data populated when cover=true and cover art is available.
  */
 struct TagGet final {
     /**
-     * @brief Track ID. Mutually exclusive with `path`.
+     * @brief TrackRow ID. Mutually exclusive with `path`.
      */
     std::optional<int64_t> id{};
     /**
@@ -83,7 +83,7 @@ struct TagGet final {
  *
  * @json_example {"id": 123, "field": "artist", "value": "New Artist"}
  *
- * @param id Track id (optional if path is given).
+ * @param id TrackRow id (optional if path is given).
  * @param path File path to identify the track (optional if id is given).
  * @param field Tag field name (title, artist, album, album_artist, genre,
  *   year, track_number, disc_number).

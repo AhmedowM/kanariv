@@ -10,7 +10,7 @@
  * includes all of them):
  *
  * - @ref kanariv_types "kanariv.types" -- Dependency-free shared value types:
- *   wire enums (RepeatMode, PlaybackState) and plain-data records (Track,
+ *   wire enums (RepeatMode, PlaybackState) and plain-data records (TrackRow,
  *   Playlist, QueueItem, HistoryEntry, Bookmark) used across all layers.
  * - @ref kanariv_utils "kanariv.utils" -- Core utilities: error handling (`std::expected`),
  *   lock-free SPSC ring, thread helpers, logging, opaque JSON value.

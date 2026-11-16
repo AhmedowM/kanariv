@@ -47,7 +47,7 @@ extractEmbeddedCoverArt(const std::filesystem::path& path, kanariv::utils::Logge
 
 namespace detail {
 /**
- * @brief Enqueues ids in transactions of at most kQueueBatchChunk (K5).
+ * @brief Enqueues ids in transactions of at most queueBatchChunk (K5).
  * @return Success, or the first error; chunks committed before it stay.
  */
 std::expected<void, kanariv::utils::Error>
@@ -100,7 +100,7 @@ struct Service::Impl {
      * @brief Encodes cover art for a track, reusing the stat-validated cache.
      * @return Encoded art, or nullopt when the track has none (or a cached miss).
      */
-    std::optional<ArtCacheEntry> artworkFor(const kanariv::types::Track& track);
+    std::optional<ArtCacheEntry> artworkFor(const kanariv::types::TrackRow& track);
 
     /// Visitor routing each Command alternative to its handle() overload.
     struct DispatchVisitor {

@@ -186,7 +186,7 @@ class KANARIV_API Engine final {
     /**
      * @brief Plays a specific track already present in the active queue.
      * @ingroup kanariv_engine
-     * @param trackId Track id to select (must be in the active queue).
+     * @param trackId TrackRow id to select (must be in the active queue).
      * @return Success or Error NotFound/InvalidArg/Busy/Device.
      * @details Repositions the queue cursor to the track (respecting an
      * active shuffle permutation) and starts it from the head. Used by
@@ -297,7 +297,7 @@ class KANARIV_API Engine final {
      * Takes `decodeMtx_` briefly; queue-lock state is never read without it. */
     double position() const noexcept;
     /** @brief Returns current track id (or persisted one if no current). @ingroup kanariv_engine
-     * @return Track id if hasCurrent_, else state_.currentTrackId (persisted).
+     * @return TrackRow id if hasCurrent_, else state_.currentTrackId (persisted).
      * Lock-free: reads the atomic published by the queue-lock writer. */
     int64_t currentTrackId() const noexcept;
 
@@ -520,7 +520,7 @@ class KANARIV_API Engine final {
     /**
      * @brief Reopens the suspended track at a captured position.
      * @ingroup kanariv_engine
-     * @param t Track row to open (usually re-registered after a tag write).
+     * @param t TrackRow row to open (usually re-registered after a tag write).
      * @param pos Seconds to resume from (clamped to duration).
      * @param wasPaused Restore Paused instead of Playing when true.
      * @return Success or Error Busy/NotFound/Device/Internal.
@@ -533,7 +533,7 @@ class KANARIV_API Engine final {
      * Thread-safe; holds the queue lock across reopen (same order as above).
      * @see suspendCurrentTrack
      */
-    ExpectedVoid resumeAfterTagWrite(const kanariv::types::Track& t, double pos, bool wasPaused);
+    ExpectedVoid resumeAfterTagWrite(const kanariv::types::TrackRow& t, double pos, bool wasPaused);
 
     /** @brief Returns the unmute restore level (0,1]. @ingroup kanariv_engine
      * @details Last non-zero level before mute (persisted pre_mute_volume).

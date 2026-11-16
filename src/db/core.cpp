@@ -77,17 +77,18 @@ struct Database::Impl {
     sqlite3* handleLocked() const noexcept;
     std::mutex& mutex() const noexcept;
 
-    // Track / library locked helpers
-    std::expected<kanariv::types::Track, kanariv::utils::Error>
+    // TrackRow / library locked helpers
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findByPathLocked(std::string_view path);
-    std::expected<kanariv::types::Track, kanariv::utils::Error>
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findBySourceLocked(const kanariv::types::SourceRef& source);
-    std::expected<kanariv::types::Track, kanariv::utils::Error>
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findByFingerprintLocked(const std::array<uint8_t, 32>& fp);
-    std::expected<int64_t, kanariv::utils::Error> insertTrackLocked(const kanariv::types::Track& t);
-    std::expected<void, kanariv::utils::Error> updateTrackLocked(const kanariv::types::Track& t);
+    std::expected<int64_t, kanariv::utils::Error>
+    insertTrackLocked(const kanariv::types::TrackRow& t);
+    std::expected<void, kanariv::utils::Error> updateTrackLocked(const kanariv::types::TrackRow& t);
     std::expected<void, kanariv::utils::Error> deleteTrackLocked(int64_t id);
-    std::expected<kanariv::types::Track, kanariv::utils::Error> getTrackLocked(int64_t id);
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error> getTrackLocked(int64_t id);
     std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error> libraryListLocked();
     std::expected<void, kanariv::utils::Error>
     libraryUpdateLocked(const kanariv::types::Library& l);
@@ -98,14 +99,14 @@ struct Database::Impl {
     std::expected<void, kanariv::utils::Error> playlistAddTrackLocked(int64_t pid, int64_t tid,
                                                                       int64_t pos = -1);
     std::expected<void, kanariv::utils::Error> queueEnqueueLocked(int64_t qid, int64_t tid,
-                                                                  int64_t index = kAppendIndex);
+                                                                  int64_t index = appendIndex);
     std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLocked(int64_t qid);
     std::size_t queueCountLocked(int64_t qid);
 };
 
 // Free functions for track binding (static, no impl_ needed)
-void bindTrackForInsert(SqliteStatement& st, const kanariv::types::Track& t);
-void bindTrackForUpdate(SqliteStatement& st, const kanariv::types::Track& t);
+void bindTrackForInsert(SqliteStatement& st, const kanariv::types::TrackRow& t);
+void bindTrackForUpdate(SqliteStatement& st, const kanariv::types::TrackRow& t);
 
 void SqliteCloser::operator()(sqlite3* db) const noexcept {
     if (db)
@@ -133,8 +134,8 @@ kanariv::utils::Logger* Database::logger() const noexcept {
 }
 
 const std::filesystem::path& Database::path() const noexcept {
-    static const std::filesystem::path kEmpty;
-    return impl_ ? impl_->path_ : kEmpty;
+    static const std::filesystem::path empty;
+    return impl_ ? impl_->path_ : empty;
 }
 
 std::expected<SqliteStatement*, kanariv::utils::Error>
@@ -225,7 +226,7 @@ Database::queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) {
     return tx.commit();
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 Database::Impl::findByPathLocked(std::string_view path) {
     if (!db_)
         return std::unexpected{
@@ -237,7 +238,7 @@ Database::Impl::findByPathLocked(std::string_view path) {
     SqliteStatement& st = *(*sRes);
     st.bindText(1, path);
     bool hasRow = st.step();
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     if (hasRow)
         internal::fillTrackFromStmt(st.get(), t);
     st.reset();
@@ -246,7 +247,7 @@ Database::Impl::findByPathLocked(std::string_view path) {
     return t;
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 Database::Impl::findBySourceLocked(const kanariv::types::SourceRef& source) {
     if (!db_)
         return std::unexpected{
@@ -264,7 +265,7 @@ Database::Impl::findBySourceLocked(const kanariv::types::SourceRef& source) {
     st.bindInt(1, static_cast<int>(source.kind));
     st.bindText(2, source.key);
     bool hasRow = st.step();
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     if (hasRow)
         internal::fillTrackFromStmt(st.get(), t);
     st.reset();
@@ -273,7 +274,7 @@ Database::Impl::findBySourceLocked(const kanariv::types::SourceRef& source) {
     return t;
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 Database::Impl::findByFingerprintLocked(const std::array<uint8_t, 32>& fp) {
     if (!db_)
         return std::unexpected{
@@ -286,7 +287,7 @@ Database::Impl::findByFingerprintLocked(const std::array<uint8_t, 32>& fp) {
     st.bindBlob(
         1, std::span<const std::byte>{reinterpret_cast<const std::byte*>(fp.data()), fp.size()});
     bool hasRow = st.step();
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     if (hasRow)
         internal::fillTrackFromStmt(st.get(), t);
     st.reset();
@@ -296,7 +297,7 @@ Database::Impl::findByFingerprintLocked(const std::array<uint8_t, 32>& fp) {
 }
 
 std::expected<int64_t, kanariv::utils::Error>
-Database::Impl::insertTrackLocked(const kanariv::types::Track& t) {
+Database::Impl::insertTrackLocked(const kanariv::types::TrackRow& t) {
     if (!db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -319,7 +320,7 @@ Database::Impl::insertTrackLocked(const kanariv::types::Track& t) {
 }
 
 std::expected<void, kanariv::utils::Error>
-Database::Impl::updateTrackLocked(const kanariv::types::Track& t) {
+Database::Impl::updateTrackLocked(const kanariv::types::TrackRow& t) {
     if (t.id == 0)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "id 0")};
@@ -421,7 +422,7 @@ Database::Impl::libraryUpdateLocked(const kanariv::types::Library& l) {
     return {};
 }
 
-void bindTrackForInsert(SqliteStatement& st, const kanariv::types::Track& t) {
+void bindTrackForInsert(SqliteStatement& st, const kanariv::types::TrackRow& t) {
     st.bindBlob(1,
                 std::span<const std::byte>{reinterpret_cast<const std::byte*>(t.fingerprint.data()),
                                            t.fingerprint.size()});
@@ -458,7 +459,7 @@ void bindTrackForInsert(SqliteStatement& st, const kanariv::types::Track& t) {
     st.bindText(28, source.display_name);
 }
 
-void bindTrackForUpdate(SqliteStatement& st, const kanariv::types::Track& t) {
+void bindTrackForUpdate(SqliteStatement& st, const kanariv::types::TrackRow& t) {
     st.bindBlob(1,
                 std::span<const std::byte>{reinterpret_cast<const std::byte*>(t.fingerprint.data()),
                                            t.fingerprint.size()});
@@ -494,12 +495,13 @@ void bindTrackForUpdate(SqliteStatement& st, const kanariv::types::Track& t) {
 }
 
 std::expected<int64_t, kanariv::utils::Error>
-Database::insertTrack(const kanariv::types::Track& t) {
+Database::insertTrack(const kanariv::types::TrackRow& t) {
     std::unique_lock lk{impl_->dbMutex_};
     return impl_->insertTrackLocked(t);
 }
 
-std::expected<void, kanariv::utils::Error> Database::updateTrack(const kanariv::types::Track& t) {
+std::expected<void, kanariv::utils::Error>
+Database::updateTrack(const kanariv::types::TrackRow& t) {
     std::unique_lock lk{impl_->dbMutex_};
     return impl_->updateTrackLocked(t);
 }
@@ -509,12 +511,12 @@ std::expected<void, kanariv::utils::Error> Database::deleteTrack(int64_t id) {
     return impl_->deleteTrackLocked(id);
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error> Database::getTrack(int64_t id) {
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error> Database::getTrack(int64_t id) {
     std::unique_lock lk{impl_->dbMutex_};
     return impl_->getTrackLocked(id);
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 Database::Impl::getTrackLocked(int64_t id) {
     if (id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
@@ -528,7 +530,7 @@ Database::Impl::getTrackLocked(int64_t id) {
     SqliteStatement& st = *(*sRes);
     st.bindInt(1, id);
     bool hasRow = st.step();
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     if (hasRow)
         internal::fillTrackFromStmt(st.get(), t);
     st.reset();
@@ -537,7 +539,7 @@ Database::Impl::getTrackLocked(int64_t id) {
     return t;
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 Database::findByFingerprint(const std::array<uint8_t, 32>& fp) {
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
@@ -551,7 +553,7 @@ Database::findByFingerprint(const std::array<uint8_t, 32>& fp) {
     st.bindBlob(
         1, std::span<const std::byte>{reinterpret_cast<const std::byte*>(fp.data()), fp.size()});
     bool hasRow = st.step();
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     if (hasRow)
         internal::fillTrackFromStmt(st.get(), t);
     st.reset();
@@ -560,7 +562,7 @@ Database::findByFingerprint(const std::array<uint8_t, 32>& fp) {
     return t;
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 Database::findByPath(std::string_view path) {
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
@@ -573,7 +575,7 @@ Database::findByPath(std::string_view path) {
     SqliteStatement& st = *(*sRes);
     st.bindText(1, path);
     bool hasRow = st.step();
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     if (hasRow)
         internal::fillTrackFromStmt(st.get(), t);
     st.reset();
@@ -582,13 +584,13 @@ Database::findByPath(std::string_view path) {
     return t;
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 Database::findBySource(const kanariv::types::SourceRef& source) {
     std::unique_lock lk{impl_->dbMutex_};
     return impl_->findBySourceLocked(source);
 }
 
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 Database::listTracks(std::optional<kanariv::types::TrackQuery> q) {
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
@@ -630,7 +632,7 @@ Database::listTracks(std::optional<kanariv::types::TrackQuery> q) {
     std::string orderBy = " ORDER BY id";
     if (q && !q->sort.empty()) {
         // Whitelist of allowed sort columns to prevent SQL injection.
-        static const std::unordered_map<std::string, std::string> kSortCols{
+        static const std::unordered_map<std::string, std::string> sortCols{
             {"id", "id"},
             {"title", "title COLLATE NOCASE"},
             {"artist", "artist COLLATE NOCASE"},
@@ -645,8 +647,8 @@ Database::listTracks(std::optional<kanariv::types::TrackQuery> q) {
             {"play_count", "play_count"},
             {"date_added", "date_added"},
         };
-        auto it = kSortCols.find(q->sort);
-        if (it != kSortCols.end()) {
+        auto it = sortCols.find(q->sort);
+        if (it != sortCols.end()) {
             orderBy = " ORDER BY " + it->second;
             std::string dir = (q->order == "desc") ? " DESC" : " ASC";
             orderBy += dir;
@@ -708,9 +710,9 @@ Database::listTracks(std::optional<kanariv::types::TrackQuery> q) {
         } else if (has_offset)
             st.bindInt(idx++, q->offset);
     }
-    std::vector<kanariv::types::Track> out;
+    std::vector<kanariv::types::TrackRow> out;
     while (st.step()) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         internal::fillTrackFromStmt(st.get(), t);
         out.push_back(std::move(t));
     }
@@ -1147,7 +1149,7 @@ std::expected<void, kanariv::utils::Error> Database::playlistReorder(int64_t pid
     return {};
 }
 
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 Database::playlistGetTracks(int64_t pid) {
     if (pid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
@@ -1175,9 +1177,9 @@ Database::playlistGetTracks(int64_t pid) {
     if (auto e = st.prepare(impl_->db_.get(), sql); !e)
         return std::unexpected{e.error()};
     st.bindInt(1, pid);
-    std::vector<kanariv::types::Track> out;
+    std::vector<kanariv::types::TrackRow> out;
     while (st.step()) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         internal::fillTrackFromStmt(st.get(), t);
         out.push_back(std::move(t));
     }
@@ -1242,7 +1244,7 @@ Database::listQueueItems(int64_t qid) {
     return kanariv::db::queueListLocked(impl_->db_.get(), qid);
 }
 
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 Database::tracksForQueue(int64_t qid) {
     qid = kanariv::db::normalizeQueueId(qid);
     std::unique_lock lk{impl_->dbMutex_};
@@ -1743,7 +1745,7 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
             if (sRes) {
                 SqliteStatement& st = *(*sRes);
                 while (st.step()) {
-                    kanariv::types::Track t;
+                    kanariv::types::TrackRow t;
                     internal::fillTrackFromStmt(st.get(), t);
                     d.top_tracks->push_back(std::move(t));
                 }
@@ -1894,28 +1896,28 @@ DatabaseAccess::getCachedForUse(Database& db, std::string_view sql) {
     return db.impl_->getCachedForUse(sql);
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 DatabaseAccess::findByPathLocked(Database& db, std::string_view path) {
     return db.impl_->findByPathLocked(path);
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 DatabaseAccess::findByFingerprintLocked(Database& db, const std::array<uint8_t, 32>& fp) {
     return db.impl_->findByFingerprintLocked(fp);
 }
 
-std::expected<kanariv::types::Track, kanariv::utils::Error>
+std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 DatabaseAccess::getTrackLocked(Database& db, int64_t id) {
     return db.impl_->getTrackLocked(id);
 }
 
 std::expected<int64_t, kanariv::utils::Error>
-DatabaseAccess::insertTrackLocked(Database& db, const kanariv::types::Track& t) {
+DatabaseAccess::insertTrackLocked(Database& db, const kanariv::types::TrackRow& t) {
     return db.impl_->insertTrackLocked(t);
 }
 
 std::expected<void, kanariv::utils::Error>
-DatabaseAccess::updateTrackLocked(Database& db, const kanariv::types::Track& t) {
+DatabaseAccess::updateTrackLocked(Database& db, const kanariv::types::TrackRow& t) {
     return db.impl_->updateTrackLocked(t);
 }
 

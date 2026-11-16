@@ -31,7 +31,7 @@ std::array<uint8_t, 32> fallbackFingerprint(std::string_view path) noexcept {
 
 } // namespace
 
-Json trackToJson(const kanariv::types::Track& t) {
+Json trackToJson(const kanariv::types::TrackRow& t) {
     Json j;
     j["id"] = t.id;
     j["size"] = t.size;
@@ -72,9 +72,9 @@ Json trackToJson(const kanariv::types::Track& t) {
     return j;
 }
 
-std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
+std::expected<kanariv::types::TrackRow, Error> trackFromJson(const Json& j) {
     try {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         auto getI64 = [&](const char* k, int64_t& out, int64_t def = 0) {
             if (j.contains(k) && !j[k].isNull()) {
                 if (j[k].isNumber())
@@ -143,11 +143,11 @@ std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
         } else {
             t.dirty = false;
         }
-        getI64("library_id", t.library_id, 1);
+        getI64("library_id", t.library_id, kanariv::types::defaultLibraryId);
         if (t.library_id == 0)
-            t.library_id = 1;
+            t.library_id = kanariv::types::defaultLibraryId;
         getStr("path", t.path);
-        t.source.kind = kanariv::types::SourceKind::path;
+        t.source.kind = kanariv::types::SourceKind::Path;
         t.source.key = t.path;
         t.source.display_name = t.path;
         t.source.available = true;
@@ -174,7 +174,7 @@ std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
                 t.source.available = s["available"].get<bool>();
             else
                 t.source.available = true;
-            if (t.source.kind == kanariv::types::SourceKind::path && t.source.key.empty())
+            if (t.source.kind == kanariv::types::SourceKind::Path && t.source.key.empty())
                 t.source.key = t.path;
         }
         getStr("title", t.title);

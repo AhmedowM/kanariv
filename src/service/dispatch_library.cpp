@@ -251,8 +251,8 @@ Service::Impl::handle(const kanariv::ipc::LibrarySearch& cmd) {
     if (!tracks)
         return std::unexpected{tracks.error()};
     // fallback to like handled inside search; if empty still return
-    std::span<const kanariv::types::Track> span{*tracks};
-    std::vector<kanariv::types::Track> out(span.begin(), span.end());
+    std::span<const kanariv::types::TrackRow> span{*tracks};
+    std::vector<kanariv::types::TrackRow> out(span.begin(), span.end());
     return Result{kanariv::ipc::SearchResults{cmd.query, std::move(out)}};
 }
 
@@ -437,7 +437,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryAdd& cmd) {
         auto fpRes = kanariv::media::internal::computeFingerprint(fp);
         if (!fpRes)
             return std::unexpected{fpRes.error()};
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = kanariv::utils::detail::pathToUtf8(fp);
         t.fingerprint = *fpRes;
         t.duration = detail::durationFromDecoder(fp);
@@ -603,7 +603,7 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
     auto trRes = storage_.tracks->getTrack(cmd.id);
     if (!trRes)
         return std::unexpected{trRes.error()};
-    kanariv::types::Track t = std::move(*trRes);
+    kanariv::types::TrackRow t = std::move(*trRes);
     if (cmd.field == "title")
         t.title = cmd.value;
     else if (cmd.field == "artist")
@@ -765,7 +765,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
             ++out.failed;
             continue;
         }
-        kanariv::types::Track t = std::move(*trRes);
+        kanariv::types::TrackRow t = std::move(*trRes);
         if (entry.field == "title")
             t.title = entry.value;
         else if (entry.field == "artist")
@@ -957,8 +957,8 @@ Service::Impl::handle(const kanariv::ipc::PlaylistTracks& cmd) {
     auto tracks = storage_.playlists->playlistGetTracks(cmd.pid);
     if (!tracks)
         return std::unexpected{tracks.error()};
-    std::span<const kanariv::types::Track> span{*tracks};
-    std::vector<kanariv::types::Track> out(span.begin(), span.end());
+    std::span<const kanariv::types::TrackRow> span{*tracks};
+    std::vector<kanariv::types::TrackRow> out(span.begin(), span.end());
     return Result{PlaylistData{std::move(out), {}}};
 }
 
@@ -985,7 +985,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistLoad& cmd) {
     }
     std::vector<int64_t> ids;
     ids.reserve(tracks->size());
-    for (auto& t : std::span<const kanariv::types::Track>(*tracks))
+    for (auto& t : std::span<const kanariv::types::TrackRow>(*tracks))
         ids.push_back(t.id);
     if (!ids.empty()) {
         auto er = detail::enqueueInChunks(*storage_.queues, qid, ids);
@@ -1057,7 +1057,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistAdd& cmd) {
     if (!tr)
         return std::unexpected{tr.error()};
     if (auto items = storage_.playlists->playlistGetTracks(cmd.pid)) {
-        for (auto& t : std::span<const kanariv::types::Track>(*items)) {
+        for (auto& t : std::span<const kanariv::types::TrackRow>(*items)) {
             if (t.id == cmd.track_id) {
                 return std::unexpected{kanariv::utils::makeError(
                     kanariv::utils::StatusCode::AlreadyExists, "already on playlist")};
@@ -1094,9 +1094,9 @@ Service::Impl::handle(const kanariv::ipc::PlaylistExport& cmd) {
     auto tracks = storage_.playlists->playlistGetTracks(cmd.pid);
     if (!tracks)
         return std::unexpected{tracks.error()};
-    std::vector<kanariv::types::Track> out;
+    std::vector<kanariv::types::TrackRow> out;
     out.reserve(tracks->size());
-    for (auto& t : std::span<const kanariv::types::Track>(*tracks))
+    for (auto& t : std::span<const kanariv::types::TrackRow>(*tracks))
         out.push_back(std::move(t));
     return Result{PlaylistData{std::move(out), cmd.format}};
 }
@@ -1175,7 +1175,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) {
     std::vector<int64_t> trackIds;
     trackIds.reserve(lines.size());
     // Separator-insensitive lookup: stored rows mix native and generic forms.
-    auto findTrack = [&](const std::string& line, kanariv::types::Track& out) -> bool {
+    auto findTrack = [&](const std::string& line, kanariv::types::TrackRow& out) -> bool {
         if (auto tr = storage_.tracks->findByPath(line)) {
             out = std::move(*tr);
             return true;
@@ -1205,7 +1205,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) {
     };
     size_t matched = 0, skipped = 0, duplicates = 0;
     for (const auto& line : lines) {
-        kanariv::types::Track tr;
+        kanariv::types::TrackRow tr;
         if (!findTrack(line, tr)) {
             ++skipped;
             continue;
@@ -1233,7 +1233,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) {
     rep.duplicates = duplicates;
     auto tracksRes = storage_.playlists->playlistGetTracks(*pidRes);
     if (tracksRes) {
-        for (auto& t : std::span<const kanariv::types::Track>(*tracksRes))
+        for (auto& t : std::span<const kanariv::types::TrackRow>(*tracksRes))
             rep.tracks.push_back(std::move(t));
     }
     return Result{std::move(rep)};

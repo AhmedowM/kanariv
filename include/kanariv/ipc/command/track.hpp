@@ -2,7 +2,7 @@
 
 /**
  * @file track.hpp
- * @brief Track commands for the kanariv IPC protocol.
+ * @brief TrackRow commands for the kanariv IPC protocol.
  * @ingroup kanariv_ipc
  */
 
@@ -12,7 +12,7 @@
 namespace kanariv::ipc {
 
 // ---------------------------------------------------------------------------
-// Track Commands
+// TrackRow Commands
 // ---------------------------------------------------------------------------
 
 /**

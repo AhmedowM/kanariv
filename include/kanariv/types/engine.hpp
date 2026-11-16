@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <functional>
 #include <kanariv/fwd.hpp>
+#include <kanariv/types/record.hpp>
 #include <kanariv/types/status.hpp>
 #include <kanariv/types/wire.hpp>
 #include <optional>
@@ -47,7 +48,7 @@ enum class EngineEventType : std::uint8_t {
 struct EngineEvent {
     EngineEventType type{EngineEventType::None}; ///< Event kind.
     int64_t track_id{0};                         ///< Affected track id (if any).
-    int64_t queue_id{1};                         ///< Active queue id at emission.
+    int64_t queue_id{defaultQueueId};            ///< Active queue id at emission.
     double position{0.0};                        ///< Position in seconds (Progress/TrackEnded).
     double duration{0.0};                        ///< Duration in seconds.
     std::string msg{};                           ///< Error text for Error events.
@@ -79,7 +80,7 @@ enum class ReplayGainMode : std::uint8_t {
     Track = 1, ///< Per-track gain normalization (replay_gain_track).
     Album = 2, ///< Per-album gain normalization (replay_gain_album).
 };
-// Both Track and Album consume Track::replayGainTrack / replayGainAlbum. Nothing
+// Both Track and Album consume TrackRow::replayGainTrack / replayGainAlbum. Nothing
 // populates those columns yet (the scanner does not analyse loudness and there is
 // no tag importer), so both modes are currently no-ops.
 
@@ -99,9 +100,9 @@ enum class ReplayGainMode : std::uint8_t {
  * therefore gapless/crossfade) still runs headlessly.
  *
  * Playback polish (all configurable, default off = gapless/raw):
- * - `replayGain`: Track/Album/Off normalization applied as a volume
- *   multiplier at track load time from `Track::replayGainTrack` /
- *   `Track::replayGainAlbum` (dB). Nothing populates those columns yet, so this
+ * - `replayGain`: TrackRow/Album/Off normalization applied as a volume
+ *   multiplier at track load time from `TrackRow::replayGainTrack` /
+ *   `TrackRow::replayGainAlbum` (dB). Nothing populates those columns yet, so this
  *   setting currently has no audible effect.
  * - `fadeInMs`/`fadeOutMs`: fade envelope applied to decoded samples in the
  *   decode loop (real-time safe, no blocking).

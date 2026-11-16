@@ -37,7 +37,7 @@ class OutputFormatter {
     /** @brief Ellipsizes overlong table cells. */
     static std::string truncateField(const std::string& s, std::size_t maxLen = 40);
     /** @brief Shared track-detail block for SingleTrack/TrackInfo. */
-    static void printTrackDetail(std::ostream& os, const kanariv::types::Track& t);
+    static void printTrackDetail(std::ostream& os, const kanariv::types::TrackRow& t);
 
   public:
     /**
@@ -49,7 +49,7 @@ class OutputFormatter {
 
     /**
      * @brief Mark one track id in QueueTracks tables (current track).
-     * @param id Track id to prefix with `>`; 0 disables.
+     * @param id TrackRow id to prefix with `>`; 0 disables.
      */
     void setHighlightTrackId(int64_t id) {
         highlightTrackId_ = id;

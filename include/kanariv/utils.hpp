@@ -14,7 +14,7 @@
  * - thread: sleepFor, sleepForMs, setThreadName
  * - print: portable print/println facade (see print.hpp)
  * - json: opaque Json/JsonRef value type (nlohmann stays behind src/ walls)
- * - record_json: Track <-> Json codec shared by db and ipc
+ * - record_json: TrackRow <-> Json codec shared by db and ipc
  * - generator: portable Generator (libc++ lacks std::generator)
  *
  * Internal-only helpers (MpscQueue, MoveOnlyFunction, the rotating file

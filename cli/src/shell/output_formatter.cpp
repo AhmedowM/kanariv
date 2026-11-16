@@ -63,7 +63,7 @@ void OutputFormatter::setColumns(std::string_view columns) {
     }
 }
 
-void OutputFormatter::printTrackDetail(std::ostream& os, const kanariv::types::Track& t) {
+void OutputFormatter::printTrackDetail(std::ostream& os, const kanariv::types::TrackRow& t) {
     kanariv::println(os, "Track [{}]", t.id);
     kanariv::println(os, "  Path:         {}", t.path);
     kanariv::println(os, "  Title:        {}", t.title.empty() ? "---" : t.title);
@@ -128,7 +128,7 @@ struct Overloaded : Ts... {
 template <class... Ts>
 Overloaded(Ts...) -> Overloaded<Ts...>;
 
-std::string trackLabel(const kanariv::types::Track& t) {
+std::string trackLabel(const kanariv::types::TrackRow& t) {
     if (!t.artist.empty() && !t.title.empty())
         return t.artist + " - " + t.title;
     if (!t.artist.empty() || !t.title.empty())
@@ -182,7 +182,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 }
             },
             [&os, this](const kanariv::ipc::QueueTracks& v) {
-                std::span<const kanariv::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
+                std::span<const kanariv::types::TrackRow> tracksSpan(v.tracks.data(),
+                                                                     v.tracks.size());
                 kanariv::println(os, "Queue ({} tracks):", tracksSpan.size());
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                  "Title", "Dur");
@@ -295,7 +296,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 }
             },
             [&os, this](const kanariv::ipc::Tracks& v) {
-                std::span<const kanariv::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
+                std::span<const kanariv::types::TrackRow> tracksSpan(v.tracks.data(),
+                                                                     v.tracks.size());
                 kanariv::println(os, "Tracks ({}):", tracksSpan.size());
                 if (columns_.empty()) {
                     kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
@@ -366,7 +368,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 }
             },
             [&os, this](const kanariv::ipc::SearchResults& v) {
-                std::span<const kanariv::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
+                std::span<const kanariv::types::TrackRow> tracksSpan(v.tracks.data(),
+                                                                     v.tracks.size());
                 if (tracksSpan.size() == 1)
                     kanariv::println(os, "1 track found:");
                 else
@@ -395,7 +398,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "Created playlist {} '{}'", v.id, v.name);
             },
             [&os](const kanariv::ipc::PlaylistImportReport& v) {
-                std::span<const kanariv::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
+                std::span<const kanariv::types::TrackRow> tracksSpan(v.tracks.data(),
+                                                                     v.tracks.size());
                 kanariv::println(os,
                                  "Imported playlist '{}' ({} tracks, {} matched, {} skipped, "
                                  "{} duplicates):",
@@ -451,7 +455,8 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 }
             },
             [&os](const kanariv::ipc::PlaylistData& v) {
-                std::span<const kanariv::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
+                std::span<const kanariv::types::TrackRow> tracksSpan(v.tracks.data(),
+                                                                     v.tracks.size());
                 kanariv::println(os, "Playlist ({} tracks):", tracksSpan.size());
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                  "Title", "Dur");

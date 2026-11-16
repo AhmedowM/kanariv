@@ -134,7 +134,8 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
                 }
             },
             [&os](const kanariv::ipc::QueueTracks& v) {
-                std::span<const kanariv::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
+                std::span<const kanariv::types::TrackRow> tracksSpan(v.tracks.data(),
+                                                                     v.tracks.size());
                 kanariv::println(os, "Queue ({} tracks):", tracksSpan.size());
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                  "Title", "Dur");
@@ -157,7 +158,8 @@ void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
                 }
             },
             [&os](const kanariv::ipc::PlaylistData& v) {
-                std::span<const kanariv::types::Track> tracksSpan(v.tracks.data(), v.tracks.size());
+                std::span<const kanariv::types::TrackRow> tracksSpan(v.tracks.data(),
+                                                                     v.tracks.size());
                 kanariv::println(os, "Playlist ({} tracks):", tracksSpan.size());
                 kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
                                  "Title", "Dur");

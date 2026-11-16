@@ -49,20 +49,20 @@ enum class IoStatus : std::uint8_t {
 };
 
 /** @brief Largest read request issued per syscall. */
-inline constexpr std::size_t kReadChunk = 64 * 1024;
+inline constexpr std::size_t readChunk = 64 * 1024;
 /** @brief Largest write request issued per syscall (a full pipe buffer may be smaller). */
-inline constexpr std::size_t kWriteChunk = 4096;
+inline constexpr std::size_t writeChunk = 4096;
 /** @brief Sleep between polls when the transfer would block. */
-inline constexpr std::chrono::milliseconds kIoPollInterval{2};
+inline constexpr std::chrono::milliseconds ioPollInterval{2};
 
 #ifdef _WIN32
 
 // Granular codes used by the transfer loops; distinct names keep them clear of
 // the windows.h macros a consumer may have pulled in first.
-inline constexpr DWORD kPipeNoWait = 0x00000001UL;     ///< PIPE_NOWAIT.
-inline constexpr DWORD kErrorNoData = 232UL;           ///< ERROR_NO_DATA.
-inline constexpr DWORD kErrorBrokenPipe = 109UL;       ///< ERROR_BROKEN_PIPE.
-inline constexpr DWORD kErrorPipeNotConnected = 233UL; ///< ERROR_PIPE_NOT_CONNECTED.
+inline constexpr DWORD pipeNoWait = 0x00000001UL;     ///< PIPE_NOWAIT.
+inline constexpr DWORD errorNoData = 232UL;           ///< ERROR_NO_DATA.
+inline constexpr DWORD errorBrokenPipe = 109UL;       ///< ERROR_BROKEN_PIPE.
+inline constexpr DWORD errorPipeNotConnected = 233UL; ///< ERROR_PIPE_NOT_CONNECTED.
 
 /**
  * @brief Switches a connected pipe instance to nonblocking byte mode.
@@ -71,7 +71,7 @@ inline constexpr DWORD kErrorPipeNotConnected = 233UL; ///< ERROR_PIPE_NOT_CONNE
  * @return true when the instance now polls instead of blocking.
  */
 inline bool setNonBlocking(HANDLE pipe) noexcept {
-    DWORD mode = pipeReadModeByte | kPipeNoWait;
+    DWORD mode = pipeReadModeByte | pipeNoWait;
     return ::SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr) != 0;
 }
 
@@ -90,7 +90,7 @@ inline IoStatus readExact(HANDLE pipe, std::span<std::byte> out, std::stop_token
     while (got < out.size()) {
         if (st.stop_requested())
             return IoStatus::Stopped;
-        const std::size_t chunk = (out.size() - got < kReadChunk) ? out.size() - got : kReadChunk;
+        const std::size_t chunk = (out.size() - got < readChunk) ? out.size() - got : readChunk;
         DWORD transferred = 0;
         if (::ReadFile(pipe, out.data() + got, static_cast<DWORD>(chunk), &transferred, nullptr) !=
             0) {
@@ -101,11 +101,11 @@ inline IoStatus readExact(HANDLE pipe, std::span<std::byte> out, std::stop_token
         }
         // Nonblocking pipes report "nothing buffered yet" as ERROR_NO_DATA;
         // every other failure means the connection is gone.
-        if (::GetLastError() != kErrorNoData)
+        if (::GetLastError() != errorNoData)
             return IoStatus::Closed;
         if (std::chrono::steady_clock::now() >= deadline)
             return IoStatus::Timeout;
-        std::this_thread::sleep_for(kIoPollInterval);
+        std::this_thread::sleep_for(ioPollInterval);
     }
     return IoStatus::Ok;
 }
@@ -126,20 +126,20 @@ inline IoStatus writeAll(HANDLE pipe, std::span<const std::byte> data, std::stop
         if (st.stop_requested())
             return IoStatus::Stopped;
         const std::size_t chunk =
-            (data.size() - sent < kWriteChunk) ? data.size() - sent : kWriteChunk;
+            (data.size() - sent < writeChunk) ? data.size() - sent : writeChunk;
         DWORD transferred = 0;
         if (::WriteFile(pipe, data.data() + sent, static_cast<DWORD>(chunk), &transferred,
                         nullptr) == 0) {
             // A full pipe buffer surfaces as ERROR_NO_DATA; anything else is a
             // dead connection.
-            if (::GetLastError() != kErrorNoData)
+            if (::GetLastError() != errorNoData)
                 return IoStatus::Closed;
             transferred = 0;
         }
         if (transferred == 0) {
             if (std::chrono::steady_clock::now() >= deadline)
                 return IoStatus::Timeout;
-            std::this_thread::sleep_for(kIoPollInterval);
+            std::this_thread::sleep_for(ioPollInterval);
             continue;
         }
         sent += static_cast<std::size_t>(transferred);
@@ -150,7 +150,7 @@ inline IoStatus writeAll(HANDLE pipe, std::span<const std::byte> data, std::stop
 #else
 
 /** @brief Receive/send slice that keeps stop-token checks responsive. */
-inline constexpr std::chrono::milliseconds kSocketTimeout{100};
+inline constexpr std::chrono::milliseconds socketTimeout{100};
 
 /**
  * @brief Bounds blocking sends and receives on a connected socket.
@@ -162,7 +162,7 @@ inline bool configureSocket(int fd) noexcept {
     timeval tv{};
     tv.tv_sec = 0;
     tv.tv_usec = static_cast<suseconds_t>(
-        std::chrono::duration_cast<std::chrono::microseconds>(kSocketTimeout).count());
+        std::chrono::duration_cast<std::chrono::microseconds>(socketTimeout).count());
     const bool recvOk = ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0;
     const bool sendOk = ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == 0;
 #if defined(SO_NOSIGPIPE)
@@ -204,9 +204,9 @@ inline IoStatus readExact(int fd, std::span<std::byte> out, std::stop_token st,
  * this flag the default SIGPIPE disposition would kill the whole daemon.
  */
 #if defined(MSG_NOSIGNAL)
-inline constexpr int kSendFlags = MSG_NOSIGNAL;
+inline constexpr int sendFlags = MSG_NOSIGNAL;
 #else
-inline constexpr int kSendFlags = 0;
+inline constexpr int sendFlags = 0;
 #endif
 
 inline IoStatus writeAll(int fd, std::span<const std::byte> data, std::stop_token st,
@@ -216,7 +216,7 @@ inline IoStatus writeAll(int fd, std::span<const std::byte> data, std::stop_toke
         if (st.stop_requested())
             return IoStatus::Stopped;
         const ::ssize_t n = ::send(fd, reinterpret_cast<const char*>(data.data()) + sent,
-                                   data.size() - sent, kSendFlags);
+                                   data.size() - sent, sendFlags);
         if (n > 0) {
             sent += static_cast<std::size_t>(n);
             continue;

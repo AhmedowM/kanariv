@@ -49,7 +49,7 @@ namespace kanariv::contracts {
  * most this size (K5): each chunk is atomic, a failure commits the chunks
  * before it, and a caller that needs partial results must report them.
  */
-inline constexpr std::size_t kQueueBatchChunk = 500;
+inline constexpr std::size_t queueBatchChunk = 500;
 
 /**
  * @brief Queue container and item persistence.
@@ -89,7 +89,7 @@ class IQueueStore : public IStore {
     /**
      * @brief Finds a track's zero-based index in a queue.
      * @param qid Queue identifier; zero selects the default queue.
-     * @param trackId Track id to locate (first occurrence by position).
+     * @param trackId TrackRow id to locate (first occurrence by position).
      * @return Zero-based index of the first matching item, `std::nullopt` when
      * the track is absent, or a backend error.
      */
@@ -100,10 +100,10 @@ class IQueueStore : public IStore {
      * @brief Loads the track at a zero-based queue index.
      * @param qid Queue identifier; zero selects the default queue.
      * @param index Zero-based index into the ordered listing.
-     * @return Track on success, or `NotFound` when the index is beyond the
+     * @return TrackRow on success, or `NotFound` when the index is beyond the
      * queue or the row is missing.
      */
-    virtual std::expected<kanariv::types::Track, kanariv::utils::Error>
+    virtual std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     queueTrackAt(int64_t qid, int64_t index) = 0;
 
     /**
@@ -123,7 +123,7 @@ class IQueueStore : public IStore {
      * `listQueueItems()` row for row: a track queued twice appears twice, and
      * an item whose track row is missing is skipped.
      */
-    virtual std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+    virtual std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
     tracksForQueue(int64_t qid) = 0;
 
     /**
@@ -164,7 +164,7 @@ class IQueueStore : public IStore {
      * @param qid Queue identifier; zero selects the default queue.
      * @param tids Ordered track identifiers to append.
      * @return Success, or an error; no part of this call is committed.
-     * @details Atomic per call. Callers passing more than `kQueueBatchChunk`
+     * @details Atomic per call. Callers passing more than `queueBatchChunk`
      * identifiers must chunk the span so each write transaction stays bounded.
      */
     virtual std::expected<void, kanariv::utils::Error>
@@ -173,7 +173,7 @@ class IQueueStore : public IStore {
     /**
      * @brief Enqueues one track at a zero-based insertion index.
      * @param qid Queue identifier; zero selects the default queue.
-     * @param tid Track identifier.
+     * @param tid TrackRow identifier.
      * @param index Zero-based insertion index in `[0, count]`, or `-1` to
      * append.
      * @return Success, or `InvalidArg` for an out-of-range index, `NotFound`,

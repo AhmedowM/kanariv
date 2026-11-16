@@ -5,7 +5,7 @@
  * @brief Plain-data record types for the dependency-free `kanariv.types` layer.
  * @ingroup kanariv_types
  * @details Value structs shared across the db, engine, ipc and app layers:
- * Track, Playlist, QueueItem, HistoryEntry, Bookmark, DeviceInfo, DeviceList,
+ * TrackRow, Playlist, QueueItem, HistoryEntry, Bookmark, DeviceInfo, DeviceList,
  * TrackMetadata and LibraryStats. All are default-initialised aggregates; no
  * invariants beyond those documented per-field.
  */
@@ -21,6 +21,18 @@
 namespace kanariv::types {
 
 /**
+ * @brief Library created by the initial schema; owner of every default row.
+ * @ingroup kanariv_types
+ */
+inline constexpr std::int64_t defaultLibraryId = 1;
+
+/**
+ * @brief Queue created by the initial schema; target of `queue_id == 0`.
+ * @ingroup kanariv_types
+ */
+inline constexpr std::int64_t defaultQueueId = 1;
+
+/**
  * @enum SourceKind
  * @brief Durable identity category for a track's bytes.
  * @ingroup kanariv_types
@@ -33,10 +45,10 @@ namespace kanariv::types {
  * the media layer a descriptor; descriptors themselves are never persisted.
  */
 enum class SourceKind : std::uint8_t {
-    path = 0,       ///< Ordinary filesystem path (legacy default).
-    external = 1,   ///< Stable host-issued identifier, not a filesystem path.
-    imported = 2,   ///< App-private copy created by the host.
-    unavailable = 3 ///< Source is known but cannot currently be reopened.
+    Path = 0,       ///< Ordinary filesystem path (legacy default).
+    External = 1,   ///< Stable host-issued identifier, not a filesystem path.
+    Imported = 2,   ///< App-private copy created by the host.
+    Unavailable = 3 ///< Source is known but cannot currently be reopened.
 };
 
 /**
@@ -45,18 +57,18 @@ enum class SourceKind : std::uint8_t {
  * @ingroup kanariv_types
  *
  * `key` is the stable identity used for deduplication:
- * - `path`: the filesystem path (normalized from Track::path when empty).
+ * - `path`: the filesystem path (normalized from TrackRow::path when empty).
  * - `external`: the host-issued document/media identifier.
  * - `imported`: the app-private path or host key for the imported copy.
  * - `unavailable`: the last known key, retained so the host can retry.
  *
- * Deduplication rule: `(kind, key)` identifies a source. `Track::path` remains
+ * Deduplication rule: `(kind, key)` identifies a source. `TrackRow::path` remains
  * the display/legacy path and must not be used to fake a content URI. Hosts
  * should call `normalizedSource()` before persistence or lookup so path rows
  * always carry an explicit key.
  */
 struct SourceRef {
-    SourceKind kind{SourceKind::path}; ///< Durable identity category.
+    SourceKind kind{SourceKind::Path}; ///< Durable identity category.
     std::string key;                   ///< Stable identity; empty only before normalization.
     std::string display_name;          ///< Optional user-facing name.
     bool available{true};              ///< False when the host cannot reopen the source.
@@ -70,13 +82,13 @@ struct SourceRef {
  */
 [[nodiscard]] inline constexpr std::string_view sourceKindName(SourceKind kind) noexcept {
     switch (kind) {
-    case SourceKind::path:
+    case SourceKind::Path:
         return "path";
-    case SourceKind::external:
+    case SourceKind::External:
         return "external";
-    case SourceKind::imported:
+    case SourceKind::Imported:
         return "imported";
-    case SourceKind::unavailable:
+    case SourceKind::Unavailable:
         return "unavailable";
     }
     return "path";
@@ -91,13 +103,13 @@ struct SourceRef {
 [[nodiscard]] inline constexpr std::optional<SourceKind>
 sourceKindFromName(std::string_view name) noexcept {
     if (name == "path")
-        return SourceKind::path;
+        return SourceKind::Path;
     if (name == "external")
-        return SourceKind::external;
+        return SourceKind::External;
     if (name == "imported")
-        return SourceKind::imported;
+        return SourceKind::Imported;
     if (name == "unavailable")
-        return SourceKind::unavailable;
+        return SourceKind::Unavailable;
     return std::nullopt;
 }
 
@@ -108,7 +120,7 @@ sourceKindFromName(std::string_view name) noexcept {
  * BLAKE3 digest; `library_id` defaults to 1 (the built-in default library).
  * Deletion is remove-and-forget: there is no soft-delete state.
  */
-struct Track {
+struct TrackRow {
     int64_t id{};                          ///< Row id (PK, 0 = not yet persisted).
     int64_t size{};                        ///< File size in bytes.
     int64_t mtime{};                       ///< Last write time (filesystem epoch).
@@ -117,7 +129,7 @@ struct Track {
     int64_t last_played{};                 ///< Timestamp of last play (unix seconds).
     int64_t date_added{};                  ///< Timestamp when inserted.
     int64_t last_scanned{};                ///< Timestamp of last scan.
-    int64_t library_id{1};                 ///< Owning library id (FK -> libraries.id).
+    int64_t library_id{defaultLibraryId};  ///< Owning library id (FK -> libraries.id).
     std::string path;                      ///< Absolute filesystem path (NOT NULL).
     std::string title;                     ///< Title tag.
     std::string artist;                    ///< Artist tag.
@@ -129,7 +141,7 @@ struct Track {
     uint32_t channels{};                   ///< Channel count.
     int32_t bitrate{};                     ///< Bitrate in bps.
     int32_t year{};                        ///< Year tag.
-    int32_t track_num{};                   ///< Track number within disc.
+    int32_t track_num{};                   ///< TrackRow number within disc.
     int32_t disc_num{};                    ///< Disc number.
     int32_t rating{};                      ///< User rating (0..5).
     std::array<uint8_t, 32> fingerprint{}; ///< BLAKE3-256 content fingerprint (UNIQUE).
@@ -145,16 +157,16 @@ struct Track {
 /**
  * @brief Returns a persistence-ready source reference for a track.
  * @ingroup kanariv_types
- * @param t Track whose `source` may leave the key empty.
- * @return Copy of `t.source`; for `SourceKind::path` an empty key is filled
+ * @param t TrackRow whose `source` may leave the key empty.
+ * @return Copy of `t.source`; for `SourceKind::Path` an empty key is filled
  *         from `t.path`. Other kinds are returned unchanged so callers can
  *         detect a missing host identifier.
  */
-[[nodiscard]] inline SourceRef normalizedSource(const Track& t) {
+[[nodiscard]] inline SourceRef normalizedSource(const TrackRow& t) {
     SourceRef source = t.source;
-    if (source.kind == SourceKind::path && source.key.empty())
+    if (source.kind == SourceKind::Path && source.key.empty())
         source.key = t.path;
-    if (source.display_name.empty() && source.kind == SourceKind::path)
+    if (source.display_name.empty() && source.kind == SourceKind::Path)
         source.display_name = t.path;
     return source;
 }
@@ -167,14 +179,13 @@ struct Track {
  * the filter expression.
  */
 struct Playlist {
-    int64_t id{};            ///< Row id (PK).
-    std::string name;        ///< Display name (NOT NULL).
-    int32_t type{};          ///< Playlist type (0 = manual).
-    std::string smart_query; ///< Smart-playlist filter (empty for manual).
-    int64_t created{};       ///< Creation timestamp.
-    int64_t modified{};      ///< Last modification timestamp.
-    int64_t library_id{1};   ///< Owning library id.
-
+    int64_t id{};                         ///< Row id (PK).
+    std::string name;                     ///< Display name (NOT NULL).
+    int32_t type{};                       ///< Playlist type (0 = manual).
+    std::string smart_query;              ///< Smart-playlist filter (empty for manual).
+    int64_t created{};                    ///< Creation timestamp.
+    int64_t modified{};                   ///< Last modification timestamp.
+    int64_t library_id{defaultLibraryId}; ///< Owning library id.
 };
 
 /**
@@ -185,9 +196,9 @@ struct Playlist {
  * `Database::dbMutex_`.
  */
 struct QueueItem {
-    int64_t id{};        ///< Row id (PK).
-    int64_t queue_id{1}; ///< Owning queue id (FK -> queues.id).
-    int64_t track_id{};  ///< Referenced track id (FK -> tracks.id).
+    int64_t id{};                     ///< Row id (PK).
+    int64_t queue_id{defaultQueueId}; ///< Owning queue id (FK -> queues.id).
+    int64_t track_id{};               ///< Referenced track id (FK -> tracks.id).
     /// Stored gap-based ordering value (UNIQUE per queue_id). Not a zero-based
     /// index: use the item's index in listQueueItems() for public APIs.
     int64_t position{};
@@ -204,17 +215,17 @@ struct QueueItem {
  * and service layers (the former `engine::HistoryEntry` duplicate is deleted).
  */
 struct HistoryEntry {
-    int64_t id{};            ///< Row id (PK).
-    int64_t track_id{};      ///< Played track id.
-    int64_t started_at{};    ///< Start timestamp.
-    int64_t completed_at{};  ///< Completion timestamp (0 if not completed).
-    int64_t position_ms{};   ///< Position reached in milliseconds.
-    double completion_pct{}; ///< Completion percentage [0,100].
-    int64_t queue_id{1};     ///< Queue context.
-    std::string title{};     ///< Track title snapshot (JOIN queries only).
-    std::string artist{};    ///< Track artist snapshot (JOIN queries only).
-    std::string path{};      ///< Track path snapshot (JOIN queries only).
-    double duration{};       ///< Track duration snapshot (JOIN queries only).
+    int64_t id{};                     ///< Row id (PK).
+    int64_t track_id{};               ///< Played track id.
+    int64_t started_at{};             ///< Start timestamp.
+    int64_t completed_at{};           ///< Completion timestamp (0 if not completed).
+    int64_t position_ms{};            ///< Position reached in milliseconds.
+    double completion_pct{};          ///< Completion percentage [0,100].
+    int64_t queue_id{defaultQueueId}; ///< Queue context.
+    std::string title{};              ///< TrackRow title snapshot (JOIN queries only).
+    std::string artist{};             ///< TrackRow artist snapshot (JOIN queries only).
+    std::string path{};               ///< TrackRow path snapshot (JOIN queries only).
+    double duration{};                ///< TrackRow duration snapshot (JOIN queries only).
 };
 
 /**
@@ -269,7 +280,7 @@ struct TrackMetadata {
     std::string album_artist; ///< Album-artist tag.
     std::string genre;        ///< Genre tag.
     int year = 0;             ///< Year tag.
-    int track_num = 0;        ///< Track number within disc.
+    int track_num = 0;        ///< TrackRow number within disc.
     int disc_num = 0;         ///< Disc number.
     double duration = 0;      ///< Duration in seconds.
     int sample_rate = 0;      ///< Sample rate in Hz.
@@ -306,7 +317,7 @@ struct LibraryStats {
     std::int64_t total_duration_ms{0};  ///< Sum of durations (ms).
     std::int64_t total_play_time_ms{0}; ///< Sum of play_count * duration (ms).
     /// Top tracks by total plays (play_count DESC); nullopt when not requested.
-    std::optional<std::vector<Track>> top_tracks{};
+    std::optional<std::vector<TrackRow>> top_tracks{};
     /// Top albums by total plays; nullopt when not requested.
     std::optional<std::vector<TopEntity>> top_albums{};
     /// Top genres by total plays; nullopt when not requested.

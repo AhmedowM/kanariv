@@ -80,7 +80,7 @@ std::expected<LibraryMaintenanceReport, kanariv::utils::Error> libraryReport(Dat
         return std::unexpected(tracks.error());
 
     LibraryMaintenanceReport report{};
-    std::map<std::string, std::vector<kanariv::types::Track>> paths;
+    std::map<std::string, std::vector<kanariv::types::TrackRow>> paths;
     for (const auto& track : *tracks) {
         ++report.tracks_checked;
         switch (classifyPath(track.path)) {

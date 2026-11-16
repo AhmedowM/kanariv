@@ -31,7 +31,7 @@ TEST_CASE("search FTS finds title and LIKE fallback COLLATE NOCASE", "[db_search
     auto db = std::move(dbRes.value());
     for (auto [title, artist] : std::vector<std::pair<std::string, std::string>>{
              {"Abbey Road", "Beatles"}, {"Red House", "Hendrix"}, {"Hello World", "Artist"}}) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "/tmp/" + title + ".mp3";
         t.title = title;
         t.artist = artist;
@@ -68,7 +68,7 @@ TEST_CASE("searchLike 5 cols COLLATE NOCASE", "[db_search]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/x.mp3";
     t.title = "Foo";
     t.artist = "BarArtist";
@@ -104,7 +104,7 @@ TEST_CASE("search FTS escape LIKE wildcards", "[db_search]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/y.mp3";
     t.title = "100% Pure";
     for (int b = 0; b < 32; ++b)
@@ -125,7 +125,7 @@ TEST_CASE("search phrase Abbey Road", "[db_search]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/abbey.mp3";
     t.title = "Abbey Road";
     t.artist = "Beatles";
@@ -133,7 +133,7 @@ TEST_CASE("search phrase Abbey Road", "[db_search]") {
     for (int b = 0; b < 32; ++b)
         t.fingerprint[b] = (uint8_t)(0xA0 + b);
     REQUIRE(db->insertTrack(t).has_value());
-    kanariv::types::Track t2;
+    kanariv::types::TrackRow t2;
     t2.path = "/tmp/other.mp3";
     t2.title = "Abbeville";
     t2.artist = "Other";
@@ -162,7 +162,7 @@ TEST_CASE("search injection OR AND NOT", "[db_search]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/inject.mp3";
     t.title = "Hello World";
     t.artist = "Artist";
@@ -194,7 +194,7 @@ TEST_CASE("search very long query", "[db_search]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/long.mp3";
     t.title = "Short";
     for (int b = 0; b < 32; ++b)
@@ -216,7 +216,7 @@ TEST_CASE("search limit=0 defaults to 50", "[db_search]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 3; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         t.path = "/tmp/lim" + std::to_string(i) + ".mp3";
         t.title = "Limited";
         t.artist = "Artist" + std::to_string(i);
@@ -236,7 +236,7 @@ TEST_CASE("search COLLATE NOCASE variation", "[db_search]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/case.mp3";
     t.title = "CaSeTeSt";
     t.artist = "MixedCase";
@@ -280,7 +280,7 @@ TEST_CASE("FTS update trigger only fires for searchable columns", "[db_search][f
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t;
+    kanariv::types::TrackRow t;
     t.path = "/tmp/fts_scope.mp3";
     t.title = "Original Ballad";
     t.artist = "Artist";

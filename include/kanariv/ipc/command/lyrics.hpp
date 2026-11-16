@@ -24,12 +24,12 @@ namespace kanariv::ipc {
  *
  * @json_example {"type": "LyricsGet", "track_id": 123}
  *
- * @param track_id Track id. If omitted, uses the current/persisted track.
+ * @param track_id TrackRow id. If omitted, uses the current/persisted track.
  * @return Lyrics result.
  */
 struct LyricsGet final {
     /**
-     * @brief Track id. If omitted, uses the current/persisted track.
+     * @brief TrackRow id. If omitted, uses the current/persisted track.
      */
     std::optional<int64_t> track_id{};
 };
@@ -44,7 +44,7 @@ struct LyricsGet final {
  * @param lrc_text Lyrics text (LRC format when synced).
  * @param is_synced True when lrc_text contains time-coded lines.
  * @param source Provenance label (e.g. "local", "import").
- * @param track_id Track id. If omitted, uses the current/persisted track.
+ * @param track_id TrackRow id. If omitted, uses the current/persisted track.
  * @return Empty (success with no data).
  */
 struct LyricsSet final {
@@ -61,7 +61,7 @@ struct LyricsSet final {
      */
     std::string source{};
     /**
-     * @brief Track id. If omitted, uses the current/persisted track.
+     * @brief TrackRow id. If omitted, uses the current/persisted track.
      */
     std::optional<int64_t> track_id{};
 };
@@ -73,12 +73,12 @@ struct LyricsSet final {
  *
  * @json_example {"type": "LyricsRemove", "track_id": 123}
  *
- * @param track_id Track id. If omitted, uses the current/persisted track.
+ * @param track_id TrackRow id. If omitted, uses the current/persisted track.
  * @return Empty (success with no data).
  */
 struct LyricsRemove final {
     /**
-     * @brief Track id. If omitted, uses the current/persisted track.
+     * @brief TrackRow id. If omitted, uses the current/persisted track.
      */
     std::optional<int64_t> track_id{};
 };

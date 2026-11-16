@@ -27,8 +27,8 @@ using namespace kanariv::db;
 using namespace kanariv::utils;
 using namespace kanariv::test_helpers;
 
-static kanariv::types::Track makeTrack(int idx, const std::string& pathOverride = "") {
-    kanariv::types::Track t;
+static kanariv::types::TrackRow makeTrack(int idx, const std::string& pathOverride = "") {
+    kanariv::types::TrackRow t;
     t.path = pathOverride.empty() ? ("/tmp/track_" + std::to_string(idx) + ".mp3") : pathOverride;
     t.title = "Title" + std::to_string(idx);
     t.artist = "Artist" + std::to_string(idx);
@@ -94,18 +94,18 @@ TEST_CASE("insertTrack duplicate AlreadyExists", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t = makeTrack(1);
+    kanariv::types::TrackRow t = makeTrack(1);
     auto r1 = db->insertTrack(t);
     REQUIRE(r1.has_value());
     // fingerprint is UNIQUE per schema; duplicate fingerprint should be AlreadyExists
-    kanariv::types::Track t2 = makeTrack(1);
+    kanariv::types::TrackRow t2 = makeTrack(1);
     // ensure same fingerprint but different path to prove fingerprint uniqueness
     t2.path = "/tmp/track_dup_path.mp3";
     auto r2 = db->insertTrack(t2);
     REQUIRE(!r2.has_value());
     REQUIRE(r2.error().code == StatusCode::AlreadyExists);
     // same path with different fingerprint should succeed (path not unique)
-    kanariv::types::Track t3 = makeTrack(99, t.path);
+    kanariv::types::TrackRow t3 = makeTrack(99, t.path);
     for (int b = 0; b < 32; ++b)
         t3.fingerprint[b] = (uint8_t)(0xFF - b);
     auto r3 = db->insertTrack(t3);
@@ -117,7 +117,7 @@ TEST_CASE("updateTrack missing NotFound", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t = makeTrack(2);
+    kanariv::types::TrackRow t = makeTrack(2);
     t.id = 9999; // non-existent id
     auto r = db->updateTrack(t);
     REQUIRE(!r.has_value());
@@ -145,7 +145,7 @@ TEST_CASE("deleteTrack and verify", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t = makeTrack(3);
+    kanariv::types::TrackRow t = makeTrack(3);
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     int64_t id = *ins;
@@ -167,7 +167,7 @@ TEST_CASE("listTracks pagination limit/offset", "[db]") {
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
     for (int i = 0; i < 5; ++i) {
-        kanariv::types::Track t = makeTrack(10 + i);
+        kanariv::types::TrackRow t = makeTrack(10 + i);
         auto r = db->insertTrack(t);
         REQUIRE(r.has_value());
     }
@@ -288,17 +288,17 @@ TEST_CASE("playlistGetTracks smart playlist evaluation", "[db]") {
     auto db = std::move(dbRes.value());
 
     // Insert tracks with varied rating/year.
-    kanariv::types::Track t1 = makeTrack(1);
+    kanariv::types::TrackRow t1 = makeTrack(1);
     t1.rating = 5;
     t1.year = 1970;
     REQUIRE(db->insertTrack(t1).has_value());
 
-    kanariv::types::Track t2 = makeTrack(2);
+    kanariv::types::TrackRow t2 = makeTrack(2);
     t2.rating = 4;
     t2.year = 2005;
     REQUIRE(db->insertTrack(t2).has_value());
 
-    kanariv::types::Track t3 = makeTrack(3);
+    kanariv::types::TrackRow t3 = makeTrack(3);
     t3.rating = 5;
     t3.year = 2010;
     REQUIRE(db->insertTrack(t3).has_value());
@@ -344,28 +344,28 @@ TEST_CASE("listTracks new filters rating/year/play_count/duration", "[db]") {
     auto db = std::move(dbRes.value());
 
     // Insert tracks with varied rating, year, play_count, duration.
-    kanariv::types::Track t1 = makeTrack(1);
+    kanariv::types::TrackRow t1 = makeTrack(1);
     t1.rating = 5;
     t1.year = 1970;
     t1.play_count = 100;
     t1.duration = 420.0;
     REQUIRE(db->insertTrack(t1).has_value());
 
-    kanariv::types::Track t2 = makeTrack(2);
+    kanariv::types::TrackRow t2 = makeTrack(2);
     t2.rating = 4;
     t2.year = 1985;
     t2.play_count = 42;
     t2.duration = 240.0;
     REQUIRE(db->insertTrack(t2).has_value());
 
-    kanariv::types::Track t3 = makeTrack(3);
+    kanariv::types::TrackRow t3 = makeTrack(3);
     t3.rating = 3;
     t3.year = 2000;
     t3.play_count = 7;
     t3.duration = 180.0;
     REQUIRE(db->insertTrack(t3).has_value());
 
-    kanariv::types::Track t4 = makeTrack(4);
+    kanariv::types::TrackRow t4 = makeTrack(4);
     t4.rating = 5;
     t4.year = 2010;
     t4.play_count = 0;
@@ -440,7 +440,7 @@ TEST_CASE("findByFingerprint and findByPath", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t = makeTrack(42, "/tmp/find_test.mp3");
+    kanariv::types::TrackRow t = makeTrack(42, "/tmp/find_test.mp3");
     auto ins = db->insertTrack(t);
     REQUIRE(ins.has_value());
     // findByPath success
@@ -575,7 +575,7 @@ TEST_CASE("bookmark add/list/remove", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t = makeTrack(7);
+    kanariv::types::TrackRow t = makeTrack(7);
     auto tr = db->insertTrack(t);
     REQUIRE(tr.has_value());
 
@@ -607,7 +607,7 @@ TEST_CASE("history completion_pct round-trip 0/50/100", "[db]") {
     auto dbRes = Database::open(":memory:");
     REQUIRE(dbRes.has_value());
     auto db = std::move(dbRes.value());
-    kanariv::types::Track t = makeTrack(8);
+    kanariv::types::TrackRow t = makeTrack(8);
     auto tr = db->insertTrack(t);
     REQUIRE(tr.has_value());
 
@@ -700,12 +700,12 @@ TEST_CASE("schema user_version reaches current after open and reopen is a no-op"
         REQUIRE(db.has_value());
         auto version = internal::readUserVersion(DatabaseAccess::handle(**db));
         REQUIRE(version.has_value());
-        CHECK(*version == internal::kSchemaVersion);
+        CHECK(*version == internal::schemaVersion);
 
         auto steps = internal::schemaMigrations();
         REQUIRE(!steps.empty());
         CHECK(steps.front().version == 1);
-        CHECK(steps.back().version == internal::kSchemaVersion);
+        CHECK(steps.back().version == internal::schemaVersion);
         for (std::size_t i = 1; i < steps.size(); ++i)
             CHECK(steps[i - 1].version < steps[i].version);
     }
@@ -715,7 +715,7 @@ TEST_CASE("schema user_version reaches current after open and reopen is a no-op"
         REQUIRE(db.has_value());
         auto version = internal::readUserVersion(DatabaseAccess::handle(**db));
         REQUIRE(version.has_value());
-        CHECK(*version == internal::kSchemaVersion);
+        CHECK(*version == internal::schemaVersion);
     }
 }
 
@@ -784,7 +784,7 @@ TEST_CASE("legacy user_version 0 database migrates without data loss", "[db][mig
     CHECK((*tracks)[0].source.key == "legacy/path.mp3");
     auto version = internal::readUserVersion(DatabaseAccess::handle(*db));
     REQUIRE(version.has_value());
-    CHECK(*version == internal::kSchemaVersion);
+    CHECK(*version == internal::schemaVersion);
     // Version 7 removes the soft-delete column the legacy table carried.
     CHECK(!columnExists(DatabaseAccess::handle(*db), "tracks", "deleted_at"));
 }
@@ -825,7 +825,7 @@ TEST_CASE("migration 7 drops the unused soft-delete column", "[db][migration]") 
     CHECK((*tracks)[0].title == "Kept");
     auto version = internal::readUserVersion(h);
     REQUIRE(version.has_value());
-    CHECK(*version == internal::kSchemaVersion);
+    CHECK(*version == internal::schemaVersion);
 }
 
 TEST_CASE("migration 8 indexes the global history timeline", "[db][migration]") {
@@ -868,7 +868,7 @@ TEST_CASE("migration 5 clears gains written by the old loudness heuristic", "[db
     CHECK((*tracks)[0].replayGainAlbum == 0.0);
     auto version = internal::readUserVersion(DatabaseAccess::handle(*db));
     REQUIRE(version.has_value());
-    CHECK(*version == internal::kSchemaVersion);
+    CHECK(*version == internal::schemaVersion);
 }
 
 TEST_CASE("migration 6 drops indexes that duplicate table constraints", "[db][migration]") {

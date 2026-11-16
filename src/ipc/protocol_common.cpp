@@ -64,7 +64,7 @@ resultCodeFromString(std::string_view sv) {
     return std::unexpected{kanariv::utils::makeError(R::InvalidArg, "unknown Result code")};
 }
 
-// Track conversion lives in kanariv::utils (utils/record_json.hpp) -- single
+// TrackRow conversion lives in kanariv::utils (utils/record_json.hpp) -- single
 // definition shared by db export/import and the IPC codec.
 // (The former ipc::detail subset is deleted; wire readers tolerate the
 // fuller db field set: all reads are contains-guarded.)

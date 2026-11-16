@@ -80,57 +80,57 @@ struct KANARIV_API DatabaseAccess {
      */
     static std::optional<kanariv::types::EngineState> legacyEngineState(Database& db);
 
-    // --- Track / library locked helpers ---
+    // --- TrackRow / library locked helpers ---
     /**
      * @brief Forwards to Database::findByPathLocked().
      * @ingroup kanariv_db
      * @param db Database instance.
      * @param path Exact path to search.
-     * @return Track or Error NotFound/Internal.
+     * @return TrackRow or Error NotFound/Internal.
      */
-    static std::expected<kanariv::types::Track, kanariv::utils::Error>
+    static std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findByPathLocked(Database& db, std::string_view path);
     /**
      * @brief Forwards to Database::findByFingerprintLocked().
      * @ingroup kanariv_db
      * @param db Database instance.
      * @param fp 32-byte fingerprint.
-     * @return Track or Error NotFound/Internal.
+     * @return TrackRow or Error NotFound/Internal.
      */
-    static std::expected<kanariv::types::Track, kanariv::utils::Error>
+    static std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     findByFingerprintLocked(Database& db, const std::array<uint8_t, 32>& fp);
     /**
      * @brief Forwards to Database::getTrackLocked().
      * @ingroup kanariv_db
      * @param db Database instance.
-     * @param id Track id.
-     * @return Track or Error.
+     * @param id TrackRow id.
+     * @return TrackRow or Error.
      */
-    static std::expected<kanariv::types::Track, kanariv::utils::Error> getTrackLocked(Database& db,
-                                                                                    int64_t id);
+    static std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    getTrackLocked(Database& db, int64_t id);
     /**
      * @brief Forwards to Database::insertTrackLocked().
      * @ingroup kanariv_db
      * @param db Database instance.
-     * @param t Track to insert.
+     * @param t TrackRow to insert.
      * @return New row id or Error AlreadyExists/Internal.
      */
     static std::expected<int64_t, kanariv::utils::Error>
-    insertTrackLocked(Database& db, const kanariv::types::Track& t);
+    insertTrackLocked(Database& db, const kanariv::types::TrackRow& t);
     /**
      * @brief Forwards to Database::updateTrackLocked().
      * @ingroup kanariv_db
      * @param db Database instance.
-     * @param t Track with fields to persist.
+     * @param t TrackRow with fields to persist.
      * @return Success or Error InvalidArg/NotFound/Internal.
      */
     static std::expected<void, kanariv::utils::Error>
-    updateTrackLocked(Database& db, const kanariv::types::Track& t);
+    updateTrackLocked(Database& db, const kanariv::types::TrackRow& t);
     /**
      * @brief Forwards to Database::deleteTrackLocked().
      * @ingroup kanariv_db
      * @param db Database instance.
-     * @param id Track id.
+     * @param id TrackRow id.
      * @return Success or Error NotFound/Internal.
      */
     static std::expected<void, kanariv::utils::Error> deleteTrackLocked(Database& db, int64_t id);
@@ -170,7 +170,7 @@ struct KANARIV_API DatabaseAccess {
      * @ingroup kanariv_db
      * @param db Database instance.
      * @param pid Playlist id.
-     * @param tid Track id.
+     * @param tid TrackRow id.
      * @param pos Position (-1 = append).
      * @return Success or Error.
      */
@@ -180,14 +180,14 @@ struct KANARIV_API DatabaseAccess {
      * @brief Forwards to Database::queueEnqueueLocked().
      * @ingroup kanariv_db
      * @param db Database instance.
-     * @param qid kanariv::types::Queue id (0 -> kDefaultQueueId).
-     * @param tid Track id.
-     * @param index Zero-based insertion index, or kAppendIndex (-1) to append.
+     * @param qid kanariv::types::Queue id (0 -> defaultQueueId).
+     * @param tid TrackRow id.
+     * @param index Zero-based insertion index, or appendIndex (-1) to append.
      * @return Success or Error.
      */
     static std::expected<void, kanariv::utils::Error>
     queueEnqueueLocked(Database& db, int64_t qid, int64_t tid,
-                       int64_t index = kanariv::db::kAppendIndex);
+                       int64_t index = kanariv::db::appendIndex);
     /**
      * @brief Forwards to Database::queueDequeueLocked().
      * @ingroup kanariv_db

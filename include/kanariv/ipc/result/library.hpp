@@ -21,7 +21,7 @@ namespace kanariv::ipc {
 // The canonical type is `kanariv::types::LibraryStats`.
 
 // ---------------------------------------------------------------------------
-// Track and Playlist Results
+// TrackRow and Playlist Results
 // ---------------------------------------------------------------------------
 
 /**
@@ -37,7 +37,7 @@ struct Tracks final {
     /**
      * @brief Vector of tracks.
      */
-    std::vector<kanariv::types::Track> tracks{};
+    std::vector<kanariv::types::TrackRow> tracks{};
 };
 
 /**
@@ -58,7 +58,7 @@ struct SearchResults final {
     /**
      * @brief Matching tracks.
      */
-    std::vector<kanariv::types::Track> tracks{};
+    std::vector<kanariv::types::TrackRow> tracks{};
 };
 
 /**
@@ -78,7 +78,7 @@ struct ScanReport final {
 };
 
 // ---------------------------------------------------------------------------
-// Track Detail Results
+// TrackRow Detail Results
 // ---------------------------------------------------------------------------
 
 /**
@@ -88,15 +88,15 @@ struct ScanReport final {
  *
  * @json_example {"type": "SingleTrack", "track": {"id": 1, "title": "Song", ...}}
  *
- * @param track Track metadata.
+ * @param track TrackRow metadata.
  * @param cover_mime MIME type of cover art (e.g., "image/jpeg"), empty when no cover.
  * @param cover_data Base64-encoded cover art (RFC 4648), empty when no cover.
  */
 struct SingleTrack final {
     /**
-     * @brief Track metadata.
+     * @brief TrackRow metadata.
      */
-    kanariv::types::Track track{};
+    kanariv::types::TrackRow track{};
     /**
      * @brief MIME type of cover art (e.g., "image/jpeg"), empty when no cover.
      */
@@ -109,21 +109,21 @@ struct SingleTrack final {
 
 /**
  * @struct TrackInfo
- * @brief Track with play statistics (returned by Info command).
+ * @brief TrackRow with play statistics (returned by Info command).
  * @ingroup kanariv_ipc
  *
  * @json_example {"type": "TrackInfo", "track": {...}, "play_count": 42, "last_played":
  * 1699999999000}
  *
- * @param track Track metadata.
+ * @param track TrackRow metadata.
  * @param play_count Number of times this track has been played.
  * @param last_played Timestamp of last play (milliseconds since epoch, 0 if never).
  */
 struct TrackInfo final {
     /**
-     * @brief Track metadata.
+     * @brief TrackRow metadata.
      */
-    kanariv::types::Track track{};
+    kanariv::types::TrackRow track{};
     /**
      * @brief Number of times this track has been played.
      */
@@ -155,7 +155,7 @@ struct LibraryMaintenanceReport final {
     /**
      * @brief Tracks whose paths no longer exist on disk.
      */
-    std::vector<kanariv::types::Track> missing_tracks{};
+    std::vector<kanariv::types::TrackRow> missing_tracks{};
     /**
      * @brief Number of path-sharing groups.
      */

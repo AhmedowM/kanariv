@@ -79,7 +79,7 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath, const std
         return;
     std::cout << "[demo] queue empty, populating 2 demo tracks sample='" << samplePath << "'\n";
     for (int i = 0; i < 2; ++i) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         for (int b = 0; b < 32; ++b)
             t.fingerprint[b] = static_cast<uint8_t>(fpBase + i * 32 + b);
         t.path = samplePath;
@@ -124,7 +124,7 @@ void ensureQueueHasTracks(Database& db, const std::string& samplePath, const std
     }
 }
 
-bool playTrackViaPlayer(const kanariv::types::Track& track) {
+bool playTrackViaPlayer(const kanariv::types::TrackRow& track) {
     std::cout << "[demo] queue track " << track.id << ": '"
               << (track.title.empty() ? "(untitled)" : track.title) << "' by '"
               << (track.artist.empty() ? "(unknown)" : track.artist) << "' path='" << track.path
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
             ++errors;
             continue;
         }
-        kanariv::types::Track track = tr.value();
+        kanariv::types::TrackRow track = tr.value();
         std::cout << "[demo] queue pos " << qi.position << " -> track " << track.id << "\n";
         if (playTrackViaPlayer(track))
             ++played;

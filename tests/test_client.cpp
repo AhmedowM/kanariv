@@ -291,7 +291,7 @@ class FakeDaemon {
 
     std::optional<std::string> readFrame(std::stop_token st) {
         const auto deadline = Clock::now() + std::chrono::seconds{10};
-        std::array<std::byte, ipc::kFrameHeaderBytes> header{};
+        std::array<std::byte, ipc::frameHeaderBytes> header{};
         if (conn_.read(header, st, deadline) != svcd::IoStatus::Ok)
             return std::nullopt;
         const auto length = ipc::decodeFrameLength(header);

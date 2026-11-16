@@ -37,7 +37,7 @@ namespace {
 std::unique_ptr<kanariv::service::Host> g_host;
 std::mutex g_hostMutex;
 
-const char* kBridgeClass = "com/kanariv/app/KanarivBridge";
+const char* bridgeClass = "com/kanariv/app/KanarivBridge";
 
 /**
  * @brief Dispatch an IPC command through the service and return whether it
@@ -394,7 +394,7 @@ static jboolean nativeLibraryAdd(JNIEnv* env, jclass, jstring path) noexcept {
 // JNI native method table
 // ---------------------------------------------------------------------------
 
-static JNINativeMethod kMethods[] = {
+static JNINativeMethod methods[] = {
     {"nativeStartDaemon", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)J",
      reinterpret_cast<void*>(nativeStartDaemon)},
     {"nativeStopDaemon", "()V", reinterpret_cast<void*>(nativeStopDaemon)},
@@ -418,11 +418,10 @@ static JNINativeMethod kMethods[] = {
 } // namespace kanariv::android
 
 int kanariv::android::jniRegisterNatives(JNIEnv* env) noexcept {
-    jclass cls = env->FindClass(kBridgeClass);
+    jclass cls = env->FindClass(bridgeClass);
     if (!cls)
         return -1;
-    if (env->RegisterNatives(cls, kMethods,
-                             sizeof(kMethods) / sizeof(kMethods[0])) != 0)
+    if (env->RegisterNatives(cls, methods, sizeof(methods) / sizeof(methods[0])) != 0)
         return -1;
     return JNI_VERSION_1_6;
 }

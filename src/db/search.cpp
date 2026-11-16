@@ -19,12 +19,12 @@
 namespace kanariv::db {
 
 // TU-local row mapper (alias for internal::fillTrackFromStmt).
-static void fillTrackSearch(sqlite3_stmt* s, kanariv::types::Track& out) {
+static void fillTrackSearch(sqlite3_stmt* s, kanariv::types::TrackRow& out) {
     internal::fillTrackFromStmt(s, out);
 }
 
 // TU-local single FTS5 MATCH query.
-static std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+static std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 tryFtsQuery(sqlite3* h, std::string_view query, int limit) {
     const char* sql =
         "SELECT t.id, t.fingerprint, t.path, t.size, t.mtime, t.duration, "
@@ -40,22 +40,22 @@ tryFtsQuery(sqlite3* h, std::string_view query, int limit) {
     }
     st.bindText(1, query);
     st.bindInt(2, limit > 0 ? limit : 50);
-    std::vector<kanariv::types::Track> out;
+    std::vector<kanariv::types::TrackRow> out;
     while (st.step()) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         fillTrackSearch(st.get(), t);
         out.push_back(std::move(t));
     }
     return out;
 }
 
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 searchFts(Database& db, std::string_view query, int limit) {
     if (query.empty())
-        return std::vector<kanariv::types::Track>{};
+        return std::vector<kanariv::types::TrackRow>{};
     std::string sanitized = internal::sanitizeFtsTerm(query);
     if (sanitized.empty())
-        return std::vector<kanariv::types::Track>{};
+        return std::vector<kanariv::types::TrackRow>{};
     std::string ftsQ = sanitized;
     std::unique_lock lock(DatabaseAccess::mutex(db));
     sqlite3* h = DatabaseAccess::handle(db);
@@ -90,19 +90,19 @@ searchFts(Database& db, std::string_view query, int limit) {
     st.bindText(5, pat);
     st.bindText(6, pat);
     st.bindInt(7, limit > 0 ? limit : 50);
-    std::vector<kanariv::types::Track> out;
+    std::vector<kanariv::types::TrackRow> out;
     while (st.step()) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         internal::fillTrackFromStmt(st.get(), t);
         out.push_back(std::move(t));
     }
     return out;
 }
 
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 searchLike(Database& db, std::string_view query, int limit) {
     if (query.empty())
-        return std::vector<kanariv::types::Track>{};
+        return std::vector<kanariv::types::TrackRow>{};
     std::string esc = internal::escapeLike(query);
     std::string pat = "%" + esc + "%";
     std::unique_lock lock(DatabaseAccess::mutex(db));
@@ -129,9 +129,9 @@ searchLike(Database& db, std::string_view query, int limit) {
     st.bindText(5, pat);
     st.bindText(6, pat);
     st.bindInt(7, limit > 0 ? limit : 50);
-    std::vector<kanariv::types::Track> out;
+    std::vector<kanariv::types::TrackRow> out;
     while (st.step()) {
-        kanariv::types::Track t;
+        kanariv::types::TrackRow t;
         internal::fillTrackFromStmt(st.get(), t);
         out.push_back(std::move(t));
     }
@@ -142,12 +142,12 @@ std::string sanitizeFtsTerm(std::string_view term) {
     return internal::sanitizeFtsTerm(term);
 }
 
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 Database::searchTracks(std::string_view query, int limit) {
     return searchFts(*this, query, limit);
 }
 
-std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
+std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 search(Database& db, std::string_view query, int limit) {
     return searchFts(db, query, limit);
 }
