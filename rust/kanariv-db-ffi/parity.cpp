@@ -163,7 +163,6 @@ std::vector<Track> parseRustTracks(const char* jsonText, const std::string& cont
         track.track_num = static_cast<int32_t>(field<int64_t>(*item, "track_num", context));
         track.disc_num = static_cast<int32_t>(field<int64_t>(*item, "disc_num", context));
         track.rating = static_cast<int32_t>(field<int64_t>(*item, "rating", context));
-        track.deleted_at = field<int64_t>(*item, "deleted_at", context);
         track.fingerprint = parseFingerprint(field<std::string>(*item, "fingerprint", context));
         tracks.push_back(std::move(track));
     }
@@ -192,7 +191,6 @@ void compareTrack(const Track& cpp, const Track& rust, const std::string& contex
     check(cpp.track_num == rust.track_num, context + ": track_num");
     check(cpp.disc_num == rust.disc_num, context + ": disc_num");
     check(cpp.rating == rust.rating, context + ": rating");
-    check(cpp.deleted_at == rust.deleted_at, context + ": deleted_at");
     check(fingerprintHex(cpp) == fingerprintHex(rust), context + ": fingerprint");
 }
 

@@ -105,8 +105,8 @@ sourceKindFromName(std::string_view name) noexcept {
  * @brief Represents a single audio track row.
  * @ingroup kanariv_types
  * @details Maps 1:1 to the `tracks` table. `fingerprint` is a 32-byte
- * BLAKE3 digest; `deleted_at == 0` means not soft-deleted. `library_id`
- * defaults to 1 (the built-in default library).
+ * BLAKE3 digest; `library_id` defaults to 1 (the built-in default library).
+ * Deletion is remove-and-forget: there is no soft-delete state.
  */
 struct Track {
     int64_t id{};                          ///< Row id (PK, 0 = not yet persisted).
@@ -117,7 +117,6 @@ struct Track {
     int64_t last_played{};                 ///< Timestamp of last play (unix seconds).
     int64_t date_added{};                  ///< Timestamp when inserted.
     int64_t last_scanned{};                ///< Timestamp of last scan.
-    int64_t deleted_at{};                  ///< Soft-delete timestamp (0 = live).
     int64_t library_id{1};                 ///< Owning library id (FK -> libraries.id).
     std::string path;                      ///< Absolute filesystem path (NOT NULL).
     std::string title;                     ///< Title tag.

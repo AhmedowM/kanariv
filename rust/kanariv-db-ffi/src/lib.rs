@@ -89,7 +89,6 @@ fn track_json(track: &Track) -> Value {
         "track_num": track.track_num,
         "disc_num": track.disc_num,
         "rating": track.rating,
-        "deleted_at": track.deleted_at,
         "fingerprint": fingerprint_hex(&track.fingerprint),
     })
 }

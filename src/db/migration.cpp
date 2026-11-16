@@ -53,7 +53,6 @@ inline constexpr std::string_view kBaseSchema =
     "id INTEGER PRIMARY KEY,"
     "fingerprint BLOB(32) NOT NULL UNIQUE,"
     "path TEXT NOT NULL,"
-    "deleted_at DATETIME,"
     "size INTEGER,"
     "mtime INTEGER,"
     "duration REAL,"
@@ -289,6 +288,22 @@ std::expected<void, kanariv::utils::Error> migrateSourceIdentity(sqlite3* db) {
         "create track source index");
 }
 
+/**
+ * @brief Version 7: drops the unused soft-delete column.
+ * @details Deleting a track is remove-and-forget, so no row ever had a
+ * non-null `deleted_at`. A database created by version 1 of this schema never
+ * had the column, hence the guard; it is neither indexed nor named by any
+ * trigger or view, which is the prerequisite for `DROP COLUMN`.
+ */
+std::expected<void, kanariv::utils::Error> dropDeletedAt(sqlite3* db) {
+    auto exists = hasColumn(db, "tracks", "deleted_at");
+    if (!exists)
+        return std::unexpected{exists.error()};
+    if (!*exists)
+        return {};
+    return execSql(db, "ALTER TABLE tracks DROP COLUMN deleted_at", "drop tracks.deleted_at");
+}
+
 } // namespace
 
 std::expected<void, kanariv::utils::Error> configureConnection(sqlite3* db) {
@@ -298,7 +313,7 @@ std::expected<void, kanariv::utils::Error> configureConnection(sqlite3* db) {
 }
 
 std::span<const MigrationStep> schemaMigrations() noexcept {
-    static constexpr std::array<MigrationStep, 6> steps{{
+    static constexpr std::array<MigrationStep, 8> steps{{
         MigrationStep{1, "base schema", kBaseSchema, nullptr},
         MigrationStep{2, "queue position uniqueness", kQueuePositionUniqueness, nullptr},
         MigrationStep{3, "track source identity", {}, &migrateSourceIdentity},
@@ -310,6 +325,12 @@ std::span<const MigrationStep> schemaMigrations() noexcept {
         MigrationStep{5, "clear mis-scaled replay gain",
                       "UPDATE tracks SET replay_gain_track=0, replay_gain_album=0", nullptr},
         MigrationStep{6, "drop redundant indexes", kDropRedundantIndexes, nullptr},
+        MigrationStep{7, "drop soft-delete column", {}, &dropDeletedAt},
+        // Per-track history lookups already walk idx_history_track_started; the
+        // global "recently played" query had no index and scanned the table.
+        MigrationStep{8, "history timeline index",
+                      "CREATE INDEX IF NOT EXISTS idx_history_started ON history(started_at DESC)",
+                      nullptr},
     }};
     return steps;
 }

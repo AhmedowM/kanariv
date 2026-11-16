@@ -93,8 +93,8 @@ std::expected<void, kanariv::utils::Error> importJson(Database& db,
                                   "album_artist, genre, year, track_num, disc_num, "
                                   "cover_art_path, rating, play_count, last_played, date_added, "
                                   "last_scanned, dirty, library_id, source_kind, source_key, "
-                                  "source_available, source_display_name, deleted_at) VALUES "
-                                  "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                                  "source_available, source_display_name) VALUES "
+                                  "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         !e) {
         return std::unexpected{e.error()};
     }
@@ -105,7 +105,7 @@ std::expected<void, kanariv::utils::Error> importJson(Database& db,
                                        "disc_num=?, cover_art_path=?, rating=?, play_count=?, "
                                        "last_played=?, date_added=?, last_scanned=?, dirty=?, "
                                        "library_id=?, source_kind=?, source_key=?, "
-                                       "source_available=?, source_display_name=?, deleted_at=? "
+                                       "source_available=?, source_display_name=? "
                                        "WHERE id=?");
         !e) {
         return std::unexpected{e.error()};
@@ -169,10 +169,6 @@ std::expected<void, kanariv::utils::Error> importJson(Database& db,
         insertStmt.bindText(26, source.key);
         insertStmt.bindInt(27, source.available ? 1 : 0);
         insertStmt.bindText(28, source.display_name);
-        if (t.deleted_at)
-            insertStmt.bindInt(29, t.deleted_at);
-        else
-            insertStmt.bindNull(29);
         const int insertRc = insertStmt.stepDone();
         insertStmt.reset();
         if (insertRc == SQLITE_DONE) {
@@ -221,11 +217,7 @@ std::expected<void, kanariv::utils::Error> importJson(Database& db,
         updateStmt.bindText(25, updatedSource.key);
         updateStmt.bindInt(26, updatedSource.available ? 1 : 0);
         updateStmt.bindText(27, updatedSource.display_name);
-        if (t.deleted_at)
-            updateStmt.bindInt(28, t.deleted_at);
-        else
-            updateStmt.bindNull(28);
-        updateStmt.bindInt(29, existing);
+        updateStmt.bindInt(28, existing);
         const int updateRc = updateStmt.stepDone();
         updateStmt.reset();
         if (updateRc != SQLITE_DONE)

@@ -32,6 +32,83 @@ kanariv::media::ScanMode toMediaMode(kanariv::contracts::ScanMode mode) {
                                                       : kanariv::media::ScanMode::Sampled;
 }
 
+// Fills the tag and stream-parameter columns from a scan result, moving values
+// out of it. Returns false when the extract failed or carried no usable field.
+bool applyMetadata(kanariv::utils::Expected<kanariv::types::TrackMetadata>& meta,
+                   kanariv::types::Track& t) {
+    if (!meta)
+        return false;
+    auto& m = *meta;
+    bool hasMeta = false;
+    if (!m.title.empty()) {
+        t.title = std::move(m.title);
+        hasMeta = true;
+    }
+    if (!m.artist.empty()) {
+        t.artist = std::move(m.artist);
+        hasMeta = true;
+    }
+    if (!m.album.empty()) {
+        t.album = std::move(m.album);
+        hasMeta = true;
+    }
+    if (!m.album_artist.empty()) {
+        t.album_artist = std::move(m.album_artist);
+        hasMeta = true;
+    }
+    if (!m.genre.empty()) {
+        t.genre = std::move(m.genre);
+        hasMeta = true;
+    }
+    if (m.year != 0) {
+        t.year = m.year;
+        hasMeta = true;
+    }
+    if (m.track_num != 0) {
+        t.track_num = m.track_num;
+        hasMeta = true;
+    }
+    if (m.disc_num != 0) {
+        t.disc_num = m.disc_num;
+        hasMeta = true;
+    }
+    if (m.duration > 0) {
+        t.duration = m.duration;
+        hasMeta = true;
+    }
+    if (m.sample_rate != 0) {
+        t.sample_rate = static_cast<uint32_t>(m.sample_rate);
+        hasMeta = true;
+    }
+    if (m.channels != 0) {
+        t.channels = static_cast<uint32_t>(m.channels);
+        hasMeta = true;
+    }
+    if (m.bitrate != 0) {
+        t.bitrate = m.bitrate;
+        hasMeta = true;
+    }
+    return hasMeta;
+}
+
+// A row whose tags could not be re-read must not keep the previous scan's text:
+// those values may describe a different file that used to live at this path.
+void clearMetadata(kanariv::types::Track& t) {
+    t.title.clear();
+    t.artist.clear();
+    t.album.clear();
+    t.album_artist.clear();
+    t.genre.clear();
+    t.year = 0;
+    t.track_num = 0;
+    t.disc_num = 0;
+    t.cover_art_path.clear();
+    t.duration = 0;
+    t.sample_rate = 0;
+    t.channels = 0;
+    t.bitrate = 0;
+}
+
 } // namespace
 
 Scanner::Scanner(std::shared_ptr<kanariv::db::Database> db) : db_(std::move(db)) {}
@@ -85,8 +162,7 @@ Scanner::scanLibrary(int64_t libraryId,
         auto tx = kanariv::db::DbTransaction::begin(kanariv::db::DatabaseAccess::handleLocked(db));
         if (!tx) {
             batchLock.unlock();
-            return std::unexpected{
-                kanariv::utils::makeError(kanariv::utils::StatusCode::Busy, tx.error().message)};
+            return std::unexpected{tx.error()};
         }
         batchTx.emplace(std::move(*tx));
         batchPending = 0;
@@ -154,79 +230,12 @@ Scanner::scanLibrary(int64_t libraryId,
             upd.size = trk.size;
             upd.mtime = trk.mtime;
             upd.library_id = libraryId;
-            upd.deleted_at = 0;
-            bool hasMeta = false;
             auto meta = kanariv::media::extractMetadata(trk.path);
-            if (!meta) {
-                if (auto* lg = db.logger())
-                    lg->debug("scan metadata failed file={} err={}", trk.path,
-                              meta.error().message);
-            }
-            if (meta) {
-                if (!meta->title.empty()) {
-                    upd.title = std::move(meta->title);
-                    hasMeta = true;
-                }
-                if (!meta->artist.empty()) {
-                    upd.artist = std::move(meta->artist);
-                    hasMeta = true;
-                }
-                if (!meta->album.empty()) {
-                    upd.album = std::move(meta->album);
-                    hasMeta = true;
-                }
-                if (!meta->album_artist.empty()) {
-                    upd.album_artist = std::move(meta->album_artist);
-                    hasMeta = true;
-                }
-                if (!meta->genre.empty()) {
-                    upd.genre = std::move(meta->genre);
-                    hasMeta = true;
-                }
-                if (meta->year != 0) {
-                    upd.year = meta->year;
-                    hasMeta = true;
-                }
-                if (meta->track_num != 0) {
-                    upd.track_num = meta->track_num;
-                    hasMeta = true;
-                }
-                if (meta->disc_num != 0) {
-                    upd.disc_num = meta->disc_num;
-                    hasMeta = true;
-                }
-                if (meta->duration > 0) {
-                    upd.duration = meta->duration;
-                    hasMeta = true;
-                }
-                if (meta->sample_rate != 0) {
-                    upd.sample_rate = static_cast<uint32_t>(meta->sample_rate);
-                    hasMeta = true;
-                }
-                if (meta->channels != 0) {
-                    upd.channels = static_cast<uint32_t>(meta->channels);
-                    hasMeta = true;
-                }
-                if (meta->bitrate != 0) {
-                    upd.bitrate = meta->bitrate;
-                    hasMeta = true;
-                }
-            }
-            if (!hasMeta) {
-                upd.title.clear();
-                upd.artist.clear();
-                upd.album.clear();
-                upd.album_artist.clear();
-                upd.genre.clear();
-                upd.year = 0;
-                upd.track_num = 0;
-                upd.disc_num = 0;
-                upd.cover_art_path.clear();
-                upd.duration = 0;
-                upd.sample_rate = 0;
-                upd.channels = 0;
-                upd.bitrate = 0;
-            }
+            if (!meta && db.logger())
+                db.logger()->debug("scan metadata failed file={} err={}", trk.path,
+                                   meta.error().message);
+            if (!applyMetadata(meta, upd))
+                clearMetadata(upd);
             if (kanariv::db::DatabaseAccess::updateTrackLocked(db, upd))
                 updated++;
             else
@@ -244,79 +253,12 @@ Scanner::scanLibrary(int64_t libraryId,
             upd.size = trk.size;
             upd.mtime = trk.mtime;
             upd.library_id = libraryId;
-            upd.deleted_at = 0;
-            bool hasMeta = false;
             auto meta = kanariv::media::extractMetadata(trk.path);
-            if (!meta) {
-                if (auto* lg = db.logger())
-                    lg->debug("scan metadata failed file={} err={}", trk.path,
-                              meta.error().message);
-            }
-            if (meta) {
-                if (!meta->title.empty()) {
-                    upd.title = std::move(meta->title);
-                    hasMeta = true;
-                }
-                if (!meta->artist.empty()) {
-                    upd.artist = std::move(meta->artist);
-                    hasMeta = true;
-                }
-                if (!meta->album.empty()) {
-                    upd.album = std::move(meta->album);
-                    hasMeta = true;
-                }
-                if (!meta->album_artist.empty()) {
-                    upd.album_artist = std::move(meta->album_artist);
-                    hasMeta = true;
-                }
-                if (!meta->genre.empty()) {
-                    upd.genre = std::move(meta->genre);
-                    hasMeta = true;
-                }
-                if (meta->year != 0) {
-                    upd.year = meta->year;
-                    hasMeta = true;
-                }
-                if (meta->track_num != 0) {
-                    upd.track_num = meta->track_num;
-                    hasMeta = true;
-                }
-                if (meta->disc_num != 0) {
-                    upd.disc_num = meta->disc_num;
-                    hasMeta = true;
-                }
-                if (meta->duration > 0) {
-                    upd.duration = meta->duration;
-                    hasMeta = true;
-                }
-                if (meta->sample_rate != 0) {
-                    upd.sample_rate = static_cast<uint32_t>(meta->sample_rate);
-                    hasMeta = true;
-                }
-                if (meta->channels != 0) {
-                    upd.channels = static_cast<uint32_t>(meta->channels);
-                    hasMeta = true;
-                }
-                if (meta->bitrate != 0) {
-                    upd.bitrate = meta->bitrate;
-                    hasMeta = true;
-                }
-            }
-            if (!hasMeta) {
-                upd.title.clear();
-                upd.artist.clear();
-                upd.album.clear();
-                upd.album_artist.clear();
-                upd.genre.clear();
-                upd.year = 0;
-                upd.track_num = 0;
-                upd.disc_num = 0;
-                upd.cover_art_path.clear();
-                upd.duration = 0;
-                upd.sample_rate = 0;
-                upd.channels = 0;
-                upd.bitrate = 0;
-            }
+            if (!meta && db.logger())
+                db.logger()->debug("scan metadata failed file={} err={}", trk.path,
+                                   meta.error().message);
+            if (!applyMetadata(meta, upd))
+                clearMetadata(upd);
             upd.dirty = false;
             upd.play_count = keepPlay;
             upd.rating = keepRating;

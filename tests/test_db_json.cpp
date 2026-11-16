@@ -148,7 +148,6 @@ TEST_CASE("track JSON roundtrip preserves every field", "[db_json]") {
     t.last_scanned = 16;
     t.dirty = true;
     t.library_id = 3;
-    t.deleted_at = 17;
     t.path = "/music/roundtrip.mp3";
     t.title = "Title X";
     t.artist = "Artist X";
@@ -190,7 +189,6 @@ TEST_CASE("track JSON roundtrip preserves every field", "[db_json]") {
     REQUIRE(r.last_scanned == t.last_scanned);
     REQUIRE(r.dirty == t.dirty);
     REQUIRE(r.library_id == t.library_id);
-    REQUIRE(r.deleted_at == t.deleted_at);
     REQUIRE(r.path == t.path);
     REQUIRE(r.title == t.title);
     REQUIRE(r.artist == t.artist);

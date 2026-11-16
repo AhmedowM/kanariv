@@ -22,7 +22,12 @@ std::expected<DbTransaction, kanariv::utils::Error> DbTransaction::begin(sqlite3
     int rc = sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
         std::string msg = err ? err : "BEGIN failed";
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg)};
+        // A locked database is the caller's to retry; anything else means the
+        // handle or the file is unusable.
+        const int primary = rc & 0xFF;
+        const bool busy = primary == SQLITE_BUSY || primary == SQLITE_LOCKED;
+        return std::unexpected{kanariv::utils::makeError(
+            busy ? kanariv::utils::StatusCode::Busy : kanariv::utils::StatusCode::Internal, msg)};
     }
     return DbTransaction{db, false};
 }

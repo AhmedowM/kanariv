@@ -11,6 +11,7 @@
 #include <db/queue.hpp>
 #include <db/statement.hpp>
 #include <db/stmt_helpers.hpp>
+#include <db/transaction.hpp>
 #include <expected>
 #include <filesystem>
 #include <kanariv/db/database.hpp>
@@ -52,7 +53,7 @@ inline constexpr std::string_view updateTrackSql =
     "channels=?, bitrate=?, title=?, artist=?, album=?, album_artist=?, genre=?, year=?, "
     "track_num=?, disc_num=?, cover_art_path=?, rating=?, play_count=?, last_played=?, "
     "date_added=?, last_scanned=?, dirty=?, library_id=?, source_kind=?, source_key=?, "
-    "source_available=?, source_display_name=?, deleted_at=? WHERE id=?";
+    "source_available=?, source_display_name=? WHERE id=?";
 
 // Private implementation: the SQLite handle, statement cache and locks live
 // here so the public header stays include-light. Member order is load-bearing:
@@ -212,28 +213,16 @@ Database::queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) {
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
-    char* err = nullptr;
-    internal::SqliteErrGuard guard{err};
-    int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
-    if (rc != SQLITE_OK)
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
-                                                         err ? std::string(err) : "BEGIN failed")};
+    auto txRes = kanariv::db::DbTransaction::begin(impl_->db_.get());
+    if (!txRes)
+        return std::unexpected{txRes.error()};
+    auto tx = std::move(*txRes);
     for (int64_t tid : tids) {
         auto r = kanariv::db::queueEnqueueLocked(impl_->db_.get(), qid, tid, -1);
-        if (!r) {
-            sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
+        if (!r)
             return std::unexpected{r.error()};
-        }
     }
-    char* cErr = nullptr;
-    internal::SqliteErrGuard cGuard{cErr};
-    rc = sqlite3_exec(impl_->db_.get(), "COMMIT", nullptr, nullptr, &cErr);
-    if (rc != SQLITE_OK) {
-        sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, cErr ? std::string(cErr) : "commit failed")};
-    }
-    return {};
+    return tx.commit();
 }
 
 std::expected<kanariv::types::Track, kanariv::utils::Error>
@@ -501,11 +490,7 @@ void bindTrackForUpdate(SqliteStatement& st, const kanariv::types::Track& t) {
     st.bindText(26, source.key);
     st.bindInt(27, source.available ? 1 : 0);
     st.bindText(28, source.display_name);
-    if (t.deleted_at)
-        st.bindInt(29, t.deleted_at);
-    else
-        st.bindNull(29);
-    st.bindInt(30, t.id);
+    st.bindInt(29, t.id);
 }
 
 std::expected<int64_t, kanariv::utils::Error>
@@ -919,33 +904,21 @@ Database::createPlaylistFromTracks(std::string_view name, std::span<const int64_
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
-    char* err = nullptr;
-    internal::SqliteErrGuard guard{err};
-    int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
-    if (rc != SQLITE_OK)
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
-                                                         err ? std::string(err) : "BEGIN failed")};
+    auto txRes = kanariv::db::DbTransaction::begin(impl_->db_.get());
+    if (!txRes)
+        return std::unexpected{txRes.error()};
+    auto tx = std::move(*txRes);
     auto pidRes = impl_->createPlaylistLocked(name);
-    if (!pidRes) {
-        sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
+    if (!pidRes)
         return std::unexpected{pidRes.error()};
-    }
     int64_t pid = *pidRes;
     for (int64_t tid : trackIds) {
         auto r = impl_->playlistAddTrackLocked(pid, tid);
-        if (!r) {
-            sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
+        if (!r)
             return std::unexpected{r.error()};
-        }
     }
-    char* cErr = nullptr;
-    internal::SqliteErrGuard cGuard{cErr};
-    rc = sqlite3_exec(impl_->db_.get(), "COMMIT", nullptr, nullptr, &cErr);
-    if (rc != SQLITE_OK) {
-        sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, cErr ? std::string(cErr) : "commit failed")};
-    }
+    if (auto c = tx.commit(); !c)
+        return std::unexpected{c.error()};
     return pid;
 }
 
@@ -1246,26 +1219,14 @@ std::expected<void, kanariv::utils::Error> Database::queueMove(int64_t qid, std:
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
-    char* err = nullptr;
-    internal::SqliteErrGuard guard{err};
-    int rc = sqlite3_exec(impl_->db_.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err);
-    if (rc != SQLITE_OK)
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Busy,
-                                                         err ? std::string(err) : "BEGIN failed")};
+    auto txRes = kanariv::db::DbTransaction::begin(impl_->db_.get());
+    if (!txRes)
+        return std::unexpected{txRes.error()};
+    auto tx = std::move(*txRes);
     auto moved = kanariv::db::queueMoveLocked(impl_->db_.get(), qid, from, to);
-    if (!moved) {
-        sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
+    if (!moved)
         return std::unexpected{moved.error()};
-    }
-    char* cErr = nullptr;
-    internal::SqliteErrGuard cGuard{cErr};
-    rc = sqlite3_exec(impl_->db_.get(), "COMMIT", nullptr, nullptr, &cErr);
-    if (rc != SQLITE_OK) {
-        sqlite3_exec(impl_->db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, cErr ? std::string(cErr) : "commit failed")};
-    }
-    return {};
+    return tx.commit();
 }
 
 std::expected<void, kanariv::utils::Error> Database::queueClear(int64_t qid) {
@@ -1707,14 +1668,13 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::ge
             out = st.columnInt(0);
         st.reset();
     };
-    one("SELECT COUNT(*) FROM tracks WHERE deleted_at IS NULL", s.num_tracks);
+    one("SELECT COUNT(*) FROM tracks", s.num_tracks);
     one("SELECT COUNT(*) FROM playlists", s.num_playlists);
     one("SELECT COUNT(*) FROM queue", s.num_queue_items);
     one("SELECT COUNT(*) FROM history", s.num_history);
     one("SELECT COUNT(*) FROM bookmarks", s.num_bookmarks);
     one("SELECT COUNT(*) FROM libraries", s.num_libraries);
-    if (auto sRes = impl_->getCachedForUse(
-            "SELECT COALESCE(SUM(duration),0) FROM tracks WHERE deleted_at IS NULL");
+    if (auto sRes = impl_->getCachedForUse("SELECT COALESCE(SUM(duration),0) FROM tracks");
         sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
@@ -1744,13 +1704,12 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
         st.reset();
     };
 
-    one("SELECT COUNT(*) FROM tracks WHERE deleted_at IS NULL", d.tracks);
+    one("SELECT COUNT(*) FROM tracks", d.tracks);
     one("SELECT COUNT(*) FROM queue", d.queues);
     one("SELECT COUNT(*) FROM playlists", d.playlists);
 
     // Total duration
-    if (auto sRes = impl_->getCachedForUse(
-            "SELECT COALESCE(SUM(duration),0) FROM tracks WHERE deleted_at IS NULL");
+    if (auto sRes = impl_->getCachedForUse("SELECT COALESCE(SUM(duration),0) FROM tracks");
         sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
@@ -1760,7 +1719,7 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
 
     // Total play time (sum of play_count * duration)
     if (auto sRes = impl_->getCachedForUse(
-            "SELECT COALESCE(SUM(play_count * duration),0) FROM tracks WHERE deleted_at IS NULL");
+            "SELECT COALESCE(SUM(play_count * duration),0) FROM tracks");
         sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
@@ -1778,7 +1737,7 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
         if (*topTracks > 0) {
             std::string sql =
                 std::string(internal::selectTracksCols) +
-                " WHERE deleted_at IS NULL AND play_count > 0 ORDER BY play_count DESC LIMIT " +
+                " WHERE play_count > 0 ORDER BY play_count DESC LIMIT " +
                 std::to_string(*topTracks);
             auto sRes = impl_->getCachedForUse(sql);
             if (sRes) {
@@ -1796,12 +1755,11 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
     // Top albums by total plays (GROUP BY album).
     if (topAlbums && *topAlbums > 0) {
         d.top_albums.emplace();
-        std::string sql = std::format(
-            "SELECT album, COUNT(*), COALESCE(SUM(play_count),0) "
-            "FROM tracks WHERE deleted_at IS NULL AND album IS NOT NULL AND album != '' "
-            "GROUP BY album "
-            "ORDER BY SUM(play_count) DESC, album ASC LIMIT {}",
-            *topAlbums);
+        std::string sql = std::format("SELECT album, COUNT(*), COALESCE(SUM(play_count),0) "
+                                      "FROM tracks WHERE album IS NOT NULL AND album != '' "
+                                      "GROUP BY album "
+                                      "ORDER BY SUM(play_count) DESC, album ASC LIMIT {}",
+                                      *topAlbums);
         auto sRes = impl_->getCachedForUse(sql);
         if (sRes) {
             SqliteStatement& st = *(*sRes);
@@ -1819,12 +1777,11 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
     // Top genres by total plays (GROUP BY genre).
     if (topGenres && *topGenres > 0) {
         d.top_genres.emplace();
-        std::string sql = std::format(
-            "SELECT genre, COUNT(*), COALESCE(SUM(play_count),0) "
-            "FROM tracks WHERE deleted_at IS NULL AND genre IS NOT NULL AND genre != '' "
-            "GROUP BY genre "
-            "ORDER BY SUM(play_count) DESC, genre ASC LIMIT {}",
-            *topGenres);
+        std::string sql = std::format("SELECT genre, COUNT(*), COALESCE(SUM(play_count),0) "
+                                      "FROM tracks WHERE genre IS NOT NULL AND genre != '' "
+                                      "GROUP BY genre "
+                                      "ORDER BY SUM(play_count) DESC, genre ASC LIMIT {}",
+                                      *topGenres);
         auto sRes = impl_->getCachedForUse(sql);
         if (sRes) {
             SqliteStatement& st = *(*sRes);
@@ -1845,8 +1802,8 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
     if (topArtists && *topArtists > 0) {
         d.top_artists.emplace();
         // Fetch all (artist, play_count) pairs for live tracks with play_count > 0.
-        std::string sql = "SELECT artist, play_count FROM tracks WHERE deleted_at IS NULL "
-                          "AND artist IS NOT NULL AND artist != '' AND play_count > 0";
+        std::string sql = "SELECT artist, play_count FROM tracks "
+                          "WHERE artist IS NOT NULL AND artist != '' AND play_count > 0";
         auto sRes = impl_->getCachedForUse(sql);
         if (sRes) {
             SqliteStatement& st = *(*sRes);

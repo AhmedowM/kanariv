@@ -52,7 +52,6 @@ Json trackToJson(const kanariv::types::Track& t) {
     j["last_scanned"] = t.last_scanned;
     j["dirty"] = t.dirty;
     j["library_id"] = t.library_id;
-    j["deleted_at"] = t.deleted_at;
     j["fingerprint"] = toHex(t.fingerprint);
     j["path"] = t.path;
     {
@@ -147,7 +146,6 @@ std::expected<kanariv::types::Track, Error> trackFromJson(const Json& j) {
         getI64("library_id", t.library_id, 1);
         if (t.library_id == 0)
             t.library_id = 1;
-        getI64("deleted_at", t.deleted_at, 0);
         getStr("path", t.path);
         t.source.kind = kanariv::types::SourceKind::path;
         t.source.key = t.path;

@@ -69,7 +69,6 @@ pub struct Track {
     pub last_played: i64,
     pub date_added: i64,
     pub last_scanned: i64,
-    pub deleted_at: i64,
     pub library_id: i64,
     pub path: String,
     pub title: String,

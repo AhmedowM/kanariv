@@ -21,7 +21,7 @@ use crate::schema::{INSERT_TRACK, SCHEMA, UPDATE_TRACK};
 const POSITION_GAP: i64 = 1_000_000_000;
 
 /// Canonical track column order (`internal::selectTracksCols`).
-const TRACK_FIELDS: &str = "id, fingerprint, path, deleted_at, size, mtime, duration, \
+const TRACK_FIELDS: &str = "id, fingerprint, path, size, mtime, duration, \
      sample_rate, channels, bitrate, title, artist, album, album_artist, genre, year, \
      track_num, disc_num, cover_art_path, rating, play_count, last_played, date_added, \
      last_scanned, dirty, library_id, source_kind, source_key, source_available, \
@@ -137,7 +137,6 @@ impl Store {
                 source.key,
                 i64::from(source.available),
                 source.display_name,
-                t.deleted_at,
                 t.id,
             ],
         )?;
@@ -234,14 +233,11 @@ impl Store {
     pub fn list_tracks(&self, library_id: Option<i64>) -> Result<Vec<Track>> {
         let (sql, filter) = match library_id {
             Some(lib) => (
-                format!(
-                    "SELECT {TRACK_FIELDS} FROM tracks WHERE deleted_at IS NULL AND library_id=? \
-                     ORDER BY id"
-                ),
+                format!("SELECT {TRACK_FIELDS} FROM tracks WHERE library_id=? ORDER BY id"),
                 Some(lib),
             ),
             None => (
-                format!("SELECT {TRACK_FIELDS} FROM tracks WHERE deleted_at IS NULL ORDER BY id"),
+                format!("SELECT {TRACK_FIELDS} FROM tracks ORDER BY id"),
                 None,
             ),
         };
@@ -881,7 +877,7 @@ impl Store {
         let count =
             |sql: &str| -> Result<i64> { Ok(self.conn.query_row(sql, [], |row| row.get(0))?) };
         Ok(PlaybackStats {
-            num_tracks: count("SELECT COUNT(*) FROM tracks WHERE deleted_at IS NULL")?,
+            num_tracks: count("SELECT COUNT(*) FROM tracks")?,
             num_playlists: count("SELECT COUNT(*) FROM playlists")?,
             num_queue_items: count("SELECT COUNT(*) FROM queue")?,
             num_history: count("SELECT COUNT(*) FROM history")?,
@@ -889,7 +885,7 @@ impl Store {
             num_libraries: count("SELECT COUNT(*) FROM libraries")?,
             total_duration_ms: {
                 let seconds: f64 = self.conn.query_row(
-                    "SELECT COALESCE(SUM(duration),0) FROM tracks WHERE deleted_at IS NULL",
+                    "SELECT COALESCE(SUM(duration),0) FROM tracks",
                     [],
                     |row| row.get(0),
                 )?;
@@ -963,37 +959,36 @@ fn track_from_row(row: &Row<'_>) -> rusqlite::Result<Track> {
         id: int_at(row, 0)?,
         fingerprint: fingerprint_at(row, 1)?,
         path: text_at(row, 2)?,
-        deleted_at: int_at(row, 3)?,
-        size: int_at(row, 4)?,
-        mtime: int_at(row, 5)?,
-        duration: real_at(row, 6)?,
-        sample_rate: u32::try_from(int_at(row, 7)?).unwrap_or(0),
-        channels: u32::try_from(int_at(row, 8)?).unwrap_or(0),
-        bitrate: i32::try_from(int_at(row, 9)?).unwrap_or(0),
-        title: text_at(row, 10)?,
-        artist: text_at(row, 11)?,
-        album: text_at(row, 12)?,
-        album_artist: text_at(row, 13)?,
-        genre: text_at(row, 14)?,
-        year: i32::try_from(int_at(row, 15)?).unwrap_or(0),
-        track_num: i32::try_from(int_at(row, 16)?).unwrap_or(0),
-        disc_num: i32::try_from(int_at(row, 17)?).unwrap_or(0),
-        cover_art_path: text_at(row, 18)?,
-        rating: i32::try_from(int_at(row, 19)?).unwrap_or(0),
-        play_count: int_at(row, 20)?,
-        last_played: int_at(row, 21)?,
-        date_added: int_at(row, 22)?,
-        last_scanned: int_at(row, 23)?,
-        dirty: int_at(row, 24)? != 0,
-        library_id: int_at(row, 25)?,
+        size: int_at(row, 3)?,
+        mtime: int_at(row, 4)?,
+        duration: real_at(row, 5)?,
+        sample_rate: u32::try_from(int_at(row, 6)?).unwrap_or(0),
+        channels: u32::try_from(int_at(row, 7)?).unwrap_or(0),
+        bitrate: i32::try_from(int_at(row, 8)?).unwrap_or(0),
+        title: text_at(row, 9)?,
+        artist: text_at(row, 10)?,
+        album: text_at(row, 11)?,
+        album_artist: text_at(row, 12)?,
+        genre: text_at(row, 13)?,
+        year: i32::try_from(int_at(row, 14)?).unwrap_or(0),
+        track_num: i32::try_from(int_at(row, 15)?).unwrap_or(0),
+        disc_num: i32::try_from(int_at(row, 16)?).unwrap_or(0),
+        cover_art_path: text_at(row, 17)?,
+        rating: i32::try_from(int_at(row, 18)?).unwrap_or(0),
+        play_count: int_at(row, 19)?,
+        last_played: int_at(row, 20)?,
+        date_added: int_at(row, 21)?,
+        last_scanned: int_at(row, 22)?,
+        dirty: int_at(row, 23)? != 0,
+        library_id: int_at(row, 24)?,
         source: SourceRef {
-            kind: crate::model::SourceKind::from_db(int_at(row, 26)?),
-            key: text_at(row, 27)?,
-            available: int_at(row, 28)? != 0,
-            display_name: text_at(row, 29)?,
+            kind: crate::model::SourceKind::from_db(int_at(row, 25)?),
+            key: text_at(row, 26)?,
+            available: int_at(row, 27)? != 0,
+            display_name: text_at(row, 28)?,
         },
-        replay_gain_track: real_at(row, 30)?,
-        replay_gain_album: real_at(row, 31)?,
+        replay_gain_track: real_at(row, 29)?,
+        replay_gain_album: real_at(row, 30)?,
     })
 }
 

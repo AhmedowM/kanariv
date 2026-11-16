@@ -28,7 +28,6 @@ pub const SCHEMA: &str = concat!(
     "id INTEGER PRIMARY KEY,",
     "fingerprint BLOB(32) NOT NULL UNIQUE,",
     "path TEXT NOT NULL,",
-    "deleted_at DATETIME,",
     "size INTEGER,",
     "mtime INTEGER,",
     "duration REAL,",
@@ -107,6 +106,7 @@ pub const SCHEMA: &str = concat!(
     "queue_id INTEGER DEFAULT 1",
     ");",
     "CREATE INDEX IF NOT EXISTS idx_history_track_started ON history(track_id, started_at);",
+    "CREATE INDEX IF NOT EXISTS idx_history_started ON history(started_at DESC);",
     "CREATE TABLE IF NOT EXISTS bookmarks (",
     "id INTEGER PRIMARY KEY,",
     "track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,",
@@ -168,4 +168,4 @@ pub const UPDATE_TRACK: &str =
      channels=?, bitrate=?, title=?, artist=?, album=?, album_artist=?, genre=?, year=?, \
      track_num=?, disc_num=?, cover_art_path=?, rating=?, play_count=?, last_played=?, \
      date_added=?, last_scanned=?, dirty=?, library_id=?, source_kind=?, source_key=?, \
-     source_available=?, source_display_name=?, deleted_at=? WHERE id=?";
+     source_available=?, source_display_name=? WHERE id=?";

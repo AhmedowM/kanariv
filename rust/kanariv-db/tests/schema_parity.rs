@@ -1,30 +1,45 @@
-//! Guards the Rust schema against drift from `src/db/core.cpp`.
+//! Guards the Rust schema against drift from the C++ migration ladder.
 //!
-//! The test extracts the concatenated `schema` string literal from the C++
-//! source and compares it byte-for-byte with [`kanariv_db::SCHEMA`]. Editing
-//! one side without the other fails here before any database is created.
+//! The base schema moved from `src/db/core.cpp` into `src/db/migration.cpp`
+//! (`kBaseSchema`) when the versioned migrations landed. Every statement of
+//! that constant must also appear in [`kanariv_db::SCHEMA`]: the crate may add
+//! its own tables and pragmas, but it must not miss a C++ table, index or
+//! trigger, because both sides open files the other created.
 
 use std::fs;
 use std::path::PathBuf;
 
 #[test]
-fn schema_matches_cpp_source() {
-    let cpp = extract_cpp_schema(&cpp_source());
-    assert_eq!(
-        kanariv_db::SCHEMA,
-        cpp,
-        "Rust schema drifted from src/db/core.cpp"
+fn base_schema_statements_are_present() {
+    let cpp = extract_literal(
+        &cpp_source(),
+        "inline constexpr std::string_view kBaseSchema =",
     );
+    let rust = statements(kanariv_db::SCHEMA);
+    for statement in statements(&cpp) {
+        assert!(
+            rust.contains(&statement),
+            "Rust schema is missing the C++ statement: {statement}"
+        );
+    }
 }
 
 fn cpp_source() -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src/db/core.cpp");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src/db/migration.cpp");
     fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
 }
 
-/// Concatenates the C string literals that make up the `schema` constant.
-fn extract_cpp_schema(source: &str) -> String {
-    let marker = "inline constexpr std::string_view schema =";
+/// Splits SQL into whitespace-normalised statements.
+fn statements(sql: &str) -> Vec<String> {
+    sql.split(';')
+        .map(|statement| statement.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|statement| !statement.is_empty())
+        .collect()
+}
+
+/// Concatenates the C string literals that make up a `std::string_view`
+/// constant starting at `marker` and ending at the next `;`.
+fn extract_literal(source: &str, marker: &str) -> String {
     let start = source
         .find(marker)
         .unwrap_or_else(|| panic!("missing `{marker}`"))

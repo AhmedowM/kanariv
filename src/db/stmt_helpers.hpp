@@ -21,10 +21,10 @@ namespace kanariv::db::internal {
 /**
  * @brief Canonical SELECT column list for `tracks`.
  * @ingroup kanariv_db
- * @details Order matches `fillTrackFromStmt()` indices 0..29. Keep in sync.
+ * @details Order matches `fillTrackFromStmt()` indices 0..30. Keep in sync.
  */
 inline constexpr std::string_view selectTracksCols =
-    "SELECT id, fingerprint, path, deleted_at, size, mtime, duration, sample_rate, channels, "
+    "SELECT id, fingerprint, path, size, mtime, duration, sample_rate, channels, "
     "bitrate, title, artist, album, album_artist, genre, year, track_num, disc_num, "
     "cover_art_path, rating, play_count, last_played, date_added, last_scanned, dirty, library_id, "
     "source_kind, source_key, source_available, source_display_name, "
@@ -89,12 +89,12 @@ struct StmtGuard {
  * @param stmt Prepared statement positioned on a row (via `step()`).
  * @param t Output track to populate.
  * @details Column order must match `selectTracksCols`:
- * 0:id 1:fingerprint(BLOB32) 2:path 3:deleted_at 4:size 5:mtime 6:duration
- * 7:sample_rate 8:channels 9:bitrate 10:title 11:artist 12:album
- * 13:album_artist 14:genre 15:year 16:track_num 17:disc_num 18:cover_art_path
- * 19:rating 20:play_count 21:last_played 22:date_added 23:last_scanned
- * 24:dirty 25:library_id 26:source_kind 27:source_key 28:source_available
- * 29:source_display_name 30:replay_gain_track 31:replay_gain_album.
+ * 0:id 1:fingerprint(BLOB32) 2:path 3:size 4:mtime 5:duration
+ * 6:sample_rate 7:channels 8:bitrate 9:title 10:artist 11:album
+ * 12:album_artist 13:genre 14:year 15:track_num 16:disc_num 17:cover_art_path
+ * 18:rating 19:play_count 20:last_played 21:date_added 22:last_scanned
+ * 23:dirty 24:library_id 25:source_kind 26:source_key 27:source_available
+ * 28:source_display_name 29:replay_gain_track 30:replay_gain_album.
  * Fingerprint is zeroed if the blob is not 32 bytes.
  * @par Thread safety
  * Caller must hold the DB lock protecting the statement's connection.

@@ -64,6 +64,23 @@ bool indexExists(sqlite3* db, std::string_view name) {
     return found;
 }
 
+bool columnExists(sqlite3* db, std::string_view table, std::string_view column) {
+    const std::string sql = "PRAGMA table_info(" + std::string(table) + ")";
+    sqlite3_stmt* raw = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &raw, nullptr) != SQLITE_OK)
+        return false;
+    bool found = false;
+    while (sqlite3_step(raw) == SQLITE_ROW) {
+        const auto* name = reinterpret_cast<const char*>(sqlite3_column_text(raw, 1));
+        if (name && column == name) {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(raw);
+    return found;
+}
+
 struct SqliteHandleCloser {
     void operator()(sqlite3* h) const noexcept {
         if (h)
@@ -768,6 +785,53 @@ TEST_CASE("legacy user_version 0 database migrates without data loss", "[db][mig
     auto version = internal::readUserVersion(DatabaseAccess::handle(*db));
     REQUIRE(version.has_value());
     CHECK(*version == internal::kSchemaVersion);
+    // Version 7 removes the soft-delete column the legacy table carried.
+    CHECK(!columnExists(DatabaseAccess::handle(*db), "tracks", "deleted_at"));
+}
+
+TEST_CASE("migration 7 drops the unused soft-delete column", "[db][migration]") {
+    auto path = kanariv::test_helpers::tempDbPath("drop_soft_delete");
+    sqlite3* handle = nullptr;
+    REQUIRE(sqlite3_open(path.string().c_str(), &handle) == SQLITE_OK);
+    {
+        auto raw = std::unique_ptr<sqlite3, SqliteHandleCloser>{handle};
+        // Stop at v6, then recreate a pre-v7 file: the column existed and a row
+        // carried a value that nothing reads.
+        const auto steps = internal::schemaMigrations();
+        REQUIRE(steps.size() >= 7);
+        REQUIRE(internal::applyMigrations(handle, steps.first(6)).has_value());
+        char* err = nullptr;
+        REQUIRE(sqlite3_exec(handle,
+                             "ALTER TABLE tracks ADD COLUMN deleted_at DATETIME;"
+                             "INSERT INTO tracks (fingerprint, path, title, deleted_at) "
+                             "VALUES (randomblob(32), 'old/soft.mp3', 'Kept', 1234)",
+                             nullptr, nullptr, &err) == SQLITE_OK);
+        if (err)
+            sqlite3_free(err);
+        REQUIRE(columnExists(handle, "tracks", "deleted_at"));
+    }
+
+    // Opening applies step 7: the column is gone, the row and its other
+    // columns survive the table rewrite.
+    auto opened = Database::open(path.string());
+    REQUIRE(opened.has_value());
+    auto db = std::move(*opened);
+    sqlite3* h = DatabaseAccess::handle(*db);
+    CHECK(!columnExists(h, "tracks", "deleted_at"));
+    auto tracks = db->listTracks();
+    REQUIRE(tracks.has_value());
+    REQUIRE(tracks->size() == 1);
+    CHECK((*tracks)[0].path == "old/soft.mp3");
+    CHECK((*tracks)[0].title == "Kept");
+    auto version = internal::readUserVersion(h);
+    REQUIRE(version.has_value());
+    CHECK(*version == internal::kSchemaVersion);
+}
+
+TEST_CASE("migration 8 indexes the global history timeline", "[db][migration]") {
+    auto dbRes = Database::open(":memory:");
+    REQUIRE(dbRes.has_value());
+    CHECK(indexExists(DatabaseAccess::handle(*dbRes.value()), "idx_history_started"));
 }
 
 TEST_CASE("migration 5 clears gains written by the old loudness heuristic", "[db][migration]") {

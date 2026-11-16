@@ -27,7 +27,7 @@ static void fillTrackSearch(sqlite3_stmt* s, kanariv::types::Track& out) {
 static std::expected<std::vector<kanariv::types::Track>, kanariv::utils::Error>
 tryFtsQuery(sqlite3* h, std::string_view query, int limit) {
     const char* sql =
-        "SELECT t.id, t.fingerprint, t.path, t.deleted_at, t.size, t.mtime, t.duration, "
+        "SELECT t.id, t.fingerprint, t.path, t.size, t.mtime, t.duration, "
         "t.sample_rate, t.channels, t.bitrate, t.title, t.artist, t.album, t.album_artist, "
         "t.genre, t.year, t.track_num, t.disc_num, t.cover_art_path, t.rating, t.play_count, "
         "t.last_played, t.date_added, t.last_scanned, t.dirty, t.library_id, t.source_kind, "
@@ -72,7 +72,7 @@ searchFts(Database& db, std::string_view query, int limit) {
     std::string esc = internal::escapeLike(sanitized);
     std::string pat = "%" + esc + "%";
     const char* likeSql =
-        "SELECT id, fingerprint, path, deleted_at, size, mtime, duration, sample_rate, channels, "
+        "SELECT id, fingerprint, path, size, mtime, duration, sample_rate, channels, "
         "bitrate, title, artist, album, album_artist, genre, year, track_num, disc_num, "
         "cover_art_path, rating, play_count, last_played, date_added, last_scanned, dirty, "
         "library_id, source_kind, source_key, source_available, source_display_name "
@@ -111,7 +111,7 @@ searchLike(Database& db, std::string_view query, int limit) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     const char* likeSql =
-        "SELECT id, fingerprint, path, deleted_at, size, mtime, duration, sample_rate, channels, "
+        "SELECT id, fingerprint, path, size, mtime, duration, sample_rate, channels, "
         "bitrate, title, artist, album, album_artist, genre, year, track_num, disc_num, "
         "cover_art_path, rating, play_count, last_played, date_added, last_scanned, dirty, "
         "library_id, source_kind, source_key, source_available, source_display_name "
