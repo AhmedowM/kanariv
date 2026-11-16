@@ -164,7 +164,8 @@ class KANARIV_API Engine final {
      * without allowSimulatedPlayback.
      * @details State machine:
      * - Paused -> Playing: resume (no dequeue), restart monotonic clock,
-     *   start AudioOutput.
+     *   start AudioOutput. Fails State when the paused track is suspended
+     *   for a tag write (no decoder to start; see resumeAfterTagWrite).
      * - Playing -> Playing: restart current track (seek 0 under decodeMtx_,
      *   ring reset).
      * - Stopped -> Playing: queueNextLocked under queueMutex_ (bounded
@@ -213,7 +214,9 @@ class KANARIV_API Engine final {
     /**
      * @brief Resumes from paused.
      * @ingroup kanariv_engine
-     * @return Success or Error State if not paused.
+     * @return Success or Error State if not paused, or if the paused track is
+     * suspended for a tag write (the decoder is closed; only
+     * resumeAfterTagWrite() may reopen it).
      * @par Thread safety
      * Thread-safe; notifies decode/monitor cvs.
      */
@@ -245,7 +248,8 @@ class KANARIV_API Engine final {
      * @ingroup kanariv_engine
      * @param seconds Target position in seconds [0, duration].
      * @return Success or Error State/InvalidArg/Internal/Busy.
-     * @retval StatusCode::State if no current track.
+     * @retval StatusCode::State if no current track, or the track is
+     * suspended for a tag write (no decoder to seek).
      * @retval StatusCode::InvalidArg if seconds is NaN/inf/negative.
      * @retval StatusCode::Internal if decoder seek fails (state restored).
      * @retval StatusCode::Busy if `queueMutex_` stays contended past the wait
@@ -491,7 +495,9 @@ class KANARIV_API Engine final {
      * @details Closes reader/decoder (releasing the audio file) without
      * touching queue cursor, current track, or history mark. The file is
      * free for out-of-band modification (tag write) until
-     * resumeAfterTagWrite(). State becomes Paused; output stopped.
+     * resumeAfterTagWrite(). State becomes Paused and the position is
+     * frozen; resume()/play()/seek() fail State until the reopen, so no
+     * caller can observe Playing with no audio.
      * @par Thread safety
      * Thread-safe; holds the queue lock across teardown (queue to
      * decodeMtx_ order, matching the rest of the engine).

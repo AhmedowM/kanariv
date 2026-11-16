@@ -323,6 +323,12 @@ struct Engine::Impl {
     std::atomic<float> preMute_{0.5f};
     std::atomic<kanariv::types::PlaybackState> playbackState_{
         kanariv::types::PlaybackState::Stopped};
+    // suspended_: set by suspendCurrentTrack() while decoder/reader are released
+    // for an out-of-band tag write; the transport keeps reporting Paused. Every
+    // Paused -> Playing path (resume/play/seek) fails State while it is set,
+    // because there is no decoder to play. doPlayTrack() reopens the file and
+    // clears it (resumeAfterTagWrite's path).
+    std::atomic<bool> suspended_{false};
     std::chrono::steady_clock::time_point playStart_{}; ///< decodeMtx_ only.
     double pausePos_{0};                                ///< decodeMtx_ only.
     std::atomic<uint64_t> accumulatedPlaybackMs_{0};
@@ -618,6 +624,11 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
         queueId = 1;
     auto s = playbackState_.load(std::memory_order_acquire);
     if (s == kanariv::types::PlaybackState::Paused) {
+        // Same trap as resume(): the paused track may have been suspended for a
+        // tag write, in which case there is no decoder to start.
+        if (suspended_.load(std::memory_order_acquire))
+            return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                            "track suspended for tag write"));
         // resume, don't dequeue; playStart_/output_ are decodeMtx_ state
         {
             std::unique_lock<std::mutex> lk(decodeMtx_);
@@ -784,6 +795,12 @@ Engine::ExpectedVoid Engine::Impl::resume() {
     if (s != kanariv::types::PlaybackState::Paused)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "not paused"));
+    // Suspension for a tag write released the decoder: flipping to Playing here
+    // would report a moving position with silence. Only resumeAfterTagWrite()
+    // owns that reopen (it clears suspended_ through doPlayTrack()).
+    if (suspended_.load(std::memory_order_acquire))
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                        "track suspended for tag write"));
     {
         std::unique_lock<std::mutex> lk(decodeMtx_);
         playStart_ = std::chrono::steady_clock::now();
@@ -820,7 +837,8 @@ Engine::ExpectedVoid Engine::Impl::stop() {
     // RepeatMode::One the cursor never advanced, and queue edits can leave the
     // cursor trailing some other entry -- so map the track's listing index
     // through the active permutation instead. A track no longer in the queue
-    // (queue switched or edited) leaves the cursor unchanged.
+    // (queue switched or edited) leaves the cursor unchanged. The rewind is
+    // persisted by the single saveStateLocked() at the end of this transition.
     if (hasDb() && stoppedId != 0) {
         const int64_t rawQid = queue_.queue_id.load(std::memory_order_relaxed);
         const int64_t qid = rawQid != 0 ? rawQid : 1;
@@ -840,11 +858,11 @@ Engine::ExpectedVoid Engine::Impl::stop() {
             if (resolved) {
                 queue_.cursor = target;
                 state_.cursorPos = static_cast<int64_t>(queue_.cursor);
-                (void)persistCursorLocked();
             }
         }
     }
     hasCurrent_.store(false, std::memory_order_release);
+    suspended_.store(false, std::memory_order_release);
     // Release playback resources (decoder/output/ring hold tens of MB for
     // large files; measured +47 MB private retained after stop). Replay
     // re-opens via doPlayTrack. decodeMtx_ serializes with an in-flight
@@ -876,6 +894,11 @@ Engine::ExpectedVoid Engine::Impl::seek(double seconds) {
     if (!hasCurrent_.load(std::memory_order_acquire))
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no track"));
+    // While suspended the decoder is gone; the seek would only move the clock
+    // of a stream that cannot produce audio (same failure resume() rejects).
+    if (suspended_.load(std::memory_order_acquire))
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                        "track suspended for tag write")};
     if (!std::isfinite(seconds) || seconds < 0)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "bad seconds"));
@@ -936,6 +959,11 @@ Engine::ExpectedVoid Engine::Impl::suspendCurrentTrack() {
     // everything needed to resume stays in place. decodeMtx_ serializes with
     // an in-flight decode chunk (like stop(); queue-to-decodeMtx_ order).
     std::unique_lock<std::mutex> lk(decodeMtx_);
+    // Freeze the transport clock before the state flips: with the decoder gone
+    // position() returns pausePos_, which without this snapshot would rewind to
+    // the pre-track value.
+    pausePos_ = currentPositionLocked();
+    suspended_.store(true, std::memory_order_release);
     playbackState_.store(kanariv::types::PlaybackState::Paused, std::memory_order_release);
     if (output_)
         (void)output_->stop();
@@ -1006,13 +1034,15 @@ Engine::ExpectedVoid Engine::Impl::setVolume(float g) {
     }
     if (hasDb()) {
         // Throttle persistence (M-3): a volume drag emits dozens of
-        // events/s; each saveStateLocked() is a WAL transaction rewriting the
-        // shuffle BLOB. Persist at most 1x/s here -- shutdown/track-change
-        // paths always persist, so the crash window is <= 1 s of volume.
+        // events/s; each saveStateLocked() rewrites the state sidecar.
+        // Persist at most 1x/s here -- shutdown/track-change paths always
+        // persist, so the crash window is <= 1 s of volume. The CAS makes the
+        // claim atomic: two concurrent drags cannot both pass the window.
         const uint64_t now = detail::nowMs();
-        const uint64_t last = lastVolSaveMs_.load(std::memory_order_acquire);
-        if (now - last >= 1000) {
-            lastVolSaveMs_.store(now, std::memory_order_release);
+        uint64_t last = lastVolSaveMs_.load(std::memory_order_acquire);
+        if (now - last >= 1000 &&
+            lastVolSaveMs_.compare_exchange_strong(last, now, std::memory_order_acq_rel,
+                                                   std::memory_order_acquire)) {
             state_.cursorPos = (int64_t)queue_.cursor;
             (void)saveStateLocked();
         }
@@ -1998,6 +2028,8 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
     state_.currentTrackId.store(t.id, std::memory_order_release);
     state_.currentPath = t.path;
     state_.cursorPos.store((int64_t)queue_.cursor, std::memory_order_relaxed);
+    // A reopened decoder ends any tag-write suspension (resumeAfterTagWrite).
+    suspended_.store(false, std::memory_order_release);
     playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
     // Position tracking starts at the resumed offset (0 for next/prev);
     // saveStateLocked() below then persists that offset instead of a transient

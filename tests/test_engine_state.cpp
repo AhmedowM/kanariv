@@ -3,6 +3,7 @@
 #include <chrono>
 #include <common.hpp>
 #include <cstdint>
+#include <engine/engine_access.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/engine/engine.hpp>
 #include <kanariv/types/db.hpp>
@@ -353,6 +354,74 @@ TEST_CASE("explicit stop clears the resume position", "[engine_state]") {
         REQUIRE(eRes.has_value());
         auto eng = std::move(eRes.value());
         REQUIRE(eng->position() == 0.0);
+    }
+    safeRemoveDb(dbPath);
+}
+
+TEST_CASE("suspended track rejects resume play and seek", "[engine_state]") {
+    std::string dbPath = tempDbPath("eng_state_suspended").string();
+    {
+        auto dbRes = Database::open(dbPath);
+        REQUIRE(dbRes.has_value());
+        auto db = std::move(dbRes.value());
+        kanariv::types::Track t;
+        t.path = "suspended.wav";
+        t.duration = 10.0;
+        for (int b = 0; b < 32; ++b)
+            t.fingerprint[b] = (uint8_t)(0xE0 + b);
+        auto r = db->insertTrack(t);
+        REQUIRE(r.has_value());
+        t.id = *r;
+        REQUIRE(db->queueEnqueue(1, *r, -1).has_value());
+
+        kanariv::types::EngineConfig cfg;
+        cfg.allowSimulatedPlayback = true;
+        cfg.enableMonitorThread = false;
+        auto eRes = Engine::create(cfg);
+        REQUIRE(eRes.has_value());
+        auto eng = std::move(eRes.value());
+        REQUIRE(eng->attachStorage(kanariv::db::makeStorage(
+                                       std::shared_ptr<kanariv::db::Database>(std::move(db))))
+                    .has_value());
+        REQUIRE(eng->play(1).has_value());
+        REQUIRE(eng->state() == kanariv::types::PlaybackState::Playing);
+        std::this_thread::sleep_for(std::chrono::milliseconds(120));
+        const double before = eng->position();
+        REQUIRE(before > 0.05);
+
+        // A tag write releases the file: transport keeps reporting Paused, the
+        // position freezes at the live value, and nothing may claim playback.
+        REQUIRE(kanariv::engine::detail::ServiceAccess::suspendCurrentTrack(*eng).has_value());
+        REQUIRE(eng->state() == kanariv::types::PlaybackState::Paused);
+        const double frozen = eng->position();
+        REQUIRE(frozen >= before);
+        std::this_thread::sleep_for(std::chrono::milliseconds(80));
+        REQUIRE(eng->position() == frozen);
+
+        auto resumed = eng->resume();
+        REQUIRE(!resumed.has_value());
+        REQUIRE(resumed.error().code == StatusCode::State);
+        auto played = eng->play(1);
+        REQUIRE(!played.has_value());
+        REQUIRE(played.error().code == StatusCode::State);
+        auto sought = eng->seek(1.0);
+        REQUIRE(!sought.has_value());
+        REQUIRE(sought.error().code == StatusCode::State);
+        REQUIRE(eng->state() == kanariv::types::PlaybackState::Paused);
+        REQUIRE(eng->position() == frozen);
+
+        // The reopen ends the suspension and restores playback at the captured
+        // offset (the service's resumeAfterTagWrite path).
+        REQUIRE(kanariv::engine::detail::ServiceAccess::resumeAfterTagWrite(*eng, t, 2.0, false)
+                    .has_value());
+        REQUIRE(eng->state() == kanariv::types::PlaybackState::Playing);
+        REQUIRE(eng->position() >= 2.0);
+        // The suspension ended with the reopen: an ordinary pause/resume pair
+        // works again.
+        REQUIRE(eng->pause().has_value());
+        REQUIRE(eng->resume().has_value());
+        REQUIRE(eng->state() == kanariv::types::PlaybackState::Playing);
+        eng->shutdown();
     }
     safeRemoveDb(dbPath);
 }
