@@ -25,6 +25,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <player/playback_policy.hpp>
 #include <random>
 #include <span>
 #include <stop_token>
@@ -1916,19 +1917,16 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::doPlayTrack(kanariv::ty
                         cfg_.logger->debug("resume seek pos={} file={}", target, path);
                     }
                 }
-                // create ring and output
-                // NOTE (2026-10-05): kept at 8192*ch -- a flat 8192-frame cap
-                // measured +9 MB daemon RSS on an mp3 with an attached mjpeg
-                // cover (release-lto, clang, 67.7 -> 76.6 MB WS). Mechanism
-                // unknown (suspect indirect FFmpeg buffering/timing effect);
-                // do NOT re-shrink without a measured explanation.
+                // create ring and output; engineRingFrames() carries the
+                // measured reason this path does not use Player's flat cap.
                 uint32_t sr = decoder_->sampleRate();
                 uint32_t ch = decoder_->channels();
                 if (sr == 0)
                     sr = 48000;
                 if (ch == 0)
                     ch = 2;
-                ring_ = std::make_unique<kanariv::utils::SpscRing<float>>(8192 * ch, ch);
+                ring_ = std::make_unique<kanariv::utils::SpscRing<float>>(
+                    playback::policy::engineRingFrames(ch), ch);
                 kanariv::player::AudioOutput::Config cfg;
                 cfg.sampleRate = sr;
                 cfg.channels = ch;
@@ -2071,16 +2069,12 @@ void Engine::Impl::preroll() {
     uint32_t ch = decoder_->channels();
     if (ch == 0)
         ch = 2;
-    // preroll cap/2 frames like Player (ring capacity is in frames)
-    size_t need = ring_->availableWrite() / 2;
+    std::size_t need = playback::policy::prerollFrames(ring_->capacity());
     if (need == 0)
         return;
-    size_t chunkFrames = 1024;
-    size_t maxChunk = 2048 / ch;
-    if (chunkFrames > maxChunk)
-        chunkFrames = maxChunk;
+    std::size_t chunkFrames = playback::policy::chunkCapFrames(ch);
     std::vector<float> tmp(chunkFrames * ch);
-    while (need > 0 && ring_->availableWrite() >= tmp.size() / ch) {
+    while (need > 0 && ring_->availableWrite() >= chunkFrames) {
         size_t frames = decoder_->decode(std::span<float>(tmp.data(), tmp.size()));
         if (frames == 0)
             break;
@@ -2391,10 +2385,9 @@ void Engine::Impl::monitorLoop(std::stop_token st) {
 }
 
 void Engine::Impl::decodeLoop(std::stop_token st) {
-    constexpr std::size_t maxChunkFrames = 1024;
     // Reusable decode scratch (P-2): grown only, never reallocated per chunk.
     std::vector<float> scratch;
-    scratch.reserve(maxChunkFrames * 8);
+    scratch.reserve(playback::policy::maxChunkFrames * 8);
     while (!st.stop_requested() && decodeRun_.load(std::memory_order_acquire)) {
         // Sample the producer state under decodeMtx_: doPlayTrack() frees
         // decoder_/ring_ while holding it, so dereferencing them unlocked here
@@ -2514,22 +2507,16 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
         // request above and mixes both decoders during the overlap; an
         // interTrackGapMs silence is a separate policy handled at EOF.
         if (avail == 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            std::this_thread::sleep_for(playback::policy::ringIdlePoll);
             continue;
         }
-        size_t maxFrames = avail / ch;
-        if (maxFrames > maxChunkFrames)
-            maxFrames = maxChunkFrames;
-        size_t maxChunkByCh = 2048 / ch;
-        if (maxFrames > maxChunkByCh)
-            maxFrames = maxChunkByCh;
-        if (maxFrames == 0)
-            maxFrames = 1;
+        size_t maxFrames = playback::policy::chunkFrames(ch, avail);
 
         if (scratch.size() < maxFrames * ch)
             scratch.resize(maxFrames * ch);
         std::span<float> chunk(scratch.data(), maxFrames * ch);
         size_t frames = 0;
+        media::DecodeStatus decodeStatus = media::DecodeStatus::Ok;
         size_t xfFrames = 0;
         uint32_t sampleRate = 0;
         uint32_t xfCh = 0;
@@ -2562,7 +2549,7 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             fadeIn = fadeInSamples_;
             fadeOut = fadeOutSamples_;
             fadeOutStart = fadeOutStart_;
-            frames = decoder_->decode(chunk);
+            frames = decoder_->decode(chunk, &decodeStatus);
             // During crossfade, decode the incoming track into a second buffer.
             if (crossfadeActive_.load(std::memory_order_relaxed) && crossfadeDecoder_ &&
                 frames > 0) {
@@ -2617,6 +2604,25 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             fadeSample_.store(fadeStart + frames, std::memory_order_release);
         }
         if (frames == 0) {
+            const auto outcome = playback::policy::classifyDecode(decodeStatus, frames);
+            if (outcome == playback::policy::DecodeOutcome::Continue) {
+                // No frames and no final status: not an end of track. Retry
+                // instead of running the transition ladder.
+                std::this_thread::sleep_for(playback::policy::ringIdlePoll);
+                continue;
+            }
+            if (outcome == playback::policy::DecodeOutcome::Failed) {
+                // A decode failure is not a clean end (P2). Nothing more can
+                // come from this decoder, so report it and let the configured
+                // transition move on; silently advancing hid the failure.
+                if (cfg_.logger)
+                    cfg_.logger->warn("decode failed track_id={}",
+                                      state_.currentTrackId.load(std::memory_order_relaxed));
+                kanariv::types::EngineEvent ev;
+                ev.type = kanariv::types::EngineEventType::Error;
+                ev.msg = "decode error";
+                pushEvent(ev);
+            }
             // EOF reached. Which policy owns the transition depends on what is
             // configured; none of them may advance the cursor while a crossfade
             // is still mixing the incoming track in.

@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "player/device_id.hpp"
+#include "player/playback_policy.hpp"
 
 TEST_CASE("output callback no alloc") {
     KANARIV_SKIP_IF_NOAUDIO();
@@ -227,4 +228,49 @@ TEST_CASE("legacy device indices parse decimal digits only", "[output][devices]"
     REQUIRE_FALSE(legacyDeviceIndex("1a"));
     REQUIRE_FALSE(legacyDeviceIndex("auto"));
     REQUIRE_FALSE(legacyDeviceIndex("alsa:00"));
+}
+
+TEST_CASE("playback policy keeps the two ring capacities distinct", "[player][policy]") {
+    using namespace kanariv::playback::policy;
+    STATIC_REQUIRE(playerRingFrames == 8192);
+    STATIC_REQUIRE(engineRingFrames(1) == 8192);
+    STATIC_REQUIRE(engineRingFrames(2) == 16384);
+    STATIC_REQUIRE(engineRingFrames(6) == 49152);
+    // Both paths buffer half their ring before the device starts.
+    STATIC_REQUIRE(prerollFrames(playerRingFrames) == 4096);
+    STATIC_REQUIRE(prerollFrames(engineRingFrames(2)) == 8192);
+    STATIC_REQUIRE(prerollFrames(1) == 0);
+}
+
+TEST_CASE("playback policy bounds decode chunks by frames and samples", "[player][policy]") {
+    using namespace kanariv::playback::policy;
+    STATIC_REQUIRE(chunkCapFrames(0) == 1);
+    STATIC_REQUIRE(chunkCapFrames(1) == 1024);
+    STATIC_REQUIRE(chunkCapFrames(2) == 1024);
+    STATIC_REQUIRE(chunkCapFrames(4) == 512);
+    STATIC_REQUIRE(chunkCapFrames(6) == 341);
+    STATIC_REQUIRE(chunkCapFrames(8) == 256);
+    STATIC_REQUIRE(chunkCapFrames(4096) == 1);
+    for (std::uint32_t ch = 1; ch <= 8; ++ch)
+        REQUIRE(chunkCapFrames(ch) * ch <= maxChunkSamples);
+
+    STATIC_REQUIRE(chunkFrames(2, 0) == 0); // full ring: the caller idles
+    STATIC_REQUIRE(chunkFrames(0, 512) == 0);
+    STATIC_REQUIRE(chunkFrames(2, 3) == 1); // less than one frame fits
+    STATIC_REQUIRE(chunkFrames(2, 100) == 50);
+    STATIC_REQUIRE(chunkFrames(2, 4096) == 1024);
+    STATIC_REQUIRE(chunkFrames(6, 3) == 1);
+    STATIC_REQUIRE(chunkFrames(6, 3000) == 341);
+}
+
+TEST_CASE("playback policy classifies decode outcomes", "[player][policy]") {
+    using kanariv::media::DecodeStatus;
+    using kanariv::playback::policy::classifyDecode;
+    using kanariv::playback::policy::DecodeOutcome;
+    REQUIRE(classifyDecode(DecodeStatus::Ok, 512) == DecodeOutcome::Continue);
+    REQUIRE(classifyDecode(DecodeStatus::Ok, 0) == DecodeOutcome::Continue);
+    REQUIRE(classifyDecode(DecodeStatus::Eof, 512) == DecodeOutcome::Continue);
+    REQUIRE(classifyDecode(DecodeStatus::Eof, 0) == DecodeOutcome::EndOfStream);
+    REQUIRE(classifyDecode(DecodeStatus::Error, 0) == DecodeOutcome::Failed);
+    REQUIRE(classifyDecode(DecodeStatus::Error, 512) == DecodeOutcome::Failed);
 }

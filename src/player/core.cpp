@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <player/playback_policy.hpp>
 #include <span>
 #include <stop_token>
 #include <string>
@@ -236,11 +237,6 @@ Player::ExpectedVoid Player::Impl::openReader(std::unique_ptr<media::Reader> rea
 
     auto decoder = std::move(decResult.value());
 
-    // Create ring buffer: 8192 frames in all layouts (P-3). Capacity is in
-    // frames; buf_ holds cap_*channels floats. The old 8192*ch passed frames
-    // but scaled by channels twice (8192*ch*ch floats, ~1.1 MB at 5.1).
-    // NOTE: engine ring intentionally NOT flattened (see engine.cpp note) --
-    // Player has no daemon playback path, so this is inert there.
     uint32_t sr = decoder->sampleRate();
     uint32_t ch = decoder->channels();
     if (sr == 0)
@@ -248,7 +244,10 @@ Player::ExpectedVoid Player::Impl::openReader(std::unique_ptr<media::Reader> rea
     if (ch == 0)
         ch = 2;
 
-    auto ring = std::make_unique<kanariv::utils::SpscRing<float>>(8192, ch);
+    // Ring capacity is shared policy (see player/playback_policy.hpp); the
+    // Engine keeps its own documented capacity there too.
+    auto ring = std::make_unique<kanariv::utils::SpscRing<float>>(
+        playback::policy::playerRingFrames, ch);
 
     // Create audio output
     AudioOutput::Config cfg;
@@ -584,27 +583,20 @@ Player::ExpectedVoid Player::Impl::stopInternalLocked() {
 
 media::DecodeStatus Player::Impl::preroll(media::Decoder& decoder,
                                           kanariv::utils::SpscRing<float>& ring) {
-    // Preroll cap/2 samples (C ca_player.c:462)
-    std::size_t ringCap = ring.capacity();
-    std::size_t prerollSamples = ringCap / 2;
     uint32_t ch = decoder.channels();
     if (ch == 0)
         return media::DecodeStatus::Error;
-    std::size_t prerollFrames = prerollSamples / ch;
+    // Shared policy: have the ring before the device starts. The previous
+    // prerollSamples/ch form buffered a quarter ring in stereo while Engine
+    // buffered half; both now use prerollFrames().
+    std::size_t prerollTarget = playback::policy::prerollFrames(ring.capacity());
 
-    // Use fixed chunk size: min(avail, 1024, 2048/ch) like C ca_player.c:156
-    std::size_t chunkFrames = 1024;
-    std::size_t maxChunk = 2048 / ch;
-    if (chunkFrames > maxChunk)
-        chunkFrames = maxChunk;
-    if (chunkFrames == 0)
-        chunkFrames = 1;
-
+    std::size_t chunkFrames = playback::policy::chunkCapFrames(ch);
     std::vector<float> buffer(chunkFrames * ch);
     std::size_t filled = 0;
     media::DecodeStatus status = media::DecodeStatus::Ok;
 
-    while (filled < prerollFrames && ring.availableWrite() >= chunkFrames * ch) {
+    while (filled < prerollTarget && ring.availableWrite() >= chunkFrames * ch) {
         std::size_t frames =
             decoder.decode(std::span<float>(buffer.data(), buffer.size()), &status);
         if (status == media::DecodeStatus::Error)
@@ -620,10 +612,9 @@ media::DecodeStatus Player::Impl::preroll(media::Decoder& decoder,
 }
 
 void Player::Impl::decodeLoop(std::stop_token st) {
-    constexpr std::size_t maxChunkFrames = 1024;
     // Reusable decode scratch (P-2): grown only, never reallocated per chunk.
     std::vector<float> scratch;
-    scratch.reserve(maxChunkFrames * 8);
+    scratch.reserve(playback::policy::maxChunkFrames * 8);
 
     while (!st.stop_requested()) {
         std::unique_lock<std::mutex> graph(graphMutex_);
@@ -647,7 +638,7 @@ void Player::Impl::decodeLoop(std::stop_token st) {
         std::size_t avail = ring_->availableWrite();
         if (avail == 0) {
             graph.unlock();
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            std::this_thread::sleep_for(playback::policy::ringIdlePoll);
             continue;
         }
 
@@ -661,14 +652,7 @@ void Player::Impl::decodeLoop(std::stop_token st) {
             cv_.notify_all();
             continue;
         }
-        std::size_t maxFrames = avail / ch;
-        if (maxFrames > maxChunkFrames)
-            maxFrames = maxChunkFrames;
-        std::size_t maxChunkByCh = 2048 / ch;
-        if (maxFrames > maxChunkByCh)
-            maxFrames = maxChunkByCh;
-        if (maxFrames == 0)
-            maxFrames = 1;
+        std::size_t maxFrames = playback::policy::chunkFrames(ch, avail);
 
         if (scratch.size() < maxFrames * ch)
             scratch.resize(maxFrames * ch);
@@ -683,7 +667,8 @@ void Player::Impl::decodeLoop(std::stop_token st) {
             (void)ring_->write(std::span<const float>(scratch.data(), frames * ch));
         }
 
-        if (status == media::DecodeStatus::Error) {
+        switch (playback::policy::classifyDecode(status, frames)) {
+        case playback::policy::DecodeOutcome::Failed:
             // A decode failure is not a normal end of stream (P2). Report it
             // through the error state, never as Stopped.
             isPlaying_.store(false, std::memory_order_release);
@@ -693,13 +678,12 @@ void Player::Impl::decodeLoop(std::stop_token st) {
             state_.store(State::Error, std::memory_order_release);
             cv_.notify_all();
             continue;
-        }
 
-        if (status == media::DecodeStatus::Eof && frames == 0) {
+        case playback::policy::DecodeOutcome::EndOfStream:
             // Drain the tail before ending so the last samples are audible.
             if (ring_->availableRead() > 0) {
                 graph.unlock();
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                std::this_thread::sleep_for(playback::policy::ringIdlePoll);
                 continue;
             }
             // Clean end of stream: Stopped, and play() will rewind (P2).
@@ -710,8 +694,10 @@ void Player::Impl::decodeLoop(std::stop_token st) {
             state_.store(State::Stopped, std::memory_order_release);
             cv_.notify_all();
             continue;
+
+        case playback::policy::DecodeOutcome::Continue:
+            break;
         }
-        // Ok, or Eof with a tail: loop for the next chunk.
     }
 }
 
