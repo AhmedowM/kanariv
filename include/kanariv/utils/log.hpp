@@ -90,6 +90,24 @@ constexpr std::optional<LogLevel> parseLogLevelValue(std::string_view value) noe
 }
 
 /**
+ * @brief Clamps a numeric level to the logger vocabulary.
+ * @ingroup kanariv_utils
+ * @param value Any integer, typically read from a config file.
+ * @return @p value clamped to `[Trace, Error]` (0–4).
+ * @details Out-of-range config numbers keep their direction: `9` becomes
+ * `Error` and `-1` becomes `Trace`, instead of disabling or maximising
+ * logging by accident. Use parseLogLevelValue when garbage must be rejected
+ * rather than coerced.
+ */
+constexpr LogLevel clampLogLevel(int value) noexcept {
+    if (value < std::to_underlying(LogLevel::Trace))
+        return LogLevel::Trace;
+    if (value > std::to_underlying(LogLevel::Error))
+        return LogLevel::Error;
+    return static_cast<LogLevel>(value);
+}
+
+/**
  * @brief Thread-safe logger with callback and level filtering.
  * @ingroup kanariv_utils
  * @details Lock ordering: a single `mutable std::mutex` protects both

@@ -68,7 +68,12 @@ KANARIV_API std::string endpointIdForDb(const std::filesystem::path& dbPath);
  * @brief Get base directory for socket/pid/lock files.
  * Windows: %LOCALAPPDATA%\kanariv
  * POSIX: $XDG_RUNTIME_DIR/kanariv > $XDG_DATA_HOME/kanariv > ~/.local/share/kanariv > temp/kanariv
- * @return Base directory path.
+ * @return Base directory path, or Error when the directory cannot be created
+ * or fails the ownership/mode check.
+ * @details POSIX: the directory is created owner-only when absent and accepted
+ * only when the current user owns it with no group/other write bit; anything
+ * else is refused rather than chmod'ed (endpoint-squatting guard for the
+ * shared temp fallback).
  */
-std::filesystem::path baseDirForSocket();
+kanariv::utils::Expected<std::filesystem::path> baseDirForSocket();
 } // namespace kanariv::config::detail_paths

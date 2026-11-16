@@ -170,17 +170,14 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
                               cfg.logLevel, std::to_underlying(kanariv::utils::LogLevel::Trace),
                               std::to_underlying(kanariv::utils::LogLevel::Error))));
     kanariv::utils::Logger* logger = loggerPtr.get();
+    for (const auto& key : cfg.unknownKeys)
+        logger->warn("config: ignoring unknown key '{}'", key);
 
     // create Engine
     kanariv::types::EngineConfig ecfg{};
     ecfg.logger = logger;
     ecfg.autoResumeOnPlay = cfg.autoResumeOnPlay;
-    if (cfg.replayGain == "track")
-        ecfg.replayGain = kanariv::types::ReplayGainMode::Track;
-    else if (cfg.replayGain == "album")
-        ecfg.replayGain = kanariv::types::ReplayGainMode::Album;
-    else
-        ecfg.replayGain = kanariv::types::ReplayGainMode::Off;
+    ecfg.replayGain = cfg.replayGain;
     ecfg.fadeInMs = cfg.fadeInMs;
     ecfg.fadeOutMs = cfg.fadeOutMs;
     ecfg.crossfadeMs = cfg.crossfadeMs;

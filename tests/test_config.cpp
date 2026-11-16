@@ -2,6 +2,7 @@
 #include <kanariv/config.hpp>
 #include <kanariv/types/wire.hpp>
 #include <kanariv/utils/error.hpp>
+#include <algorithm>
 #include <common.hpp>
 #include <cstdlib>
 #include <filesystem>
@@ -257,6 +258,106 @@ TEST_CASE("config repeatDefault ignores non-string values", "[config]") {
     auto loaded = kanariv::config::loadConfig(cfgPath);
     REQUIRE(loaded.has_value());
     REQUIRE(loaded->repeatDefault == kanariv::types::RepeatMode::Off);
+}
+
+TEST_CASE("config replayGain parses to ReplayGainMode", "[config]") {
+    using kanariv::types::ReplayGainMode;
+    struct Case {
+        const char* json_text;
+        ReplayGainMode expected;
+    };
+    const Case cases[] = {
+        {"\"off\"", ReplayGainMode::Off},     {"\"track\"", ReplayGainMode::Track},
+        {"\"album\"", ReplayGainMode::Album}, {"\"TRACK\"", ReplayGainMode::Track},
+        {"\"Album\"", ReplayGainMode::Album}, {"\"bogus\"", ReplayGainMode::Off},
+    };
+    for (const auto& c : cases) {
+        auto tmp = freshTempDir("kanariv_test_config_replaygain");
+        auto cfgPath = tmp / "config.json";
+        {
+            std::ofstream out(cfgPath);
+            REQUIRE(out.good());
+            out << R"({"replayGain": )" << c.json_text << "}";
+        }
+        auto loaded = kanariv::config::loadConfig(cfgPath);
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->replayGain == c.expected);
+    }
+}
+
+TEST_CASE("config replayGain round-trips as a lowercase name", "[config]") {
+    auto tmp = freshTempDir("kanariv_test_config_replaygain_save");
+    auto cfgPath = tmp / "config.json";
+    kanariv::config::Config cfg{};
+    cfg.configPath = cfgPath;
+    cfg.dbPath = tmp / "library.db";
+    cfg.replayGain = kanariv::types::ReplayGainMode::Album;
+
+    REQUIRE(kanariv::config::saveConfig(cfg).has_value());
+    std::ifstream in(cfgPath);
+    REQUIRE(in.good());
+    const std::string content((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    REQUIRE(content.find("\"replayGain\"") != std::string::npos);
+    REQUIRE(content.find("\"album\"") != std::string::npos);
+
+    auto loaded = kanariv::config::loadConfig(cfgPath);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->replayGain == kanariv::types::ReplayGainMode::Album);
+}
+
+TEST_CASE("config logLevel is clamped to the logger vocabulary", "[config]") {
+    struct Case {
+        const char* json_text;
+        int expected;
+    };
+    const Case cases[] = {
+        {"{\"logLevel\": 9}", 4},        {"{\"logLevel\": -1}", 0},
+        {"{\"logLevel\": 3}", 3},        {"{\"log_level\": 9}", 4},
+        {"{\"log_level\": -7}", 0},      {"{\"logLevel\": \"warn\"}", 3},
+        {"{\"logLevel\": \"info\"}", 2},
+    };
+    for (const auto& c : cases) {
+        auto tmp = freshTempDir("kanariv_test_config_loglevel");
+        auto cfgPath = tmp / "config.json";
+        {
+            std::ofstream out(cfgPath);
+            REQUIRE(out.good());
+            out << c.json_text;
+        }
+        auto loaded = kanariv::config::loadConfig(cfgPath);
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->logLevel == c.expected);
+    }
+}
+
+TEST_CASE("config reports unknown keys without failing the load", "[config]") {
+    auto tmp = freshTempDir("kanariv_test_config_unknown");
+    auto cfgPath = tmp / "config.json";
+    {
+        std::ofstream out(cfgPath);
+        REQUIRE(out.good());
+        out << R"({
+  "dbPath": "library.db",
+  "fadeInMS": 100,
+  "replaygain": "album",
+  "log_level": "warn"
+})";
+    }
+    auto loaded = kanariv::config::loadConfig(cfgPath);
+    REQUIRE(loaded.has_value());
+    const auto& unknown = loaded->unknownKeys;
+    REQUIRE(unknown.size() == 2);
+    REQUIRE(std::find(unknown.begin(), unknown.end(), "fadeInMS") != unknown.end());
+    REQUIRE(std::find(unknown.begin(), unknown.end(), "replaygain") != unknown.end());
+    // Legacy spellings are understood, not reported.
+    REQUIRE(std::find(unknown.begin(), unknown.end(), "log_level") == unknown.end());
+
+    // Diagnostics are never persisted: the rewritten file is clean.
+    REQUIRE(kanariv::config::saveConfig(*loaded).has_value());
+    auto reloaded = kanariv::config::loadConfig(cfgPath);
+    REQUIRE(reloaded.has_value());
+    REQUIRE(reloaded->unknownKeys.empty());
 }
 
 TEST_CASE("endpoint id is a stable FNV-1a digest", "[config][endpoint]") {

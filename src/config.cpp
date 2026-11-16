@@ -1,9 +1,4 @@
-#include <kanariv/config.hpp>
-#include <kanariv/types/wire.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/json.hpp>
-#include <kanariv/utils/log.hpp>
-#include <kanariv/utils/result.hpp>
+#include <algorithm>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
@@ -14,17 +9,32 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <kanariv/config.hpp>
+#include <kanariv/types/wire.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/json.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/result.hpp>
 #include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
 
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
+#endif
+
 #include "config_detail.hpp"
 
 namespace {
 
 using kanariv::types::RepeatMode;
+using kanariv::types::ReplayGainMode;
 
 /// Lowercases ASCII text; the config vocabulary is ASCII.
 std::string lowerAscii(std::string_view text) {
@@ -59,6 +69,41 @@ std::string_view repeatDefaultName(RepeatMode mode) noexcept {
     }
     return "off";
 }
+
+/// Parses the config spelling of a ReplayGain mode (case-insensitive).
+/// Unknown text is tolerated and means Off, matching the lenient loader.
+ReplayGainMode parseReplayGain(std::string_view text) {
+    const std::string lower = lowerAscii(text);
+    if (lower == "track")
+        return ReplayGainMode::Track;
+    if (lower == "album")
+        return ReplayGainMode::Album;
+    return ReplayGainMode::Off;
+}
+
+/// Canonical (lowercase) config spelling written by saveConfig.
+std::string_view replayGainName(ReplayGainMode mode) noexcept {
+    using enum ReplayGainMode;
+    switch (mode) {
+    case Track:
+        return "track";
+    case Album:
+        return "album";
+    case Off:
+        break;
+    }
+    return "off";
+}
+
+/// Every key loadConfig understands, including the legacy spellings.
+/// Anything else is reported through Config::unknownKeys.
+constexpr std::string_view knownConfigKeys[] = {
+    "dbPath",        "configPath",      "device",           "deviceName",
+    "logLevel",      "socketPath",      "autoResumeOnPlay", "clearStopsPlayback",
+    "repeatDefault", "autostart",       "replayGain",       "fadeInMs",
+    "fadeOutMs",     "interTrackGapMs", "crossfadeMs",      "db_path",
+    "log_level",
+};
 
 /// Maps filesystem failures to the public status codes.
 kanariv::utils::StatusCode statusForFsError(const std::error_code& ec) noexcept {
@@ -202,7 +247,9 @@ kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
             cfg.deviceName = j["deviceName"].get<std::string>();
         }
         if (j.contains("logLevel") && j["logLevel"].isInteger()) {
-            cfg.logLevel = j["logLevel"].get<int>();
+            // Clamp instead of rejecting: 9 must not silence logging.
+            cfg.logLevel =
+                std::to_underlying(kanariv::utils::clampLogLevel(j["logLevel"].get<int>()));
         } else if (j.contains("logLevel") && j["logLevel"].isString()) {
             // Tolerate hand-written names ("info"); canonical form is numeric.
             if (auto lvl = kanariv::utils::parseLogLevelValue(j["logLevel"].get<std::string>()))
@@ -226,9 +273,7 @@ kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
             cfg.autostart = j["autostart"].get<bool>();
         }
         if (j.contains("replayGain") && j["replayGain"].isString()) {
-            std::string rg = j["replayGain"].get<std::string>();
-            if (rg == "off" || rg == "track" || rg == "album")
-                cfg.replayGain = rg;
+            cfg.replayGain = parseReplayGain(j["replayGain"].get<std::string>());
         }
         if (j.contains("fadeInMs") && j["fadeInMs"].isInteger()) {
             cfg.fadeInMs = j["fadeInMs"].get<int>();
@@ -255,10 +300,21 @@ kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
                 cfg.dbPath = std::filesystem::path(s);
         }
         if (j.contains("log_level") && j["log_level"].isInteger()) {
-            cfg.logLevel = j["log_level"].get<int>();
+            cfg.logLevel =
+                std::to_underlying(kanariv::utils::clampLogLevel(j["log_level"].get<int>()));
         } else if (j.contains("log_level") && j["log_level"].isString()) {
             if (auto lvl = kanariv::utils::parseLogLevelValue(j["log_level"].get<std::string>()))
                 cfg.logLevel = std::to_underlying(*lvl);
+        }
+        // Unknown keys are a typo signal, not an error: keep loading, but record
+        // them so an owner with a logger (the daemon) can warn at startup.
+        for (std::size_t i = 0, n = j.size(); i < n; ++i) {
+            auto key = j.keyAt(i);
+            if (!key)
+                continue;
+            if (std::find(std::begin(knownConfigKeys), std::end(knownConfigKeys), *key) ==
+                std::end(knownConfigKeys))
+                cfg.unknownKeys.push_back(std::move(*key));
         }
     } catch (const std::exception& e) {
         return std::unexpected{
@@ -290,7 +346,7 @@ kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
         j["clearStopsPlayback"] = cfg.clearStopsPlayback;
         j["repeatDefault"] = repeatDefaultName(cfg.repeatDefault);
         j["autostart"] = cfg.autostart;
-        j["replayGain"] = cfg.replayGain;
+        j["replayGain"] = replayGainName(cfg.replayGain);
         j["fadeInMs"] = cfg.fadeInMs;
         j["fadeOutMs"] = cfg.fadeOutMs;
         j["interTrackGapMs"] = cfg.interTrackGapMs;
@@ -399,32 +455,77 @@ std::string endpointIdForDb(const std::filesystem::path& dbPath) {
     return std::format("{:016x}", fnv1a64(canonicalEndpointInput(dbPath)));
 }
 
-std::filesystem::path baseDirForSocket() {
+namespace {
+
+#ifndef _WIN32
+/// Verifies the runtime directory, creating it owner-only when absent.
+/// A pre-existing directory is accepted only when this user owns it and no
+/// group/other write bit is set; it is refused rather than chmod'ed, because
+/// on the shared temp fallback a pre-created directory is exactly the
+/// endpoint-squatting case this guard exists for.
+kanariv::utils::Expected<std::filesystem::path> secureRuntimeDir(const std::filesystem::path& dir) {
+    namespace fs = std::filesystem;
+    const auto reject = [&dir](const std::string& why) {
+        return kanariv::utils::Expected<std::filesystem::path>{std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                      "runtime directory '" + dir.generic_string() + "' " + why)}};
+    };
+    struct stat st{};
+    if (::lstat(dir.c_str(), &st) != 0) {
+        if (errno != ENOENT)
+            return reject(std::string("cannot be inspected: ") + std::strerror(errno));
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        if (ec)
+            return reject("cannot be created: " + ec.message());
+        std::error_code permEc;
+        fs::permissions(dir, fs::perms::owner_all, fs::perm_options::replace, permEc);
+        if (permEc)
+            return reject("cannot be restricted: " + permEc.message());
+        if (::lstat(dir.c_str(), &st) != 0)
+            return reject(std::string("cannot be inspected: ") + std::strerror(errno));
+    }
+    if (!S_ISDIR(st.st_mode))
+        return reject("is not a directory");
+    if (st.st_uid != ::geteuid())
+        return reject("is not owned by the current user");
+    if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0)
+        return reject("is writable by other users");
+    return dir;
+}
+#endif
+
+} // namespace
+
+kanariv::utils::Expected<std::filesystem::path> baseDirForSocket() {
+    std::filesystem::path base;
 #ifdef _WIN32
     const char* localApp = std::getenv("LOCALAPPDATA");
-    if (localApp && localApp[0] != '\0') {
+    if (localApp && localApp[0] != '\0')
         return std::filesystem::path(localApp) / "kanariv";
-    }
 #endif
     const char* xdgRuntime = std::getenv("XDG_RUNTIME_DIR");
-    if (xdgRuntime && xdgRuntime[0] != '\0') {
-        return std::filesystem::path(xdgRuntime) / "kanariv";
-    }
     const char* xdgData = std::getenv("XDG_DATA_HOME");
-    if (xdgData && xdgData[0] != '\0') {
-        return std::filesystem::path(xdgData) / "kanariv";
-    }
     const char* home = std::getenv("HOME");
     if (!home || home[0] == '\0')
         home = std::getenv("USERPROFILE");
-    if (home && home[0] != '\0') {
-        return std::filesystem::path(home) / ".local" / "share" / "kanariv";
+    if (xdgRuntime && xdgRuntime[0] != '\0')
+        base = std::filesystem::path(xdgRuntime) / "kanariv";
+    else if (xdgData && xdgData[0] != '\0')
+        base = std::filesystem::path(xdgData) / "kanariv";
+    else if (home && home[0] != '\0')
+        base = std::filesystem::path(home) / ".local" / "share" / "kanariv";
+    else {
+        std::error_code ec;
+        base = std::filesystem::temp_directory_path(ec) / "kanariv";
+        if (ec)
+            base = std::filesystem::path("/tmp/kanariv");
     }
-    std::error_code ec;
-    auto base = std::filesystem::temp_directory_path(ec) / "kanariv";
-    if (ec)
-        base = std::filesystem::path("/tmp/kanariv");
+#ifndef _WIN32
+    return secureRuntimeDir(base);
+#else
     return base;
+#endif
 }
 
 } // namespace kanariv::config::detail_paths
@@ -438,13 +539,15 @@ kanariv::utils::Expected<std::string> socketPathFor(const std::filesystem::path&
         return std::string("\\\\.\\pipe\\kanariv-") + id;
 #else
         auto base = detail_paths::baseDirForSocket();
-        return (base / ("kanariv-" + id + ".sock")).generic_string();
+        if (!base)
+            return std::unexpected{base.error()};
+        return (*base / ("kanariv-" + id + ".sock")).generic_string();
 #endif
     } catch (const std::exception& e) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
     } catch (...) {
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "socketPathFor failed")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                                         "socketPathFor: unknown exception")};
     }
 }
 
@@ -452,12 +555,14 @@ kanariv::utils::Expected<std::filesystem::path> pidPathFor(const std::filesystem
     try {
         std::string id = detail_paths::endpointIdForDb(dbPath);
         auto base = detail_paths::baseDirForSocket();
-        return base / ("kanariv-" + id + ".pid");
+        if (!base)
+            return std::unexpected{base.error()};
+        return *base / ("kanariv-" + id + ".pid");
     } catch (const std::exception& e) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
     } catch (...) {
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "pidPathFor failed")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                                         "pidPathFor: unknown exception")};
     }
 }
 
@@ -465,12 +570,14 @@ kanariv::utils::Expected<std::filesystem::path> lockPathFor(const std::filesyste
     try {
         std::string id = detail_paths::endpointIdForDb(dbPath);
         auto base = detail_paths::baseDirForSocket();
-        return base / ("kanariv-" + id + ".lock");
+        if (!base)
+            return std::unexpected{base.error()};
+        return *base / ("kanariv-" + id + ".lock");
     } catch (const std::exception& e) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
     } catch (...) {
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "lockPathFor failed")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                                         "lockPathFor: unknown exception")};
     }
 }
 
@@ -482,14 +589,15 @@ kanariv::utils::Expected<std::filesystem::path> logPathFor(const std::filesystem
         std::error_code ec;
         auto tmp = std::filesystem::temp_directory_path(ec);
         if (ec)
-            return std::unexpected{
-                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "logPathFor failed")};
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Io,
+                "logPathFor: cannot determine temp dir: " + ec.message())};
         return tmp / "kanariv.log";
     } catch (const std::exception& e) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io, e.what())};
     } catch (...) {
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "logPathFor failed")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                                         "logPathFor: unknown exception")};
     }
 }
 

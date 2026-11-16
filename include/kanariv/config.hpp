@@ -9,9 +9,11 @@
 
 #include <kanariv/config/runtime.hpp>
 #include <kanariv/fwd.hpp>
+#include <kanariv/types/engine.hpp>
 #include <kanariv/types/wire.hpp>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace kanariv::config {
 
@@ -28,7 +30,9 @@ namespace kanariv::config {
  * - Windows uses a named pipe derived from the database path; pid/lock are files under
  *   `%LOCALAPPDATA%/kanariv`
  * - POSIX socket/pid/lock are under $XDG_RUNTIME_DIR/kanariv or $XDG_DATA_HOME/kanariv or
- *   ~/.local/share/kanariv
+ *   ~/.local/share/kanariv. On POSIX the runtime directory is created owner-only when
+ *   absent, and an existing directory is refused (not chmod'ed) when it is not a
+ *   directory owned by the current user or is writable by group/other.
  *
  * @param dbPath Database path used as the stable identity for the endpoint.
  * @return Named-pipe or Unix-socket path, or an error when the platform
@@ -98,13 +102,15 @@ struct Config {
     /** @brief When a track is added to an empty queue, auto-start playback. Default: false. */
     bool autostart{false};
     /**
-     * @brief ReplayGain normalization: "off", "track", or "album". Default: "off".
-     * @details Reads `Track::replayGainTrack` / `replayGainAlbum` at load time.
-     * Nothing populates those columns yet (the scanner does not measure
-     * loudness and no tag importer exists), so all modes currently behave as
-     * "off".
+     * @brief ReplayGain normalization mode. Default: Off.
+     * @details Loaded from `"off"`, `"track"`, or `"album"` (case-insensitive;
+     * unknown text falls back to Off without failing the load) and written
+     * back by saveConfig in lowercase. Reads `Track::replayGainTrack` /
+     * `replayGainAlbum` at load time. Nothing populates those columns yet (the
+     * scanner does not measure loudness and no tag importer exists), so all
+     * modes currently behave as Off.
      */
-    std::string replayGain{"off"};
+    kanariv::types::ReplayGainMode replayGain{kanariv::types::ReplayGainMode::Off};
     /** @brief Fade-in duration in ms (0 = off). Default: 0. */
     int fadeInMs{0};
     /** @brief Fade-out duration in ms (0 = off). Default: 0. */
@@ -119,6 +125,13 @@ struct Config {
      *  keep their old behaviour: a non-zero interTrackGapMs is read as the
      *  crossfade overlap. */
     int interTrackGapMs{0};
+    /**
+     * @brief Keys present in the config file that this build does not know.
+     * @details Filled by loadConfig and never written by saveConfig. Entry
+     * points that own a logger report them once at startup, so a typo
+     * (`fadeInMS`, `replaygain`) is visible instead of silently ignored.
+     */
+    std::vector<std::string> unknownKeys{};
 };
 
 /**
@@ -128,6 +141,11 @@ struct Config {
  *
  * Reads JSON config file, falls back to defaults for missing keys.
  * Supports legacy keys: db_path, log_level (snake_case).
+ * `logLevel` accepts names and numbers; numbers are clamped to the logger
+ * vocabulary (0–4) so `9` cannot silence logging. `repeatDefault` and
+ * `replayGain` are parsed to their enums case-insensitively (unknown text
+ * means Off). Keys this build does not recognise are not an error: they are
+ * collected in `Config::unknownKeys` for the caller to warn about.
  */
 KANARIV_API kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path);
 
