@@ -124,6 +124,45 @@ TEST_CASE("config load/save playback-policy keys", "[config]") {
     REQUIRE(reloaded->autostart == true);
 }
 
+TEST_CASE("config separates crossfade from inter-track gap", "[config]") {
+    auto tmp = freshTempDir("kanariv_test_config_crossfade");
+    auto cfgPath = tmp / "config.json";
+
+    SECTION("explicit keys are kept apart and round-trip") {
+        {
+            std::ofstream out(cfgPath);
+            REQUIRE(out.good());
+            out << R"({
+  "crossfadeMs": 700,
+  "interTrackGapMs": 250
+})";
+        }
+        auto loaded = kanariv::config::loadConfig(cfgPath);
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->crossfadeMs == 700);
+        REQUIRE(loaded->interTrackGapMs == 250);
+
+        REQUIRE(kanariv::config::saveConfig(*loaded).has_value());
+        auto reloaded = kanariv::config::loadConfig(cfgPath);
+        REQUIRE(reloaded.has_value());
+        REQUIRE(reloaded->crossfadeMs == 700);
+        REQUIRE(reloaded->interTrackGapMs == 250);
+    }
+
+    SECTION("legacy gap-only config keeps its crossfade behaviour") {
+        // Before the split, interTrackGapMs configured the crossfade overlap.
+        {
+            std::ofstream out(cfgPath);
+            REQUIRE(out.good());
+            out << R"({"interTrackGapMs": 400})";
+        }
+        auto loaded = kanariv::config::loadConfig(cfgPath);
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->crossfadeMs == 400);
+        REQUIRE(loaded->interTrackGapMs == 0);
+    }
+}
+
 TEST_CASE("config defaults for playback-policy keys", "[config]") {
     auto tmp = freshTempDir("kanariv_test_config_defaults");
     auto cfgPath = tmp / "config.json";

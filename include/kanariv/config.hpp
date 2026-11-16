@@ -103,7 +103,15 @@ struct Config {
     int fadeInMs{0};
     /** @brief Fade-out duration in ms (0 = off). Default: 0. */
     int fadeOutMs{0};
-    /** @brief Inter-track silence in ms (0 = gapless). Default: 0. */
+    /** @brief Equal-power crossfade overlap in ms (0 = off). Default: 0.
+     *  The next track is preloaded and mixed in over the last crossfadeMs of
+     *  the outgoing one. */
+    int crossfadeMs{0};
+    /** @brief Inter-track silence in ms (0 = gapless). Default: 0.
+     *  Held after the outgoing tail drains, before the next track starts;
+     *  ignored when crossfadeMs > 0. Legacy configs (no crossfadeMs key)
+     *  keep their old behaviour: a non-zero interTrackGapMs is read as the
+     *  crossfade overlap. */
     int interTrackGapMs{0};
 };
 

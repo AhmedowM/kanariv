@@ -183,6 +183,7 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
         ecfg.replayGain = kanariv::types::ReplayGainMode::Off;
     ecfg.fadeInMs = cfg.fadeInMs;
     ecfg.fadeOutMs = cfg.fadeOutMs;
+    ecfg.crossfadeMs = cfg.crossfadeMs;
     ecfg.interTrackGapMs = cfg.interTrackGapMs;
     auto engRes = kanariv::engine::Engine::create(ecfg);
     if (!engRes) {

@@ -473,7 +473,7 @@ TEST_CASE("failed crossfade preload keeps the cursor on the unreadable track",
     cfg.enableMonitorThread = true;
     cfg.pollMs = 10;
     cfg.gaplessMs = 300;
-    cfg.interTrackGapMs = 300; // crossfade window; its preload is what we test
+    cfg.crossfadeMs = 300; // crossfade window; its preload is what we test
     cfg.historyThresholdPct = 100;
     cfg.historyThresholdSecs = 100;
     cfg.logger = &logger;
@@ -562,7 +562,7 @@ TEST_CASE("crossfade completion publishes the incoming track", "[engine_gapless]
     cfg.enableMonitorThread = true;
     cfg.pollMs = 10;
     cfg.gaplessMs = 300;
-    cfg.interTrackGapMs = 100; // crossfade window
+    cfg.crossfadeMs = 100; // crossfade window
     cfg.historyThresholdPct = 100;
     cfg.historyThresholdSecs = 100;
     cfg.callbacks.on_track_started = [&](int64_t id) {
@@ -577,7 +577,7 @@ TEST_CASE("crossfade completion publishes the incoming track", "[engine_gapless]
     REQUIRE(eng->currentTrackId() == ids[0]);
     const double dur = eng->duration();
     REQUIRE(dur == Catch::Approx(1.0).margin(0.01));
-    // Enter the crossfade window (remaining <= interTrackGapMs).
+    // Enter the crossfade window (remaining <= crossfadeMs).
     REQUIRE(eng->seek(dur - 0.05).has_value());
     busyWaitUntil([&] { return eng->currentTrackId() == ids[1]; }, std::chrono::milliseconds(5000),
                   std::chrono::milliseconds(20));
@@ -624,7 +624,7 @@ TEST_CASE("crossfade publishes when the incoming track ends before the overlap",
     cfg.enableMonitorThread = true;
     cfg.pollMs = 10;
     cfg.gaplessMs = 300;
-    cfg.interTrackGapMs = 500;
+    cfg.crossfadeMs = 500;
     cfg.historyThresholdPct = 100;
     cfg.historyThresholdSecs = 100;
     auto eRes = Engine::create(cfg);
@@ -640,6 +640,56 @@ TEST_CASE("crossfade publishes when the incoming track ends before the overlap",
                   std::chrono::milliseconds(20));
     REQUIRE(eng->currentTrackId() == ids[1]);
     REQUIRE(eng->duration() == Catch::Approx(0.2).margin(0.01));
+    eng.reset();
+    safeRemoveDb(dbPath);
+}
+
+TEST_CASE("inter-track gap holds real silence before the next track", "[engine_gapless][gap]") {
+    namespace fs = std::filesystem;
+    const fs::path dir = tempDirPath("gap_silence");
+    const std::string dbPath = tempDbPath("gap_silence").string();
+    // 1 s outgoing, 5 s incoming. The gap must delay the transition past the
+    // outgoing tail; a gapless pre-roll would start the next track ~300 ms
+    // before EOF instead, so the lower bound is what distinguishes them.
+    TwoSilentTracks tracks = makeTwoSilentTracks(dir, dbPath, 1.0, 5.0, 0x70);
+    const int64_t* ids = tracks.ids;
+
+    std::mutex startedMutex;
+    std::vector<int64_t> started;
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = true;
+    cfg.pollMs = 10;
+    cfg.gaplessMs = 300;
+    cfg.crossfadeMs = 0;
+    cfg.interTrackGapMs = 1200;
+    cfg.historyThresholdPct = 100;
+    cfg.historyThresholdSecs = 100;
+    cfg.callbacks.on_track_started = [&](int64_t id) {
+        std::lock_guard<std::mutex> lk(startedMutex);
+        started.push_back(id);
+    };
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachStorage(kanariv::db::makeStorage(tracks.db)).has_value());
+    const auto t0 = std::chrono::steady_clock::now();
+    REQUIRE(eng->play(1).has_value());
+    REQUIRE(eng->currentTrackId() == ids[0]);
+    // currentTrackId is published a few instructions before on_track_started
+    // fires, so polling the atomic alone can return early under load; wait on
+    // the callback and then read the clock.
+    const auto incomingStarted = [&]() {
+        std::lock_guard<std::mutex> lk(startedMutex);
+        return std::find(started.begin(), started.end(), ids[1]) != started.end();
+    };
+    busyWaitUntil(incomingStarted, std::chrono::milliseconds(8000), std::chrono::milliseconds(10));
+    const auto elapsed = std::chrono::steady_clock::now() - t0;
+    REQUIRE(incomingStarted());
+    REQUIRE(eng->currentTrackId() == ids[1]);
+    // 1.0 s of audio + 1.2 s of silence, minus scheduling slack.
+    REQUIRE(elapsed >= std::chrono::milliseconds(1900));
+    REQUIRE(eng->duration() == Catch::Approx(5.0).margin(0.01));
     eng.reset();
     safeRemoveDb(dbPath);
 }
@@ -695,7 +745,7 @@ TEST_CASE("a track change cancels an armed crossfade", "[engine_gapless][crossfa
     // A 2 s overlap cannot finish quickly: the decode thread may only run
     // ~1 s (8192 frames at 8 kHz) ahead of the consuming output, so the
     // transition stays in flight for roughly a second after it is armed.
-    cfg.interTrackGapMs = 2000;
+    cfg.crossfadeMs = 2000;
     cfg.historyThresholdPct = 100;
     cfg.historyThresholdSecs = 100;
     cfg.logger = &logger;

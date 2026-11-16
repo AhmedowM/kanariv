@@ -105,8 +105,12 @@ enum class ReplayGainMode : std::uint8_t {
  *   setting currently has no audible effect.
  * - `fadeInMs`/`fadeOutMs`: fade envelope applied to decoded samples in the
  *   decode loop (real-time safe, no blocking).
- * - `interTrackGapMs`: silence between tracks (0 = gapless). Implemented by
- *   delaying gapless arming so the output ring drains before the next track.
+ * - `crossfadeMs`: equal-power overlap with the next track over the last
+ *   `crossfadeMs` of the outgoing one (0 = off). Arming preloads the next
+ *   entry early, so the transition never advances the cursor on its own.
+ * - `interTrackGapMs`: real silence between tracks (0 = gapless). The
+ *   outgoing tail drains to the device, the gap is held, then the next track
+ *   starts. Ignored while `crossfadeMs` is set: an overlap is not a gap.
  */
 struct EngineConfig {
     bool enableMonitorThread{true};     ///< Whether to start monitorLoop.
@@ -131,7 +135,11 @@ struct EngineConfig {
     int fadeInMs{0};
     /// Fade-out duration in ms (0 = off). Applied to last samples of each track.
     int fadeOutMs{0};
-    /// Inter-track silence in ms (0 = gapless). Delay before starting next track.
+    /// Equal-power crossfade overlap in ms (0 = off). The incoming track is
+    /// preloaded and mixed in over the last crossfadeMs of the outgoing one.
+    int crossfadeMs{0};
+    /// Inter-track silence in ms (0 = gapless). Delay after the outgoing tail
+    /// drains and before the next track starts; ignored when crossfadeMs > 0.
     int interTrackGapMs{0};
     EngineCallbacks callbacks{}; ///< Initial callbacks (also via setCallbacks).
     /// Non-owning logger (may be null = silent). Must outlive the Engine;

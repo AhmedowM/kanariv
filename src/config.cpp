@@ -236,6 +236,15 @@ kanariv::utils::Expected<Config> loadConfig(const std::filesystem::path& path) {
         if (j.contains("interTrackGapMs") && j["interTrackGapMs"].isInteger()) {
             cfg.interTrackGapMs = j["interTrackGapMs"].get<int>();
         }
+        if (j.contains("crossfadeMs") && j["crossfadeMs"].isInteger()) {
+            cfg.crossfadeMs = j["crossfadeMs"].get<int>();
+        } else if (cfg.interTrackGapMs > 0) {
+            // Legacy meaning: before the split, interTrackGapMs configured the
+            // crossfade overlap. A config without crossfadeMs keeps the
+            // audible behaviour it had; the key now means real silence.
+            cfg.crossfadeMs = cfg.interTrackGapMs;
+            cfg.interTrackGapMs = 0;
+        }
         // legacy keys: db_path, log_level
         if (j.contains("db_path") && j["db_path"].isString()) {
             std::string s = j["db_path"].get<std::string>();
@@ -281,6 +290,7 @@ kanariv::utils::Expected<void> saveConfig(const Config& cfg) {
         j["fadeInMs"] = cfg.fadeInMs;
         j["fadeOutMs"] = cfg.fadeOutMs;
         j["interTrackGapMs"] = cfg.interTrackGapMs;
+        j["crossfadeMs"] = cfg.crossfadeMs;
         if (!cfg.socketPath.empty())
             j["socketPath"] = cfg.socketPath;
         const std::string payload = j.dump(2);
