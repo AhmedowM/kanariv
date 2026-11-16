@@ -211,8 +211,8 @@ BatchResult App::playlistExport(std::int64_t pid, const std::string& path,
     kanariv::ipc::Command cmd{
         kanariv::ipc::PlaylistExport{.pid = pid, .path = path, .format = format}};
     auto client = impl_->makeClient();
-    auto timeout = std::chrono::milliseconds{5000};
-    auto cliRes = client.send(cmd, timeout);
+    // PlaylistExport carries the Batch transport policy.
+    auto cliRes = client.send(cmd);
     if (!cliRes)
         return BatchReport::fail(std::format("export: {}", cliRes.error().message));
     BatchReport rep;

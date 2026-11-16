@@ -92,6 +92,43 @@ bool pidFileAlive(const std::filesystem::path& pidPath) {
     return errno != ESRCH;
 #endif
 }
+
+#ifndef _WIN32
+// A8: resolve the executable path in the parent. The spawned child must not
+// allocate or touch the filesystem between fork() and exec() (see the comment
+// in spawnDaemon), so this runs before the fork.
+std::string resolveExePath(const std::string& fallback) {
+#ifdef __linux__
+    char linkBuf[4096]{};
+    if (ssize_t n = ::readlink("/proc/self/exe", linkBuf, sizeof(linkBuf) - 1); n > 0) {
+        linkBuf[n] = '\0';
+        return linkBuf;
+    }
+#elif defined(__APPLE__)
+    char buf[4096]{};
+    uint32_t size = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &size) == 0)
+        return buf;
+    std::vector<char> dyn(size);
+    if (_NSGetExecutablePath(dyn.data(), &size) == 0)
+        return dyn.data();
+#else
+    // BSD / other POSIX: try /proc/curproc/file then /proc/self/exe.
+    char linkBuf[4096]{};
+    if (ssize_t n = ::readlink("/proc/curproc/file", linkBuf, sizeof(linkBuf) - 1); n > 0) {
+        linkBuf[n] = '\0';
+        return linkBuf;
+    }
+    if (ssize_t n = ::readlink("/proc/self/exe", linkBuf, sizeof(linkBuf) - 1); n > 0) {
+        linkBuf[n] = '\0';
+        return linkBuf;
+    }
+#endif
+    if (!fallback.empty())
+        return fallback;
+    return "./kanariv";
+}
+#endif
 } // namespace
 
 App::App(kanariv::config::Config cfg) : impl_(std::make_unique<Impl>()) {
@@ -192,80 +229,42 @@ std::expected<void, std::uint32_t> App::Impl::spawnDaemon(const kanariv::config:
     CloseHandle(pi.hThread);
     return {};
 #else
-    // Snapshot before fork(): taking the state mutex or copying a string in
-    // the child could deadlock against a lock held by another thread.
-    const std::string fallbackExe = argv0();
+    // A8: between fork() and exec() only async-signal-safe calls are legal.
+    // Another thread of this process may hold the malloc/iostream lock, and
+    // that lock stays held in the child; std::string/vector/filesystem work
+    // there can deadlock. Resolve the executable path, the config string and
+    // the argv array here, then let the child only setsid/chdir/close/execv
+    // over parent-built storage (never allocating or touching the filesystem).
+    const std::string exePath = resolveExePath(argv0());
+    std::string configPath;
+    if (!cfg.configPath.empty())
+        configPath = cfg.configPath.generic_string();
+    char* execArgv[6];
+    int execArgc = 0;
+    execArgv[execArgc++] = const_cast<char*>(exePath.c_str());
+    if (!configPath.empty()) {
+        execArgv[execArgc++] = const_cast<char*>("--config");
+        execArgv[execArgc++] = const_cast<char*>(configPath.c_str());
+    }
+    execArgv[execArgc++] = const_cast<char*>("--daemon");
+    execArgv[execArgc++] = const_cast<char*>("--foreground");
+    execArgv[execArgc] = nullptr;
+
+    const char* const childExe = exePath.c_str();
     pid_t pid = fork();
     if (pid < 0) {
         return std::unexpected{static_cast<std::uint32_t>(errno)};
     }
     if (pid > 0)
         return {};
-    // child
+    // child: async-signal-safe calls only until execv() replaces the image.
     if (setsid() < 0)
         _exit(1);
-    if (chdir("/") != 0) {
-    }
+    (void)chdir("/");
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
-    std::string exePath;
-#ifdef __linux__
-    {
-        char linkBuf[4096]{};
-        ssize_t n = readlink("/proc/self/exe", linkBuf, sizeof(linkBuf) - 1);
-        if (n > 0) {
-            linkBuf[n] = '\0';
-            exePath = linkBuf;
-        } else {
-            exePath = fallbackExe.empty() ? "/proc/self/exe" : fallbackExe;
-        }
-    }
-#elif defined(__APPLE__)
-    {
-        char buf[4096]{};
-        uint32_t size = sizeof(buf);
-        if (_NSGetExecutablePath(buf, &size) == 0) {
-            exePath = buf;
-        } else {
-            std::vector<char> dyn(size);
-            if (_NSGetExecutablePath(dyn.data(), &size) == 0) {
-                exePath = dyn.data();
-            } else if (!fallbackExe.empty()) {
-                exePath = fallbackExe;
-            } else {
-                exePath = "./kanariv";
-            }
-        }
-    }
-#else
-    // BSD / other POSIX: try /proc/curproc/file then fallback to argv0
-    {
-        char linkBuf[4096]{};
-        ssize_t n = readlink("/proc/curproc/file", linkBuf, sizeof(linkBuf) - 1);
-        if (n > 0) {
-            linkBuf[n] = '\0';
-            exePath = linkBuf;
-        } else {
-            n = readlink("/proc/self/exe", linkBuf, sizeof(linkBuf) - 1);
-            if (n > 0) {
-                linkBuf[n] = '\0';
-                exePath = linkBuf;
-            } else if (!fallbackExe.empty()) {
-                exePath = fallbackExe;
-            } else {
-                exePath = "./kanariv";
-            }
-        }
-    }
-#endif
-    if (!cfg.configPath.empty()) {
-        std::string cfgStr = cfg.configPath.generic_string();
-        execl(exePath.c_str(), exePath.c_str(), "--config", cfgStr.c_str(), "--daemon",
-              "--foreground", nullptr);
-    } else {
-        execl(exePath.c_str(), exePath.c_str(), "--daemon", "--foreground", nullptr);
-    }
+    execv(childExe, execArgv);
     _exit(1);
 #endif
 }
@@ -378,7 +377,7 @@ AppResult App::shutdownDaemon() {
     const auto cfg = impl_->config();
     kanariv::client::Client client{cfg.dbPath, cfg.socketPath};
     auto cmd = kanariv::ipc::Command{kanariv::ipc::Shutdown{}};
-    auto res = client.send(cmd, std::chrono::milliseconds{2000});
+    auto res = client.send(cmd);
     if (!res && !client.probe()) {
         // Structurally unreachable: there is nothing to shut down.
         return Outcome::fail("shutdown: daemon not running");

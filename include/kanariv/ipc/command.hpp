@@ -29,6 +29,7 @@
 #include <kanariv/ipc/command/library.hpp>
 #include <kanariv/ipc/command/playback.hpp>
 #include <kanariv/ipc/command/playlist.hpp>
+#include <kanariv/ipc/command/policy.hpp>
 #include <kanariv/ipc/command/queue.hpp>
 #include <kanariv/ipc/command/system.hpp>
 #include <kanariv/ipc/command/tag.hpp>

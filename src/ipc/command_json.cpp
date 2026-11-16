@@ -53,6 +53,7 @@ constexpr std::size_t variantIndexOf() {
 struct CommandSchema {
     std::string_view name;
     std::size_t index;
+    TransportPolicy policy;
     std::expected<Command, kanariv::utils::Error> (*parse)(const Json&);
 };
 
@@ -65,8 +66,9 @@ std::expected<Command, kanariv::utils::Error> parseCommandSchema(const Json& j) 
 }
 
 template <CommandAlternative T>
-constexpr CommandSchema commandSchema(std::string_view name) {
-    return CommandSchema{name, variantIndexOf<T, Command>(), &parseCommandSchema<T>};
+constexpr CommandSchema commandSchema(std::string_view name,
+                                      TransportPolicy policy = TransportPolicy::Interactive) {
+    return CommandSchema{name, variantIndexOf<T, Command>(), policy, &parseCommandSchema<T>};
 }
 
 /// One row per Command alternative, in variant order. The assertions below turn
@@ -91,9 +93,9 @@ constexpr std::array kCommandSchema{
     commandSchema<PlayFiles>("PlayFiles"),
     commandSchema<QueueSwitch>("QueueSwitch"),
     commandSchema<QueueAdd>("QueueAdd"),
-    commandSchema<QueueAddBatch>("QueueAddBatch"),
+    commandSchema<QueueAddBatch>("QueueAddBatch", TransportPolicy::Batch),
     commandSchema<QueueRemove>("QueueRemove"),
-    commandSchema<QueueRemoveBatch>("QueueRemoveBatch"),
+    commandSchema<QueueRemoveBatch>("QueueRemoveBatch", TransportPolicy::Batch),
     commandSchema<QueueMove>("QueueMove"),
     commandSchema<QueueClear>("QueueClear"),
     commandSchema<QueueShuffle>("QueueShuffle"),
@@ -106,12 +108,12 @@ constexpr std::array kCommandSchema{
     commandSchema<PlaylistSave>("PlaylistSave"),
     commandSchema<PlaylistDelete>("PlaylistDelete"),
     commandSchema<PlaylistRename>("PlaylistRename"),
-    commandSchema<PlaylistExport>("PlaylistExport"),
-    commandSchema<PlaylistImport>("PlaylistImport"),
-    commandSchema<LibraryScan>("LibraryScan"),
+    commandSchema<PlaylistExport>("PlaylistExport", TransportPolicy::Batch),
+    commandSchema<PlaylistImport>("PlaylistImport", TransportPolicy::Batch),
+    commandSchema<LibraryScan>("LibraryScan", TransportPolicy::LongRunning),
     commandSchema<LibrarySearch>("LibrarySearch"),
     commandSchema<LibraryStats>("LibraryStats"),
-    commandSchema<LibraryAdd>("LibraryAdd"),
+    commandSchema<LibraryAdd>("LibraryAdd", TransportPolicy::Batch),
     commandSchema<LibraryRemove>("LibraryRemove"),
     commandSchema<LibraryList>("LibraryList"),
     commandSchema<TagEdit>("TagEdit"),
@@ -138,9 +140,9 @@ constexpr std::array kCommandSchema{
     commandSchema<DeviceTest>("DeviceTest"),
     commandSchema<Info>("Info"),
     commandSchema<TrackRate>("TrackRate"),
-    commandSchema<LibraryMaintenance>("LibraryMaintenance"),
+    commandSchema<LibraryMaintenance>("LibraryMaintenance", TransportPolicy::Batch),
     commandSchema<StatusWait>("StatusWait"),
-    commandSchema<TagBatchEdit>("TagBatchEdit"),
+    commandSchema<TagBatchEdit>("TagBatchEdit", TransportPolicy::Batch),
 };
 
 static_assert(kCommandSchema.size() == std::variant_size_v<Command>,
@@ -931,5 +933,9 @@ std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
 
 std::string toJsonString(const Command& c) {
     return toJson(c).dump(2);
+}
+
+TransportPolicy transportPolicyFor(const Command& cmd) noexcept {
+    return kCommandSchema[cmd.index()].policy;
 }
 } // namespace kanariv::ipc

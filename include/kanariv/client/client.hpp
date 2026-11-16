@@ -118,8 +118,9 @@ class KANARIV_API Client {
      * @ingroup kanariv_client
      * @param cmd Command to serialize and transmit synchronously.
      * @param timeout Maximum time to wait for connection and response; `0`
-     * selects the per-command default (2 s, extended for commands that are
-     * legitimately long such as `LibraryScan` or `PlaylistImport`).
+     * selects the command's transport policy
+     * (`kanariv::ipc::transportPolicyFor`): Interactive 2 s, Batch 5 min,
+     * LongRunning 30 min.
      * @return Command result, or a transport/timeout error.
      * @par Thread safety
      * The call blocks until the reply arrives or `timeout` expires. On timeout
@@ -194,7 +195,7 @@ class KANARIV_API Session {
      * @ingroup kanariv_client
      * @param cmd Command to serialize and transmit synchronously.
      * @param timeout Maximum time for connecting and for the reply; `0` selects
-     * the per-command default, as with `Client::send()`.
+     * the command's transport policy, as with `Client::send()`.
      * @return Command result, or a transport/timeout error. A transport error
      * also closes the connection; the command is not retried.
      */

@@ -16,7 +16,6 @@
 #include <system_error>
 #include <thread>
 #include <utility>
-#include <variant>
 
 #include "ipc_client.hpp"
 
@@ -24,31 +23,18 @@ namespace kanariv::client {
 
 namespace {
 
-/// @brief Budget for an ordinary command when the caller does not pick one.
-constexpr std::chrono::milliseconds defaultSendTimeout{2000};
-
 /// @brief Transport headroom added on top of a `StatusWait`'s own daemon timeout.
 constexpr std::chrono::milliseconds statusWaitMargin{500};
 
 /// @brief Budget for the liveness probe (one connect, no command).
 constexpr std::chrono::milliseconds probeTimeout{400};
 
-/**
- * @brief Budget for a command that the caller left at its default.
- * @details A few commands legitimately run for minutes (scanning a tree,
- * importing a playlist, batch tag writes, library maintenance). Aborting them
- * on the 2 s default would report a failure while the daemon keeps working on
- * a command the caller already treats as finished.
- */
+/// @brief Budget for a command the caller left at its default.
+/// @details The class lives on the command's wire-schema row, so a command that
+/// legitimately runs for minutes (scan, import, batch writes) cannot be given
+/// the interactive budget by omission.
 std::chrono::milliseconds commandTimeout(const kanariv::ipc::Command& cmd) {
-    if (std::holds_alternative<kanariv::ipc::LibraryScan>(cmd))
-        return std::chrono::minutes{30};
-    if (std::holds_alternative<kanariv::ipc::PlaylistImport>(cmd) ||
-        std::holds_alternative<kanariv::ipc::LibraryAdd>(cmd) ||
-        std::holds_alternative<kanariv::ipc::LibraryMaintenance>(cmd) ||
-        std::holds_alternative<kanariv::ipc::TagBatchEdit>(cmd))
-        return std::chrono::minutes{5};
-    return defaultSendTimeout;
+    return kanariv::ipc::transportDeadline(kanariv::ipc::transportPolicyFor(cmd));
 }
 
 /**

@@ -457,6 +457,35 @@ TEST_CASE("a scan keeps its long default deadline", "[client][c2]") {
     REQUIRE(elapsed < std::chrono::milliseconds{5000});
 }
 
+TEST_CASE("transport policy classifies long-running commands", "[client][c2]") {
+    using kanariv::ipc::TransportPolicy;
+    namespace ipc = kanariv::ipc;
+
+    // Interactive is the fallback, so unlisted commands cannot be given a
+    // longer budget by accident.
+    CHECK(ipc::transportPolicyFor(ipc::Command{ipc::Play{}}) == TransportPolicy::Interactive);
+    CHECK(ipc::transportPolicyFor(ipc::Command{ipc::StatusReq{}}) == TransportPolicy::Interactive);
+    CHECK(ipc::transportPolicyFor(ipc::Command{ipc::Shutdown{}}) == TransportPolicy::Interactive);
+
+    // One request carrying bulk payloads.
+    for (const auto& cmd : {ipc::Command{ipc::QueueAddBatch{}},
+                            ipc::Command{ipc::QueueRemoveBatch{}},
+                            ipc::Command{ipc::PlaylistExport{}},
+                            ipc::Command{ipc::PlaylistImport{}},
+                            ipc::Command{ipc::LibraryAdd{}},
+                            ipc::Command{ipc::LibraryMaintenance{}},
+                            ipc::Command{ipc::TagBatchEdit{}}})
+        CHECK(ipc::transportPolicyFor(cmd) == TransportPolicy::Batch);
+
+    // A tree walk outlives even the batch budget.
+    CHECK(ipc::transportPolicyFor(ipc::Command{ipc::LibraryScan{}}) ==
+          TransportPolicy::LongRunning);
+
+    CHECK(ipc::transportDeadline(TransportPolicy::Interactive) == std::chrono::seconds{2});
+    CHECK(ipc::transportDeadline(TransportPolicy::Batch) == std::chrono::minutes{5});
+    CHECK(ipc::transportDeadline(TransportPolicy::LongRunning) == std::chrono::minutes{30});
+}
+
 TEST_CASE("probe returns false quickly when nothing listens", "[client][c3]") {
     auto dir = tempDirPath("client_probe_missing");
     const auto endpoint = uniqueEndpoint(dir, "no-listener");

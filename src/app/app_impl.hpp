@@ -60,14 +60,14 @@ struct App::Impl {
     /**
      * @brief Sends a command and normalizes server-side errors.
      * @param cmd IPC command to send.
-     * @param timeout Per-attempt timeout (default 2 s).
+     * @param timeout Per-attempt timeout; `0` uses the command's
+     * transport policy (see `kanariv::ipc::transportPolicyFor`).
      * @return Server result, or the transport/server error. A transport
      * failure followed by a failed liveness probe is reported as the
      * canonical unreachable-daemon error.
      */
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    sendRaw(const kanariv::ipc::Command& cmd,
-            std::chrono::milliseconds timeout = std::chrono::milliseconds{2000});
+    sendRaw(const kanariv::ipc::Command& cmd, std::chrono::milliseconds timeout = {});
 
     /**
      * @brief Pairs a result with its success line, passing errors through.

@@ -9,7 +9,6 @@
 #include <app/detail.hpp>
 #include <app/format_internal.hpp>
 #include <cctype>
-#include <chrono>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
@@ -28,10 +27,9 @@ namespace kanariv::app {
 
 AppResult App::libraryScan(std::optional<std::string> path, bool fullHash) {
     kanariv::ipc::Command cmd{kanariv::ipc::LibraryScan{path, fullHash}};
-    // A scan walks the tree and fingerprints/metadata-probes every file, so it
-    // legitimately outlives the 2 s per-command budget. Without this a large
-    // directory timed out in the client while the daemon kept scanning.
-    return impl_->confirm(impl_->sendRaw(cmd, std::chrono::minutes{30}));
+    // LibraryScan carries the LongRunning transport policy, so the client
+    // budget already covers a tree walk that outlives the interactive default.
+    return impl_->confirm(impl_->sendRaw(cmd));
 }
 
 AppResult App::librarySearch(const std::string& query, int limit) {
