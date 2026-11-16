@@ -364,7 +364,9 @@ struct Engine::Impl {
     // player (decodeMtx_ only)
     std::unique_ptr<kanariv::media::Reader> reader_{};
     std::unique_ptr<kanariv::media::Decoder> decoder_{};
-    std::unique_ptr<kanariv::utils::SpscRing<float>> ring_{};
+    // Shared so the decode thread can keep a parked ring alive while it waits
+    // after releasing decodeMtx_ (P8).
+    std::shared_ptr<kanariv::utils::SpscRing<float>> ring_{};
     std::unique_ptr<kanariv::player::AudioOutput> output_{};
 
     std::jthread decodeThread_{};
@@ -2033,7 +2035,7 @@ Engine::Impl::doPlayTrack(kanariv::types::Track& t, double startSec) {
                     sr = 48000;
                 if (ch == 0)
                     ch = 2;
-                ring_ = std::make_unique<kanariv::utils::SpscRing<float>>(
+                ring_ = std::make_shared<kanariv::utils::SpscRing<float>>(
                     playback::policy::engineRingFrames(ch), ch);
                 kanariv::player::AudioOutput::Config cfg;
                 cfg.sampleRate = sr;
@@ -2511,12 +2513,20 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
         bool ready = false;
         size_t avail = 0;
         uint32_t ch = 2;
+        uint64_t consumed = 0;
+        // Local reference: once decodeMtx_ is released for the wait below, the
+        // ring may be replaced (teardown), and the parked pointer must survive.
+        std::shared_ptr<kanariv::utils::SpscRing<float>> ring;
         {
             std::unique_lock<std::mutex> lk(decodeMtx_);
             if (playbackState_.load(std::memory_order_acquire) ==
                     kanariv::types::PlaybackState::Playing &&
                 decoder_ && ring_) {
-                avail = ring_->availableWrite();
+                ring = ring_;
+                // Sample the read counter before the space check so a drain
+                // landing in between is visible to waitForRead() (P8).
+                consumed = ring->readSequence();
+                avail = ring->availableWrite();
                 ch = decoder_->channels();
                 if (ch == 0)
                     ch = 2;
@@ -2623,7 +2633,9 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
         // request above and mixes both decoders during the overlap; an
         // interTrackGapMs silence is a separate policy handled at EOF.
         if (avail == 0) {
-            std::this_thread::sleep_for(playback::policy::ringIdlePoll);
+            // Ring full: park until the audio callback drains (consumer-side
+            // signal) instead of polling; the bound covers a stopped device.
+            (void)ring->waitForRead(consumed, playback::policy::ringWakeBudget);
             continue;
         }
         size_t maxFrames = playback::policy::chunkFrames(ch, avail);
@@ -2729,7 +2741,7 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
             if (outcome == playback::policy::DecodeOutcome::Continue) {
                 // No frames and no final status: not an end of track. Retry
                 // instead of running the transition ladder.
-                std::this_thread::sleep_for(playback::policy::ringIdlePoll);
+                std::this_thread::sleep_for(playback::policy::decodeStallPoll);
                 continue;
             }
             if (outcome == playback::policy::DecodeOutcome::Failed) {

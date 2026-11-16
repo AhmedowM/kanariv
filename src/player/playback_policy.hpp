@@ -94,7 +94,17 @@ enum class DecodeOutcome : std::uint8_t {
     return DecodeOutcome::Continue;
 }
 
-/// Decode-thread backoff while the ring is full or a spent decoder drains.
-inline constexpr std::chrono::milliseconds ringIdlePoll{5};
+/// Decode-thread backoff when the decoder produced no frames and no status.
+inline constexpr std::chrono::milliseconds decodeStallPoll{5};
+
+/**
+ * @brief Upper bound on a decode thread parked on ring progress.
+ * @details The audio callback wakes the producer through the ring's read
+ * signal (see SpscRing::waitForRead), so this bound is not a poll interval:
+ * it only covers a consumer that stopped without a state transition (device
+ * stall) and keeps stop()/pause() teardown from waiting on a signal that
+ * never comes.
+ */
+inline constexpr std::chrono::milliseconds ringWakeBudget{20};
 
 } // namespace kanariv::playback::policy

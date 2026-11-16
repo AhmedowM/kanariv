@@ -3,6 +3,7 @@
 #include <kanariv/utils/ring.hpp>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <stop_token>
 #include <thread>
@@ -233,6 +234,37 @@ bool ring_concurrent_spsc() {
     return true;
 }
 
+bool ring_wait_for_read_signal() {
+    SpscRing<float> r{16, 1};
+    std::array<float, 16> fill{};
+    if (r.write(std::span<const float>(fill.data(), fill.size())) != 16)
+        return false;
+    if (r.availableWrite() != 0)
+        return false;
+    const std::uint64_t consumed = r.readSequence();
+    std::jthread consumer([&](std::stop_token) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        std::array<float, 8> out{};
+        (void)r.read(std::span<float>(out.data(), out.size()));
+    });
+    const bool signalled = r.waitForRead(consumed, std::chrono::seconds(5));
+    consumer.join();
+    if (!signalled)
+        return false;
+    return r.availableWrite() >= 8;
+}
+
+bool ring_wait_for_read_timeout() {
+    SpscRing<float> r{16, 1};
+    const std::uint64_t consumed = r.readSequence();
+    const auto start = std::chrono::steady_clock::now();
+    const bool signalled = r.waitForRead(consumed, std::chrono::milliseconds(10));
+    const auto waited = std::chrono::steady_clock::now() - start;
+    if (signalled)
+        return false;
+    return waited >= std::chrono::milliseconds(10);
+}
+
 } // namespace kanariv::utils::test
 
 using namespace kanariv::utils::test;
@@ -267,4 +299,12 @@ TEST_CASE("SpscRing 10k loop stress", "[utils][ring]") {
 
 TEST_CASE("SpscRing concurrent SPSC", "[utils][ring]") {
     REQUIRE(ring_concurrent_spsc());
+}
+
+TEST_CASE("SpscRing waitForRead wakes on a consumer read", "[utils][ring]") {
+    REQUIRE(ring_wait_for_read_signal());
+}
+
+TEST_CASE("SpscRing waitForRead honours its bound", "[utils][ring]") {
+    REQUIRE(ring_wait_for_read_timeout());
 }

@@ -63,7 +63,9 @@ struct Player::Impl {
     // Playback components
     std::unique_ptr<media::Reader> reader_;
     std::unique_ptr<media::Decoder> decoder_;
-    std::unique_ptr<kanariv::utils::SpscRing<float>> ring_;
+    // Shared so the decode thread can keep a parked ring alive while it waits
+    // after releasing graphMutex_ (P8).
+    std::shared_ptr<kanariv::utils::SpscRing<float>> ring_;
     std::unique_ptr<AudioOutput> output_;
 
     // Threading
@@ -251,7 +253,7 @@ Player::ExpectedVoid Player::Impl::openReader(std::unique_ptr<media::Reader> rea
 
     // Ring capacity is shared policy (see player/playback_policy.hpp); the
     // Engine keeps its own documented capacity there too.
-    auto ring = std::make_unique<kanariv::utils::SpscRing<float>>(
+    auto ring = std::make_shared<kanariv::utils::SpscRing<float>>(
         playback::policy::playerRingFrames, ch);
 
     // Create audio output
@@ -648,10 +650,17 @@ void Player::Impl::decodeLoop(std::stop_token st) {
             continue;
         }
 
-        std::size_t avail = ring_->availableWrite();
+        // Sample the read counter before the space check: a read landing after
+        // the sample is then visible to waitForRead() (never missed). The local
+        // copy keeps the ring alive once graphMutex_ is released for the wait.
+        auto ring = ring_;
+        const std::uint64_t consumed = ring->readSequence();
+        std::size_t avail = ring->availableWrite();
         if (avail == 0) {
             graph.unlock();
-            std::this_thread::sleep_for(playback::policy::ringIdlePoll);
+            // Park until the audio callback drains the ring instead of polling
+            // it every few milliseconds; the bound covers a stopped consumer.
+            (void)ring->waitForRead(consumed, playback::policy::ringWakeBudget);
             continue;
         }
 
@@ -694,9 +703,11 @@ void Player::Impl::decodeLoop(std::stop_token st) {
 
         case playback::policy::DecodeOutcome::EndOfStream:
             // Drain the tail before ending so the last samples are audible.
-            if (ring_->availableRead() > 0) {
+            if (ring->availableRead() > 0) {
                 graph.unlock();
-                std::this_thread::sleep_for(playback::policy::ringIdlePoll);
+                // The consumer signal also covers "the tail moved", so the
+                // drain ends as soon as the device takes the last frames.
+                (void)ring->waitForRead(consumed, playback::policy::ringWakeBudget);
                 continue;
             }
             // Clean end of stream: Stopped, and play() will rewind (P2).

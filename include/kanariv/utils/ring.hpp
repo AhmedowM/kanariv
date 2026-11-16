@@ -8,9 +8,12 @@
  */
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <span>
 #include <type_traits>
 #include <vector>
@@ -38,6 +41,11 @@ static_assert((ringCacheLine & (ringCacheLine - 1)) == 0, "ringCacheLine must be
  *   `wr_` acquire; stores `rd_` release.
  * - `availableRead()` / `availableWrite()` use the same relaxed/acquire
  *   pairing for lock-free size queries.
+ * - `read()` bumps `wake_` and notifies after committing, so a producer
+ *   parked in `waitForRead()` (instead of polling for space) wakes on the
+ *   consumer's progress. `wake_` is consumer-written, producer-read; the
+ *   consumer's notify never takes `waitMtx_`, so the data callback stays
+ *   lock-free.
  * - `reset()` requires external synchronization (caller must stop both
  *   producer and consumer or hold engine `decodeMtx_`); concurrent
  *   reset with read/write is a data race. No fence beyond release stores.
@@ -47,6 +55,7 @@ static_assert((ringCacheLine & (ringCacheLine - 1)) == 0, "ringCacheLine must be
  * Exactly one producer may call `write()` and exactly one consumer may call
  * `read()`. Capacity queries may be called by either side, but the result is a
  * momentary observation rather than a reservation. Copying is disabled.
+ * `waitForRead()`/`readSequence()` are producer-only.
  *
  * @par Lifetime
  * The ring owns its storage. Any spans or pointers passed to an operation must
@@ -197,6 +206,12 @@ class SpscRing {
             std::memcpy(out + first * ch, buf_.data(), (frames - first) * ch * sizeof(T));
         }
         rd_.store(rd + frames, std::memory_order_release);
+        // Consumer-side signal: the freed space (and the shortened tail) is
+        // what a producer parked in waitForRead() is waiting for. The audio
+        // callback only notifies; it never takes the wait mutex, so the
+        // real-time path stays lock-free.
+        wake_.fetch_add(1, std::memory_order_release);
+        waitCv_.notify_one();
         return frames;
     }
 
@@ -233,6 +248,43 @@ class SpscRing {
     }
 
     /**
+     * @brief Returns the consumer's read counter (producer view).
+     * @ingroup kanariv_utils
+     * @return Monotonic count of successful read() calls.
+     * @details Sample it *before* checking availableWrite()/availableRead(),
+     * then hand it to waitForRead(). The ordering makes any read that lands
+     * after the sample visible to the wait, so the producer cannot miss a
+     * wake-up by sampling late.
+     */
+    [[nodiscard]] std::uint64_t readSequence() const noexcept {
+        return wake_.load(std::memory_order_acquire);
+    }
+
+    /**
+     * @brief Blocks until the consumer reads after @p since, or times out.
+     * @ingroup kanariv_utils
+     * @param since Value returned by readSequence() before the space/tail check.
+     * @param maxWait Upper bound on the wait; the caller re-checks its own
+     * state afterwards. The bound only matters when the consumer stopped
+     * without a state transition (device stall).
+     * @return True when a read happened after @p since, false on timeout.
+     * @details Producer-only. Replaces polling availableWrite() with the
+     * consumer's signal; a state machine that stops consuming must still bound
+     * the wait or wake the producer itself.
+     * @par Thread safety
+     * Must be called by the producer side only.
+     */
+    template <typename Rep, typename Period>
+    bool waitForRead(std::uint64_t since, std::chrono::duration<Rep, Period> maxWait) {
+        if (wake_.load(std::memory_order_acquire) != since)
+            return true;
+        std::unique_lock<std::mutex> lk(waitMtx_);
+        const bool changed = waitCv_.wait_for(
+            lk, maxWait, [this, since] { return wake_.load(std::memory_order_acquire) != since; });
+        return changed;
+    }
+
+    /**
      * @brief Resets read and write counters to zero.
      * @ingroup kanariv_utils
      * @details Requires external synchronization: caller must ensure producer
@@ -256,6 +308,11 @@ class SpscRing {
     std::vector<T> buf_{};      ///< Interleaved storage [cap_*channels].
     alignas(ringCacheLine) std::atomic<std::size_t> wr_{0}; ///< Producer index (monotonic).
     alignas(ringCacheLine) std::atomic<std::size_t> rd_{0}; ///< Consumer index (monotonic).
+    /** Consumer read counter for waitForRead(); never reset (monotonic). */
+    alignas(ringCacheLine) std::atomic<std::uint64_t> wake_{0};
+    /// Producer-side wait pair; read() notifies without taking waitMtx_.
+    std::mutex waitMtx_;
+    std::condition_variable waitCv_;
     std::size_t mask_{0}; ///< cap_-1 when cap_ is a power of two, else 0 (use modulo).
 };
 
