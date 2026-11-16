@@ -49,13 +49,15 @@ Service::Impl::handle(const kanariv::ipc::Play&) {
     // StatusWait waiters observe them (S5).
     // Classify the transition here so clients can word the reply without a
     // second status probe (which raced other clients): a pause resumes in
-    // place; a stop replays the persisted track only when the engine landed
-    // back on it at (approximately) the persisted position.
-    const bool resumed =
-        before == kanariv::types::PlaybackState::Paused ||
-        (before == kanariv::types::PlaybackState::Stopped && beforeTrack != 0 &&
-         engine_->currentTrackId() == beforeTrack &&
-         std::abs(engine_->position() - beforePos) < 0.5);
+    // place; a stopped session resumes only when it replays mid-track at the
+    // persisted position. A stopped session that replays at the track head is
+    // a new start -- "resumed" would read as "Resuming X from 00:00".
+    constexpr double resumeEpsilon = 0.5;
+    const double afterPos = engine_->position();
+    const bool resumed = before == kanariv::types::PlaybackState::Paused ||
+                         (before == kanariv::types::PlaybackState::Stopped && beforeTrack != 0 &&
+                          engine_->currentTrackId() == beforeTrack && afterPos >= resumeEpsilon &&
+                          std::abs(afterPos - beforePos) < resumeEpsilon);
     return statusAfterChange(resumed ? "resumed" : "started");
 }
 
