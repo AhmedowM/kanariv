@@ -235,6 +235,11 @@ if(KANARIV_BUILD_LIBRARIES)
     set(${out} "${_major}" PARENT_SCOPE)
   endfunction()
   kanariv_detect_ffmpeg_avcodec_major(KANARIV_FFMPEG_AVCODEC_MAJOR)
+  # W13: the installed config accepts this ABI generation and the next one, not
+  # an EXACT major -- a routine FFmpeg upgrade must not break find_package.
+  if(KANARIV_FFMPEG_AVCODEC_MAJOR)
+    math(EXPR KANARIV_FFMPEG_AVCODEC_MAJOR_MAX "${KANARIV_FFMPEG_AVCODEC_MAJOR} + 2")
+  endif()
 endif()
 
 function(kanariv_apply_sanitizers tgt)
@@ -513,6 +518,10 @@ if(KANARIV_ENABLE_MODULES)
 endif()
 
 include(CMakePackageConfigHelpers)
+# W5/W13: component vocabulary advertised by the installed config. Everything
+# in KANARIV_COMPONENTS is exported except cli (an executable, not a library).
+set(KANARIV_EXPORTED_COMPONENTS ${KANARIV_COMPONENTS})
+list(REMOVE_ITEM KANARIV_EXPORTED_COMPONENTS cli)
 configure_package_config_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/kanarivConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/kanarivConfig.cmake"

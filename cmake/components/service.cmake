@@ -38,6 +38,7 @@ endif()
 # PRIVATE_DEPS tag: the tag writer links TagLib, so the shared flavour derives
 # the same dependency instead of repeating it below.
 kanariv_add_component(service SOURCES ${KANARIV_SERVICE_SOURCES} MODULE_SOURCES ${KANARIV_SERVICE_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::engine kanariv::db kanariv::media kanariv::player tag INCLUDES vendor ${KANARIV_TAGLIB_BUILD_INCLUDES})
+kanariv_component_target(service KANARIV_SERVICE_TARGET)
 if(WIN32)
   # runtimeobject.lib (RoGetActivationFactory, WindowsCreateString, ...) ships
   # with the Windows SDK and the selected SDK's um/ directory is already on the
@@ -45,10 +46,10 @@ if(WIN32)
   # "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/um" only worked on
   # machines with that exact SDK.
   set(_K_WIN_LIBS user32 ole32 shcore runtimeobject)
-  target_link_libraries(service PRIVATE ${_K_WIN_LIBS})
+  target_link_libraries(${KANARIV_SERVICE_TARGET} PRIVATE ${_K_WIN_LIBS})
 elseif(APPLE)
   # AppKit provides NSImage, used to build MPMediaItemArtwork from cover art.
-  target_link_libraries(service PRIVATE "-framework MediaPlayer" "-framework Foundation"
+  target_link_libraries(${KANARIV_SERVICE_TARGET} PRIVATE "-framework MediaPlayer" "-framework Foundation"
     "-framework AppKit")
 elseif(UNIX)
   # Linux MPRIS backend needs libdbus-1 (library + include dirs).
@@ -70,8 +71,8 @@ elseif(UNIX)
     endif()
   endif()
   if(KANARIV_DBUS_FOUND)
-    target_link_libraries(service PRIVATE ${KANARIV_DBUS_LIBRARIES})
-    target_include_directories(service SYSTEM PRIVATE ${KANARIV_DBUS_INCLUDE_DIRS})
+    target_link_libraries(${KANARIV_SERVICE_TARGET} PRIVATE ${KANARIV_DBUS_LIBRARIES})
+    target_include_directories(${KANARIV_SERVICE_TARGET} SYSTEM PRIVATE ${KANARIV_DBUS_INCLUDE_DIRS})
     # service_objects compiles the same sources; propagate include dirs so
     # media_session_linux.cpp can find dbus/dbus.h at compile time.
     target_include_directories(service_objects SYSTEM PRIVATE ${KANARIV_DBUS_INCLUDE_DIRS})
@@ -130,7 +131,7 @@ if(WIN32)
     "${_KANARIV_WINSDK_ROOT}/Include/${_KANARIV_WINSDK_VERSION}/cppwinrt")
   if(_KANARIV_WINSDK_VERSION AND EXISTS "${_KANARIV_CPPWINRT_INCLUDE_DIR}")
     message(STATUS "cppwinrt (${_KANARIV_WINSDK_SOURCE}): Windows SDK ${_KANARIV_WINSDK_VERSION} -> ${_KANARIV_CPPWINRT_INCLUDE_DIR}")
-    target_include_directories(service SYSTEM PRIVATE
+    target_include_directories(${KANARIV_SERVICE_TARGET} SYSTEM PRIVATE
       ${_KANARIV_CPPWINRT_INCLUDE_DIR})
     target_include_directories(service_objects SYSTEM PRIVATE
       ${_KANARIV_CPPWINRT_INCLUDE_DIR})

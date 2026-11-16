@@ -14,17 +14,18 @@ set(KANARIV_PLAYER_SOURCES
 # INCLUDES vendor: src/player/miniaudio_impl.cpp and output.cpp include
 # <miniaudio.h>; no other component gets the vendor root.
 kanariv_add_component(player SOURCES ${KANARIV_PLAYER_SOURCES} MODULE_SOURCES ${KANARIV_PLAYER_MODULE_SOURCES} DEPS kanariv::utils kanariv::types INCLUDES vendor PRIVATE_DEPS kanariv::media)
+kanariv_component_target(player KANARIV_PLAYER_TARGET)
 # GCC cannot parse Apple's ObjC-blocks system headers pulled in by miniaudio's
 # CoreAudio backend; Apple Clang-only. Local mac devs (Xcode Clang) keep full
 # audio; GNU-on-macOS CI builds fall back to the other backends (NOAUDIO anyway).
-target_compile_definitions(player PRIVATE $<$<AND:$<PLATFORM_ID:Darwin>,$<CXX_COMPILER_ID:GNU>>:MA_NO_COREAUDIO>)
+target_compile_definitions(${KANARIV_PLAYER_TARGET} PRIVATE $<$<AND:$<PLATFORM_ID:Darwin>,$<CXX_COMPILER_ID:GNU>>:MA_NO_COREAUDIO>)
 target_compile_definitions(player_objects PRIVATE $<$<AND:$<PLATFORM_ID:Darwin>,$<CXX_COMPILER_ID:GNU>>:MA_NO_COREAUDIO>)
 # Trimmed miniaudio: device playback +
 # enumeration only. No decoding/encoding (FFmpeg owns that), no generation,
 # resource manager, node graph, engine, or built-in wav/flac/mp3 decoders.
 # miniaudio.h is included only by src/player/miniaudio_impl.cpp +
 # src/player/output.cpp, so PRIVATE covers every consumer.
-target_compile_definitions(player PRIVATE
+target_compile_definitions(${KANARIV_PLAYER_TARGET} PRIVATE
   MA_NO_DECODING=1
   MA_NO_ENCODING=1
   MA_NO_GENERATION=1

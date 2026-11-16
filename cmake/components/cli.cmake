@@ -38,7 +38,10 @@ target_include_directories(kanariv_cli_shell PUBLIC
 # public headers, so they need the DLL import define (KANARIV_USING_DLL) that
 # the shared components carry in their INTERFACE.
 function(_kanariv_cli_link target dep)
-  if(TARGET kanariv::${dep}_shared)
+  # The shipped CLI runs against the shared flavour; a build without shared
+  # libraries links the canonical (static) flavour instead. No target-existence
+  # guessing: the flavour is an explicit choice (W5).
+  if(KANARIV_BUILD_SHARED)
     target_link_libraries(${target} PUBLIC kanariv::${dep}_shared)
   else()
     target_link_libraries(${target} PUBLIC kanariv::${dep})

@@ -3,23 +3,107 @@
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
 
-# FFmpeg is required -- FindFFmpeg.cmake ships alongside this config. The
-# avcodec major recorded at build time pins the ABI so a consumer with a
-# different system FFmpeg fails loudly instead of linking a mismatched one.
-set(_kanariv_saved_module_path "${CMAKE_MODULE_PATH}")
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
-if("" STREQUAL "@KANARIV_FFMPEG_AVCODEC_MAJOR@")
-  find_dependency(FFmpeg)
-else()
-  find_dependency(FFmpeg @KANARIV_FFMPEG_AVCODEC_MAJOR@ EXACT)
-endif()
-set(CMAKE_MODULE_PATH "${_kanariv_saved_module_path}")
-unset(_kanariv_saved_module_path)
+# Components this package exports (set at build time from KANARIV_COMPONENTS;
+# the CLI is an executable, not a component).
+set(_kanariv_components "@KANARIV_EXPORTED_COMPONENTS@")
+# Components whose static flavour needs FFmpeg: media links it PRIVATE and every
+# component above media inherits the link-only dependency through the closure.
+set(_kanariv_ffmpeg_components media player library engine service app combined)
 
-# nlohmann_json is private (backend for src/utils/json.cpp behind the opaque
-# kanariv::utils::Json facade): nothing installed needs it, so no
-# find_dependency here. Only Threads + FFmpeg propagate downstream.
+# W13: FFmpeg belongs to the decode stack only. A consumer that asks for
+# another component (types/contracts/utils/config/ipc/client/db) never resolves
+# FFmpeg; an unspecified component list keeps the historical promise that every
+# capability this package offers is usable.
+set(_kanariv_needs_ffmpeg FALSE)
+if(NOT kanariv_FIND_COMPONENTS)
+  set(_kanariv_needs_ffmpeg TRUE)
+else()
+  foreach(_kanariv_comp IN LISTS kanariv_FIND_COMPONENTS)
+    if(_kanariv_comp IN_LIST _kanariv_ffmpeg_components)
+      set(_kanariv_needs_ffmpeg TRUE)
+      break()
+    endif()
+  endforeach()
+endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/kanarivTargets.cmake")
 
+# A shared-only package records FFmpeg inside its DLLs: pruning the link-only
+# entries from the shared flavours lets such a consumer link the decode stack
+# without FFmpeg development files installed.
+set(_kanariv_has_static FALSE)
+foreach(_kanariv_comp IN LISTS _kanariv_components)
+  if(TARGET kanariv::${_kanariv_comp}_static)
+    set(_kanariv_has_static TRUE)
+    break()
+  endif()
+endforeach()
+if(_kanariv_needs_ffmpeg AND NOT _kanariv_has_static)
+  foreach(_kanariv_comp IN LISTS _kanariv_ffmpeg_components)
+    set(_kanariv_shared_target kanariv::${_kanariv_comp}_shared)
+    if(TARGET ${_kanariv_shared_target})
+      get_target_property(_kanariv_iface ${_kanariv_shared_target} INTERFACE_LINK_LIBRARIES)
+      if(_kanariv_iface)
+        list(FILTER _kanariv_iface EXCLUDE REGEX "\\$<LINK_ONLY:FFmpeg::")
+        set_target_properties(${_kanariv_shared_target} PROPERTIES
+          INTERFACE_LINK_LIBRARIES "${_kanariv_iface}")
+      endif()
+    endif()
+  endforeach()
+  set(_kanariv_needs_ffmpeg FALSE)
+endif()
+
+if(_kanariv_needs_ffmpeg)
+  # FindFFmpeg.cmake ships alongside this config. The avcodec major recorded at
+  # build time is the ABI generation: accept it and the next one so a routine
+  # FFmpeg upgrade does not break find_package, while a generation jump fails
+  # loudly instead of linking a mismatched ABI.
+  set(_kanariv_saved_module_path "${CMAKE_MODULE_PATH}")
+  list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+  if("" STREQUAL "@KANARIV_FFMPEG_AVCODEC_MAJOR@")
+    find_dependency(FFmpeg)
+  else()
+    find_dependency(FFmpeg @KANARIV_FFMPEG_AVCODEC_MAJOR@...@KANARIV_FFMPEG_AVCODEC_MAJOR_MAX@)
+  endif()
+  set(CMAKE_MODULE_PATH "${_kanariv_saved_module_path}")
+  unset(_kanariv_saved_module_path)
+endif()
+
+# Canonical aliases are build-tree only (aliases are not exported), so
+# re-create kanariv::<component> here with the same rule the build uses: the
+# static archive when the package ships one, otherwise the shared library.
+# Consumers that need one flavour explicitly name
+# kanariv::<component>_static / kanariv::<component>_shared (W5).
+foreach(_kanariv_comp IN LISTS _kanariv_components)
+  if(TARGET kanariv::${_kanariv_comp})
+    continue()
+  elseif(TARGET kanariv::${_kanariv_comp}_static)
+    set(_kanariv_primary kanariv::${_kanariv_comp}_static)
+  elseif(TARGET kanariv::${_kanariv_comp}_shared)
+    set(_kanariv_primary kanariv::${_kanariv_comp}_shared)
+  else()
+    continue()
+  endif()
+  add_library(kanariv::${_kanariv_comp} INTERFACE IMPORTED)
+  set_target_properties(kanariv::${_kanariv_comp} PROPERTIES
+    INTERFACE_LINK_LIBRARIES "${_kanariv_primary}")
+endforeach()
+
+# Advertise component availability so check_required_components() rejects a
+# COMPONENTS list this package does not ship.
+foreach(_kanariv_comp IN LISTS _kanariv_components)
+  if(TARGET kanariv::${_kanariv_comp})
+    set(kanariv_${_kanariv_comp}_FOUND TRUE)
+  endif()
+endforeach()
+
 check_required_components(kanariv)
+
+unset(_kanariv_components)
+unset(_kanariv_ffmpeg_components)
+unset(_kanariv_comp)
+unset(_kanariv_primary)
+unset(_kanariv_has_static)
+unset(_kanariv_needs_ffmpeg)
+unset(_kanariv_shared_target)
+unset(_kanariv_iface)

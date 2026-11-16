@@ -24,6 +24,12 @@ function(ca_set_warnings tgt)
 endfunction()
 
 function(ca_set_module_warnings tgt)
+  # Component files pass the plain component name; the real target carries the
+  # flavour (W5) and target_* commands reject aliases, so resolve it first.
+  get_property(_kanariv_component_target GLOBAL PROPERTY KANARIV_COMPONENT_TARGET_${tgt})
+  if(_kanariv_component_target)
+    set(tgt ${_kanariv_component_target})
+  endif()
   if(KANARIV_ENABLE_MODULES)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15)
@@ -128,57 +134,80 @@ function(kanariv_add_component NAME)
   set_property(GLOBAL PROPERTY KANARIV_COMPONENT_DEPS_${NAME} "${ARG_DEPS}")
   set_property(GLOBAL PROPERTY KANARIV_COMPONENT_PRIVATE_DEPS_${NAME} "${ARG_PRIVATE_DEPS}")
 
-  # --- Component library ---
+  # --- Component target ------------------------------------------------------
+  # The real target carries its flavour in the name (W5): <name>_static when
+  # this build produces static libraries, <name>_shared otherwise. The
+  # canonical kanariv::<name> is an alias to that primary flavour, so a
+  # consumer never has to guess which target exists; kanariv::<name>_static /
+  # kanariv::<name>_shared name one flavour explicitly. The un-namespaced
+  # <name> alias keeps target-name linkers working for one release.
   if(KANARIV_BUILD_STATIC)
     # Archive the object files the shared and combined flavours already
     # compile: one compilation per configuration (W4). KANARIV_BUILDING_DLL and
     # hidden visibility only shape the dynamic symbol table, so a static
     # consumer still resolves internal symbols from the archive.
-    add_library(${NAME} STATIC)
-    if(ARG_SOURCES)
-      target_sources(${NAME} PRIVATE $<TARGET_OBJECTS:${NAME}_objects>)
-    endif()
-    set_target_properties(${NAME} PROPERTIES OUTPUT_NAME ${NAME}_static)
+    set(_kanariv_primary ${NAME}_static)
+    add_library(${_kanariv_primary} STATIC)
+    set_target_properties(${_kanariv_primary} PROPERTIES OUTPUT_NAME ${NAME}_static)
   else()
-    add_library(${NAME} SHARED)
-    set_target_properties(${NAME} PROPERTIES
+    # Shared-only build: this function owns the only flavour, so it carries
+    # the defines kanariv_add_shared_variant() would add -- the DLL is compiled
+    # by ${NAME}_objects (KANARIV_BUILDING_DLL), and consumers must take the
+    # __declspec(dllimport) branch of KANARIV_API (include/kanariv/fwd.hpp).
+    set(_kanariv_primary ${NAME}_shared)
+    add_library(${_kanariv_primary} SHARED)
+    set_target_properties(${_kanariv_primary} PROPERTIES
       OUTPUT_NAME ${NAME}
       ARCHIVE_OUTPUT_NAME ${NAME})
-    if(ARG_SOURCES)
-      target_sources(${NAME} PRIVATE $<TARGET_OBJECTS:${NAME}_objects>)
-    endif()
-    # Consumers of this DLL must take the __declspec(dllimport) branch of
-    # KANARIV_API (include/kanariv/fwd.hpp). INTERFACE only: the DLL itself is
-    # compiled through ${NAME}_objects, which defines KANARIV_BUILDING_DLL.
-    # Static and object builds never define KANARIV_USING_DLL.
-    target_compile_definitions(${NAME} INTERFACE KANARIV_USING_DLL)
+    target_compile_definitions(${_kanariv_primary} PRIVATE KANARIV_BUILDING_DLL)
+    target_compile_definitions(${_kanariv_primary} INTERFACE KANARIV_USING_DLL)
   endif()
-  add_library(kanariv::${NAME} ALIAS ${NAME})
-  set_property(DIRECTORY APPEND PROPERTY KANARIV_TARGETS ${NAME})
+  set_property(GLOBAL PROPERTY KANARIV_COMPONENT_TARGET_${NAME} ${_kanariv_primary})
+  if(ARG_SOURCES)
+    target_sources(${_kanariv_primary} PRIVATE $<TARGET_OBJECTS:${NAME}_objects>)
+  endif()
+  add_library(kanariv::${_kanariv_primary} ALIAS ${_kanariv_primary})
+  add_library(kanariv::${NAME} ALIAS ${_kanariv_primary})
+  add_library(${NAME} ALIAS ${_kanariv_primary})
+  set_property(DIRECTORY APPEND PROPERTY KANARIV_TARGETS ${_kanariv_primary})
   if(ARG_MODULE_SOURCES AND KANARIV_ENABLE_MODULES)
     # BASE_DIRS strips the leading modules/ so the install tree gets
     # <prefix>/modules/<component>/*.cppm (not modules/modules/...).
-    target_sources(${NAME} PUBLIC FILE_SET CXX_MODULES TYPE CXX_MODULES BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/modules FILES ${ARG_MODULE_SOURCES})
+    target_sources(${_kanariv_primary} PUBLIC FILE_SET CXX_MODULES TYPE CXX_MODULES BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/modules FILES ${ARG_MODULE_SOURCES})
   endif()
-  target_include_directories(${NAME} PUBLIC
+  target_include_directories(${_kanariv_primary} PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-  target_include_directories(${NAME} PRIVATE
+  target_include_directories(${_kanariv_primary} PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
   if(ARG_INCLUDES)
-    target_include_directories(${NAME} SYSTEM PRIVATE ${ARG_INCLUDES})
+    target_include_directories(${_kanariv_primary} SYSTEM PRIVATE ${ARG_INCLUDES})
   endif()
+  # The static archive links the static flavours so its exported interface
+  # names exported targets only; the shared variant maps to _shared itself.
   if(ARG_DEPS)
-    target_link_libraries(${NAME} PUBLIC ${ARG_DEPS})
+    if(KANARIV_BUILD_STATIC)
+      _kanariv_map_static_deps(_kanariv_deps ${ARG_DEPS})
+    else()
+      set(_kanariv_deps ${ARG_DEPS})
+    endif()
+    target_link_libraries(${_kanariv_primary} PUBLIC ${_kanariv_deps})
+    unset(_kanariv_deps)
   endif()
   if(ARG_PRIVATE_DEPS)
-    target_link_libraries(${NAME} PRIVATE ${ARG_PRIVATE_DEPS})
+    if(KANARIV_BUILD_STATIC)
+      _kanariv_map_static_deps(_kanariv_private_deps ${ARG_PRIVATE_DEPS})
+    else()
+      set(_kanariv_private_deps ${ARG_PRIVATE_DEPS})
+    endif()
+    target_link_libraries(${_kanariv_primary} PRIVATE ${_kanariv_private_deps})
+    unset(_kanariv_private_deps)
   endif()
   # Public C++23 requirement: headers use C++23 throughout, and components
   # ship CXX_MODULES interface units -- consumers (incl. module synth targets)
   # must compile at C++23 or newer.
-  target_compile_features(${NAME} PUBLIC cxx_std_23)
+  target_compile_features(${_kanariv_primary} PUBLIC cxx_std_23)
   # Installed headers have exactly one mechanism: the wholesale
   # install(DIRECTORY include/ ...) in cmake/Install.cmake, which preserves the
   # kanariv/<component>/ prefix and nested directories. PUBLIC_HEADER is
@@ -191,11 +220,44 @@ function(kanariv_add_component NAME)
   # actually use it (currently media; see media.cmake) -- not blanket-linked to
   # every component, which forced every target to resolve FFmpeg at link time
   # and pulled its include dirs into unrelated TUs.
-  ca_set_warnings(${NAME})
-  kanariv_apply_extra_flags(${NAME})
+  ca_set_warnings(${_kanariv_primary})
+  kanariv_apply_extra_flags(${_kanariv_primary})
   if(KANARIV_ENABLE_SANITIZERS)
-    kanariv_apply_sanitizers(${NAME})
+    kanariv_apply_sanitizers(${_kanariv_primary})
   endif()
+  unset(_kanariv_primary)
+endfunction()
+
+# The real target backing a component name (see kanariv_add_component). Files
+# that configure a component directly -- extra link libraries, compile
+# definitions, platform include dirs -- must use it: target_* commands reject
+# aliases, and the canonical kanariv::<name> is one.
+function(kanariv_component_target NAME out)
+  get_property(_tgt GLOBAL PROPERTY KANARIV_COMPONENT_TARGET_${NAME})
+  if(NOT _tgt)
+    message(FATAL_ERROR "kanariv_component_target(${NAME}): no such component")
+  endif()
+  set(${out} "${_tgt}" PARENT_SCOPE)
+endfunction()
+
+# Map a component dependency list onto its static flavour: every kanariv::<x>
+# that has a <x>_static target becomes kanariv::<x>_static. Everything else
+# (Threads, FFmpeg, vendor libs, header-only carriers) keeps its name.
+function(_kanariv_map_static_deps out)
+  set(_mapped "")
+  foreach(_dep IN LISTS ARGN)
+    if(_dep MATCHES "^kanariv::([^:]+)$")
+      set(_plain "${CMAKE_MATCH_1}")
+      if(TARGET kanariv::${_plain}_static)
+        list(APPEND _mapped "kanariv::${_plain}_static")
+      else()
+        list(APPEND _mapped "${_dep}")
+      endif()
+    else()
+      list(APPEND _mapped "${_dep}")
+    endif()
+  endforeach()
+  set(${out} "${_mapped}" PARENT_SCOPE)
 endfunction()
 
 # D-4: header self-containment. Every public header is compiled as its own
@@ -274,8 +336,8 @@ endfunction()
 
 function(kanariv_add_shared_variant NAME)
   if(NOT KANARIV_BUILD_STATIC)
-    add_library(${NAME}_shared ALIAS ${NAME})
-    add_library(kanariv::${NAME}_shared ALIAS ${NAME})
+    # kanariv_add_component already created <name>_shared as the primary
+    # flavour of a shared-only build; there is nothing to add here.
     return()
   endif()
   add_library(${NAME}_shared SHARED)
