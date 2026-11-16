@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -29,6 +30,14 @@ using namespace kanariv::engine;
 using namespace kanariv::utils;
 using namespace kanariv::test_helpers;
 
+namespace {
+int64_t steadyMsNow() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+} // namespace
+
 TEST_CASE("gapless CAS arms once via Engine", "[engine_gapless]") {
     KANARIV_SKIP_IF_NOAUDIO();
     std::string dbPath = tempDbPath("gapless_cas").string();
@@ -52,6 +61,17 @@ TEST_CASE("gapless CAS arms once via Engine", "[engine_gapless]") {
     cfg.gaplessMs = 300;
     cfg.historyThresholdPct = 100;
     cfg.historyThresholdSecs = 100;
+    // Count transitions rather than sleeping a fixed window after observing
+    // one: a starved test thread would otherwise sample past the end of the
+    // second track and see currentTrackId() == 0.
+    std::atomic<int> starts{0};
+    std::atomic<int64_t> lastStarted{0};
+    std::atomic<int64_t> secondStartMs{0};
+    cfg.callbacks.on_track_started = [&starts, &lastStarted, &secondStartMs](int64_t id) {
+        if (starts.fetch_add(1, std::memory_order_relaxed) == 1)
+            secondStartMs.store(steadyMsNow(), std::memory_order_relaxed);
+        lastStarted.store(id, std::memory_order_relaxed);
+    };
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
@@ -59,16 +79,24 @@ TEST_CASE("gapless CAS arms once via Engine", "[engine_gapless]") {
                    kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
                 .has_value());
     REQUIRE(eng->play(1).has_value());
-    int64_t first = eng->currentTrackId();
     // gapless should arm once when remaining <=0.3 (pos>=0.5) and trigger next via engineTick
-    busyWaitUntil([&] { return eng->currentTrackId() != first; }, std::chrono::milliseconds(2000),
-                  std::chrono::milliseconds(50));
-    REQUIRE(eng->currentTrackId() != first);
-    // ensure CAS prevented double trigger: wait 300ms and verify still on second track only
-    int64_t second = eng->currentTrackId();
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    busyWaitUntil([&] { return starts.load(std::memory_order_relaxed) >= 2; },
+                  std::chrono::milliseconds(3000), std::chrono::milliseconds(10));
+    REQUIRE(starts.load(std::memory_order_relaxed) == 2);
+    const int64_t second = lastStarted.load(std::memory_order_relaxed);
     REQUIRE(eng->currentTrackId() == second);
-    // verify gapless armed flag implicitly via exactly one advancement (queue now has second track)
+    // End of queue (repeat Off): the second track reaches its end and the
+    // engine stops without starting anything else (the CAS armed exactly once).
+    busyWaitUntil([&] { return eng->currentTrackId() == 0; }, std::chrono::milliseconds(3000),
+                  std::chrono::milliseconds(10));
+    const int64_t stopMs = steadyMsNow();
+    REQUIRE(eng->currentTrackId() == 0);
+    // A stale armed flag would stop the second track on the first tick instead
+    // of waiting for its own preroll point (remaining <= gaplessMs, i.e. at
+    // least ~400 ms for this 0.8 s track). Only a lower bound: starving the
+    // test thread can delay the observation but never shorten the interval.
+    REQUIRE(stopMs - secondStartMs.load(std::memory_order_relaxed) >= 400);
+    REQUIRE(starts.load(std::memory_order_relaxed) == 2);
     eng.reset();
     {
         std::error_code ec;
@@ -101,6 +129,14 @@ TEST_CASE("gapless 300ms lookahead triggers next once", "[engine_gapless]") {
     cfg.gaplessMs = 300;
     cfg.historyThresholdPct = 100;
     cfg.historyThresholdSecs = 100;
+    std::atomic<int> starts{0};
+    std::atomic<int64_t> lastStarted{0};
+    std::atomic<int64_t> secondStartMs{0};
+    cfg.callbacks.on_track_started = [&starts, &lastStarted, &secondStartMs](int64_t id) {
+        if (starts.fetch_add(1, std::memory_order_relaxed) == 1)
+            secondStartMs.store(steadyMsNow(), std::memory_order_relaxed);
+        lastStarted.store(id, std::memory_order_relaxed);
+    };
     auto eRes = Engine::create(cfg);
     REQUIRE(eRes.has_value());
     auto eng = std::move(eRes.value());
@@ -108,17 +144,20 @@ TEST_CASE("gapless 300ms lookahead triggers next once", "[engine_gapless]") {
                    kanariv::db::makeStorage(std::shared_ptr<kanariv::db::Database>(std::move(db))))
                 .has_value());
     REQUIRE(eng->play(1).has_value());
-    int64_t first = eng->currentTrackId();
     // duration 0.8, gap 0.3 -> when remaining <=0.3 (pos>=0.5) should arm and trigger next
-    busyWaitUntil([&] { return eng->currentTrackId() != first; }, std::chrono::milliseconds(2000),
-                  std::chrono::milliseconds(50));
-    int64_t cur = eng->currentTrackId();
-    // should have advanced to second track via gapless
-    REQUIRE(cur != first);
-    // ensure only once: poll 300ms, should not advance again (queue now empty or last track)
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    int64_t cur2 = eng->currentTrackId();
-    REQUIRE(cur2 == cur);
+    busyWaitUntil([&] { return starts.load(std::memory_order_relaxed) >= 2; },
+                  std::chrono::milliseconds(3000), std::chrono::milliseconds(10));
+    REQUIRE(starts.load(std::memory_order_relaxed) == 2);
+    REQUIRE(eng->currentTrackId() == lastStarted.load(std::memory_order_relaxed));
+    // End of queue (repeat Off): the second track ends and no third start fires.
+    busyWaitUntil([&] { return eng->currentTrackId() == 0; }, std::chrono::milliseconds(3000),
+                  std::chrono::milliseconds(10));
+    const int64_t stopMs = steadyMsNow();
+    REQUIRE(eng->currentTrackId() == 0);
+    // Lower bound only: a stale armed flag would stop the second track on the
+    // first tick, while scheduling delays can only lengthen the interval.
+    REQUIRE(stopMs - secondStartMs.load(std::memory_order_relaxed) >= 400);
+    REQUIRE(starts.load(std::memory_order_relaxed) == 2);
     eng.reset();
     {
         std::error_code ec;
