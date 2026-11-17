@@ -5,7 +5,8 @@ set(KANARIV_CONFIG_MODULE_SOURCES
   modules/kanariv/config.cppm
 )
 set(KANARIV_CONFIG_SOURCES
-  src/config.cpp
+  src/config/paths.cpp
+  src/config/store.cpp
   src/config/runtime.cpp
   src/config/raw.cpp
 )
