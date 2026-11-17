@@ -10,21 +10,21 @@
 
 /**
  * @file queue_next.hpp
- * @brief Read-only "what plays next" resolution for the playback queue.
+ * @brief Read-only "what plays next/previous" resolution for the playback queue.
  * @ingroup kanariv_engine
  * @details Internal header (lives in `src/`, not installed). Extracted from
  * `Engine::Impl::queueNextLocked` so the cursor/permutation arithmetic can be
  * peeked without mutating the queue and unit-tested directly (linear walking,
  * shuffle, repeat-one and wrap) without a database or decode thread.
  *
- * `planNext` maps the pair (shuffle flag, repeat mode, cursor, permutation) to
- * the queue listing index of the next entry plus the cursor value a caller
- * commits once that entry is actually accepted. It performs no I/O: item
+ * `planNext`/`planPrev` map the pair (shuffle flag, cursor, permutation) to
+ * the queue listing index of the target entry plus the cursor value a caller
+ * commits once that entry is actually accepted. They perform no I/O: item
  * counts and a fresh permutation are requested through caller-supplied
  * callables that are only invoked when the plan genuinely needs them.
  *
- * Thread safety: stateless pure function over caller-owned values. The engine
- * calls it under `queueMutex_`; committing the returned plan (writing
+ * Thread safety: stateless pure functions over caller-owned values. The engine
+ * calls them under `queueMutex_`; committing a returned plan (writing
  * `QueueState::cursor`/`perm`) is a separate step and must happen under the
  * same lock.
  */
@@ -133,6 +133,67 @@ planNext(bool shuffle, kanariv::types::RepeatMode repeat, std::size_t cursor,
     plan.position = static_cast<std::int64_t>(cursor);
     plan.cursor = cursor + 1;
     return plan;
+}
+
+/**
+ * @brief Planned previous queue entry and the cursor change that selects it.
+ * @ingroup kanariv_engine
+ */
+struct PrevPlan {
+    /// Zero-based listing index (`queueTrackAt` argument) of the entry.
+    std::int64_t position{0};
+    /// Cursor value to commit once the entry is accepted.
+    std::size_t cursor{0};
+};
+
+/**
+ * @brief Resolves the previous queue entry without mutating any queue state.
+ * @ingroup kanariv_engine
+ * @param shuffle Shuffle flag (`QueueState::shuffle`).
+ * @param cursor Current cursor (`QueueState::cursor`, i.e. the entry after the
+ * one playing).
+ * @param perm Active shuffle permutation; empty when shuffle is off.
+ * @param count Callable returning the queue's item count. Invoked only when
+ * shuffle is off.
+ * @return The plan, or an error (`NotFound` for an empty queue, no active
+ * permutation, or when nothing has played yet).
+ * @details Rules, matching the historical `queuePrevLocked` behaviour:
+ * - linear: the entry before the cursor, committing the cursor after it;
+ * - cursor 1 (first entry playing): replay entry 0, cursor unchanged;
+ * - cursor 0 (nothing played yet): NotFound;
+ * - shuffle: the permuted entry before the cursor;
+ * - shuffle with an empty permutation: NotFound;
+ * - a cursor that ran past the listing clamps to the last entry.
+ * Repeat modes do not affect backward navigation.
+ * @par Thread safety
+ * Pure; no shared state. Callers holding a queue lock may pass live values.
+ * @see Engine::Impl::queuePrevLocked
+ */
+template <typename CountFn>
+std::expected<PrevPlan, kanariv::utils::Error>
+planPrev(bool shuffle, std::size_t cursor, std::span<const std::int64_t> perm, CountFn&& count) {
+    std::size_t n = 0;
+    if (shuffle) {
+        if (perm.empty())
+            return std::unexpected(
+                kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "no perm"));
+        n = perm.size();
+    } else {
+        n = static_cast<std::size_t>(count());
+        if (n == 0)
+            return std::unexpected(
+                kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "empty queue"));
+    }
+    if (cursor <= 1) {
+        if (cursor == 0)
+            return std::unexpected(
+                kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "at start"));
+        return PrevPlan{shuffle ? perm[0] : 0, 1};
+    }
+    std::size_t idx = cursor - 2;
+    if (idx >= n)
+        idx = n - 1;
+    return PrevPlan{shuffle ? perm[idx] : static_cast<std::int64_t>(idx), idx + 1};
 }
 
 } // namespace kanariv::engine::detail

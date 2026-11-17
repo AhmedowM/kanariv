@@ -797,6 +797,70 @@ TEST_CASE("planNext resolves linear, repeat-one, wrap and shuffle without mutati
     }
 }
 
+TEST_CASE("planPrev walks back, replays the first entry and never mutates",
+          "[engine_queue][plan]") {
+    using kanariv::engine::detail::planPrev;
+    constexpr size_t n = 5;
+    const std::vector<int64_t> noPerm;
+    const std::span<const int64_t> noPermSpan(noPerm);
+    bool countRequested = false;
+    const auto count = [n, &countRequested] {
+        countRequested = true;
+        return n;
+    };
+
+    SECTION("linear steps back and commits the entry after it") {
+        auto plan = planPrev(false, 3, noPermSpan, count);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->position == 1);
+        REQUIRE(plan->cursor == 2);
+        REQUIRE(countRequested);
+    }
+    SECTION("the first entry replays itself") {
+        auto plan = planPrev(false, 1, noPermSpan, count);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->position == 0);
+        REQUIRE(plan->cursor == 1);
+    }
+    SECTION("nothing played yet and an empty queue are NotFound") {
+        auto atStart = planPrev(false, 0, noPermSpan, count);
+        REQUIRE(!atStart.has_value());
+        REQUIRE(atStart.error().code == StatusCode::NotFound);
+        const auto empty = [] { return size_t{0}; };
+        auto noItems = planPrev(false, 1, noPermSpan, empty);
+        REQUIRE(!noItems.has_value());
+        REQUIRE(noItems.error().code == StatusCode::NotFound);
+    }
+    SECTION("a cursor past the listing clamps to the last entry") {
+        auto plan = planPrev(false, 99, noPermSpan, count);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->position == static_cast<int64_t>(n - 1));
+        REQUIRE(plan->cursor == n);
+    }
+    SECTION("shuffle walks the permutation without asking for a count") {
+        const std::vector<int64_t> perm{3, 0, 2, 1};
+        const std::span<const int64_t> span(perm);
+        auto plan = planPrev(true, 3, span, count);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->position == 0);
+        REQUIRE(plan->cursor == 2);
+        REQUIRE(!countRequested);
+    }
+    SECTION("shuffle at the first entry replays the permutation head") {
+        const std::vector<int64_t> perm{3, 0, 2, 1};
+        const std::span<const int64_t> span(perm);
+        auto plan = planPrev(true, 1, span, count);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->position == perm.front());
+        REQUIRE(plan->cursor == 1);
+    }
+    SECTION("shuffle without a permutation is NotFound") {
+        auto plan = planPrev(true, 2, noPermSpan, count);
+        REQUIRE(!plan.has_value());
+        REQUIRE(plan.error().code == StatusCode::NotFound);
+    }
+}
+
 TEST_CASE("queue move remaps the shuffle permutation", "[engine_queue][shuffle][queue]") {
     const std::string dbPath = tempDbPath("eng_q_move_perm").string();
     auto dbRes = Database::open(dbPath);

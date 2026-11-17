@@ -1951,52 +1951,26 @@ Engine::Impl::queueNextLocked(kanariv::types::TrackRow& out) {
 std::expected<void, kanariv::utils::Error>
 Engine::Impl::queuePrevLocked(kanariv::types::TrackRow& out) {
     const int64_t qid = queue_.queue_id.load(std::memory_order_relaxed);
-    if (!queue_.shuffle.load(std::memory_order_relaxed)) {
+    const bool shuffle = queue_.shuffle.load(std::memory_order_relaxed);
+    // planPrev performs no I/O; resolve the one item count it may need here.
+    std::size_t count = 0;
+    if (!shuffle) {
         auto counted = storage_.queues->queueCount(qid);
         if (!counted)
             return std::unexpected(counted.error());
-        const size_t cnt = *counted;
-        if (cnt == 0)
-            return std::unexpected(
-                kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "empty queue"));
-        if (queue_.cursor <= 1) {
-            if (queue_.cursor == 0)
-                return std::unexpected(
-                    kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "at start"));
-            queue_.cursor = 0;
-        } else {
-            queue_.cursor -= 2;
-            if (queue_.cursor >= cnt)
-                queue_.cursor = cnt - 1;
-        }
-        auto tr = fetchTrackByPosLocked(qid, static_cast<int64_t>(queue_.cursor));
-        if (!tr)
-            return std::unexpected(tr.error());
-        queue_.cursor++;
-        saveStateBestEffort();
-        out = tr.value();
-        return {};
+        count = *counted;
     }
-    if (queue_.perm.empty())
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "no perm"));
-    if (queue_.cursor <= 1) {
-        if (queue_.cursor == 0)
-            return std::unexpected(
-                kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, "at start"));
-        queue_.cursor = 0;
-    } else {
-        queue_.cursor -= 2;
-        if (queue_.cursor >= queue_.perm.size())
-            queue_.cursor = queue_.perm.size() - 1;
-    }
-    int64_t pos = queue_.perm[queue_.cursor];
-    queue_.cursor++;
-    saveStateBestEffort();
-    auto tr = fetchTrackByPosLocked(qid, pos);
+    auto plan = detail::planPrev(shuffle, queue_.cursor,
+                                 std::span<const int64_t>(queue_.perm.data(), queue_.perm.size()),
+                                 [count] { return count; });
+    if (!plan)
+        return std::unexpected(plan.error());
+    auto tr = fetchTrackByPosLocked(qid, plan->position);
     if (!tr)
         return std::unexpected(tr.error());
     out = tr.value();
+    queue_.cursor = plan->cursor;
+    saveStateBestEffort();
     return {};
 }
 
