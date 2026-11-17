@@ -12,7 +12,6 @@
 
 #include "cli_helpers.hpp"
 #include "commands.hpp"
-#include "output_formatter.hpp"
 #include "render.hpp"
 
 namespace kanariv::app::cli::detail {
@@ -80,7 +79,7 @@ std::optional<int> runQueue(App& app, const Options& o) {
             renderJson(qr->result);
             return exitOk;
         }
-        OutputFormatter fmt{false, useColor()};
+        kanariv::client::OutputFormatter fmt{false, useColor()};
         fmt.setHighlightTrackId(qr->highlightId);
         fmt.print(qr->result, std::cout);
         return 0;

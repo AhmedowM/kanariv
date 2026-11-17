@@ -2,35 +2,39 @@
 
 /**
  * @file output_formatter.hpp
- * @brief Output formatting for CLI results: table and JSON output.
- * @ingroup kanariv_app
+ * @brief Human/JSON presentation of an IPC `Result` (shared by every frontend).
+ * @ingroup kanariv_client
+ * @details Rendering a `Result` is not CLI-specific: the app's batch reports
+ * and the CLI's single-shot commands both present the same variants, so the
+ * one implementation lives here and both call it.
  */
 
-#include <kanariv/ipc/result.hpp>
-#include <kanariv/utils/error.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/fwd.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
 #include <ostream>
 #include <set>
 #include <string>
 #include <string_view>
 #include <utility>
 
-namespace kanariv::app::cli {
+namespace kanariv::client {
 
 /**
- * @brief Formats CLI results for human-readable table output or JSON.
+ * @brief Formats IPC results for human-readable table output or JSON.
  * @ingroup kanariv_client
  *
  * Supports all Result variant types: Status, QueueTracks, VolumeInfo, LibraryStats, etc.
  * JSON mode uses kanariv::utils::Json pretty-printing (2-space indent).
  */
-class OutputFormatter {
+class KANARIV_API OutputFormatter final {
     bool json_{false};
     bool color_{false};
     int64_t highlightTrackId_{0};
     std::string highlightNeedle_;
-    std::set<std::string> columns_;  ///< If non-empty, only these track columns are printed.
+    std::set<std::string> columns_; ///< If non-empty, only these track columns are printed.
 
     /** @brief mm:ss rendering for durations. */
     static std::string formatTime(double secs);
@@ -90,4 +94,4 @@ class OutputFormatter {
     void printError(const kanariv::utils::Error& e, std::ostream& err) const;
 };
 
-} // namespace kanariv::app::cli
+} // namespace kanariv::client

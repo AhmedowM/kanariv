@@ -1,10 +1,9 @@
-#include "output_formatter.hpp"
-
 #include <cctype>
 #include <ctime>
 #include <filesystem>
 #include <format>
 #include <iostream>
+#include <kanariv/client/output_formatter.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/types/format.hpp>
@@ -17,9 +16,7 @@
 #include <string_view>
 #include <variant>
 
-#include "cli_helpers.hpp"
-
-namespace kanariv::app::cli {
+namespace kanariv::client {
 
 std::string OutputFormatter::formatTime(double secs) {
     if (secs < 0)
@@ -91,7 +88,9 @@ std::string highlightAll(const std::string& text, std::string_view needle, bool 
         return text;
     std::string out;
     std::size_t pos = 0;
-    auto lower = [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
+    auto lower = [](char c) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    };
     while (pos < text.size()) {
         std::size_t hit = std::string::npos;
         for (std::size_t i = pos; i + needle.size() <= text.size(); ++i) {
@@ -243,25 +242,32 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                     kanariv::println(os, "Volume: {}%", pct);
             },
             [&os](const kanariv::types::LibraryStats& v) {
-                kanariv::println(os, "Tracks: {} Queues: {} Playlists: {}", v.tracks, v.queues,
-                                 v.playlists);
+                // Any requested Top-N report makes this the detailed view; the
+                // daemon leaves the optionals engaged even when the report is
+                // empty, so test presence rather than emptiness.
+                const bool detailed = v.top_tracks || v.top_albums || v.top_genres || v.top_artists;
+                if (!detailed) {
+                    kanariv::println(os, "Tracks: {} Queues: {} Playlists: {}", v.tracks, v.queues,
+                                     v.playlists);
+                    return;
+                }
+                kanariv::println(os, "Library Stats (Detailed):");
+                kanariv::println(os, "  Tracks:      {}", v.tracks);
+                kanariv::println(os, "  Queues:      {}", v.queues);
+                kanariv::println(os, "  Playlists:   {}", v.playlists);
                 double totalDurSec = v.total_duration_ms / 1000.0;
                 double totalPlaySec = v.total_play_time_ms / 1000.0;
                 kanariv::println(os, "  Total Duration:  {}", formatTime(totalDurSec));
                 kanariv::println(os, "  Total Play Time: {}", formatTime(totalPlaySec));
-                if (v.top_tracks) {
-                    kanariv::println(os, "Library Stats (Detailed):");
-                    if (!v.top_tracks->empty()) {
-                        kanariv::println(os, "\n  Most Played Tracks:");
-                        kanariv::println(os, "  {:>3} {:>6}  {:<40} {:<40} {:>8} {:>10}", "#", "ID",
-                                         "Artist", "Title", "Dur", "Plays");
-                        for (std::size_t i = 0; i < v.top_tracks->size(); ++i) {
-                            const auto& t = (*v.top_tracks)[i];
-                            kanariv::println(os, "  {:3} {:6}  {:<40} {:<40} {:>8} {:>10}", i + 1,
-                                             t.id, truncateField(t.artist, 40),
-                                             truncateField(t.title, 40), formatTime(t.duration),
-                                             t.play_count);
-                        }
+                if (v.top_tracks && !v.top_tracks->empty()) {
+                    kanariv::println(os, "\n  Most Played Tracks:");
+                    kanariv::println(os, "  {:>3} {:>6}  {:<40} {:<40} {:>8} {:>10}", "#", "ID",
+                                     "Artist", "Title", "Dur", "Plays");
+                    for (std::size_t i = 0; i < v.top_tracks->size(); ++i) {
+                        const auto& t = (*v.top_tracks)[i];
+                        kanariv::println(os, "  {:3} {:6}  {:<40} {:<40} {:>8} {:>10}", i + 1, t.id,
+                                         truncateField(t.artist, 40), truncateField(t.title, 40),
+                                         formatTime(t.duration), t.play_count);
                     }
                 }
                 if (v.top_albums && !v.top_albums->empty()) {
@@ -558,4 +564,4 @@ void OutputFormatter::printError(const kanariv::utils::Error& e, std::ostream& e
     kanariv::println(err, "Error: {} {}", kanariv::utils::toString(e.code), e.message);
 }
 
-} // namespace kanariv::app::cli
+} // namespace kanariv::client

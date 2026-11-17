@@ -6,10 +6,14 @@
  * @details One place decides how an App outcome becomes bytes and an exit
  * status: errors (with exit-code mapping), JSON vs human lines, bare results,
  * batch flushes and the version block. Domain files stay dispatch-only.
+ * Human/JSON rendering of a `Result` itself is `kanariv::client::OutputFormatter`
+ * (shared with the app's batch reports), re-exported here so the CLI has one
+ * formatting header.
  */
 
 #include <filesystem>
 #include <kanariv/app/app.hpp>
+#include <kanariv/client/output_formatter.hpp>
 #include <kanariv/config.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>

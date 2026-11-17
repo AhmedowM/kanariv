@@ -18,7 +18,6 @@ add_library(kanariv_cli_shell STATIC
   cli/src/shell/commands_lyrics.cpp
   cli/src/shell/commands_preview.cpp
   cli/src/shell/commands_config.cpp
-  cli/src/shell/output_formatter.cpp
 )
 # cli/ (its own headers) + the installed header tree + generated headers. No
 # src/: the CLI is an ordinary consumer of the public API, not a white-box

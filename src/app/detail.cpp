@@ -2,27 +2,22 @@
  * @file detail.cpp
  * @brief App-internal reporting helpers (NOT public API).
  * @details Builds the human-readable text for CLI reports directly from
- * IPC results. The CLI renderer (cli/src/shell/output_formatter.cpp) uses the
- * same spelling for every variant so app and CLI output stay identical.
+ * IPC results. Result presentation itself is `kanariv::client::OutputFormatter`,
+ * the same renderer the CLI uses, so both paths stay byte-identical.
  */
 
 #include <algorithm>
 #include <app/detail.hpp>
 #include <app/format_internal.hpp>
 #include <cstdint>
-#include <expected>
 #include <format>
+#include <kanariv/client/output_formatter.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <kanariv/types/format.hpp>
-#include <kanariv/types/record.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/json.hpp>
-#include <kanariv/utils/print.hpp>
 #include <sstream>
 #include <string>
-#include <variant>
 
 namespace kanariv::app::detail {
 
@@ -37,38 +32,6 @@ kanariv::utils::Error daemonDownError() {
         kanariv::utils::StatusCode::State,
         "daemon not running\nhint: run `kanariv start` to start the daemon");
 }
-
-namespace {
-
-std::string formatTime(double secs) {
-    if (secs < 0)
-        secs = 0;
-    int total = static_cast<int>(secs);
-    int h = total / 3600;
-    int m = (total % 3600) / 60;
-    int s = total % 60;
-    if (h > 0)
-        return std::format("{:02}:{:02}:{:02}", h, m, s);
-    return std::format("{:02}:{:02}", m, s);
-}
-
-std::string truncateField(const std::string& s, std::size_t maxLen = 40) {
-    if (s.empty())
-        return "---";
-    if (s.size() <= maxLen)
-        return s;
-    if (maxLen <= 3)
-        return s.substr(0, maxLen);
-    return s.substr(0, maxLen - 3) + "...";
-}
-
-template <class... Ts>
-struct Overloaded : Ts... {
-    using Ts::operator()...;
-    Overloaded(Ts... ts) : Ts(std::move(ts))... {}
-};
-
-} // namespace
 
 void emitLine(std::string& blob, const std::string& line) {
     if (!blob.empty())
@@ -97,146 +60,7 @@ void appendBlock(std::string& blob, const std::string& text) {
 
 void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
     std::ostringstream os;
-    std::visit(
-        Overloaded{
-            [&os](const kanariv::ipc::Status& v) {
-                std::string stateStr(kanariv::types::toString(v.state));
-                std::string posStr = formatTime(v.pos);
-                std::string durStr = formatTime(v.dur);
-                int volPct = static_cast<int>(v.vol * 100.0f);
-                kanariv::println(os, "State: {}", stateStr);
-                kanariv::println(os, "Pos: {} / {}", posStr, durStr);
-                if (v.muted)
-                    kanariv::println(os, "Volume: muted");
-                else
-                    kanariv::println(os, "Volume: {}%", volPct);
-                kanariv::println(os, "Shuffle: {} Repeat: {}", v.shuffle ? "on" : "off",
-                                 kanariv::types::toString(v.repeat));
-                if (!v.artist.empty() && !v.title.empty()) {
-                    kanariv::println(os, "Track: {} - {} [id: {}]", truncateField(v.artist, 40),
-                                     truncateField(v.title, 40), v.track_id);
-                } else if (!v.artist.empty() || !v.title.empty()) {
-                    kanariv::println(os, "Track: {} [id: {}]",
-                                     truncateField(v.artist + v.title, 40), v.track_id);
-                } else if (v.track_id != 0) {
-                    kanariv::println(os, "Track: [id: {}]", v.track_id);
-                }
-                if (!v.path.empty()) {
-                    kanariv::println(os, "Path: {}", v.path);
-                }
-                if (v.track_id != 0 && v.q_size > 0) {
-                    kanariv::println(os, "Queue: track {} of {}", v.q_idx + 1, v.q_size);
-                } else {
-                    kanariv::println(os, "Queue: {} tracks", v.q_size);
-                }
-                if (!v.version.empty()) {
-                    kanariv::println(os, "Version: {}", v.version);
-                }
-            },
-            [&os](const kanariv::ipc::QueueTracks& v) {
-                std::span<const kanariv::types::TrackRow> tracksSpan(v.tracks.data(),
-                                                                     v.tracks.size());
-                kanariv::println(os, "Queue ({} tracks):", tracksSpan.size());
-                kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
-                                 "Title", "Dur");
-                for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                    const auto& t = tracksSpan[i];
-                    kanariv::println(os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
-                                     truncateField(t.artist, 40), truncateField(t.title, 40),
-                                     formatTime(t.duration));
-                }
-            },
-            [&os](const kanariv::ipc::Queues& v) {
-                kanariv::println(os, "Queues ({}):", v.entries.size());
-                kanariv::println(os, "{:>3} {:>6}  {:<40} {:>8} {:>6} {:>4}", "#", "ID", "Name",
-                                 "Tracks", "Active", "Temp");
-                for (std::size_t i = 0; i < v.entries.size(); ++i) {
-                    const auto& q = v.entries[i];
-                    kanariv::println(os, "{:3} {:6}  {:<40} {:>8} {:>6} {:>4}", i, q.id,
-                                     truncateField(q.name.empty() ? "(unnamed)" : q.name, 40),
-                                     q.tracks, q.active ? "*" : "", q.temp ? "yes" : "");
-                }
-            },
-            [&os](const kanariv::ipc::PlaylistData& v) {
-                std::span<const kanariv::types::TrackRow> tracksSpan(v.tracks.data(),
-                                                                     v.tracks.size());
-                kanariv::println(os, "Playlist ({} tracks):", tracksSpan.size());
-                kanariv::println(os, "{:>3} {:>6}  {:<40} {:<40} {:>8}", "#", "ID", "Artist",
-                                 "Title", "Dur");
-                for (std::size_t i = 0; i < tracksSpan.size(); ++i) {
-                    const auto& t = tracksSpan[i];
-                    kanariv::println(os, "{:3} {:6}  {:<40} {:<40} {:>8}", i, t.id,
-                                     truncateField(t.artist, 40), truncateField(t.title, 40),
-                                     formatTime(t.duration));
-                }
-            },
-            [&os](const kanariv::types::LibraryStats& v) {
-                // Any requested Top-N report makes this a detailed view; the
-                // daemon leaves the optionals engaged even when the report is
-                // empty, so test presence rather than emptiness.
-                const bool detailed = v.top_tracks || v.top_albums || v.top_genres || v.top_artists;
-                if (!detailed) {
-                    kanariv::println(os, "Tracks: {} Queues: {} Playlists: {}", v.tracks, v.queues,
-                                     v.playlists);
-                    return;
-                }
-                kanariv::println(os, "Library Stats (Detailed):");
-                kanariv::println(os, "  Tracks:      {}", v.tracks);
-                kanariv::println(os, "  Queues:      {}", v.queues);
-                kanariv::println(os, "  Playlists:   {}", v.playlists);
-                double totalDurSec = v.total_duration_ms / 1000.0;
-                double totalPlaySec = v.total_play_time_ms / 1000.0;
-                kanariv::println(os, "  Total Duration:  {}", formatTime(totalDurSec));
-                kanariv::println(os, "  Total Play Time: {}", formatTime(totalPlaySec));
-                if (v.top_tracks && !v.top_tracks->empty()) {
-                    kanariv::println(os, "\n  Most Played Tracks:");
-                    kanariv::println(os, "  {:>3} {:>6}  {:<40} {:<40} {:>8} {:>10}", "#", "ID",
-                                     "Artist", "Title", "Dur", "Plays");
-                    for (std::size_t i = 0; i < v.top_tracks->size(); ++i) {
-                        const auto& t = (*v.top_tracks)[i];
-                        kanariv::println(os, "  {:3} {:6}  {:<40} {:<40} {:>8} {:>10}", i + 1, t.id,
-                                         truncateField(t.artist, 40), truncateField(t.title, 40),
-                                         formatTime(t.duration), t.play_count);
-                    }
-                }
-                if (v.top_albums && !v.top_albums->empty()) {
-                    kanariv::println(os, "\n  Top Albums by Plays:");
-                    kanariv::println(os, "  {:>3} {:<40} {:>10} {:>10}", "#", "Album", "Tracks",
-                                     "Plays");
-                    for (std::size_t i = 0; i < v.top_albums->size(); ++i) {
-                        const auto& e = (*v.top_albums)[i];
-                        kanariv::println(os, "  {:3} {:<40} {:>10} {:>10}", i + 1,
-                                         truncateField(e.name, 40), e.track_count, e.total_plays);
-                    }
-                }
-                if (v.top_genres && !v.top_genres->empty()) {
-                    kanariv::println(os, "\n  Top Genres by Plays:");
-                    kanariv::println(os, "  {:>3} {:<20} {:>10} {:>10}", "#", "Genre", "Tracks",
-                                     "Plays");
-                    for (std::size_t i = 0; i < v.top_genres->size(); ++i) {
-                        const auto& e = (*v.top_genres)[i];
-                        kanariv::println(os, "  {:3} {:<20} {:>10} {:>10}", i + 1,
-                                         truncateField(e.name, 20), e.track_count, e.total_plays);
-                    }
-                }
-                if (v.top_artists && !v.top_artists->empty()) {
-                    kanariv::println(os, "\n  Top Artists by Plays:");
-                    kanariv::println(os, "  {:>3} {:<40} {:>10} {:>10}", "#", "Artist", "Tracks",
-                                     "Plays");
-                    for (std::size_t i = 0; i < v.top_artists->size(); ++i) {
-                        const auto& e = (*v.top_artists)[i];
-                        kanariv::println(os, "  {:3} {:<40} {:>10} {:>10}", i + 1,
-                                         truncateField(e.name, 40), e.track_count, e.total_plays);
-                    }
-                }
-            },
-            [&os](const kanariv::utils::Error& v) {
-                kanariv::println(os, "Error: {} {}", kanariv::utils::toString(v.code), v.message);
-            },
-            [&os, &res](const auto&) {
-                kanariv::println(os, "{}", kanariv::ipc::toJson(res).dump(2));
-            }},
-        res);
+    kanariv::client::OutputFormatter{}.print(res, os);
     appendBlock(blob, os.str());
 }
 
@@ -291,7 +115,7 @@ void countLineText(int added, std::string& out) {
 
 void renderErrorInto(std::string& err, const kanariv::utils::Error& e) {
     std::ostringstream os;
-    kanariv::println(os, "Error: {} {}", kanariv::utils::toString(e.code), e.message);
+    kanariv::client::OutputFormatter{}.printError(e, os);
     appendBlock(err, os.str());
 }
 

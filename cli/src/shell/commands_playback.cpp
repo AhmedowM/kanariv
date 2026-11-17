@@ -19,7 +19,6 @@
 
 #include "cli_helpers.hpp"
 #include "commands.hpp"
-#include "output_formatter.hpp"
 #include "render.hpp"
 #include "shell.hpp"
 
@@ -107,7 +106,7 @@ std::optional<int> runPlayback(App& app, const config::Config& cfg, std::stop_to
             }
             using namespace std::chrono;
             const bool ansi = useColor();
-            OutputFormatter fmt{p.statusJson};
+            kanariv::client::OutputFormatter fmt{p.statusJson};
             // One session (and its one connection) for the whole stream.
             kanariv::client::Session session{cfg.dbPath, cfg.socketPath};
             int failures = 0;

@@ -12,7 +12,6 @@
 
 #include "cli_helpers.hpp"
 #include "commands.hpp"
-#include "output_formatter.hpp"
 #include "render.hpp"
 
 namespace kanariv::app::cli::detail {
@@ -97,7 +96,7 @@ std::optional<int> runLibrary(App& app, const Options& o) {
             renderJson(*sr->result);
             return exitOk;
         }
-        OutputFormatter fmt{false, useColor()};
+        kanariv::client::OutputFormatter fmt{false, useColor()};
         fmt.setHighlightNeedle(lib.searchQuery);
         fmt.print(*sr->result, std::cout);
         return 0;

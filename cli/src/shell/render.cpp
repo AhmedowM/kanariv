@@ -31,7 +31,6 @@
 #include <utility>
 
 #include "cli_helpers.hpp"
-#include "output_formatter.hpp"
 
 namespace kanariv::app::cli::detail {
 
@@ -50,16 +49,16 @@ std::string statusLine(const kanariv::ipc::Status& st) {
 }
 
 int renderError(const kanariv::utils::Error& e) {
-    // Same bytes as app::detail::renderErrorInto (which is src/-internal and
-    // must not be reachable from the CLI): "Error: <Code>[: message]".
-    kanariv::println(std::cerr, "Error: {}", e);
+    // Same renderer as app::detail::renderErrorInto, so both paths emit the
+    // exact same "Error: <Code>: <message>" bytes.
+    kanariv::client::OutputFormatter{}.printError(e, std::cerr);
     return exitCodeForError(e);
 }
 
 // Prints a result as JSON on stdout. Never returns a status: the caller
 // decides it, so JSON mode cannot mask a failed batch with exit 0.
 void renderJson(const kanariv::ipc::Result& r) {
-    OutputFormatter fmt{true};
+    kanariv::client::OutputFormatter fmt{true};
     fmt.print(r, std::cout);
 }
 
@@ -117,7 +116,7 @@ int render(kanariv::app::AppResult res, bool asJson, std::string_view columns) {
         return exitOk;
     }
     if (outcome.result) {
-        OutputFormatter fmt{false};
+        kanariv::client::OutputFormatter fmt{false};
         if (!columns.empty())
             fmt.setColumns(columns);
         fmt.print(*outcome.result, std::cout);

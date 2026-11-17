@@ -46,7 +46,7 @@ void emitLine(std::string& blob, const std::string& line);
 void appendBlock(std::string& blob, const std::string& text);
 
 /**
- * @brief Renders a result with the human formatter into a blob.
+ * @brief Renders a result with `kanariv::client::OutputFormatter` into a blob.
  */
 void renderInto(std::string& blob, const kanariv::ipc::Result& res);
 
@@ -71,8 +71,8 @@ void countLineText(int added, std::string& out);
 
 /**
  * @brief Renders an error into a blob.
- * @details Single implementation shared by batch loops and the shell
- * error path, so both render byte-identical text.
+ * @details Shared by batch loops and the shell error path through the one
+ * `OutputFormatter::printError`, so both render byte-identical text.
  */
 KANARIV_API void renderErrorInto(std::string& err, const kanariv::utils::Error& e);
 
