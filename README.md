@@ -32,7 +32,7 @@ cloud service.
 - SQLite library management with FTS5 search.
 - Queues, playlists, shuffle, repeat, history, bookmarks, and statistics.
 - JSON IPC with 4-byte big-endian framing.
-- Lock-free shared-memory status updates at 10 Hz for lightweight clients.
+- Status streaming over IPC (`StatusWait`) without polling.
 - Nine installable libraries, an optional CLI, and opt-in C++23 modules.
 
 ## Support status
@@ -334,8 +334,8 @@ auto reader = source.open(); // FileReader
 ### Service host (in-process)
 
 `kanariv::service::Host` runs a `kanariv::service::Service` in-process without
-desktop daemon scaffolding (no lock file, PID file, socket, IPC server, or
-shared memory). It owns the worker thread and exposes `requestStop()`,
+desktop daemon scaffolding (no lock file, PID file, socket, or IPC server). It
+owns the worker thread and exposes `requestStop()`,
 `wait()`, `stop()`, `running()`, `ready()`, `error()`, and `service()`. Use
 `ServiceConfig::inProcess` with explicit `kanariv::config::RuntimePaths` for
 host-private directories such as Android app-private storage.

@@ -106,15 +106,12 @@ Commands are organized by group:
 | `Corrupt` | Data corruption |
 | `NoSpace` | No space left |
 
-## Shared memory status
+## Status without polling
 
-The daemon also publishes lock-free playback snapshots to shared memory at
-10 Hz for lightweight clients that cannot use the socket:
-
-- Fields: position, duration, volume, muted, state, track_id, queue_size,
-  title, artist
-- Seqlock-protected: readers retry on sequence mismatch
-- No IPC round-trip required
+`StatusReq` returns the current playback snapshot. `StatusWait` blocks until a
+real state change (transport command, track start/end) and then returns the
+new snapshot, so a client can follow playback without a polling loop or a
+second channel. Read-only replies never bump the change sequence.
 
 ## Next steps
 

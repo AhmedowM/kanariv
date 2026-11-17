@@ -8,8 +8,8 @@
  * and dispatches each connection to the `Service` dispatcher on its own
  * thread. Windows: local API declarations are used when `windows.h` was
  * not included yet, so including this header never forces `windows.h`
- * (and its `min`/`max` macros) on consumers; see `shm_status.hpp` and
- * `utils/thread.hpp` for the same pattern.
+ * (and its `min`/`max` macros) on consumers; see `utils/thread.hpp` for
+ * the same pattern.
  *
  * Internal header: lives in `src/`, not installed. `Service` owns the
  * server; the public surface never names it.

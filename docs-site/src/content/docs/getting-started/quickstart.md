@@ -24,7 +24,7 @@ does not copy or move your media.
 # 4. Play
 ./build/dev/kanariv play
 
-# 5. Watch status (10 Hz shared-memory snapshots)
+# 5. Watch status (polls StatusWait, prints on each change)
 ./build/dev/kanariv status --watch --interval 1000
 ```
 

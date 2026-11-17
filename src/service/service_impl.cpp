@@ -19,7 +19,6 @@
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <kanariv/ipc/shm_status.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
@@ -197,10 +196,8 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
         }
     }
 
-    // IPC server / PID / shared status exist only for the desktop daemon.
+    // IPC server / PID file exist only for the desktop daemon.
     std::unique_ptr<IpcServer> srvPtr;
-    std::string shmName;
-    std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter;
     std::string pidStr;
     if (!inProcess) {
         srvPtr = std::make_unique<IpcServer>();
@@ -227,23 +224,11 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
             }
         } catch (...) {
         }
-
-        // Create shared memory status block for event-driven status snapshots
-        // Derive shm name via the canonical endpoint id (consistent with socket/pid/lock)
-        shmName = kanariv::config::detail::endpointIdForDb(dbPath);
-        auto shmRes = kanariv::ipc::ShmStatusWriter::create(shmName);
-        if (!shmRes) {
-            // Non-fatal: continue without shm (clients fall back to IPC status).
-            loggerPtr->warn("shm status unavailable: {} (falling back to IPC status)",
-                            shmRes.error().message);
-        }
-        if (shmRes)
-            shmWriter = std::make_unique<kanariv::ipc::ShmStatusWriter>(std::move(*shmRes));
     }
 
     auto svc = std::unique_ptr<Service>(new Service(
         resolved, std::move(storage), std::move(eng), std::move(srvPtr), std::move(loggerPtr),
-        pidPath, lockPath, spStr, lockFd, std::move(shmWriter), shmName));
+        pidPath, lockPath, spStr, lockFd));
     if (inProcess) {
         svc->impl_->logger_->info("service started in-process version={} db={}",
                                   kanariv::version::version(), dbPath.generic_string());
@@ -258,22 +243,18 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
 Service::Service(const ServiceConfig& cfg, kanariv::contracts::Storage storage,
                  std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
                  std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
-                 std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,
-                 std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName)
+                 std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd)
     : impl_(std::make_unique<Impl>(cfg, std::move(storage), std::move(eng), std::move(srv),
                                    std::move(logger), std::move(pidPath), std::move(lockPath),
-                                   std::move(socketPath), lockFd, std::move(shmWriter),
-                                   std::move(shmName))) {}
+                                   std::move(socketPath), lockFd)) {}
 
 Service::Impl::Impl(const ServiceConfig& cfg, kanariv::contracts::Storage storage,
                     std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
                     std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
-                    std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,
-                    std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName)
+                    std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd)
     : config_(cfg), storage_(std::move(storage)), engine_(std::move(eng)), server_(std::move(srv)),
       logger_(std::move(logger)), pidPath_(std::move(pidPath)), lockPath_(std::move(lockPath)),
-      socketPath_(std::move(socketPath)), lockFd_(lockFd), shmWriter_(std::move(shmWriter)),
-      shmName_(std::move(shmName)) {
+      socketPath_(std::move(socketPath)), lockFd_(lockFd) {
     // Create the OS media-session backend (internal, daemon-only). A missing
     // backend is not fatal: the daemon runs fine without OS integration.
     auto msRes = kanariv::media_session::MediaSession::create("kanariv", "", true, true);
@@ -286,7 +267,7 @@ Service::Impl::Impl(const ServiceConfig& cfg, kanariv::contracts::Storage storag
         // OS media-key intents run on backend threads. They are routed through
         // dispatch() instead of touching the engine directly, so there is
         // exactly one serialized writer into Engine/Database (S2/S8) and the
-        // command handlers keep owning the shm/media-session refresh.
+        // command handlers keep owning the media-session refresh.
         mediaSession_->setCallbacks({
             .onPlay = [this] { (void)dispatch(kanariv::ipc::Play{}); },
             .onPause = [this] { (void)dispatch(kanariv::ipc::Pause{}); },
@@ -469,7 +450,6 @@ void Service::Impl::shutdown() {
         }
     } catch (...) {
     }
-    // shm handle will be cleaned up via RAII
 }
 
 kanariv::contracts::Storage Service::storage() noexcept {
@@ -503,59 +483,6 @@ kanariv::engine::Engine& Service::engine() noexcept {
  */
 IpcServer& Service::server() noexcept {
     return *impl_->server_;
-}
-/**
- * @brief Get the shared memory name used for status block.
- * @return Shared memory name (hash of dbPath).
- */
-const std::string& Service::shmName() const noexcept {
-    return impl_->shmName_;
-}
-/**
- * @brief Get the shared memory status writer (if available).
- * @return Pointer to ShmStatusWriter or nullptr if SHM creation failed.
- */
-kanariv::ipc::ShmStatusWriter* Service::shmWriter() noexcept {
-    return impl_->shmWriter_.get();
-}
-
-void Service::Impl::updateShmStatus() {
-    if (!shmWriter_ || !shmWriter_->valid() || !engine_)
-        return;
-    auto& eng = *engine_;
-    int64_t track_id = eng.currentTrackId();
-    // Single track fetch (C-2): title/artist/duration come from one lookup.
-    // A database-less service still publishes engine state (S4).
-    std::string title, artist;
-    double duration = 0.0;
-    if (storage_.tracks && track_id != 0) {
-        if (auto tr = storage_.tracks->getTrack(track_id); tr) {
-            title = tr->title;
-            artist = tr->artist;
-            duration = tr->duration;
-        }
-    }
-    // O(1) queue size via COUNT(*) (C-2): the old listQueueItems() materialized
-    // the full vector of items just for .size().
-    size_t qSize = 0;
-    if (storage_.queues) {
-        int64_t aq = eng.activeQueueId();
-        if (auto cnt = storage_.queues->queueCount(aq); cnt)
-            qSize = *cnt;
-    }
-    kanariv::ipc::ShmStatusUpdate u{};
-    u.position = eng.position();
-    u.duration = duration;
-    u.volume = eng.volume();
-    u.muted = (eng.volume() == 0.0f);
-    u.state = static_cast<int>(eng.state());
-    u.track_id = track_id;
-    u.queueSize = qSize;
-    u.title = title;
-    u.artist = artist;
-    // One seqlock critical section for the whole snapshot (duration and queue
-    // size used to be published through separate, non-sequenced setters).
-    shmWriter_->publish(u);
 }
 
 void Service::Impl::noteStateChanged() {

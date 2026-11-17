@@ -13,4 +13,3 @@
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <kanariv/ipc/shm_status.hpp>

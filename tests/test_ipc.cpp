@@ -1,17 +1,14 @@
 #include <array>
-#include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <common.hpp>
 #include <cstddef>
 #include <filesystem>
-#include <ipc/shm_status_access.hpp>
 #include <kanariv/contracts/storage.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <kanariv/ipc/shm_status.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
@@ -47,15 +44,6 @@ constexpr bool allCommandAlternatives(std::variant<Ts...>*) {
 static_assert(allCommandAlternatives(static_cast<Command*>(nullptr)));
 static_assert(CommandType<const Play&>);
 static_assert(!CommandAlternative<const Play>);
-
-// Unique shared-memory name per test; the clock suffix avoids collisions with
-// a leftover segment from a previous run, the counter within the same tick.
-std::string uniqueShmName(std::string_view prefix) {
-    static std::atomic<unsigned> counter{0};
-    const auto tick = std::chrono::steady_clock::now().time_since_epoch().count() % 100000000;
-    return std::string(prefix) + "-" + std::to_string(tick) + "-" +
-           std::to_string(counter.fetch_add(1));
-}
 
 } // namespace
 
@@ -307,224 +295,6 @@ TEST_CASE("every Command alternative roundtrips through the schema", "[ipc]") {
         INFO("alternative index: " << i);
         REQUIRE(results[i]);
     }
-}
-
-TEST_CASE("shm status reader/writer roundtrip", "[ipc][shm]") {
-    const std::string name = uniqueShmName("test");
-    auto writerRes = kanariv::ipc::ShmStatusWriter::create(name);
-    if (!writerRes)
-        WARN(writerRes.error().message);
-    REQUIRE(writerRes.has_value());
-    auto& writer = *writerRes;
-
-    kanariv::ipc::ShmStatusUpdate update{};
-    update.position = 12.5;
-    update.duration = 180.0;
-    update.volume = 0.5f;
-    update.muted = true;
-    update.state = 2;
-    update.track_id = 42;
-    update.queueSize = 3;
-    update.title = "Song";
-    update.artist = "Artist";
-    writer.publish(update);
-
-    auto readerRes = kanariv::ipc::ShmStatusReader::openReadOnly(name);
-    if (!readerRes)
-        WARN(readerRes.error().message);
-    REQUIRE(readerRes.has_value());
-    const auto snapshot = readerRes->snapshot();
-    CHECK_FALSE(snapshot.stale);
-    CHECK(snapshot.position == 12.5);
-    CHECK(snapshot.duration == 180.0);
-    CHECK(snapshot.volume == 0.5f);
-    CHECK(snapshot.muted);
-    CHECK(snapshot.state == 2);
-    CHECK(snapshot.track_id == 42);
-    CHECK(snapshot.queueSize == 3);
-    CHECK(std::string{snapshot.title} == "Song");
-    CHECK(std::string{snapshot.artist} == "Artist");
-    CHECK(writer.valid());
-    CHECK(readerRes->valid());
-}
-
-TEST_CASE("shm status publish clears empty strings and stays consistent", "[ipc][shm]") {
-    const std::string name = uniqueShmName("clear");
-    auto writerRes = kanariv::ipc::ShmStatusWriter::create(name);
-    REQUIRE(writerRes.has_value());
-    auto readerRes = kanariv::ipc::ShmStatusReader::openReadOnly(name);
-    REQUIRE(readerRes.has_value());
-
-    kanariv::ipc::ShmStatusUpdate first{};
-    first.position = 5.0;
-    first.duration = 100.0;
-    first.queueSize = 4;
-    first.title = "First Title";
-    first.artist = "First Artist";
-    writerRes->publish(first);
-
-    // Stop/track-change: empty views must clear the previous metadata instead
-    // of leaving a stale title/artist readable forever.
-    kanariv::ipc::ShmStatusUpdate second{};
-    second.position = 0.0;
-    second.duration = 0.0;
-    second.queueSize = 0;
-    second.title = "";
-    second.artist = "";
-    writerRes->publish(second);
-
-    auto snap = readerRes->snapshot();
-    CHECK_FALSE(snap.stale);
-    CHECK(std::string{snap.title}.empty());
-    CHECK(std::string{snap.artist}.empty());
-    CHECK(snap.duration == 0.0);
-    CHECK(snap.queueSize == 0);
-
-    // A non-empty title with an empty artist clears only the artist.
-    kanariv::ipc::ShmStatusUpdate third{};
-    third.position = 1.0;
-    third.duration = 200.0;
-    third.queueSize = 9;
-    third.title = "Only Title";
-    writerRes->publish(third);
-    snap = readerRes->snapshot();
-    CHECK_FALSE(snap.stale);
-    CHECK(std::string{snap.title} == "Only Title");
-    CHECK(std::string{snap.artist}.empty());
-    CHECK(snap.duration == 200.0);
-    CHECK(snap.queueSize == 9);
-}
-
-TEST_CASE("shm status replaces a stale segment", "[ipc][shm]") {
-    const std::string name = uniqueShmName("stale");
-
-    auto oldWriter = kanariv::ipc::ShmStatusWriter::create(name);
-    REQUIRE(oldWriter.has_value());
-    kanariv::ipc::ShmStatusUpdate stale{};
-    stale.position = 42.0;
-    stale.duration = 99.0;
-    stale.queueSize = 7;
-    stale.title = "Stale Song";
-    stale.artist = "Stale Artist";
-    oldWriter->publish(stale);
-
-    // A second create on the same name models a restarted daemon while the old
-    // segment still exists (crash/lingering reader). It must replace/reset it.
-    auto newWriter = kanariv::ipc::ShmStatusWriter::create(name);
-    REQUIRE(newWriter.has_value());
-
-    auto readerRes = kanariv::ipc::ShmStatusReader::openReadOnly(name);
-    REQUIRE(readerRes.has_value());
-    const auto snap = readerRes->snapshot();
-    CHECK_FALSE(snap.stale);
-    CHECK(snap.seq == 0);
-    CHECK(snap.position == 0.0);
-    CHECK(snap.duration == 0.0);
-    CHECK(snap.queueSize == 0);
-    CHECK(std::string{snap.title}.empty());
-    CHECK(std::string{snap.artist}.empty());
-
-    // The replacement writer publishes normally afterwards.
-    kanariv::ipc::ShmStatusUpdate fresh{};
-    fresh.position = 1.5;
-    fresh.title = "Fresh";
-    newWriter->publish(fresh);
-    CHECK(std::string{readerRes->snapshot().title} == "Fresh");
-}
-
-TEST_CASE("shm status reader is bounded on a crashed writer", "[ipc][shm]") {
-    const std::string name = uniqueShmName("crash");
-    auto writerRes = kanariv::ipc::ShmStatusWriter::create(name);
-    REQUIRE(writerRes.has_value());
-    kanariv::ipc::ShmStatusUpdate update{};
-    update.position = 3.0;
-    update.title = "Before Crash";
-    writerRes->publish(update);
-
-    auto readerRes = kanariv::ipc::ShmStatusReader::openReadOnly(name);
-    REQUIRE(readerRes.has_value());
-
-    auto* raw = kanariv::ipc::ShmStatusAccess::map(*readerRes);
-    REQUIRE(raw != nullptr);
-    // Simulate a daemon killed between the two sequence stores: odd forever.
-    raw->seq.store(1, std::memory_order_relaxed);
-
-    const auto start = std::chrono::steady_clock::now();
-    const auto snap = readerRes->snapshot();
-    const auto elapsed = std::chrono::steady_clock::now() - start;
-
-    CHECK(snap.stale);
-    CHECK(elapsed < std::chrono::seconds(5));
-    CHECK(snap.position == 0.0);
-    CHECK(std::string{snap.title}.empty());
-}
-
-TEST_CASE("shm status seqlock keeps paired fields consistent", "[ipc][shm]") {
-    const std::string name = uniqueShmName("paired");
-    auto writerRes = kanariv::ipc::ShmStatusWriter::create(name);
-    REQUIRE(writerRes.has_value());
-    auto readerRes = kanariv::ipc::ShmStatusReader::openReadOnly(name);
-    REQUIRE(readerRes.has_value());
-
-    auto publishVersion = [&](int i) {
-        kanariv::ipc::ShmStatusUpdate u{};
-        u.position = static_cast<double>(i);
-        u.duration = static_cast<double>(i) * 2.0;
-        u.queueSize = static_cast<std::size_t>(i);
-        const std::string title = "T" + std::to_string(i);
-        const std::string artist = "A" + std::to_string(i);
-        u.title = title;
-        u.artist = artist;
-        writerRes->publish(u);
-    };
-    publishVersion(1);
-
-    std::atomic<bool> done{false};
-    std::atomic<int> failures{0};
-    std::jthread publisher([&] {
-        for (int i = 2; i <= 2000; ++i) {
-            publishVersion(i);
-            if (i % 64 == 0)
-                std::this_thread::yield();
-        }
-        done.store(true, std::memory_order_release);
-    });
-
-    while (!done.load(std::memory_order_acquire)) {
-        const auto snap = readerRes->snapshot();
-        if (snap.stale)
-            continue;
-        const auto version = static_cast<int>(snap.position);
-        if (snap.duration != static_cast<double>(version) * 2.0 ||
-            snap.queueSize != static_cast<std::size_t>(version)) {
-            ++failures;
-        }
-        // Contract: title and artist always describe the same published version.
-        if (std::string{snap.title} != "T" + std::to_string(version) ||
-            std::string{snap.artist} != "A" + std::to_string(version)) {
-            ++failures;
-        }
-    }
-    publisher.join();
-
-    // Every observed snapshot was internally consistent, and the final state is
-    // the last published version.
-    CHECK(failures.load() == 0);
-    const auto finalSnap = readerRes->snapshot();
-    REQUIRE_FALSE(finalSnap.stale);
-    CHECK(finalSnap.position == 2000.0);
-    CHECK(std::string{finalSnap.title} == "T2000");
-    CHECK(std::string{finalSnap.artist} == "A2000");
-}
-
-TEST_CASE("shm atomic bit-cast helpers are usable from another TU", "[ipc][shm]") {
-    std::atomic<uint64_t> d{0};
-    atomicStoreDouble(d, -1.25);
-    CHECK(atomicLoadDouble(d) == -1.25);
-
-    std::atomic<uint32_t> f{0};
-    atomicStoreFloat(f, 0.5f);
-    CHECK(atomicLoadFloat(f) == 0.5f);
 }
 
 TEST_CASE("reply decoding fails closed", "[ipc]") {

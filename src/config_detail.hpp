@@ -48,15 +48,14 @@ std::filesystem::path legacyConfigPath();
 kanariv::utils::Expected<std::string> readFileString(const std::filesystem::path& p);
 
 /**
- * @brief Stable endpoint identifier used in socket/pid/lock/shm names.
+ * @brief Stable endpoint identifier used in socket/pid/lock names.
  * @param dbPath Database path.
  * @return 16-character lowercase hex string: FNV-1a 64-bit over the canonical
  * UTF-8 form of @p dbPath (`generic_u8string()` with `/` separators, or the
  * raw path spelling if that conversion fails).
  * @details Self-contained and toolchain independent; `std::hash` is never used.
- * The same digest names the socket/pipe, PID file, lock file, and shared
- * memory block.
- * @note KANARIV_API: service.dll derives socket/SHM names through config.dll.
+ * The same digest names the socket/pipe, PID file and lock file.
+ * @note KANARIV_API: service.dll derives socket/pipe names through config.dll.
  */
 KANARIV_API std::string endpointIdForDb(const std::filesystem::path& dbPath);
 

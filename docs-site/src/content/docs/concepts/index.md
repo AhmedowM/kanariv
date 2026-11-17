@@ -26,8 +26,9 @@ share the same behavior without duplicating playback logic.
   rather than reaching into each other's implementation details.
 - **Predictable failure:** fallible operations use structured errors and IPC
   replies expose an error code plus message.
-- **Low overhead:** shared-memory status avoids polling the daemon for every
-  progress update.
+- **Low overhead:** `StatusWait` pushes a status snapshot when a real state
+  change happens, so clients do not poll the daemon for every progress
+  update.
 
 ## Where to go next
 

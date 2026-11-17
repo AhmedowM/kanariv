@@ -43,7 +43,6 @@ Service::Impl::handle(const kanariv::ipc::Play&) {
     auto r = engine_->play(aq);
     if (!r)
         return std::unexpected{r.error()};
-    updateShmStatus();
     requestMediaSessionRefresh();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
@@ -66,7 +65,6 @@ Service::Impl::handle(const kanariv::ipc::Pause&) {
     auto r = engine_->pause();
     if (!r)
         return std::unexpected{r.error()};
-    updateShmStatus();
     requestMediaSessionRefresh();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
@@ -80,7 +78,6 @@ Service::Impl::handle(const kanariv::ipc::Resume&) {
     // replays the persisted track instead of failing State.
     const auto before = engine_->state();
     if (before == kanariv::types::PlaybackState::Playing) {
-        updateShmStatus();
         requestMediaSessionRefresh();
         return statusAfterChange("already_playing");
     }
@@ -88,7 +85,6 @@ Service::Impl::handle(const kanariv::ipc::Resume&) {
     auto r = wasPaused ? engine_->resume() : engine_->play(engine_->activeQueueId());
     if (!r)
         return std::unexpected{r.error()};
-    updateShmStatus();
     requestMediaSessionRefresh();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
@@ -106,7 +102,6 @@ Service::Impl::handle(const kanariv::ipc::Restart&) {
         auto r = engine_->play(engine_->activeQueueId());
         if (!r)
             return std::unexpected{r.error()};
-        updateShmStatus();
         requestMediaSessionRefresh();
         return statusAfterChange();
     }
@@ -118,7 +113,6 @@ Service::Impl::handle(const kanariv::ipc::Restart&) {
         if (!resumed)
             return std::unexpected{resumed.error()};
     }
-    updateShmStatus();
     requestMediaSessionRefresh();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
@@ -130,7 +124,6 @@ Service::Impl::handle(const kanariv::ipc::Stop&) {
     auto r = engine_->stop();
     if (!r)
         return std::unexpected{r.error()};
-    updateShmStatus();
     requestMediaSessionRefresh();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
@@ -142,7 +135,6 @@ Service::Impl::handle(const kanariv::ipc::Next&) {
     auto r = engine_->next();
     if (!r)
         return std::unexpected{r.error()};
-    updateShmStatus();
     requestMediaSessionRefresh();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
@@ -154,7 +146,6 @@ Service::Impl::handle(const kanariv::ipc::Prev&) {
     auto r = engine_->prev();
     if (!r)
         return std::unexpected{r.error()};
-    updateShmStatus();
     requestMediaSessionRefresh();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
@@ -170,7 +161,6 @@ Service::Impl::handle(const kanariv::ipc::Seek& s) {
     auto r = engine_->seek(s.seconds);
     if (!r)
         return std::unexpected{r.error()};
-    updateShmStatus();
     requestMediaSessionRefresh();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
@@ -191,7 +181,6 @@ Service::Impl::handle(const kanariv::ipc::SeekBy& s) {
     auto r = engine_->seek(target);
     if (!r)
         return std::unexpected{r.error()};
-    updateShmStatus();
     requestMediaSessionRefresh();
     // Mutations are real state changes: bump the status sequence so
     // StatusWait waiters observe them (S5).
@@ -285,7 +274,6 @@ Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
         if (!r)
             return std::unexpected{r.error()};
     }
-    updateShmStatus();
     requestMediaSessionRefresh();
     if (hasTarget)
         noteStateChanged();

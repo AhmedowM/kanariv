@@ -103,12 +103,8 @@ class Service;
 } // namespace kanariv::service
 
 namespace kanariv::ipc {
-/** @brief Shared-memory playback status record. */
+/** @brief Playback status snapshot returned by Status commands. */
 struct Status;
-/** @brief Read-only shared-memory status mapping. */
-class ShmStatusReader;
-/** @brief Writable shared-memory status mapping. */
-class ShmStatusWriter;
 } // namespace kanariv::ipc
 
 namespace kanariv::types {

@@ -12,9 +12,9 @@
  * handling.
  *
  * Host always creates its Service with `ServiceConfig::inProcess = true`, so
- * no lock file, PID file, socket, IPC server, or shared memory is created.
- * Desktop code should keep using `Service::create` and the daemon entry
- * points; desktop behavior is unchanged.
+ * no lock file, PID file, socket, or IPC server is created. Desktop code
+ * should keep using `Service::create` and the daemon entry points; desktop
+ * behavior is unchanged.
  *
  * @code
  * kanariv::service::ServiceConfig cfg;

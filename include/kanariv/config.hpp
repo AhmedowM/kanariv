@@ -25,7 +25,7 @@ namespace kanariv::config {
  * `std::filesystem::path(dbPath).generic_u8string()` (`/` separators) when that
  * conversion succeeds, and the raw path spelling otherwise. The digest is specified
  * here rather than inherited from `std::hash`, so a daemon and a client built with
- * different C++ runtimes still agree. Socket, PID, lock, and shared-memory names all
+ * different C++ runtimes still agree. Socket, PID, and lock names all
  * use this one digest.
  * - Windows uses a named pipe derived from the database path; pid/lock are files under
  *   `%LOCALAPPDATA%/kanariv`

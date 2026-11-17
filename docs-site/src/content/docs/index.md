@@ -29,8 +29,8 @@ history, and resume playback with bookmarks and statistics.
 ### Built for integration
 
 The public library is split into focused components, while JSON IPC and
-lock-free shared-memory status make it practical to build lightweight clients
-in other languages.
+event-driven `StatusWait` updates make it practical to build lightweight
+clients in other languages.
 
 ## Core capabilities
 
@@ -41,7 +41,7 @@ in other languages.
 | Library search | SQLite persistence with FTS5, ratings, play counts, bookmarks, and statistics |
 | Scriptable control | CLI commands for scanning, queueing, playback, playlists, and configuration |
 | JSON IPC | 4-byte big-endian framing with request IDs, typed commands, and structured errors |
-| Low-overhead status | Lock-free playback snapshots published to shared memory at 10 Hz |
+| Low-overhead status | `StatusWait` returns the next snapshot on a real state change |
 | C++23 distribution | Nine installable libraries plus optional named modules |
 
 ## Start here

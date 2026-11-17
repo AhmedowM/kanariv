@@ -55,8 +55,8 @@ The library is split into components: \fBkanariv::utils\fR, \fBkanariv::player\f
 \fBkanariv::client\fR, \fBkanariv::config\fR, \fBkanariv::app\fR (plus
 \fBkanariv::version\fR).
 .PP
-Shared\-memory status (\fBAtomicShmStatus\fR) is published on dispatch for
-low\-latency polling without IPC round\-trips.
+Status is delivered over the IPC channel: \fBStatusReq\fR reads the current
+snapshot and \fBStatusWait\fR blocks until the next real state change.
 .SH OPTIONS
 .TP
 .BR \-\-config " \fIFILE\fR"
@@ -418,7 +418,8 @@ Default SQLite database path. Contains tracks,
 .I \\\\.\\pipe\\kanariv-
             <hash> (Windows) IPC socket / named pipe.
 Canonical path derived from DB path hash via
-\fBkanariv::config::socketPathFor\fR. Hash is BLAKE3 of the DB path.
+\fBkanariv::config::socketPathFor\fR. Hash is FNV\-1a 64\-bit of the
+canonical UTF\-8 DB path (16 lowercase hex digits).
 POSIX base is \fB$XDG_RUNTIME_DIR\fR, else \fB$XDG_DATA_HOME\fR, else
 \fB/tmp/kanariv\fR.
 .TP
@@ -427,11 +428,6 @@ POSIX base is \fB$XDG_RUNTIME_DIR\fR, else \fB$XDG_DATA_HOME\fR, else
 or %LOCALAPPDATA%/kanariv/
 kanariv.pid Daemon pid file.
 Path derived from DB path via \fBkanariv::config::pidPathFor\fR.
-.TP
-.I
-/dev/shm/kanariv-<hash> (POSIX) or
-named shared memory (Windows)
-SHM status block (\fBAtomicShmStatus\fR), published on dispatch.
 .TP
 .I
 <db-dir>/kanariv.log

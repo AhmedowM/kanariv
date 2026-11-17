@@ -69,8 +69,7 @@ The `kanariv::config` module provides path helpers derived from `dbPath`:
 The endpoint identifier is the FNV-1a 64-bit digest of the canonical UTF-8
 database path (forward slashes), written as 16 lowercase hex digits, so it
 is identical across compilers and standard libraries. The socket/pipe, PID
-file, lock file, and shared-memory block derived from one `dbPath` share that
-digest.
+file, and lock file derived from one `dbPath` share that digest.
 
 **Upgrade note (endpoint rename):** older releases used an 8-hex identifier
 derived from `std::hash<std::string>`. After upgrading, `kanariv-<old-id>.sock`,

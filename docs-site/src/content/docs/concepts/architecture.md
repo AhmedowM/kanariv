@@ -25,8 +25,8 @@ client-daemon architecture.
       <div class="architecture-node"><strong>Config</strong><small>Paths and loading</small></div>
     </div>
   </div>
-  <div class="architecture-arrow" aria-hidden="true">↓ shared memory · 10 Hz</div>
-  <div class="architecture-node"><strong>Lock-free status snapshots</strong><small>Lightweight clients consume playback state</small></div>
+  <div class="architecture-arrow" aria-hidden="true">↓ StatusWait · event-driven</div>
+  <div class="architecture-node"><strong>Status snapshots</strong><small>Clients receive the next state change over IPC</small></div>
 </div>
 
 ## Library targets
@@ -53,8 +53,8 @@ The daemon owns the `Service`, which coordinates:
    `busy_timeout=5000`
 2. **Engine** — Queue, shuffle, repeat, cursor, playback state
 3. **Player** — Decode thread, ring buffer, miniaudio output
-4. **IPC server** — JSON-over-socket/named-pipe with 4-byte big-endian framing
-5. **Shared memory** — Lock-free playback snapshots at 10 Hz
+4. **IPC server** — JSON-over-socket/named-pipe with 4-byte big-endian framing;
+   `StatusReq`/`StatusWait` serve playback state with no second channel
 
 ## Client design
 

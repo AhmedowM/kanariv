@@ -76,8 +76,8 @@ class KANARIV_API Service final {
      * @brief Result type returned by Service creation.
      * @ingroup kanariv_service
      * @details Contains an owning service instance on success. On failure,
-     * the error identifies configuration, single-instance, database, IPC,
-     * or shared-memory initialization failure.
+     * the error identifies configuration, single-instance, database, or IPC
+     * initialization failure.
      */
     using ExpectedService = std::expected<std::unique_ptr<Service>, kanariv::utils::Error>;
 
@@ -95,12 +95,11 @@ class KANARIV_API Service final {
      * inherited fields) and creates any supplied directories.
      *
      * When `cfg.inProcess` is false, performs single-instance enforcement via
-     * flock lock file and PID file checks, creates a PID file, initializes the
-     * shared memory status block, and starts the IPC server listening on the
-     * derived or explicit socket path.
+     * flock lock file and PID file checks, creates a PID file, and starts the
+     * IPC server listening on the derived or explicit socket path.
      *
      * When `cfg.inProcess` is true, none of the desktop scaffolding is
-     * created: no lock, PID, socket, IPC server, or shared memory. Only the
+     * created: no lock, PID, socket, or IPC server. Only the
      * database, engine, and optional log file are initialized; callers drive
      * the loop through `run()` and the `Host` wrapper.
      *
@@ -201,7 +200,7 @@ class KANARIV_API Service final {
      * @ingroup kanariv_service
      *
      * Signals shutdown to IPC server and Engine, removes PID file, socket file (Unix),
-     * and releases the flock lock file. Shared memory handle is cleaned up via RAII.
+     * and releases the flock lock file.
      * Safe to call multiple times; idempotent.
      */
     void shutdown();
@@ -214,25 +213,12 @@ class KANARIV_API Service final {
     IpcServer& server() noexcept;
 
     /**
-     * @brief Get the shared memory name used for status block.
-     * @return Shared memory name (hash of dbPath).
-     */
-    const std::string& shmName() const noexcept;
-
-    /**
-     * @brief Get the shared memory status writer (if available).
-     * @return Pointer to ShmStatusWriter or nullptr if SHM creation failed.
-     */
-    kanariv::ipc::ShmStatusWriter* shmWriter() noexcept;
-
-    /**
      * @brief Private constructor used by create().
      */
     Service(const ServiceConfig& cfg, kanariv::contracts::Storage storage,
             std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
             std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
-            std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,
-            std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName);
+            std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd);
 
     struct Impl;
     std::unique_ptr<Impl> impl_;

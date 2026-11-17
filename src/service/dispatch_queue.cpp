@@ -366,7 +366,6 @@ Service::Impl::handle(const kanariv::ipc::PlayFiles& cmd) {
     auto pr = engine_->play(*qid);
     if (!pr)
         return std::unexpected{pr.error()};
-    updateShmStatus();
     return statusAfterChange();
 }
 
@@ -382,7 +381,6 @@ Service::Impl::handle(const kanariv::ipc::QueueSwitch& qs) {
     auto sw = engine_->switchQueue(qs.qid);
     if (!sw)
         return std::unexpected{sw.error()};
-    updateShmStatus();
     return statusAfterChange();
 }
 
@@ -428,7 +426,6 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
         ServiceAccess::noteEnqueued(*engine_, qid, fresh.size());
         noteStateChanged();
     }
-    updateShmStatus();
     return Result{std::move(report)};
 }
 
@@ -504,7 +501,6 @@ Service::Impl::handle(const kanariv::ipc::QueueAddBatch& qb) {
             noteStateChanged();
         }
     }
-    updateShmStatus();
     return Result{std::move(report)};
 }
 
@@ -535,7 +531,6 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
     auto tracks = storage_.queues->tracksForQueue(qid);
     if (!tracks)
         return std::unexpected{tracks.error()};
-    updateShmStatus();
     noteStateChanged();
     return Result{QueueTracks{std::move(*tracks)}};
 }
@@ -596,7 +591,6 @@ Service::Impl::handle(const kanariv::ipc::QueueRemoveBatch& qb) {
         report.items.push_back(std::move(item));
     }
     if (changed) {
-        updateShmStatus();
         noteStateChanged();
     }
     return Result{std::move(report)};
@@ -617,7 +611,6 @@ Service::Impl::handle(const kanariv::ipc::QueueMove& qm) {
     auto tracks = storage_.queues->tracksForQueue(qid);
     if (!tracks)
         return std::unexpected{tracks.error()};
-    updateShmStatus();
     noteStateChanged();
     return Result{QueueTracks{std::move(*tracks)}};
 }
@@ -635,7 +628,6 @@ Service::Impl::handle(const kanariv::ipc::QueueClear&) {
         if (auto e = engine_->stop(); !e)
             return std::unexpected{e.error()};
     }
-    updateShmStatus();
     noteStateChanged();
     return Result{QueueTracks{{}}};
 }
@@ -645,7 +637,6 @@ Service::Impl::handle(const kanariv::ipc::QueueShuffle& qs) {
     auto r = qs.on ? engine_->setShuffle(*qs.on) : engine_->toggleShuffle();
     if (!r)
         return std::unexpected{r.error()};
-    updateShmStatus();
     return statusAfterChange();
 }
 
@@ -656,7 +647,6 @@ Service::Impl::handle(const kanariv::ipc::QueueRepeat& qr) {
         if (!r)
             return std::unexpected{r.error()};
     }
-    updateShmStatus();
     // Without a mode this is a read of the current repeat setting, so it must
     // not bump the change sequence (S5).
     if (qr.mode.has_value())

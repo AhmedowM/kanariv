@@ -5,14 +5,12 @@ set(KANARIV_IPC_MODULE_SOURCES
   modules/kanariv/ipc/command.cppm
   modules/kanariv/ipc/result.cppm
   modules/kanariv/ipc/protocol.cppm
-  modules/kanariv/ipc/shm_status.cppm
 )
 set(KANARIV_IPC_SOURCES
   src/ipc/protocol.cpp
   src/ipc/protocol_common.cpp
   src/ipc/command_json.cpp
   src/ipc/result_json.cpp
-  src/ipc/shm_status.cpp
 )
 kanariv_add_component(ipc SOURCES ${KANARIV_IPC_SOURCES} MODULE_SOURCES ${KANARIV_IPC_MODULE_SOURCES} DEPS kanariv::types kanariv::utils Threads::Threads)
 ca_set_module_warnings(ipc)

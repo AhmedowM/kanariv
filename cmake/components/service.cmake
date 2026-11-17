@@ -147,21 +147,10 @@ if(WIN32)
   unset(_KANARIV_CPPWINRT_INCLUDE_DIR)
 endif()
 
-# Link rt by name PRIVATE: a find_library() absolute path would be copied into
-# the installed kanarivTargets.cmake and break relocation. glibc >= 2.34 has the
-# shm/clock symbols in libc; older Linux still needs -lrt, which stays a
-# link-only (relocatable) name in the export.
-function(_kanariv_service_link_rt tgt)
-  if(UNIX AND NOT APPLE AND NOT ANDROID)
-    target_link_libraries(${tgt} PRIVATE rt)
-  endif()
-endfunction()
-_kanariv_service_link_rt(service)
 ca_set_module_warnings(service)
 if(KANARIV_BUILD_SHARED)
   kanariv_add_shared_variant(service)
   if(KANARIV_BUILD_STATIC)
-    _kanariv_service_link_rt(service_shared)
     # A real service_shared target only exists when static libraries are
     # built too. In a shared-only build kanariv_add_shared_variant() aliases
     # service_shared to service, and CMake rejects target_* commands on ALIAS

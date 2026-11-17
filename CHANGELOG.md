@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loaded-track suspend/resume. Reports per-entry success/failure; `--dry-run`
   validates without writing.
 
+### Removed
+- The shared-memory status channel (`ShmStatusReader`/`ShmStatusWriter`,
+  `AtomicShmStatus`, the daemon-side writer and the per-endpoint segment).
+  No shipped client read it; clients use `StatusReq` for a snapshot and
+  `StatusWait` to block until the next real state change. The daemon no longer
+  links `librt` on Linux.
+
 ## [v2.0.0] - 2026-11-10
 
 ### Changed

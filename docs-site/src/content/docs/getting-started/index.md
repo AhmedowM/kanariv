@@ -52,7 +52,7 @@ service.
 - **SQLite library management** with FTS5 search
 - **Queues, playlists, shuffle, repeat, history, bookmarks, and statistics**
 - **JSON IPC** with 4-byte big-endian framing
-- **Lock-free shared-memory status updates** at 10 Hz for lightweight clients
+- **Status streaming over IPC** (`StatusWait`) without polling
 - **Nine installable libraries**, an optional CLI, and opt-in C++23 modules
 
 ## Supported platforms

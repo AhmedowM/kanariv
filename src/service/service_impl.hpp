@@ -21,7 +21,6 @@
 #include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <kanariv/ipc/shm_status.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/utils/error.hpp>
@@ -58,14 +57,12 @@ struct Service::Impl {
     Impl(const ServiceConfig& cfg, kanariv::contracts::Storage storage,
          std::unique_ptr<kanariv::engine::Engine> eng, std::unique_ptr<IpcServer> srv,
          std::unique_ptr<kanariv::utils::Logger> logger, std::filesystem::path pidPath,
-         std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd,
-         std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter, std::string shmName);
+         std::filesystem::path lockPath, std::string socketPath, std::intptr_t lockFd);
 
     kanariv::utils::Expected<void> run(std::stop_token st);
     /** Blocks until run() publishes readiness or exits; see Service::waitUntilRunning. */
     bool waitUntilRunning() const;
     void shutdown();
-    void updateShmStatus();
     /** Status snapshot; a pure read that does not touch the change sequence. */
     std::expected<kanariv::ipc::Result, kanariv::utils::Error> statusResult();
     /** Status snapshot after a real state change: bumps the sequence, then reads. */
@@ -248,8 +245,6 @@ struct Service::Impl {
     std::filesystem::path lockPath_;
     std::string socketPath_;
     std::intptr_t lockFd_{-1};
-    std::unique_ptr<kanariv::ipc::ShmStatusWriter> shmWriter_;
-    std::string shmName_;
     std::unique_ptr<kanariv::media_session::MediaSession> mediaSession_;
     std::atomic<bool> running_{false};
     std::atomic<bool> shutdownRequested_{false};

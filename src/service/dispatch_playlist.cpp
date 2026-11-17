@@ -95,7 +95,6 @@ Service::Impl::handle(const kanariv::ipc::PlaylistLoad& cmd) {
         if (!pr)
             return std::unexpected{pr.error()};
     }
-    updateShmStatus();
     noteStateChanged();
     auto st = detail::buildStatus(*engine_, storage_);
     if (!st)
