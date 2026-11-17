@@ -7,7 +7,7 @@ set(KANARIV_LIBRARY_MODULE_SOURCES
   modules/kanariv/library.cppm
   modules/kanariv/library/scan.cppm
 )
-kanariv_add_component(library SOURCES src/library/scan.cpp MODULE_SOURCES ${KANARIV_LIBRARY_MODULE_SOURCES} DEPS kanariv::contracts kanariv::db kanariv::media kanariv::utils Threads::Threads)
+kanariv_add_component(library SOURCES src/library/scan.cpp MODULE_SOURCES ${KANARIV_LIBRARY_MODULE_SOURCES} DEPS kanariv::contracts kanariv::db kanariv::media kanariv::types kanariv::utils Threads::Threads)
 ca_set_module_warnings(library)
 
 if(KANARIV_BUILD_SHARED)

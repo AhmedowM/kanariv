@@ -9,7 +9,7 @@ set(KANARIV_CLIENT_SOURCES
   src/client/client_impl.cpp
   src/client/output_formatter.cpp
 )
-kanariv_add_component(client SOURCES ${KANARIV_CLIENT_SOURCES} MODULE_SOURCES ${KANARIV_CLIENT_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::utils Threads::Threads)
+kanariv_add_component(client SOURCES ${KANARIV_CLIENT_SOURCES} MODULE_SOURCES ${KANARIV_CLIENT_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::types kanariv::utils Threads::Threads)
 ca_set_module_warnings(client)
 if(KANARIV_BUILD_SHARED)
   # config is a declared DEPS entry: the shared flavour derives it.

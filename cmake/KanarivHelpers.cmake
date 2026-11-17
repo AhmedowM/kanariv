@@ -133,6 +133,17 @@ function(kanariv_add_component NAME)
   # the shared variant links.
   set_property(GLOBAL PROPERTY KANARIV_COMPONENT_DEPS_${NAME} "${ARG_DEPS}")
   set_property(GLOBAL PROPERTY KANARIV_COMPONENT_PRIVATE_DEPS_${NAME} "${ARG_PRIVATE_DEPS}")
+  # Files the include/DEPS gate reads (kanariv_check_component_includes): the
+  # component's sources plus its installed headers. Globbing here keeps the
+  # check independent of the layout of include/kanariv/.
+  set(_kanariv_checked_files ${ARG_SOURCES})
+  file(GLOB_RECURSE _kanariv_component_headers
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/kanariv/${NAME}.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/kanariv/${NAME}/*.hpp")
+  list(APPEND _kanariv_checked_files ${_kanariv_component_headers})
+  set_property(GLOBAL PROPERTY KANARIV_COMPONENT_FILES_${NAME} "${_kanariv_checked_files}")
+  unset(_kanariv_checked_files)
+  unset(_kanariv_component_headers)
 
   # --- Component target ------------------------------------------------------
   # The real target carries its flavour in the name (W5): <name>_static when
@@ -226,6 +237,64 @@ function(kanariv_add_component NAME)
     kanariv_apply_sanitizers(${_kanariv_primary})
   endif()
   unset(_kanariv_primary)
+endfunction()
+
+# Configure-time dependency gate (AR-01.3): every component may only name
+# headers of components it declares. The declared DEPS lists are otherwise
+# convention-only -- static builds hide omissions because all components share
+# the same include root and link-only propagation, and modules mode breaks.
+#
+# Rule: for each registered component, every `#include <kanariv/<c>/...>` in
+# its sources and installed headers must map to itself or to one of its
+# DEPS/PRIVATE_DEPS entries. Top-level shared headers (fwd.hpp,
+# windows_fwd.hpp, version.hpp) belong to no component and are exempt.
+function(kanariv_check_component_includes)
+  foreach(_name IN LISTS KANARIV_COMPONENTS)
+    get_property(_files GLOBAL PROPERTY KANARIV_COMPONENT_FILES_${_name})
+    if(NOT _files)
+      continue()
+    endif()
+    get_property(_deps GLOBAL PROPERTY KANARIV_COMPONENT_DEPS_${_name})
+    get_property(_priv GLOBAL PROPERTY KANARIV_COMPONENT_PRIVATE_DEPS_${_name})
+    set(_declared "")
+    foreach(_dep IN LISTS _deps _priv)
+      string(REGEX REPLACE "^kanariv::" "" _dep "${_dep}")
+      if(_dep IN_LIST KANARIV_COMPONENTS)
+        list(APPEND _declared "${_dep}")
+      endif()
+    endforeach()
+    foreach(_file IN LISTS _files)
+      file(STRINGS "${_file}" _include_lines
+        REGEX "^[ \t]*#[ \t]*include[ \t]*<kanariv/")
+      foreach(_line IN LISTS _include_lines)
+        string(REGEX MATCH "<kanariv/([^>]+)>" _match "${_line}")
+        if(NOT CMAKE_MATCH_1)
+          continue()
+        endif()
+        set(_include "${CMAKE_MATCH_1}")
+        if(_include MATCHES "^(fwd|windows_fwd|version)\\.hpp$")
+          continue()
+        endif()
+        if(_include MATCHES "/")
+          string(REGEX REPLACE "/.*$" "" _target_component "${_include}")
+        else()
+          string(REGEX REPLACE "\\.hpp$" "" _target_component "${_include}")
+        endif()
+        if(NOT _target_component IN_LIST KANARIV_COMPONENTS
+           OR _target_component STREQUAL _name
+           OR _target_component IN_LIST _declared)
+          continue()
+        endif()
+        string(REPLACE "${CMAKE_SOURCE_DIR}/" "" _rel "${_file}")
+        message(FATAL_ERROR
+          "kanariv dependency gate: '${_name}' includes <kanariv/${_include}> "
+          "(${_rel}) but declares no kanariv::${_target_component}. "
+          "Add it to DEPS (public header surface) or PRIVATE_DEPS "
+          "(implementation only) in cmake/components/${_name}.cmake, or drop "
+          "the include.")
+      endforeach()
+    endforeach()
+  endforeach()
 endfunction()
 
 # The real target backing a component name (see kanariv_add_component). Files

@@ -26,7 +26,7 @@ set(KANARIV_APP_MODULE_SOURCES
 # used only from app's .cpp files, so they stay PRIVATE. service/db/player/
 # library are the daemon-and-player composition the foreground start and
 # preview own (one composition root for every frontend, L7).
-kanariv_add_component(app SOURCES ${KANARIV_APP_SOURCES} MODULE_SOURCES ${KANARIV_APP_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::client kanariv::media kanariv::service kanariv::db kanariv::player kanariv::library)
+kanariv_add_component(app SOURCES ${KANARIV_APP_SOURCES} MODULE_SOURCES ${KANARIV_APP_MODULE_SOURCES} DEPS kanariv::config kanariv::ipc kanariv::types kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::client kanariv::media kanariv::service kanariv::db kanariv::player kanariv::library)
 if(KANARIV_BUILD_SHARED)
   kanariv_add_shared_variant(app)
 endif()

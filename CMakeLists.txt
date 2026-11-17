@@ -495,6 +495,10 @@ foreach(_comp IN LISTS KANARIV_COMPONENTS)
 endforeach()
 unset(_comp)
 
+# AR-01.3: fail the configure when a component names a header of a component it
+# does not declare. Runs after every component registered its file list.
+kanariv_check_component_includes()
+
 # D-4 header self-containment gate: compiles every public header as a
 # standalone TU (compile-only, nothing is linked, no Catch2 involved). It is
 # gated on its own option and deliberately lives outside cmake/Tests.cmake so

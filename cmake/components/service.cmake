@@ -40,7 +40,7 @@ endif()
 # (a private implementation detail; they never enter the installed tree).
 # PRIVATE_DEPS tag: the tag writer links TagLib, so the shared flavour derives
 # the same dependency instead of repeating it below.
-kanariv_add_component(service SOURCES ${KANARIV_SERVICE_SOURCES} MODULE_SOURCES ${KANARIV_SERVICE_MODULE_SOURCES} DEPS kanariv::config kanariv::contracts kanariv::ipc kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::engine kanariv::db kanariv::media kanariv::player tag INCLUDES vendor ${KANARIV_TAGLIB_BUILD_INCLUDES})
+kanariv_add_component(service SOURCES ${KANARIV_SERVICE_SOURCES} MODULE_SOURCES ${KANARIV_SERVICE_MODULE_SOURCES} DEPS kanariv::config kanariv::contracts kanariv::ipc kanariv::types kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::engine kanariv::db kanariv::media kanariv::player tag INCLUDES vendor ${KANARIV_TAGLIB_BUILD_INCLUDES})
 kanariv_component_target(service KANARIV_SERVICE_TARGET)
 if(WIN32)
   # runtimeobject.lib (RoGetActivationFactory, WindowsCreateString, ...) ships
