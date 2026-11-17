@@ -1,18 +1,13 @@
 #pragma once
 
-#include <chrono>
 #include <cstdint>
-#include <expected>
-#include <kanariv/contracts/history_store.hpp>
-#include <kanariv/utils.hpp>
-#include <memory>
-#include <vector>
 
 /**
  * @file history.hpp
- * @brief Engine-internal history helper (NOT installed).
- * @details `History` is constructed by Engine only; the entry type is the
- * shared `kanariv::types::HistoryEntry` (11 fields incl. track snapshots).
+ * @brief Engine-internal clock and history-threshold helpers (NOT installed).
+ * @details Free functions used by the transport, persistence and monitor
+ * paths; there is no wrapper object over `IHistoryStore` (callers hold an
+ * open port already).
  */
 
 namespace kanariv::engine::detail {
@@ -46,43 +41,3 @@ bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr,
                       int secsThr) noexcept;
 
 } // namespace kanariv::engine::detail
-
-namespace kanariv::engine {
-
-/**
- * @brief Thin history query helper over an IHistoryStore implementation.
- */
-class History final {
-  public:
-    using ExpectedVoid = std::expected<void, kanariv::utils::Error>; ///< Void or Error.
-    using ExpectedEntries = std::expected<std::vector<kanariv::types::HistoryEntry>,
-                                          kanariv::utils::Error>; ///< Entries or Error.
-
-    /**
-     * @brief Constructs a History helper.
-     * @param db Shared history port (must be open).
-     */
-    explicit History(std::shared_ptr<kanariv::contracts::IHistoryStore> db);
-
-    /**
-     * @brief Lists recent history entries joined with track metadata.
-     * @param limit Max rows to return (0 = no limit, default 50).
-     * @return Vector of entries ordered by started_at DESC or Error.
-     * @par Thread safety
-     * Synchronization is owned by the database implementation.
-     */
-    ExpectedEntries listHistory(int limit = 50);
-
-    /**
-     * @brief Clears all history rows.
-     * @return Success or Error.
-     * @par Thread safety
-     * Synchronization is owned by the database implementation.
-     */
-    ExpectedVoid clearHistory();
-
-  private:
-    std::shared_ptr<kanariv::contracts::IHistoryStore> db_; ///< Shared history port.
-};
-
-} // namespace kanariv::engine

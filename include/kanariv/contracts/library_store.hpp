@@ -74,12 +74,6 @@ class ILibraryStore : public IStore {
     virtual std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> getStats() = 0;
 
     /**
-     * @brief Returns aggregate playback statistics for engine consumers.
-     * @return Statistics snapshot, or a backend error.
-     */
-    virtual std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> playbackStats() = 0;
-
-    /**
      * @brief Returns library totals and optional top-N listening reports.
      * @param topTracks Number of top tracks by total plays; omitted or
      * non-positive = totals only.

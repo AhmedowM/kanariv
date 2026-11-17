@@ -28,15 +28,6 @@ std::expected<bool, kanariv::utils::Error> Database::queueExists(int64_t qid) {
     return true;
 }
 
-std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::playbackStats() {
-    auto stats = getStats();
-    if (!stats)
-        return std::unexpected(stats.error());
-    return kanariv::types::PlaybackStats{
-        stats->num_tracks,    stats->num_playlists, stats->num_queue_items,  stats->num_history,
-        stats->num_bookmarks, stats->num_libraries, stats->total_duration_ms};
-}
-
 bool Database::isOpen() const noexcept {
     return DatabaseAccess::handle(const_cast<Database&>(*this)) != nullptr;
 }

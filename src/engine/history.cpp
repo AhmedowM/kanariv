@@ -1,11 +1,6 @@
 #include <chrono>
 #include <cstdint>
 #include <engine/history.hpp>
-#include <expected>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/status_format.hpp>
-#include <memory>
-#include <utility>
 
 namespace kanariv::engine::detail {
 
@@ -33,23 +28,3 @@ bool shouldMarkPlayed(double duration, double played, bool marked, int pctThr,
 }
 
 } // namespace kanariv::engine::detail
-
-namespace kanariv::engine {
-
-History::History(std::shared_ptr<kanariv::contracts::IHistoryStore> db) : db_(std::move(db)) {}
-
-History::ExpectedEntries History::listHistory(int limit) {
-    if (!db_ || !db_->isOpen())
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    return db_->listHistory(limit);
-}
-
-History::ExpectedVoid History::clearHistory() {
-    if (!db_ || !db_->isOpen())
-        return std::unexpected(
-            kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    return db_->clearHistory();
-}
-
-} // namespace kanariv::engine

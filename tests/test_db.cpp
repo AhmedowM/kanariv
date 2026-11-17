@@ -612,13 +612,7 @@ TEST_CASE("history completion_pct round-trip 0/50/100", "[db]") {
     REQUIRE(tr.has_value());
 
     for (int i = 0; i < 3; ++i) {
-        kanariv::types::HistoryEntry e;
-        e.track_id = *tr;
-        e.started_at = 100 + i;
-        e.completed_at = 200 + i;
-        e.position_ms = i * 1000;
-        e.completion_pct = i * 50.0;
-        REQUIRE(db->historyAdd(e).has_value());
+        REQUIRE(db->markPlayed(*tr, 100 + i, 200 + i, i * 1000, i * 50.0, 1).has_value());
     }
 
     kanariv::types::HistoryQuery q;
@@ -638,13 +632,7 @@ TEST_CASE("historyList joins track metadata and historyClear empties it", "[db][
     auto tr = db->insertTrack(makeTrack(9));
     REQUIRE(tr.has_value());
 
-    kanariv::types::HistoryEntry e;
-    e.track_id = *tr;
-    e.started_at = 1000;
-    e.completed_at = 1100;
-    e.position_ms = 750;
-    e.completion_pct = 75.0;
-    REQUIRE(db->historyAdd(e).has_value());
+    REQUIRE(db->markPlayed(*tr, 1000, 1100, 750, 75.0, 1).has_value());
 
     auto listed = db->listHistory(10);
     REQUIRE(listed.has_value());

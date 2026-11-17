@@ -1268,35 +1268,6 @@ Database::queueIndexOf(int64_t qid, int64_t trackId) {
     return kanariv::db::queueIndexOfLocked(impl_->db_.get(), qid, trackId);
 }
 
-std::expected<void, kanariv::utils::Error>
-Database::historyAdd(const kanariv::types::HistoryEntry& e) {
-    std::unique_lock lk{impl_->dbMutex_};
-    if (!impl_->db_)
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
-    std::string_view sql = "INSERT INTO history (track_id, started_at, completed_at, "
-                           "position_ms, completion_pct, queue_id) VALUES (?,?,?,?,?,?)";
-    auto sRes = impl_->getCachedForUse(sql);
-    if (!sRes)
-        return std::unexpected{sRes.error()};
-    SqliteStatement& st = *(*sRes);
-    st.bindInt(1, e.track_id);
-    st.bindInt(2, e.started_at);
-    if (e.completed_at)
-        st.bindInt(3, e.completed_at);
-    else
-        st.bindNull(3);
-    st.bindInt(4, e.position_ms);
-    st.bindDouble(5, e.completion_pct);
-    st.bindInt(6, e.queue_id ? e.queue_id : 1);
-    int rc = st.stepDone();
-    st.reset();
-    if (rc != SQLITE_DONE)
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                         sqlite3_errmsg(impl_->db_.get()))};
-    return {};
-}
-
 std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
 Database::queryHistory(const kanariv::types::HistoryQuery* q) {
     std::unique_lock lk{impl_->dbMutex_};

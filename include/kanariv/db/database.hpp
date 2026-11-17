@@ -620,15 +620,6 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
 
     // History
     /**
-     * @brief Adds a history entry.
-     * @ingroup kanariv_db
-     * @param e Entry to insert.
-     * @return Success or Error.
-     * @par Thread safety
-     * Thread-safe: unique_lock.
-     */
-    std::expected<void, kanariv::utils::Error> historyAdd(const kanariv::types::HistoryEntry& e);
-    /**
      * @brief Lists history entries with optional filters.
      * @ingroup kanariv_db
      * @param q Optional filter.
@@ -766,14 +757,6 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe: unique_lock on dbMutex_ (cached statements included).
      */
     std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> getStats() override;
-    /**
-     * @brief Returns engine-oriented playback statistics.
-     * @return Statistics snapshot, or a backend error.
-     * @par Thread safety
-     * Thread-safe; takes a shared database lock.
-     * @ingroup kanariv_db
-     */
-    std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> playbackStats() override;
 
     /**
      * @brief Returns library stats (counts and totals, optionally top-N lists).

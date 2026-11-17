@@ -1236,13 +1236,10 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Engine::Impl
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    auto ds = storage_.library->playbackStats();
+    auto ds = storage_.library->getStats();
     if (!ds)
         return std::unexpected(ds.error());
-    return kanariv::types::PlaybackStats{
-        ds->num_tracks,    ds->num_playlists, ds->num_queue_items,   ds->num_history,
-        ds->num_bookmarks, ds->num_libraries, ds->total_duration_ms,
-    };
+    return *ds;
 }
 
 std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
@@ -1250,16 +1247,14 @@ Engine::Impl::listHistory(int limit) {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    kanariv::engine::History hist(storage_.history);
-    return hist.listHistory(limit);
+    return storage_.history->listHistory(limit);
 }
 
 std::expected<void, kanariv::utils::Error> Engine::Impl::clearHistory() {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    kanariv::engine::History hist(storage_.history);
-    return hist.clearHistory();
+    return storage_.history->clearHistory();
 }
 
 Engine::ExpectedVoid Engine::Impl::setShuffle(std::optional<bool> on) {
