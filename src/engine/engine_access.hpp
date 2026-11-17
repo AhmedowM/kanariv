@@ -82,7 +82,7 @@ struct ServiceAccess {
      * @param qid Queue id.
      * @return Perm copy when shuffle applies to qid, else empty.
      */
-    static std::vector<int64_t> shufflePermFor(Engine& eng, int64_t qid) noexcept {
+    static std::vector<int64_t> shufflePermFor(Engine& eng, int64_t qid) {
         return eng.shufflePermFor(qid);
     }
 
@@ -93,7 +93,7 @@ struct ServiceAccess {
      * @param qid Queue id the tracks were appended to.
      * @param count Number of appended tracks (at the queue end).
      */
-    static void noteEnqueued(Engine& eng, int64_t qid, std::size_t count) noexcept {
+    static void noteEnqueued(Engine& eng, int64_t qid, std::size_t count) {
         eng.noteEnqueued(qid, count);
     }
 
@@ -105,7 +105,7 @@ struct ServiceAccess {
      * @param from Old zero-based queue index.
      * @param to New zero-based queue index.
      */
-    static void noteQueueMoved(Engine& eng, int64_t qid, std::size_t from, std::size_t to) noexcept {
+    static void noteQueueMoved(Engine& eng, int64_t qid, std::size_t from, std::size_t to) {
         eng.noteQueueMoved(qid, from, to);
     }
 };

@@ -381,7 +381,7 @@ kanariv::utils::Expected<double> computeLoudnessGain(std::string_view path) {
     // ReplayGain 1.0 "head" filter: first-order high-pass at ~65 Hz.
     // y[n] = x[n] - x[n-1] + a * y[n-1],  a = exp(-2*pi*fc/sr)
     const double fc = 65.0;
-    const double a = std::exp(-2.0 * 3.14159265358979323846 * fc / (double)sr);
+    const double a = std::exp(-2.0 * 3.14159265358979323846 * fc / static_cast<double>(sr));
     double hp_x1 = 0.0, hp_y1 = 0.0;
 
     double sumSq = 0.0;
@@ -509,7 +509,7 @@ kanariv::utils::Expected<double> computeLoudnessGain(std::string_view path) {
                                                          "no audio samples decoded")};
     }
 
-    const double rms = std::sqrt(sumSq / (double)totalSamples);
+    const double rms = std::sqrt(sumSq / static_cast<double>(totalSamples));
     if (rms <= 0.0) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "silent audio")};

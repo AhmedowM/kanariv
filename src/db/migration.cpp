@@ -6,7 +6,7 @@
 #include <db/transaction.hpp>
 #include <expected>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <string>
 #include <string_view>
 #include <tuple>

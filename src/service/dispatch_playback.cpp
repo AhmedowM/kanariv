@@ -3,7 +3,7 @@
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>

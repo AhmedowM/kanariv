@@ -9,7 +9,7 @@ set(KANARIV_ENGINE_SOURCES
   src/engine/history.cpp
   src/engine/shuffle.cpp
 )
-kanariv_add_component(engine SOURCES ${KANARIV_ENGINE_SOURCES} MODULE_SOURCES ${KANARIV_ENGINE_MODULE_SOURCES} DEPS kanariv::contracts kanariv::utils Threads::Threads PRIVATE_DEPS  kanariv::player kanariv::media)
+kanariv_add_component(engine SOURCES ${KANARIV_ENGINE_SOURCES} MODULE_SOURCES ${KANARIV_ENGINE_MODULE_SOURCES} DEPS kanariv::contracts kanariv::types kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::player kanariv::media)
 ca_set_module_warnings(engine)
 
 if(KANARIV_BUILD_SHARED)

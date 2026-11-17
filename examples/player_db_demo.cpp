@@ -4,7 +4,7 @@
 #include <kanariv/media/reader.hpp>
 #include <kanariv/player/output.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <kanariv/utils/ring.hpp>
 #include <cstdint>
 #include <cstdlib>

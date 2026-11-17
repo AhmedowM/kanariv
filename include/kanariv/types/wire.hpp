@@ -11,8 +11,7 @@
  * has to include the other. `RepeatMode` and `PlaybackState` cross the
  * daemon/client boundary (fields of `kanariv::ipc::Status` and of several
  * commands) and have a fixed `std::uint8_t` underlying type. Their JSON wire
- * text lives in `types/format.hpp`, and its inverse in
- * `types/parse.hpp`).
+ * text lives in `types/format.hpp`, together with its inverse.
  *
  * These values are owned directly by `kanariv::types`. This
  * layer is deliberately dependency-free (no `fwd.hpp`, no std headers) so it

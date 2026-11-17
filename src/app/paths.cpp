@@ -25,7 +25,7 @@ namespace {
 // Case-insensitive wildcard match (* and ? only) for queue-add globs.
 bool wildcardMatch(std::string_view pat, std::string_view name) {
     std::size_t px = 0, nx = 0, star = std::string_view::npos, ss = 0;
-    auto lower = [](char c) { return (char)std::tolower((unsigned char)c); };
+    auto lower = [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
     while (nx < name.size()) {
         if (px < pat.size() && (pat[px] == '?' || lower(pat[px]) == lower(name[nx]))) {
             ++px;
@@ -131,7 +131,7 @@ std::string pathKey(const std::string& p) {
     std::string s = ec ? p : abs.lexically_normal().generic_string();
 #ifdef _WIN32
     for (auto& c : s)
-        c = (char)std::tolower((unsigned char)c);
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 #endif
     return s;
 }

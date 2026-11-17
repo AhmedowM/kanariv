@@ -3,7 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <stop_token>
 #include <thread>
 #include <utility>

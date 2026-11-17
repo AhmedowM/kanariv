@@ -91,7 +91,7 @@ std::string highlightAll(const std::string& text, std::string_view needle, bool 
         return text;
     std::string out;
     std::size_t pos = 0;
-    auto lower = [](char c) { return (char)std::tolower((unsigned char)c); };
+    auto lower = [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
     while (pos < text.size()) {
         std::size_t hit = std::string::npos;
         for (std::size_t i = pos; i + needle.size() <= text.size(); ++i) {
@@ -517,7 +517,7 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 kanariv::println(os, "{:>4}  {:>6}  {:>10}  {}", "ID", "Track", "Pos", "Note");
                 for (const auto& e : v.entries) {
                     kanariv::println(os, "{:4}  {:>6}  {:>10}  {}", e.id, e.track_id,
-                                     formatTime((double)e.position_ms / 1000.0),
+                                     formatTime(static_cast<double>(e.position_ms) / 1000.0),
                                      truncateField(e.note, 40));
                 }
             },

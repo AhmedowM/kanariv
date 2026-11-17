@@ -6,12 +6,12 @@
  * @ingroup kanariv_types
  * @details `StatusCode` is shared vocabulary, so it lives in the bottom value
  * layer instead of `kanariv::utils`. This keeps `types/engine.hpp` (whose
- * callbacks carry an error code) from including `utils/result.hpp`, which
+ * callbacks carry an error code) from including `utils/status_format.hpp`, which
  * would reintroduce the historical `types` -> `utils` include cycle. The
  * enum is a plain scalar type with no `<format>` or utility dependencies.
  *
  * `kanariv::utils::StatusCode` remains a valid name through a using-declaration
- * for source compatibility; `utils/result.hpp` keeps the `toString` helper and
+ * for source compatibility; `utils/status_format.hpp` keeps the `toString` helper and
  * the `std::formatter` specialization.
  * @see kanariv::utils::Error
  */

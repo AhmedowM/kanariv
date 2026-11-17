@@ -6,7 +6,6 @@ set(KANARIV_TYPES_MODULE_SOURCES
   modules/kanariv/types/wire.cppm
   modules/kanariv/types/status.cppm
   modules/kanariv/types/format.cppm
-  modules/kanariv/types/parse.cppm
   modules/kanariv/types/record.cppm
   modules/kanariv/types/db.cppm
   modules/kanariv/types/engine.cppm

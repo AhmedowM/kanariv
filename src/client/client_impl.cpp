@@ -7,7 +7,7 @@
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <memory>
 #include <mutex>
 #include <stop_token>

@@ -8,12 +8,11 @@
  * (RepeatMode, PlaybackState) and the plain-data records (TrackRow, Playlist,
  * QueueItem, HistoryEntry, Bookmark) shared by engine, ipc, db and app, so no
  * component has to include another just to name them. The wire text of the
- * enums (`types/format.hpp`) and its inverse (`types/parse.hpp`) live here
+ * enums and their inverse parsers (`types/format.hpp`) live here
  * too. No dependencies.
  */
 
 #include <kanariv/types/format.hpp>
-#include <kanariv/types/parse.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>

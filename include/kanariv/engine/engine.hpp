@@ -555,7 +555,7 @@ class KANARIV_API Engine final {
      * Empty on lock contention too (callers fall back to insertion order).
      * @par Thread safety
      * Thread-safe; try_lock on queueMutex_. */
-    std::vector<int64_t> shufflePermFor(int64_t qid) noexcept;
+    std::vector<int64_t> shufflePermFor(int64_t qid);
 
     /** @brief Extends the shuffle permutation after tracks were appended.
      * @ingroup kanariv_engine
@@ -565,7 +565,7 @@ class KANARIV_API Engine final {
      * lock is contended (stale-perm fallbacks cover display and playback).
      * @par Thread safety
      * Thread-safe; try_lock on queueMutex_. */
-    void noteEnqueued(int64_t qid, std::size_t count) noexcept;
+    void noteEnqueued(int64_t qid, std::size_t count);
 
     /** @brief Remaps the shuffle permutation after a queue item moved.
      * @ingroup kanariv_engine
@@ -579,7 +579,7 @@ class KANARIV_API Engine final {
      * unless shuffle applies to qid or the queue lock is contended.
      * @par Thread safety
      * Thread-safe; try_lock on queueMutex_. */
-    void noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) noexcept;
+    void noteQueueMoved(int64_t qid, std::size_t from, std::size_t to);
 
     /**
      * @brief Monitor auto-advance: like next(), but halts at queue end.

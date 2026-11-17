@@ -3,7 +3,7 @@
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <cstddef>
 #include <filesystem>
 #include <string>

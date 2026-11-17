@@ -368,7 +368,7 @@ jobs:
           cat > "$CONSUMER/main.cpp" <<'EOF'
           #include <kanariv/app/paths.hpp>
           #include <kanariv/utils/error.hpp>
-          #include <kanariv/utils/result.hpp>
+          #include <kanariv/utils/status_format.hpp>
           #include <kanariv/version.hpp>
           #include <print>
 

@@ -7,7 +7,7 @@
  */
 
 #include <kanariv/fwd.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <format>
 #include <string>
 #include <string_view>

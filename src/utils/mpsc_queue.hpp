@@ -12,7 +12,7 @@
 #include <cstddef>
 #include <expected>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <mutex>
 #include <optional>
 #include <stop_token>

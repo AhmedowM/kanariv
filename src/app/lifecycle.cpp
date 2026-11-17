@@ -8,7 +8,7 @@
  * Rendering still happens here; Phase 1 moves it to callers.
  */
 
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <cstddef>
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -86,7 +86,7 @@ bool pidFileAlive(const std::filesystem::path& pidPath) {
     // No such process => dead; any other error (access denied) => alive.
     return ::GetLastError() != ERROR_INVALID_PARAMETER;
 #else
-    if (::kill((pid_t)pid, 0) == 0)
+    if (::kill(static_cast<pid_t>(pid), 0) == 0)
         return true;
     // ESRCH = no such process => dead; EPERM and others => alive.
     return errno != ESRCH;

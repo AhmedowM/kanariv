@@ -1,5 +1,5 @@
 module;
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 
 export module kanariv.utils:result;
 

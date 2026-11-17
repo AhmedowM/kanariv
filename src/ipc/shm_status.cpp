@@ -2,7 +2,7 @@
 #include <atomic>
 #include <kanariv/ipc/shm_status.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <kanariv/windows_fwd.hpp>
 #include <cstddef>
 #include <cstdint>

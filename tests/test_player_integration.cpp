@@ -15,7 +15,7 @@
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <kanariv/utils/ring.hpp>
 #include <limits>
 #include <memory>

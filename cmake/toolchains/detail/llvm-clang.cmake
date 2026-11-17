@@ -53,10 +53,9 @@ set(CMAKE_CXX_COMPILER "${_kanariv_llvm_root}/bin/clang++")
 # dylib so binaries never mix new headers with the old system libc++ at
 # runtime. Layout varies (lib/ vs lib/c++/, versioned dylibs), so derive the
 # lib dir from the dylib itself instead of assuming it.
-# NOTE: `std::move_only_function` and `std::generator` have no libc++
-# implementation at all (missing even in LLVM 23); they are polyfilled
-# in-tree (utils/function.hpp, utils/generator.hpp), not a header-search
-# issue.
+# NOTE: `std::generator` has no libc++ implementation at all (missing even
+# in LLVM 23); it is polyfilled in-tree (utils/generator.hpp), not a
+# header-search issue.
 if(NOT EXISTS "${_kanariv_llvm_root}/include/c++/v1/__config")
   message(FATAL_ERROR
     "brew LLVM libc++ headers not found under ${_kanariv_llvm_root}. "

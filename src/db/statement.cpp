@@ -1,7 +1,7 @@
 #include <sqlite3.h>
 
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <db/statement.hpp>

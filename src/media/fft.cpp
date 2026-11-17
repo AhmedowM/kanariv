@@ -5,7 +5,7 @@
 #include <expected>
 #include <kanariv/media/fft.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <memory>
 #include <numbers>
 #include <span>

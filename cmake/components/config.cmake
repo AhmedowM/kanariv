@@ -9,7 +9,7 @@ set(KANARIV_CONFIG_SOURCES
   src/config/runtime.cpp
   src/config/raw.cpp
 )
-kanariv_add_component(config SOURCES ${KANARIV_CONFIG_SOURCES} MODULE_SOURCES ${KANARIV_CONFIG_MODULE_SOURCES} DEPS kanariv::utils Threads::Threads)
+kanariv_add_component(config SOURCES ${KANARIV_CONFIG_SOURCES} MODULE_SOURCES ${KANARIV_CONFIG_MODULE_SOURCES} DEPS kanariv::types kanariv::utils Threads::Threads)
 ca_set_module_warnings(config)
 if(KANARIV_BUILD_SHARED)
   kanariv_add_shared_variant(config)

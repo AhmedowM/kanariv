@@ -14,13 +14,14 @@
 #include <db/transaction.hpp>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/json_state_store.hpp>
 #include <kanariv/db/smart.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -815,7 +816,7 @@ std::expected<kanariv::types::Playlist, kanariv::utils::Error> Database::getPlay
     kanariv::types::Playlist p;
     p.id = st.columnInt(0);
     p.name = st.columnText(1);
-    p.type = (int)st.columnInt(2);
+    p.type = static_cast<int>(st.columnInt(2));
     p.smart_query = st.columnText(3);
     p.created = st.columnInt(4);
     p.modified = st.columnInt(5);
@@ -1012,7 +1013,7 @@ Database::listPlaylists() {
         kanariv::types::Playlist p;
         p.id = st.columnInt(0);
         p.name = st.columnText(1);
-        p.type = (int)st.columnInt(2);
+        p.type = static_cast<int>(st.columnInt(2));
         p.smart_query = st.columnText(3);
         p.created = st.columnInt(4);
         p.modified = st.columnInt(5);
@@ -1024,49 +1025,8 @@ Database::listPlaylists() {
 
 std::expected<void, kanariv::utils::Error> Database::playlistAddTrack(int64_t pid, int64_t tid,
                                                                       int64_t pos) {
-    if (pid == 0 || tid == 0)
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
-    if (!impl_->db_)
-        return std::unexpected{
-            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
-    if (pos < 0) {
-        SqliteStatement ms;
-        if (auto e = ms.prepare(
-                impl_->db_.get(),
-                "SELECT COALESCE(MAX(position), -1)+1 FROM playlist_items WHERE playlist_id=?");
-            e) {
-            ms.bindInt(1, pid);
-            if (ms.step())
-                pos = ms.columnInt(0);
-        }
-        if (pos < 0)
-            pos = 0;
-    } else {
-        SqliteStatement ss;
-        if (auto e =
-                ss.prepare(impl_->db_.get(), "UPDATE playlist_items SET position=position+1 WHERE "
-                                             "playlist_id=? AND position>=?");
-            e) {
-            ss.bindInt(1, pid);
-            ss.bindInt(2, pos);
-            (void)ss.stepDone();
-        }
-    }
-    SqliteStatement st;
-    if (auto e = st.prepare(
-            impl_->db_.get(),
-            "INSERT INTO playlist_items (playlist_id, track_id, position) VALUES (?,?,?)");
-        !e)
-        return std::unexpected{e.error()};
-    st.bindInt(1, pid);
-    st.bindInt(2, tid);
-    st.bindInt(3, pos);
-    int rc = st.stepDone();
-    if (rc != SQLITE_DONE)
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                         sqlite3_errmsg(impl_->db_.get()))};
-    return {};
+    return impl_->playlistAddTrackLocked(pid, tid, pos);
 }
 
 std::expected<void, kanariv::utils::Error> Database::playlistRemoveTrack(int64_t pid, int64_t tid) {
@@ -1102,6 +1062,9 @@ std::expected<void, kanariv::utils::Error> Database::playlistReorder(int64_t pid
     if (!impl_->db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
+    auto tx = DbTransaction::begin(impl_->db_.get());
+    if (!tx)
+        return std::unexpected{tx.error()};
     SqliteStatement sel;
     if (auto e =
             sel.prepare(impl_->db_.get(),
@@ -1113,39 +1076,36 @@ std::expected<void, kanariv::utils::Error> Database::playlistReorder(int64_t pid
     if (!sel.step())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
     int64_t track_id = sel.columnInt(0);
-    if (from < to) {
-        SqliteStatement ss;
-        if (auto e =
-                ss.prepare(impl_->db_.get(), "UPDATE playlist_items SET position=position-1 WHERE "
-                                             "playlist_id=? AND position>? AND position<=?");
-            e) {
-            ss.bindInt(1, pid);
-            ss.bindInt(2, from);
-            ss.bindInt(3, to);
-            (void)ss.stepDone();
-        }
-    } else {
-        SqliteStatement ss;
-        if (auto e =
-                ss.prepare(impl_->db_.get(), "UPDATE playlist_items SET position=position+1 WHERE "
-                                             "playlist_id=? AND position>=? AND position<?");
-            e) {
-            ss.bindInt(1, pid);
-            ss.bindInt(2, to);
-            ss.bindInt(3, from);
-            (void)ss.stepDone();
-        }
-    }
+    const bool forward = from < to;
+    SqliteStatement shift;
+    if (auto e = shift.prepare(impl_->db_.get(),
+                               forward ? "UPDATE playlist_items SET position=position-1 WHERE "
+                                         "playlist_id=? AND position>? AND position<=?"
+                                       : "UPDATE playlist_items SET position=position+1 WHERE "
+                                         "playlist_id=? AND position>=? AND position<?");
+        !e)
+        return std::unexpected{e.error()};
+    shift.bindInt(1, pid);
+    shift.bindInt(2, forward ? from : to);
+    shift.bindInt(3, forward ? to : from);
+    if (int rc = shift.stepDone(); rc != SQLITE_DONE)
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         sqlite3_errmsg(impl_->db_.get()))};
     SqliteStatement us;
     if (auto e =
             us.prepare(impl_->db_.get(),
                        "UPDATE playlist_items SET position=? WHERE playlist_id=? AND track_id=?");
-        e) {
-        us.bindInt(1, to);
-        us.bindInt(2, pid);
-        us.bindInt(3, track_id);
-        (void)us.stepDone();
-    }
+        !e)
+        return std::unexpected{e.error()};
+    us.bindInt(1, to);
+    us.bindInt(2, pid);
+    us.bindInt(3, track_id);
+    if (int rc = us.stepDone(); rc != SQLITE_DONE)
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         sqlite3_errmsg(impl_->db_.get()))};
+    auto committed = tx->commit();
+    if (!committed)
+        return std::unexpected{committed.error()};
     return {};
 }
 
@@ -1617,9 +1577,14 @@ std::expected<int64_t, kanariv::utils::Error> Database::libraryAdd(std::string_v
     else
         st.bindText(2, name);
     int rc = st.stepDone();
-    if (rc != SQLITE_DONE)
+    if (rc != SQLITE_DONE) {
+        int ec = sqlite3_extended_errcode(impl_->db_.get());
+        if (ec == SQLITE_CONSTRAINT_UNIQUE || rc == SQLITE_CONSTRAINT)
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::AlreadyExists, sqlite3_errmsg(impl_->db_.get()))};
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
                                                          sqlite3_errmsg(impl_->db_.get()))};
+    }
     return sqlite3_last_insert_rowid(impl_->db_.get());
 }
 
@@ -1680,7 +1645,7 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::ge
         sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
-            s.total_duration_ms = (int64_t)(st.columnDouble(0) * 1000);
+            s.total_duration_ms = static_cast<int64_t>((st.columnDouble(0) * 1000));
         st.reset();
     }
     return s;
@@ -1715,7 +1680,7 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
         sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
-            d.total_duration_ms = (int64_t)(st.columnDouble(0) * 1000);
+            d.total_duration_ms = static_cast<int64_t>((st.columnDouble(0) * 1000));
         st.reset();
     }
 
@@ -1725,7 +1690,7 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
         sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
-            d.total_play_time_ms = (int64_t)(st.columnDouble(0) * 1000);
+            d.total_play_time_ms = static_cast<int64_t>((st.columnDouble(0) * 1000));
         st.reset();
     }
 

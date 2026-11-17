@@ -33,20 +33,22 @@
  *   Engine, Database and the IPC server.
  * - config -- JSON config file, socket/pid/lock path derivation.
  *
- * Layer rule (enforced by link dependencies; each line lists its direct
- * kanariv dependencies):
+ * Layer rule (each line lists its direct kanariv dependencies; the
+ * authoritative declarations live in cmake/components/*.cmake):
  * @code
- * kanariv.types   (no deps)
- * kanariv.utils   (types)
- * kanariv.media   (types, utils)
- * kanariv.player  (types, utils, media)
- * kanariv.db      (types, utils, contracts)
- * kanariv.library (contracts, db, media, utils)
- * kanariv.engine  (types, utils, media, player, db)
- * kanariv.ipc     (utils)
- * kanariv.client  (utils, ipc)
- * kanariv.service (utils, ipc, engine, db, media, player)
- * kanariv.app     (utils, ipc, client, media)
+ * kanariv.types     (no deps)
+ * kanariv.utils     (types)
+ * kanariv.contracts (types, utils)
+ * kanariv.media     (utils, types)
+ * kanariv.player    (utils, types, media)
+ * kanariv.db        (contracts, utils, types)
+ * kanariv.library   (contracts, db, media, utils)
+ * kanariv.engine    (contracts, utils, types; private: player, media)
+ * kanariv.ipc       (utils, types)
+ * kanariv.config    (types, utils)
+ * kanariv.client    (config, ipc, utils)
+ * kanariv.service   (config, ipc, utils, contracts; private: engine, db, media, player)
+ * kanariv.app       (config, ipc, utils; private: client, media, service, db, player, library)
  * @endcode
  *
  * Threading model:

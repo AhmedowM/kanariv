@@ -4,7 +4,6 @@ export module kanariv.types;
 export import :wire;
 export import :status;
 export import :format;
-export import :parse;
 export import :record;
 export import :db;
 export import :engine;

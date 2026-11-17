@@ -2,7 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <common.hpp>
 #include <cstddef>
 #include <cstdint>

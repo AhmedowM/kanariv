@@ -29,7 +29,7 @@ set(KANARIV_DB_SOURCES
   src/db/stmt_helpers.cpp
 )
 # INCLUDES vendor: src/db/*.cpp include <sqlite3.h> from the amalgamation.
-kanariv_add_component(db SOURCES ${KANARIV_DB_SOURCES} MODULE_SOURCES ${KANARIV_DB_MODULE_SOURCES} DEPS kanariv::contracts kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::sqlite3 INCLUDES vendor)
+kanariv_add_component(db SOURCES ${KANARIV_DB_SOURCES} MODULE_SOURCES ${KANARIV_DB_MODULE_SOURCES} DEPS kanariv::contracts kanariv::types kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::sqlite3 INCLUDES vendor)
 ca_set_module_warnings(db)
 
 if(KANARIV_BUILD_SHARED)

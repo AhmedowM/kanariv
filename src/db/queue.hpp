@@ -3,7 +3,6 @@
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils.hpp>
 #include <cstdint>
-#include <db/detail.hpp>
 #include <db/statement.hpp>
 #include <expected>
 #include <memory>

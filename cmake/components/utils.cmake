@@ -28,7 +28,7 @@ set(KANARIV_UTILS_SOURCES
 # vendor/ is scoped to this component: src/utils/json.cpp is the only TU that
 # includes <nlohmann/json.hpp> (KANARIV_NLOHMANN_PRIVATE_INCLUDE, see the root
 # CMakeLists).
-kanariv_add_component(utils SOURCES ${KANARIV_UTILS_SOURCES} MODULE_SOURCES ${KANARIV_UTILS_MODULE_SOURCES} DEPS Threads::Threads INCLUDES ${KANARIV_NLOHMANN_PRIVATE_INCLUDE})
+kanariv_add_component(utils SOURCES ${KANARIV_UTILS_SOURCES} MODULE_SOURCES ${KANARIV_UTILS_MODULE_SOURCES} DEPS kanariv::types Threads::Threads INCLUDES ${KANARIV_NLOHMANN_PRIVATE_INCLUDE})
 ca_set_module_warnings(utils)
 kanariv_component_target(utils KANARIV_UTILS_TARGET)
 target_include_directories(${KANARIV_UTILS_TARGET} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>)

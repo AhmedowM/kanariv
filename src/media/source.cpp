@@ -1,6 +1,6 @@
 #include <kanariv/media/source.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <cstddef>
 #include <expected>
 #include <memory>

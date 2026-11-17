@@ -5,7 +5,7 @@
 #include <iterator>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <limits>
 #include <memory>
 #include <nlohmann/json.hpp>

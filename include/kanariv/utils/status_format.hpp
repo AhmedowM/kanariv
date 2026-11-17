@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file result.hpp
+ * @file status_format.hpp
  * @brief Status codes and string conversion for kanariv utilities.
  * @ingroup kanariv_utils
  */

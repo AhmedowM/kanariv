@@ -13,7 +13,7 @@
 #include <kanariv/fwd.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <cstdint>
 #include <expected>
 #include <functional>

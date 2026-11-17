@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>

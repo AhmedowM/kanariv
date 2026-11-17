@@ -2,7 +2,6 @@
 
 #include <kanariv/fwd.hpp>
 #include <kanariv/utils.hpp>
-#include <db/detail.hpp>
 #include <expected>
 #include <string>
 #include <string_view>

@@ -17,7 +17,7 @@
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/parse.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -253,9 +253,9 @@ Service::Impl::handle(const kanariv::ipc::QueueList& ql) {
             ordered.reserve(tracks.size());
             std::vector<char> seen(tracks.size(), 0);
             for (int64_t p : perm) {
-                if (p >= 0 && (std::size_t)p < tracks.size() && !seen[(std::size_t)p]) {
-                    ordered.push_back(tracks[(std::size_t)p]);
-                    seen[(std::size_t)p] = 1;
+                if (p >= 0 && static_cast<std::size_t>(p) < tracks.size() && !seen[static_cast<std::size_t>(p)]) {
+                    ordered.push_back(tracks[static_cast<std::size_t>(p)]);
+                    seen[static_cast<std::size_t>(p)] = 1;
                 }
             }
             for (std::size_t i = 0; i < tracks.size(); ++i) {

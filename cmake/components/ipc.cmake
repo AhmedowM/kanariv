@@ -14,7 +14,7 @@ set(KANARIV_IPC_SOURCES
   src/ipc/result_json.cpp
   src/ipc/shm_status.cpp
 )
-kanariv_add_component(ipc SOURCES ${KANARIV_IPC_SOURCES} MODULE_SOURCES ${KANARIV_IPC_MODULE_SOURCES} DEPS kanariv::utils Threads::Threads)
+kanariv_add_component(ipc SOURCES ${KANARIV_IPC_SOURCES} MODULE_SOURCES ${KANARIV_IPC_MODULE_SOURCES} DEPS kanariv::types kanariv::utils Threads::Threads)
 ca_set_module_warnings(ipc)
 if(KANARIV_BUILD_SHARED)
   kanariv_add_shared_variant(ipc)

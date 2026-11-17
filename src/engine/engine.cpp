@@ -19,7 +19,7 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/math.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <kanariv/utils/ring.hpp>
 #include <memory>
 #include <mutex>
@@ -144,10 +144,6 @@ struct Engine::Impl {
      */
     std::expected<void, kanariv::utils::Error>
     saveStateLocked(std::optional<int64_t> livePositionMs = std::nullopt);
-    std::expected<void, kanariv::utils::Error>
-    persistShuffleBlobLocked(std::optional<int64_t> livePositionMs = std::nullopt);
-    std::expected<void, kanariv::utils::Error>
-    persistCursorLocked(std::optional<int64_t> livePositionMs = std::nullopt);
     std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     fetchTrackByPosLocked(int64_t qid, int64_t pos);
 
@@ -206,9 +202,9 @@ struct Engine::Impl {
     kanariv::types::RepeatMode repeat() const noexcept;
     int64_t activeQueueId() const noexcept;
     // shuffle / repeat
-    std::vector<int64_t> shufflePermFor(int64_t qid) noexcept;
-    void noteEnqueued(int64_t qid, std::size_t count) noexcept;
-    void noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) noexcept;
+    std::vector<int64_t> shufflePermFor(int64_t qid);
+    void noteEnqueued(int64_t qid, std::size_t count);
+    void noteQueueMoved(int64_t qid, std::size_t from, std::size_t to);
     ExpectedVoid setShuffle(std::optional<bool> on);
     std::expected<void, kanariv::utils::Error> setShuffleLocked(bool on);
     ExpectedVoid setRepeat(kanariv::types::RepeatMode m);
@@ -508,15 +504,15 @@ bool Engine::shuffle() const noexcept {
     return impl_->shuffle();
 }
 
-std::vector<int64_t> Engine::shufflePermFor(int64_t qid) noexcept {
+std::vector<int64_t> Engine::shufflePermFor(int64_t qid) {
     return impl_->shufflePermFor(qid);
 }
 
-void Engine::noteEnqueued(int64_t qid, std::size_t count) noexcept {
+void Engine::noteEnqueued(int64_t qid, std::size_t count) {
     impl_->noteEnqueued(qid, count);
 }
 
-void Engine::noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) noexcept {
+void Engine::noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) {
     impl_->noteQueueMoved(qid, from, to);
 }
 
@@ -634,7 +630,7 @@ void Engine::Impl::shutdown() {
     // precondition holds and the state_ snapshot is consistent)
     if (hasDb()) {
         std::lock_guard<std::timed_mutex> qlk(queueMutex_);
-        state_.cursorPos = (int64_t)queue_.cursor;
+        state_.cursorPos = static_cast<int64_t>(queue_.cursor);
         (void)saveStateLocked();
     }
     if (output_) {
@@ -707,7 +703,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
             queue_.cursor = **idx;
             auto r = queueNextLocked(t);
             if (r) {
-                auto pr = doPlayTrack(t, (double)state_.positionMs / 1000.0);
+                auto pr = doPlayTrack(t, static_cast<double>(state_.positionMs) / 1000.0);
                 if (pr) {
                     unlockQueue();
                     pushEvent(*pr);
@@ -728,7 +724,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
     // stop zeroes positionMs, so this never resurrects a stopped position.
     double from = 0.0;
     if (t.id == state_.currentTrackId && state_.positionMs > 0)
-        from = (double)state_.positionMs / 1000.0;
+        from = static_cast<double>(state_.positionMs) / 1000.0;
     auto pr = doPlayTrack(t, from);
     unlockQueue();
     if (!pr)
@@ -1084,7 +1080,7 @@ Engine::ExpectedVoid Engine::Impl::setVolume(float g) {
         if (now - last >= 1000 &&
             lastVolSaveMs_.compare_exchange_strong(last, now, std::memory_order_acq_rel,
                                                    std::memory_order_acquire)) {
-            state_.cursorPos = (int64_t)queue_.cursor;
+            state_.cursorPos = static_cast<int64_t>(queue_.cursor);
             (void)saveStateLocked();
         }
     }
@@ -1137,7 +1133,7 @@ kanariv::types::RepeatMode Engine::Impl::repeat() const noexcept {
     return queue_.repeat.load(std::memory_order_acquire);
 }
 
-std::vector<int64_t> Engine::Impl::shufflePermFor(int64_t qid) noexcept {
+std::vector<int64_t> Engine::Impl::shufflePermFor(int64_t qid) {
     if (!tryLockQueue())
         return {};
     std::vector<int64_t> out;
@@ -1147,7 +1143,7 @@ std::vector<int64_t> Engine::Impl::shufflePermFor(int64_t qid) noexcept {
     return out;
 }
 
-void Engine::Impl::noteEnqueued(int64_t qid, std::size_t count) noexcept {
+void Engine::Impl::noteEnqueued(int64_t qid, std::size_t count) {
     if (count == 0 || !hasDb() || !tryLockQueue())
         return;
     if (queue_.queue_id == qid && queue_.shuffle && !queue_.perm.empty()) {
@@ -1158,13 +1154,13 @@ void Engine::Impl::noteEnqueued(int64_t qid, std::size_t count) noexcept {
         }
         std::size_t start = (*n >= count) ? *n - count : 0;
         for (std::size_t i = start; i < *n; ++i)
-            queue_.perm.push_back((int64_t)i);
-        (void)persistShuffleBlobLocked();
+            queue_.perm.push_back(static_cast<int64_t>(i));
+        (void)saveStateLocked();
     }
     unlockQueue();
 }
 
-void Engine::Impl::noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) noexcept {
+void Engine::Impl::noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) {
     if (from == to || !hasDb() || !tryLockQueue())
         return;
     if (queue_.queue_id == qid && queue_.shuffle && !queue_.perm.empty()) {
@@ -1181,7 +1177,7 @@ void Engine::Impl::noteQueueMoved(int64_t qid, std::size_t from, std::size_t to)
             else if (t < f && p >= t && p < f)
                 ++p;
         }
-        (void)persistShuffleBlobLocked();
+        (void)saveStateLocked();
     }
     unlockQueue();
 }
@@ -1249,7 +1245,7 @@ Engine::ExpectedVoid Engine::Impl::setRepeat(kanariv::types::RepeatMode m) {
     const int64_t prevCursorPos = state_.cursorPos.load(std::memory_order_relaxed);
     queue_.repeat = m;
     state_.repeatMode = m;
-    state_.cursorPos = (int64_t)queue_.cursor;
+    state_.cursorPos = static_cast<int64_t>(queue_.cursor);
     std::optional<kanariv::utils::Error> err;
     if (auto e = saveStateLocked(); !e) {
         err = e.error();
@@ -1340,7 +1336,7 @@ Engine::ExpectedVoid Engine::Impl::switchQueue(int64_t qid) {
 }
 
 Engine::ExpectedVoid Engine::Impl::next() {
-    return advanceLocked(false, (int)queueLockWait.count());
+    return advanceLocked(false, static_cast<int>(queueLockWait.count()));
 }
 
 Engine::ExpectedVoid Engine::Impl::autoNext() {
@@ -1380,7 +1376,7 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
         resetPlaybackAccounting();
         markedPlayed_.store(false, std::memory_order_release);
         gaplessArmed_.store(false, std::memory_order_release);
-        startedMs_.store((int64_t)detail::wallMs(), std::memory_order_relaxed);
+        startedMs_.store(static_cast<int64_t>(detail::wallMs()), std::memory_order_relaxed);
         // Repeat-one rewinds the same track: it is still a transition, so the
         // epoch invalidates auto-advance decisions taken before the rewind.
         transitionEpoch_.fetch_add(1, std::memory_order_acq_rel);
@@ -1610,7 +1606,7 @@ std::unexpected<kanariv::utils::Error> Engine::Impl::queueBusy(std::string_view 
 
 double Engine::Impl::currentPositionLocked() const noexcept {
     if (!hasCurrent_.load(std::memory_order_acquire))
-        return (double)state_.positionMs / 1000.0;
+        return static_cast<double>(state_.positionMs) / 1000.0;
     auto st = playbackState_.load(std::memory_order_acquire);
     if (st == kanariv::types::PlaybackState::Paused)
         return pausePos_;
@@ -1748,18 +1744,6 @@ Engine::Impl::saveStateLocked(std::optional<int64_t> livePositionMs) {
     return result;
 }
 
-std::expected<void, kanariv::utils::Error>
-Engine::Impl::persistShuffleBlobLocked(std::optional<int64_t> livePositionMs) {
-    // A sidecar snapshot carries cursor, shuffle, repeat and permutation
-    // together, so the field-specific saves collapse into one call.
-    return saveStateLocked(livePositionMs);
-}
-
-std::expected<void, kanariv::utils::Error>
-Engine::Impl::persistCursorLocked(std::optional<int64_t> livePositionMs) {
-    return saveStateLocked(livePositionMs);
-}
-
 std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 Engine::Impl::fetchTrackByPosLocked(int64_t qid, int64_t pos) {
     if (!hasDb())
@@ -1795,7 +1779,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::setShuffleLocked(bool o
         if (*cnt == 0) {
             queue_.shuffle.store(true, std::memory_order_relaxed);
             queue_.cursor = 0;
-            auto r = persistShuffleBlobLocked();
+            auto r = saveStateLocked();
             if (!r) {
                 rollback();
                 return r;
@@ -1805,14 +1789,14 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::setShuffleLocked(bool o
         }
         queue_.perm.resize(*cnt);
         for (size_t i = 0; i < *cnt; ++i)
-            queue_.perm[i] = (int64_t)i;
+            queue_.perm[i] = static_cast<int64_t>(i);
         {
             std::mt19937 rng{std::random_device{}()};
             detail::shufflePerm(queue_.perm, rng);
         }
         queue_.shuffle.store(true, std::memory_order_relaxed);
         queue_.cursor = 0;
-        auto r = persistShuffleBlobLocked();
+        auto r = saveStateLocked();
         if (!r) {
             rollback();
             return r;
@@ -1822,7 +1806,7 @@ std::expected<void, kanariv::utils::Error> Engine::Impl::setShuffleLocked(bool o
     } else {
         queue_.cursor = 0;
         queue_.shuffle.store(false, std::memory_order_relaxed);
-        auto r = persistShuffleBlobLocked();
+        auto r = saveStateLocked();
         if (!r) {
             rollback();
             return r;
@@ -1888,13 +1872,13 @@ bool Engine::Impl::commitNextLocked(const QueueFingerprint& expected, PeekedNext
         queue_.perm = std::move(*next.plan.newPerm);
         queue_.shuffle.store(true, std::memory_order_relaxed);
         queue_.cursor = next.plan.cursor;
-        (void)persistShuffleBlobLocked(livePositionMs);
+        (void)saveStateLocked(livePositionMs);
         return true;
     }
     if (queue_.cursor == next.plan.cursor)
         return true; // RepeatMode::One replay: the cursor must not move.
     queue_.cursor = next.plan.cursor;
-    (void)persistCursorLocked(livePositionMs);
+    (void)saveStateLocked(livePositionMs);
     return true;
 }
 
@@ -1932,11 +1916,11 @@ Engine::Impl::queuePrevLocked(kanariv::types::TrackRow& out) {
             if (queue_.cursor >= cnt)
                 queue_.cursor = cnt - 1;
         }
-        auto tr = fetchTrackByPosLocked(qid, (int64_t)queue_.cursor);
+        auto tr = fetchTrackByPosLocked(qid, static_cast<int64_t>(queue_.cursor));
         if (!tr)
             return std::unexpected(tr.error());
         queue_.cursor++;
-        (void)persistCursorLocked();
+        (void)saveStateLocked();
         out = tr.value();
         return {};
     }
@@ -1955,7 +1939,7 @@ Engine::Impl::queuePrevLocked(kanariv::types::TrackRow& out) {
     }
     int64_t pos = queue_.perm[queue_.cursor];
     queue_.cursor++;
-    (void)persistCursorLocked();
+    (void)saveStateLocked();
     auto tr = fetchTrackByPosLocked(qid, pos);
     if (!tr)
         return std::unexpected(tr.error());
@@ -2006,7 +1990,7 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
                 decoder_ = std::move(dRes.value());
                 opened = true;
                 duration_ = decoder_->totalFrames()
-                                ? (double)decoder_->totalFrames() / (double)decoder_->sampleRate()
+                                ? static_cast<double>(decoder_->totalFrames()) / static_cast<double>(decoder_->sampleRate())
                                 : t.duration;
                 if (duration_ <= 0)
                     duration_ = t.duration > 0 ? t.duration : 1.0;
@@ -2054,7 +2038,7 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
                     else if (cfg_.replayGain == kanariv::types::ReplayGainMode::Album)
                         gainDb = t.replayGainAlbum;
                     if (gainDb != 0.0)
-                        gain = (float)(gain * std::pow(10.0, gainDb / 20.0));
+                        gain = static_cast<float>((gain * std::pow(10.0, gainDb / 20.0)));
                 }
                 cfg.volume = gain;
                 cfg.logger = cfg_.logger;
@@ -2079,10 +2063,10 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
                     fadeOutSamples_ = 0;
                     fadeOutStart_ = 0;
                     if (cfg_.fadeInMs > 0 && sr > 0)
-                        fadeInSamples_ = (uint64_t)cfg_.fadeInMs * sr / 1000;
+                        fadeInSamples_ = static_cast<uint64_t>(cfg_.fadeInMs) * sr / 1000;
                     if (cfg_.fadeOutMs > 0 && sr > 0 && duration_ > 0) {
-                        fadeOutSamples_ = (uint64_t)cfg_.fadeOutMs * sr / 1000;
-                        fadeOutStart_ = duration_ - (double)cfg_.fadeOutMs / 1000.0;
+                        fadeOutSamples_ = static_cast<uint64_t>(cfg_.fadeOutMs) * sr / 1000;
+                        fadeOutStart_ = duration_ - static_cast<double>(cfg_.fadeOutMs) / 1000.0;
                         if (fadeOutStart_ < 0.0)
                             fadeOutStart_ = 0.0;
                     }
@@ -2141,10 +2125,10 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
     // wrong). resumeAfterTagWrite() saves and restores the counters around
     // doPlayTrack(), so a tag write mid-track still keeps its progress.
     resetPlaybackAccounting();
-    startedMs_.store((int64_t)detail::wallMs(), std::memory_order_relaxed);
+    startedMs_.store(static_cast<int64_t>(detail::wallMs()), std::memory_order_relaxed);
     state_.currentTrackId.store(t.id, std::memory_order_release);
     state_.currentPath = t.path;
-    state_.cursorPos.store((int64_t)queue_.cursor, std::memory_order_relaxed);
+    state_.cursorPos.store(static_cast<int64_t>(queue_.cursor), std::memory_order_relaxed);
     // A reopened decoder ends any tag-write suspension (resumeAfterTagWrite).
     suspended_.store(false, std::memory_order_release);
     playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
@@ -2327,7 +2311,7 @@ void Engine::Impl::engineTick() {
     if (snap.playback == kanariv::types::PlaybackState::Playing) {
         const uint64_t lastSave = lastPosSaveMs_.load(std::memory_order_acquire);
         if (now - lastSave >= 5000) {
-            state_.cursorPos.store((int64_t)queue_.cursor, std::memory_order_relaxed);
+            state_.cursorPos.store(static_cast<int64_t>(queue_.cursor), std::memory_order_relaxed);
             if (saveStateLocked())
                 lastPosSaveMs_.store(now, std::memory_order_release);
         }
@@ -2350,8 +2334,8 @@ void Engine::Impl::engineTick() {
     }
     if (snap.duration > 0) {
         const double remaining = snap.duration - snap.position;
-        const double gapS = (double)cfg_.gaplessMs / 1000.0;
-        const double xfS = (double)cfg_.crossfadeMs / 1000.0;
+        const double gapS = static_cast<double>(cfg_.gaplessMs) / 1000.0;
+        const double xfS = static_cast<double>(cfg_.crossfadeMs) / 1000.0;
         if (cfg_.crossfadeMs > 0 && remaining <= xfS && remaining >= 0.0 &&
             !crossfadeActive_.load(std::memory_order_acquire) &&
             !crossfadePending_.load(std::memory_order_acquire) && snap.hasCurrent) {
@@ -2422,8 +2406,8 @@ bool Engine::Impl::tryPublishCrossfade() {
         fadeOutSamples_ = 0;
         fadeOutStart_ = 0;
         if (cfg_.fadeOutMs > 0 && sampleRate > 0.0 && trackDuration > 0.0) {
-            fadeOutSamples_ = (uint64_t)cfg_.fadeOutMs * (uint64_t)sampleRate / 1000;
-            fadeOutStart_ = trackDuration - (double)cfg_.fadeOutMs / 1000.0;
+            fadeOutSamples_ = static_cast<uint64_t>(cfg_.fadeOutMs) * static_cast<uint64_t>(sampleRate) / 1000;
+            fadeOutStart_ = trackDuration - static_cast<double>(cfg_.fadeOutMs) / 1000.0;
             if (fadeOutStart_ < 0.0)
                 fadeOutStart_ = 0.0;
         }
@@ -2438,13 +2422,13 @@ bool Engine::Impl::tryPublishCrossfade() {
     hasCurrent_.store(true, std::memory_order_release);
     markedPlayed_.store(false, std::memory_order_release);
     gaplessArmed_.store(false, std::memory_order_release);
-    startedMs_.store((int64_t)detail::wallMs(), std::memory_order_relaxed);
+    startedMs_.store(static_cast<int64_t>(detail::wallMs()), std::memory_order_relaxed);
     // The publication is a transition like any other: an auto-advance decision
     // taken for the outgoing track must not move the queue past the new one.
     transitionEpoch_.fetch_add(1, std::memory_order_acq_rel);
     state_.currentTrackId.store(trackId, std::memory_order_release);
     state_.currentPath = std::move(trackPath);
-    state_.cursorPos.store((int64_t)queue_.cursor, std::memory_order_relaxed);
+    state_.cursorPos.store(static_cast<int64_t>(queue_.cursor), std::memory_order_relaxed);
     resetPlaybackAccounting();
     if (hasDb())
         (void)saveStateLocked();
@@ -2611,7 +2595,7 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
                         if (overlapRate == 0)
                             overlapRate = crossfadeDecoder_->sampleRate();
                         crossfadeSamples_ =
-                            (uint64_t)cfg_.crossfadeMs * (uint64_t)overlapRate / 1000;
+                            static_cast<uint64_t>(cfg_.crossfadeMs) * static_cast<uint64_t>(overlapRate) / 1000;
                         crossfadeSample_ = 0;
                         armed = true;
                     }

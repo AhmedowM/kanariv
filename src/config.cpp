@@ -14,7 +14,7 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/log.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <string>
 #include <string_view>
 #include <system_error>

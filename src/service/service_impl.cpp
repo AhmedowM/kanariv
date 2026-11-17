@@ -26,7 +26,7 @@
 #include <kanariv/utils/base64.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <kanariv/version.hpp>
 #include <memory>
 #include <optional>

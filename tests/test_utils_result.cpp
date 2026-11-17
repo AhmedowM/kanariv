@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/utils/result.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <string>
 namespace kanariv::utils::test {
 

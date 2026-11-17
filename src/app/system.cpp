@@ -61,7 +61,7 @@ AppResult App::bookmarkAdd(std::optional<double> position, std::string note,
     }
     if (pos < 0.0)
         pos = 0.0;
-    int64_t posMs = (int64_t)std::llround(pos * 1000.0);
+    int64_t posMs = static_cast<int64_t>(std::llround(pos * 1000.0));
     kanariv::ipc::Command cmd{kanariv::ipc::BookmarkAdd{posMs, std::move(note), track}};
     auto res = impl_->sendRaw(cmd);
     if (!res)

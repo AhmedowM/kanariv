@@ -1,6 +1,6 @@
 // T1 regression: the value layer must not depend on `utils`. This translation
 // unit includes the value-layer engine header FIRST, before any utils header,
-// so it stays self-contained. `utils/result.hpp` owns the `std::formatter`
+// so it stays self-contained. `utils/status_format.hpp` owns the `std::formatter`
 // specialization for `StatusCode`; the static assertion below flips if
 // `types/engine.hpp` ever re-gains that include (the historical types <-> utils
 // cycle), turning the regression into a compile error.
@@ -14,7 +14,7 @@
 namespace {
 
 static_assert(!std::is_default_constructible_v<std::formatter<kanariv::types::StatusCode>>,
-              "types/engine.hpp must not pull in utils/result.hpp");
+              "types/engine.hpp must not pull in utils/status_format.hpp");
 
 } // namespace
 
