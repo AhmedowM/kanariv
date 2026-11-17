@@ -16,6 +16,7 @@
 #include <kanariv/player/output.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
+#include <kanariv/types/format.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/math.hpp>
@@ -209,6 +210,14 @@ struct Engine::Impl {
     ExpectedVoid pause();
     /// @brief pause() body; @pre `queueMutex_` held (order queue -> decodeMtx_).
     ExpectedVoid pauseLocked();
+    /**
+     * @brief Publishes a playback-state change.
+     * @param to New state.
+     * @param reason Short caller label, used only in the debug log.
+     * @details Sole writer of `playbackState_`: every transport path routes
+     * through it, so the state machine has one store site and one log line.
+     */
+    void transition(kanariv::types::PlaybackState to, std::string_view reason);
     ExpectedVoid resume();
     ExpectedVoid stop();
     ExpectedVoid seek(double seconds);
@@ -692,6 +701,13 @@ void Engine::Impl::shutdown() {
     resetCrossfadeLocked();
 }
 
+void Engine::Impl::transition(kanariv::types::PlaybackState to, std::string_view reason) {
+    const auto from = playbackState_.exchange(to, std::memory_order_acq_rel);
+    if (from != to && cfg_.logger)
+        cfg_.logger->debug("playback {} -> {} ({})", kanariv::types::toString(from),
+                           kanariv::types::toString(to), reason);
+}
+
 Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
     if (!hasDb())
         return std::unexpected(
@@ -713,7 +729,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
                 startOutputBestEffort();
         }
         lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
-        playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
+        transition(kanariv::types::PlaybackState::Playing, "play resume");
         decodeCv_.notify_all();
         monCv_.notify_all();
         return {};
@@ -854,7 +870,7 @@ Engine::ExpectedVoid Engine::Impl::pauseLocked() {
     }
     accountPlaybackTime();
     lastPlaybackSampleMs_.store(0, std::memory_order_release);
-    playbackState_.store(kanariv::types::PlaybackState::Paused, std::memory_order_release);
+    transition(kanariv::types::PlaybackState::Paused, "pause");
     if (hasDb())
         saveStateBestEffort();
     return {};
@@ -878,7 +894,7 @@ Engine::ExpectedVoid Engine::Impl::resume() {
             startOutputBestEffort();
     }
     lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
-    playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
+    transition(kanariv::types::PlaybackState::Playing, "resume");
     decodeCv_.notify_all();
     monCv_.notify_all();
     return {};
@@ -898,7 +914,7 @@ Engine::ExpectedVoid Engine::Impl::stop() {
     if (s == kanariv::types::PlaybackState::Playing)
         accountPlaybackTime();
     lastPlaybackSampleMs_.store(0, std::memory_order_release);
-    playbackState_.store(kanariv::types::PlaybackState::Stopped, std::memory_order_release);
+    transition(kanariv::types::PlaybackState::Stopped, "stop");
     // hasCurrent_ drops after this: the rewind below resolves the queue
     // position by identity, not by arithmetic.
     const int64_t stoppedId = currentTrackId();
@@ -985,7 +1001,7 @@ Engine::ExpectedVoid Engine::Impl::seek(double seconds) {
     const auto previousState = playbackState_.load(std::memory_order_acquire);
     {
         std::unique_lock<std::mutex> lk(decodeMtx_);
-        playbackState_.store(kanariv::types::PlaybackState::Paused, std::memory_order_release);
+        transition(kanariv::types::PlaybackState::Paused, "seek");
         // snapshot for restore on error (Task 1: seek hardening)
         double savedPause = pausePos_;
         auto savedStart = playStart_;
@@ -995,7 +1011,7 @@ Engine::ExpectedVoid Engine::Impl::seek(double seconds) {
             if (!res) {
                 pausePos_ = savedPause;
                 playStart_ = savedStart;
-                playbackState_.store(previousState, std::memory_order_release);
+                transition(previousState, "seek restore");
                 return std::unexpected(res.error());
             }
         }
@@ -1011,7 +1027,7 @@ Engine::ExpectedVoid Engine::Impl::seek(double seconds) {
             ring_->reset();
 
         // Resume the decode thread only if it was running before the seek.
-        playbackState_.store(previousState, std::memory_order_release);
+        transition(previousState, "seek restore");
     }
     decodeCv_.notify_all();
     if (hasDb())
@@ -1037,7 +1053,7 @@ Engine::ExpectedVoid Engine::Impl::suspendCurrentTrack() {
     // the pre-track value.
     pausePos_ = currentPositionLocked();
     suspended_.store(true, std::memory_order_release);
-    playbackState_.store(kanariv::types::PlaybackState::Paused, std::memory_order_release);
+    transition(kanariv::types::PlaybackState::Paused, "suspend");
     if (output_)
         stopOutputBestEffort();
     if (ring_)
@@ -1406,7 +1422,7 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
             playStart_ = std::chrono::steady_clock::now();
             trackDuration = duration_;
         }
-        playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
+        transition(kanariv::types::PlaybackState::Playing, "repeat one");
         resetPlaybackAccounting();
         markedPlayed_.store(false, std::memory_order_release);
         gaplessArmed_.store(false, std::memory_order_release);
@@ -1467,8 +1483,7 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
             // audio graph + duration are decodeMtx_ state
             {
                 std::unique_lock<std::mutex> lk(decodeMtx_);
-                playbackState_.store(kanariv::types::PlaybackState::Stopped,
-                                     std::memory_order_release);
+                transition(kanariv::types::PlaybackState::Stopped, "end of queue");
                 if (output_)
                     stopOutputBestEffort();
                 if (ring_)
@@ -1576,7 +1591,7 @@ Engine::Impl::Impl(const kanariv::types::EngineConfig& cfg) : cfg_(cfg), state_{
     state_.repeatMode = kanariv::types::RepeatMode::Off;
     queue_.repeat = kanariv::types::RepeatMode::Off;
     queue_.queue_id = 1;
-    playbackState_.store(kanariv::types::PlaybackState::Stopped, std::memory_order_release);
+    transition(kanariv::types::PlaybackState::Stopped, "init");
     hasCurrent_.store(false, std::memory_order_release);
     markedPlayed_.store(false, std::memory_order_release);
     resetPlaybackAccounting();
@@ -2175,7 +2190,7 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
     state_.cursorPos.store(static_cast<int64_t>(queue_.cursor), std::memory_order_relaxed);
     // A reopened decoder ends any tag-write suspension (resumeAfterTagWrite).
     suspended_.store(false, std::memory_order_release);
-    playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
+    transition(kanariv::types::PlaybackState::Playing, "track started");
     // This track owns the transition now; auto-advance decisions taken for the
     // previous track carry the old epoch and must not move the queue again.
     transitionEpoch_.fetch_add(1, std::memory_order_acq_rel);
@@ -2443,7 +2458,7 @@ bool Engine::Impl::tryPublishCrossfade() {
         // decoder itself continues where the overlap stopped.
         pausePos_ = 0;
         playStart_ = std::chrono::steady_clock::now();
-        playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
+        transition(kanariv::types::PlaybackState::Playing, "crossfade published");
         // Fade envelope for the newly published track (decodeMtx_ state): no
         // fade-in (we are mid-track), normal fade-out near its end.
         fadeSample_.store(0, std::memory_order_release);
