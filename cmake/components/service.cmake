@@ -14,6 +14,9 @@ set(KANARIV_SERVICE_SOURCES
   src/service/dispatch_playback.cpp
   src/service/dispatch_queue.cpp
   src/service/dispatch_library.cpp
+  src/service/dispatch_tag.cpp
+  src/service/dispatch_playlist.cpp
+  src/service/dispatch_lyrics_bookmark.cpp
   src/service/dispatch_config.cpp
   src/service/tag_writer.cpp
   src/service/media_session.cpp
