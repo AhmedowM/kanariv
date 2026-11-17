@@ -15,6 +15,10 @@ set(KANARIV_DB_MODULE_SOURCES
 
 set(KANARIV_DB_SOURCES
   src/db/core.cpp
+  src/db/track_repo.cpp
+  src/db/playlist_repo.cpp
+  src/db/queue_repo.cpp
+  src/db/history_repo.cpp
   src/db/engine_api.cpp
   src/db/state_store.cpp
   src/db/queue.cpp

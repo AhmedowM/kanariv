@@ -1,0 +1,108 @@
+#pragma once
+
+/**
+ * @file db_impl.hpp
+ * @brief Shared private state of `Database::Impl` for the db TUs.
+ * @ingroup kanariv_db
+ * @details Included by `core.cpp` (open/facade/stats), `track_repo.cpp`,
+ * `playlist_repo.cpp`, `queue_repo.cpp` and `history_repo.cpp`. Splitting the
+ * translation units moves code, not synchronization: every repo entry point
+ * still takes `dbMutex_`, and the statement cache is only touched through
+ * `getCachedForUse`.
+ */
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <db/queue.hpp>
+#include <db/statement.hpp>
+#include <expected>
+#include <filesystem>
+#include <kanariv/db/database.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
+namespace kanariv::db {
+
+/**
+ * @brief Closes an owned SQLite handle (defined in core.cpp).
+ * @ingroup kanariv_db
+ */
+struct SqliteCloser {
+    void operator()(sqlite3* db) const noexcept;
+};
+
+inline constexpr std::string_view insertTrackSql =
+    "INSERT INTO tracks (fingerprint, path, size, mtime, duration, sample_rate, channels, "
+    "bitrate, title, artist, album, album_artist, genre, year, track_num, disc_num, "
+    "cover_art_path, rating, play_count, last_played, date_added, last_scanned, dirty, "
+    "library_id, source_kind, source_key, source_available, source_display_name) VALUES "
+    "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+inline constexpr std::string_view updateTrackSql =
+    "UPDATE tracks SET fingerprint=?, path=?, size=?, mtime=?, duration=?, sample_rate=?, "
+    "channels=?, bitrate=?, title=?, artist=?, album=?, album_artist=?, genre=?, year=?, "
+    "track_num=?, disc_num=?, cover_art_path=?, rating=?, play_count=?, last_played=?, "
+    "date_added=?, last_scanned=?, dirty=?, library_id=?, source_kind=?, source_key=?, "
+    "source_available=?, source_display_name=? WHERE id=?";
+
+// Private implementation: the SQLite handle, statement cache and locks live
+// here so the public header stays include-light. Member order is load-bearing:
+// cached statements are finalized before the handle is closed.
+struct Database::Impl {
+    std::unique_ptr<sqlite3, SqliteCloser> db_;
+    /// Filesystem path the database was opened with (empty for :memory:/URI).
+    std::filesystem::path path_;
+    /// Non-owning log sink from DatabaseOptions (null = silent). See DatabaseOptions::logger.
+    kanariv::utils::Logger* logger_{nullptr};
+    // One mutex serialises the handle, the statement cache and every statement
+    // taken from it: SQLite statements and the cache are not safe to touch
+    // concurrently, so a shared/unique split only bought false parallelism.
+    mutable std::mutex dbMutex_;
+    mutable std::unordered_map<std::string, std::unique_ptr<SqliteStatement>> stmtCache_;
+
+    // Raw locking surface
+    std::expected<SqliteStatement*, kanariv::utils::Error>
+    getCachedForUse(std::string_view sql) const;
+    sqlite3* handle() const noexcept;
+    sqlite3* handleLocked() const noexcept;
+    std::mutex& mutex() const noexcept;
+
+    // TrackRow / library locked helpers
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    findByPathLocked(std::string_view path);
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    findBySourceLocked(const kanariv::types::SourceRef& source);
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    findByFingerprintLocked(const std::array<uint8_t, 32>& fp);
+    std::expected<int64_t, kanariv::utils::Error>
+    insertTrackLocked(const kanariv::types::TrackRow& t);
+    std::expected<void, kanariv::utils::Error> updateTrackLocked(const kanariv::types::TrackRow& t);
+    std::expected<void, kanariv::utils::Error> deleteTrackLocked(int64_t id);
+    std::expected<kanariv::types::TrackRow, kanariv::utils::Error> getTrackLocked(int64_t id);
+    std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error> libraryListLocked();
+    std::expected<void, kanariv::utils::Error>
+    libraryUpdateLocked(const kanariv::types::Library& l);
+
+    // Playlist / queue locked helpers
+    std::expected<int64_t, kanariv::utils::Error>
+    createPlaylistLocked(std::string_view name, int type = 0, std::string_view smart_query = {});
+    std::expected<void, kanariv::utils::Error> playlistAddTrackLocked(int64_t pid, int64_t tid,
+                                                                      int64_t pos = -1);
+    std::expected<void, kanariv::utils::Error> queueEnqueueLocked(int64_t qid, int64_t tid,
+                                                                  int64_t index = appendIndex);
+    std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLocked(int64_t qid);
+    std::size_t queueCountLocked(int64_t qid);
+};
+
+// Free functions for track binding (static, no impl_ needed)
+void bindTrackForInsert(SqliteStatement& st, const kanariv::types::TrackRow& t);
+void bindTrackForUpdate(SqliteStatement& st, const kanariv::types::TrackRow& t);
+
+} // namespace kanariv::db
