@@ -7,8 +7,8 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/math.hpp>
-#include <kanariv/utils/status_format.hpp>
 #include <kanariv/utils/ring.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -190,8 +190,7 @@ std::optional<ResolvedDevice> findDevice(ma_context& context, std::string_view k
 /// Resolves a configured device reference. A tagged id is looked up on its own
 /// backend first (the default context may have picked another backend); names
 /// and legacy indices use the default backend list.
-std::optional<ResolvedDevice> resolveConfiguredDevice(std::string_view key,
-                                                      std::string_view name) {
+std::optional<ResolvedDevice> resolveConfiguredDevice(std::string_view key, std::string_view name) {
     if (key.empty() || key == "auto")
         return std::nullopt;
     if (const auto tag = detail::deviceIdBackend(key)) {
@@ -315,8 +314,8 @@ float AudioOutput::volume() const noexcept {
 AudioOutput::ExpectedVoid AudioOutput::start() {
     std::lock_guard<std::mutex> lk(impl_->stateMutex);
     if (!impl_->initialized.load(std::memory_order_acquire)) {
-        return std::unexpected(kanariv::utils::Error{
-            kanariv::utils::StatusCode::State, std::string_view("audio output not initialized")});
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::State, std::string_view("audio output not initialized")));
     }
     if (impl_->running.load(std::memory_order_acquire)) {
         return {};
@@ -331,7 +330,7 @@ AudioOutput::ExpectedVoid AudioOutput::start() {
         if (impl_->cfg.logger)
             impl_->cfg.logger->warn("audio output start failed: {}", msg);
         return std::unexpected(
-            kanariv::utils::Error{kanariv::utils::StatusCode::Device, std::string_view(msg)});
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Device, std::string_view(msg)));
     }
     impl_->running.store(true, std::memory_order_release);
     return {};
@@ -351,7 +350,7 @@ AudioOutput::ExpectedVoid AudioOutput::stop() {
         if (impl_->cfg.logger)
             impl_->cfg.logger->warn("audio output stop failed: {}", msg);
         return std::unexpected(
-            kanariv::utils::Error{kanariv::utils::StatusCode::Device, std::string_view(msg)});
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Device, std::string_view(msg)));
     }
     return {};
 }
@@ -378,24 +377,24 @@ AudioOutput::ExpectedVoid AudioOutput::init(const Config& cfg) {
     // config the callback cannot serve (P4).
     if (impl_->initialized.load(std::memory_order_acquire)) {
         return std::unexpected(
-            kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                  std::string_view("audio output already initialized")});
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                      std::string_view("audio output already initialized")));
     }
     if (cfg.ring == nullptr) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                     std::string_view("ring must not be null")});
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, std::string_view("ring must not be null")));
     }
     if (cfg.sampleRate == 0) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                     std::string_view("sampleRate must be > 0")});
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, std::string_view("sampleRate must be > 0")));
     }
     if (cfg.channels == 0) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                     std::string_view("channels must be > 0")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("channels must be > 0")));
     }
     if (cfg.channels > 32) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
-                                                     std::string_view("channels must be <= 32")});
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Unsupported, std::string_view("channels must be <= 32")));
     }
 
     impl_->cfg = cfg;
@@ -416,16 +415,15 @@ AudioOutput::ExpectedVoid AudioOutput::init(const Config& cfg) {
                 std::string("ma_context_init(null) failed: ") + ma_result_description(ctxRes);
             if (cfg.logger)
                 cfg.logger->warn("audio output init failed: {}", msg);
-            return std::unexpected(
-                kanariv::utils::Error{kanariv::utils::StatusCode::Device, std::string_view(msg)});
+            return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Device,
+                                                             std::string_view(msg)));
         }
         impl_->ownsDeviceContext = true;
         pContext = &impl_->deviceContext;
     } else if (const auto resolved = resolveConfiguredDevice(cfg.deviceId, cfg.deviceName)) {
         const ma_backend backends[] = {resolved->backend};
         ma_context_config ctxConfig = ma_context_config_init();
-        const ma_result ctxRes =
-            ma_context_init(backends, 1, &ctxConfig, &impl_->deviceContext);
+        const ma_result ctxRes = ma_context_init(backends, 1, &ctxConfig, &impl_->deviceContext);
         if (ctxRes == MA_SUCCESS) {
             impl_->ownsDeviceContext = true;
             impl_->selectedDeviceId = resolved->id;
@@ -462,7 +460,7 @@ AudioOutput::ExpectedVoid AudioOutput::init(const Config& cfg) {
         if (cfg.logger)
             cfg.logger->warn("audio output init failed: {}", msg);
         return std::unexpected(
-            kanariv::utils::Error{kanariv::utils::StatusCode::Device, std::string_view(msg)});
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Device, std::string_view(msg)));
     }
     impl_->initialized.store(true, std::memory_order_release);
 

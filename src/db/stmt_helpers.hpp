@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
 #include <string_view>
 
 /**
@@ -82,6 +83,18 @@ struct StmtGuard {
         return s;
     }
 };
+
+/**
+ * @brief Maps a failed SQLite step to the layer's StatusCode.
+ * @ingroup kanariv_db
+ * @param db Connection the statement ran on (supplies message and extended code).
+ * @param rc Return code from `sqlite3_step`.
+ * @return `AlreadyExists` for uniqueness violations, `Busy` for lock
+ * contention, `Internal` otherwise; the message carries `sqlite3_errmsg`.
+ * @par Thread safety
+ * Caller must hold the DB lock protecting the connection.
+ */
+kanariv::utils::Error sqliteError(sqlite3* db, int rc);
 
 /**
  * @brief Maps the current row of a `selectTracksCols` statement into a TrackRow.

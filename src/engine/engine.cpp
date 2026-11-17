@@ -19,8 +19,8 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/math.hpp>
-#include <kanariv/utils/status_format.hpp>
 #include <kanariv/utils/ring.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -144,12 +144,61 @@ struct Engine::Impl {
      */
     std::expected<void, kanariv::utils::Error>
     saveStateLocked(std::optional<int64_t> livePositionMs = std::nullopt);
+    /**
+     * @brief saveStateLocked() ignoring the outcome, logging a failure.
+     * @details Used on checkpoint/teardown paths where a persist failure must
+     * not fail the operation but must not be silent either.
+     * @pre `queueMutex_` is held by the caller (same as saveStateLocked).
+     */
+    void saveStateBestEffort(std::optional<int64_t> livePositionMs = std::nullopt);
+    /// @brief output_->start() ignoring the outcome, logging a failure.
+    void startOutputBestEffort();
+    /// @brief output_->stop() ignoring the outcome, logging a failure.
+    void stopOutputBestEffort();
     std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
     fetchTrackByPosLocked(int64_t qid, int64_t pos);
 
     // queue locking
-    bool tryLockQueue() noexcept;
-    bool tryLockQueueFor(std::chrono::milliseconds wait) noexcept;
+    /**
+     * @brief RAII handle for `queueMutex_`.
+     * @details Produced by tryLockQueue()/tryLockQueueFor(); releases the lock
+     * in its destructor so early returns cannot leak it. Call `release()` when
+     * the critical section ends before the scope does (e.g. to publish events
+     * outside the queue lock).
+     */
+    class QueueGuard {
+      public:
+        QueueGuard() noexcept = default;
+        QueueGuard(QueueGuard&& other) noexcept : impl_(std::exchange(other.impl_, nullptr)) {}
+        QueueGuard(const QueueGuard&) = delete;
+        QueueGuard& operator=(const QueueGuard&) = delete;
+        QueueGuard& operator=(QueueGuard&&) = delete;
+        ~QueueGuard() {
+            if (impl_)
+                impl_->unlockQueue();
+        }
+
+        explicit operator bool() const noexcept {
+            return impl_ != nullptr;
+        }
+        /// @brief Releases the lock now (the destructor then does nothing).
+        void release() noexcept {
+            if (impl_) {
+                impl_->unlockQueue();
+                impl_ = nullptr;
+            }
+        }
+
+      private:
+        friend struct Impl;
+        explicit QueueGuard(Impl* impl) noexcept : impl_(impl) {}
+
+        Impl* impl_{nullptr};
+    };
+    /// @brief Non-blocking acquisition; returns an empty guard when contended.
+    QueueGuard tryLockQueue() noexcept;
+    /// @brief Bounded acquisition; returns an empty guard on timeout.
+    QueueGuard tryLockQueueFor(std::chrono::milliseconds wait) noexcept;
     void unlockQueue() noexcept;
     std::unexpected<kanariv::utils::Error> queueBusy(std::string_view op,
                                                      std::string_view msg) const;
@@ -225,8 +274,8 @@ struct Engine::Impl {
      */
     struct PeekedNext {
         kanariv::types::TrackRow track{}; ///< Entry at `plan.position`.
-        detail::NextPlan plan{};       ///< Cursor/permutation change to commit.
-        int64_t queueId{1};            ///< Effective queue id (0 normalized to 1).
+        detail::NextPlan plan{};          ///< Cursor/permutation change to commit.
+        int64_t queueId{1};               ///< Effective queue id (0 normalized to 1).
     };
     /**
      * @brief Resolves the next queue entry without mutating cursor/perm.
@@ -354,7 +403,7 @@ struct Engine::Impl {
     // auto-advance drivers (monitor gapless arm, decode EOF) carry the value
     // they decided on, so only the first of them moves the queue (E12).
     std::atomic<uint64_t> transitionEpoch_{0};
-    std::string lastErr_{};             ///< Transport-thread only (diagnostics).
+    std::string lastErr_{}; ///< Transport-thread only (diagnostics).
 
     kanariv::contracts::Storage storage_{};
 
@@ -631,10 +680,10 @@ void Engine::Impl::shutdown() {
     if (hasDb()) {
         std::lock_guard<std::timed_mutex> qlk(queueMutex_);
         state_.cursorPos = static_cast<int64_t>(queue_.cursor);
-        (void)saveStateLocked();
+        saveStateBestEffort();
     }
     if (output_) {
-        (void)output_->stop();
+        stopOutputBestEffort();
         output_.reset();
     }
     decoder_.reset();
@@ -655,13 +704,13 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
         // tag write, in which case there is no decoder to start.
         if (suspended_.load(std::memory_order_acquire))
             return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
-                                                            "track suspended for tag write"));
+                                                             "track suspended for tag write"));
         // resume, don't dequeue; playStart_/output_ are decodeMtx_ state
         {
             std::unique_lock<std::mutex> lk(decodeMtx_);
             playStart_ = std::chrono::steady_clock::now();
             if (output_)
-                (void)output_->start();
+                startOutputBestEffort();
         }
         lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
         playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
@@ -684,7 +733,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
         playStart_ = std::chrono::steady_clock::now();
         resetPlaybackAccounting();
         if (output_)
-            (void)output_->start();
+            startOutputBestEffort();
         lk.unlock();
         decodeCv_.notify_all();
         monCv_.notify_all();
@@ -692,7 +741,8 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
     } // end if Playing
 
     // Stopped -> resume persisted track if config enabled, else start new via cursor
-    if (!tryLockQueueFor(queueLockWait))
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("play", "queue busy");
     queue_.queue_id = queueId;
     kanariv::types::TrackRow t;
@@ -705,7 +755,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
             if (r) {
                 auto pr = doPlayTrack(t, static_cast<double>(state_.positionMs) / 1000.0);
                 if (pr) {
-                    unlockQueue();
+                    qlk.release();
                     pushEvent(*pr);
                     return {};
                 }
@@ -714,10 +764,8 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
     }
     // Fall back to next track from cursor
     auto r = queueNextLocked(t);
-    if (!r) {
-        unlockQueue();
+    if (!r)
         return std::unexpected(r.error());
-    }
     // A restart can land on the persisted track again (single-track queue, or
     // a cursor parked on it). Start at the persisted offset instead of letting
     // the device play the head until a client-side seek arrives; an explicit
@@ -726,7 +774,7 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
     if (t.id == state_.currentTrackId && state_.positionMs > 0)
         from = static_cast<double>(state_.positionMs) / 1000.0;
     auto pr = doPlayTrack(t, from);
-    unlockQueue();
+    qlk.release();
     if (!pr)
         return std::unexpected(pr.error());
     pushEvent(*pr);
@@ -740,26 +788,21 @@ Engine::ExpectedVoid Engine::Impl::playTrack(int64_t trackId) {
     if (trackId <= 0)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "bad track id"));
-    if (!tryLockQueueFor(queueLockWait))
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("playTrack", "queue busy");
     auto idx = storage_.queues->queueIndexOf(queue_.queue_id, trackId);
-    if (!idx) {
-        unlockQueue();
+    if (!idx)
         return std::unexpected{idx.error()};
-    }
-    if (!*idx) {
-        unlockQueue();
+    if (!*idx)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                          "track not in active queue")};
-    }
     size_t cursor = **idx;
     if (queue_.shuffle) {
         if (queue_.perm.empty()) {
             auto sr = setShuffleLocked(true);
-            if (!sr) {
-                unlockQueue();
+            if (!sr)
                 return std::unexpected(sr.error());
-            }
         }
         bool found = false;
         for (size_t i = 0; i < queue_.perm.size(); ++i) {
@@ -769,21 +812,17 @@ Engine::ExpectedVoid Engine::Impl::playTrack(int64_t trackId) {
                 break;
             }
         }
-        if (!found) {
-            unlockQueue();
+        if (!found)
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                              "track not in shuffle order")};
-        }
     }
     queue_.cursor = cursor;
     kanariv::types::TrackRow t;
     auto r = queueNextLocked(t);
-    if (!r) {
-        unlockQueue();
+    if (!r)
         return std::unexpected(r.error());
-    }
     auto pr = doPlayTrack(t);
-    unlockQueue();
+    qlk.release();
     if (!pr)
         return std::unexpected(pr.error());
     pushEvent(*pr);
@@ -795,11 +834,10 @@ Engine::ExpectedVoid Engine::Impl::pause() {
     // under queueMutex_: take the queue lock first (documented order) so the
     // pause snapshot and saveStateLocked() cannot interleave with a concurrent
     // transport command or the monitor checkpoint.
-    if (!tryLockQueueFor(queueLockWait))
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("pause", "queue busy");
-    auto r = pauseLocked();
-    unlockQueue();
-    return r;
+    return pauseLocked();
 }
 
 Engine::ExpectedVoid Engine::Impl::pauseLocked() {
@@ -812,13 +850,13 @@ Engine::ExpectedVoid Engine::Impl::pauseLocked() {
         std::unique_lock<std::mutex> lk(decodeMtx_);
         pausePos_ = currentPositionLocked();
         if (output_)
-            (void)output_->stop();
+            stopOutputBestEffort();
     }
     accountPlaybackTime();
     lastPlaybackSampleMs_.store(0, std::memory_order_release);
     playbackState_.store(kanariv::types::PlaybackState::Paused, std::memory_order_release);
     if (hasDb())
-        (void)saveStateLocked();
+        saveStateBestEffort();
     return {};
 }
 
@@ -832,12 +870,12 @@ Engine::ExpectedVoid Engine::Impl::resume() {
     // owns that reopen (it clears suspended_ through doPlayTrack()).
     if (suspended_.load(std::memory_order_acquire))
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
-                                                        "track suspended for tag write"));
+                                                         "track suspended for tag write"));
     {
         std::unique_lock<std::mutex> lk(decodeMtx_);
         playStart_ = std::chrono::steady_clock::now();
         if (output_)
-            (void)output_->start();
+            startOutputBestEffort();
     }
     lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
     playbackState_.store(kanariv::types::PlaybackState::Playing, std::memory_order_release);
@@ -854,7 +892,8 @@ Engine::ExpectedVoid Engine::Impl::stop() {
     // best-effort fix-up: a stop that cannot take the queue lock fails Busy
     // (like playTrack/suspendCurrentTrack) and leaves playback untouched, so
     // the next play cannot silently skip the stopped track.
-    if (!tryLockQueueFor(queueLockWait))
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("stop", "queue busy");
     if (s == kanariv::types::PlaybackState::Playing)
         accountPlaybackTime();
@@ -903,7 +942,7 @@ Engine::ExpectedVoid Engine::Impl::stop() {
     {
         std::unique_lock<std::mutex> lk(decodeMtx_);
         if (output_) {
-            (void)output_->stop();
+            stopOutputBestEffort();
             output_.reset();
         }
         decoder_.reset();
@@ -918,8 +957,7 @@ Engine::ExpectedVoid Engine::Impl::stop() {
     // after a restart), so clear the resume position.
     state_.positionMs = 0;
     if (hasDb())
-        (void)saveStateLocked();
-    unlockQueue();
+        saveStateBestEffort();
     return {};
 }
 
@@ -931,15 +969,15 @@ Engine::ExpectedVoid Engine::Impl::seek(double seconds) {
     // of a stream that cannot produce audio (same failure resume() rejects).
     if (suspended_.load(std::memory_order_acquire))
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::State,
-                                                        "track suspended for tag write")};
+                                                         "track suspended for tag write")};
     if (!std::isfinite(seconds) || seconds < 0)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "bad seconds"));
 
     // Queue lock first: the seek publishes a persisted position (queueMutex_
     // state) and must not be caught by pauseLocked()/engineTick mid-update.
-    std::unique_lock<std::timed_mutex> qlk(queueMutex_, std::defer_lock);
-    if (!qlk.try_lock_for(queueLockWait))
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("seek", "queue busy");
     // Pause decode thread to safely seek + reset ring (prevents race with decodeLoop)
     // A seek repositions the transport; it must not start one. The state it
@@ -977,7 +1015,7 @@ Engine::ExpectedVoid Engine::Impl::seek(double seconds) {
     }
     decodeCv_.notify_all();
     if (hasDb())
-        (void)saveStateLocked();
+        saveStateBestEffort();
     return {};
 }
 
@@ -986,9 +1024,9 @@ Engine::ExpectedVoid Engine::Impl::suspendCurrentTrack() {
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no track"));
     }
-    if (!tryLockQueueFor(queueLockWait)) {
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("suspend", "queue busy");
-    }
     // Mirror stop() teardown but keep cursor, current track, and history
     // mark: the file handles must go so TagLib can rewrite the file, while
     // everything needed to resume stays in place. decodeMtx_ serializes with
@@ -1001,14 +1039,14 @@ Engine::ExpectedVoid Engine::Impl::suspendCurrentTrack() {
     suspended_.store(true, std::memory_order_release);
     playbackState_.store(kanariv::types::PlaybackState::Paused, std::memory_order_release);
     if (output_)
-        (void)output_->stop();
+        stopOutputBestEffort();
     if (ring_)
         ring_->reset();
     decoder_.reset();
     reader_.reset();
     resetCrossfadeLocked();
     lk.unlock();
-    unlockQueue();
+    qlk.release();
     decodeCv_.notify_all();
     monCv_.notify_all();
     return {};
@@ -1016,16 +1054,14 @@ Engine::ExpectedVoid Engine::Impl::suspendCurrentTrack() {
 
 Engine::ExpectedVoid Engine::Impl::resumeAfterTagWrite(const kanariv::types::TrackRow& t,
                                                        double pos, bool wasPaused) {
-    if (!tryLockQueueFor(queueLockWait)) {
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("resume", "queue busy");
-    }
     // The user may have moved on while suspended (next/prev/play from
     // another client): the tag/db update already landed, so there is
     // nothing to reopen. Success, not an error.
-    if (!hasCurrent_.load(std::memory_order_acquire) || state_.currentTrackId != t.id) {
-        unlockQueue();
+    if (!hasCurrent_.load(std::memory_order_acquire) || state_.currentTrackId != t.id)
         return {};
-    }
     bool marked = markedPlayed_.load(std::memory_order_acquire);
     uint64_t accumulated = accumulatedPlaybackMs_.load(std::memory_order_acquire);
     kanariv::types::TrackRow reopen = t;
@@ -1033,22 +1069,18 @@ Engine::ExpectedVoid Engine::Impl::resumeAfterTagWrite(const kanariv::types::Tra
     markedPlayed_.store(marked, std::memory_order_release);
     accumulatedPlaybackMs_.store(accumulated, std::memory_order_release);
     lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
-    if (!r) {
-        unlockQueue();
+    if (!r)
         return std::unexpected(r.error());
-    }
     kanariv::types::EngineEvent started = *r;
     // doPlayTrack seeks before preroll and starts Playing at `pos`; only the
     // prior paused state is left to restore. The queue lock is already held,
     // so use the *Locked body instead of pause() (which would deadlock).
     if (wasPaused) {
         auto pr = pauseLocked();
-        if (!pr) {
-            unlockQueue();
+        if (!pr)
             return std::unexpected(pr.error());
-        }
     }
-    unlockQueue();
+    qlk.release();
     pushEvent(started);
     return {};
 }
@@ -1081,7 +1113,7 @@ Engine::ExpectedVoid Engine::Impl::setVolume(float g) {
             lastVolSaveMs_.compare_exchange_strong(last, now, std::memory_order_acq_rel,
                                                    std::memory_order_acquire)) {
             state_.cursorPos = static_cast<int64_t>(queue_.cursor);
-            (void)saveStateLocked();
+            saveStateBestEffort();
         }
     }
     return {};
@@ -1134,34 +1166,37 @@ kanariv::types::RepeatMode Engine::Impl::repeat() const noexcept {
 }
 
 std::vector<int64_t> Engine::Impl::shufflePermFor(int64_t qid) {
-    if (!tryLockQueue())
+    auto qlk = tryLockQueue();
+    if (!qlk)
         return {};
     std::vector<int64_t> out;
     if (queue_.queue_id == qid && queue_.shuffle && !queue_.perm.empty())
         out = queue_.perm;
-    unlockQueue();
     return out;
 }
 
 void Engine::Impl::noteEnqueued(int64_t qid, std::size_t count) {
-    if (count == 0 || !hasDb() || !tryLockQueue())
+    if (count == 0 || !hasDb())
+        return;
+    auto qlk = tryLockQueue();
+    if (!qlk)
         return;
     if (queue_.queue_id == qid && queue_.shuffle && !queue_.perm.empty()) {
         auto n = storage_.queues->queueCount(qid);
-        if (!n) {
-            unlockQueue();
+        if (!n)
             return;
-        }
         std::size_t start = (*n >= count) ? *n - count : 0;
         for (std::size_t i = start; i < *n; ++i)
             queue_.perm.push_back(static_cast<int64_t>(i));
-        (void)saveStateLocked();
+        saveStateBestEffort();
     }
-    unlockQueue();
 }
 
 void Engine::Impl::noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) {
-    if (from == to || !hasDb() || !tryLockQueue())
+    if (from == to || !hasDb())
+        return;
+    auto qlk = tryLockQueue();
+    if (!qlk)
         return;
     if (queue_.queue_id == qid && queue_.shuffle && !queue_.perm.empty()) {
         // The permutation lists positions, so translate old indexes to the new
@@ -1177,9 +1212,8 @@ void Engine::Impl::noteQueueMoved(int64_t qid, std::size_t from, std::size_t to)
             else if (t < f && p >= t && p < f)
                 ++p;
         }
-        (void)saveStateLocked();
+        saveStateBestEffort();
     }
-    unlockQueue();
 }
 
 std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Engine::Impl::stats() {
@@ -1216,13 +1250,14 @@ Engine::ExpectedVoid Engine::Impl::setShuffle(std::optional<bool> on) {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    if (!tryLockQueueFor(queueLockWait))
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("setShuffle", "busy");
     // Resolve a toggle while holding the lock: reading the mode before the
     // acquisition let two toggles observe the same value and both write it.
     const bool want = on.value_or(!queue_.shuffle.load(std::memory_order_relaxed));
     auto r = setShuffleLocked(want);
-    unlockQueue();
+    qlk.release();
     if (!r)
         return std::unexpected(r.error());
     // push queue changed event
@@ -1238,7 +1273,8 @@ Engine::ExpectedVoid Engine::Impl::setRepeat(kanariv::types::RepeatMode m) {
         m != kanariv::types::RepeatMode::One)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "bad repeat"));
-    if (!tryLockQueueFor(queueLockWait))
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("setRepeat", "busy");
     const auto prevRepeat = queue_.repeat.load(std::memory_order_relaxed);
     const auto prevStateRepeat = state_.repeatMode.load(std::memory_order_relaxed);
@@ -1256,7 +1292,6 @@ Engine::ExpectedVoid Engine::Impl::setRepeat(kanariv::types::RepeatMode m) {
         state_.repeatMode.store(prevStateRepeat, std::memory_order_relaxed);
         state_.cursorPos.store(prevCursorPos, std::memory_order_relaxed);
     }
-    unlockQueue();
     if (err)
         return std::unexpected(*err);
     return {};
@@ -1275,12 +1310,12 @@ Engine::ExpectedVoid Engine::Impl::switchQueue(int64_t qid) {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    if (!tryLockQueueFor(queueLockWait))
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("switchQueue", "busy");
     // Validate the queue while holding queueMutex_.
     auto exists = storage_.queues->queueExists(qid);
     if (!exists || !*exists) {
-        unlockQueue();
         if (!exists)
             return std::unexpected(exists.error());
         return std::unexpected(
@@ -1288,7 +1323,6 @@ Engine::ExpectedVoid Engine::Impl::switchQueue(int64_t qid) {
     }
     if (queue_.queue_id == qid) {
         // already active, ensure cursor consistent with DB state but not error
-        unlockQueue();
         return {};
     }
     // switch active queue: reset cursor, clear shuffle perm, adopt the queue's
@@ -1325,7 +1359,7 @@ Engine::ExpectedVoid Engine::Impl::switchQueue(int64_t qid) {
         state_.repeatMode.store(prevStateRepeat, std::memory_order_relaxed);
     }
     // also persist via saveState includes active_queue_id, cursor_pos, shuffle_perm cleared
-    unlockQueue();
+    qlk.release();
     if (err)
         return std::unexpected(*err);
     kanariv::types::EngineEvent ev;
@@ -1348,7 +1382,7 @@ Engine::ExpectedVoid Engine::Impl::autoNextIfEpoch(uint64_t epoch) {
 }
 
 Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
-                                                std::optional<uint64_t> expectedEpoch) {
+                                                 std::optional<uint64_t> expectedEpoch) {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
@@ -1391,9 +1425,9 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
     }
     // Monitor autoNext passes 0 (fail-fast; the next tick retries), user
     // next() passes the wait budget so colliding skips execute.
-    bool locked =
+    auto qlk =
         lockWaitMs > 0 ? tryLockQueueFor(std::chrono::milliseconds(lockWaitMs)) : tryLockQueue();
-    if (!locked) {
+    if (!qlk) {
         // Monitor autoNext fail-fast is routine (next tick retries) -- stay
         // silent; only user-wait collisions are diagnostic.
         if (lockWaitMs > 0)
@@ -1403,7 +1437,6 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
     if (expectedEpoch && transitionEpoch_.load(std::memory_order_acquire) != *expectedEpoch) {
         // Another driver already transitioned the track this decision was
         // taken for; advancing again would skip an entry.
-        unlockQueue();
         return {};
     }
     if (stopAtEnd &&
@@ -1416,10 +1449,8 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
             atEnd = queue_.cursor >= queue_.perm.size();
         } else {
             auto cnt = storage_.queues->queueCount(queue_.queue_id.load(std::memory_order_relaxed));
-            if (!cnt) {
-                unlockQueue();
+            if (!cnt)
                 return std::unexpected(cnt.error());
-            }
             atEnd = queue_.cursor >= *cnt;
         }
         if (atEnd) {
@@ -1429,7 +1460,7 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
             state_.currentTrackId.store(0, std::memory_order_release);
             state_.currentPath.clear();
             hasCurrent_.store(false, std::memory_order_release);
-            (void)saveStateLocked();
+            saveStateBestEffort();
             const int64_t endedId = currentTrack_.id;
             const int64_t qid = queue_.queue_id.load(std::memory_order_relaxed);
             double endedDuration = 0.0;
@@ -1439,13 +1470,13 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
                 playbackState_.store(kanariv::types::PlaybackState::Stopped,
                                      std::memory_order_release);
                 if (output_)
-                    (void)output_->stop();
+                    stopOutputBestEffort();
                 if (ring_)
                     ring_->reset();
                 pausePos_ = 0;
                 endedDuration = duration_;
             }
-            unlockQueue();
+            qlk.release();
             // Notify listeners (e.g. the OS media-session bridge) that the
             // track ended naturally so now-playing UI can switch to Stopped.
             kanariv::types::EngineEvent ev;
@@ -1460,12 +1491,10 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
     }
     kanariv::types::TrackRow t;
     auto r = queueNextLocked(t);
-    if (!r) {
-        unlockQueue();
+    if (!r)
         return std::unexpected(r.error());
-    }
     auto pr = doPlayTrack(t);
-    unlockQueue();
+    qlk.release();
     if (!pr)
         return std::unexpected(pr.error());
     pushEvent(*pr);
@@ -1476,16 +1505,15 @@ Engine::ExpectedVoid Engine::Impl::prev() {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
-    if (!tryLockQueueFor(queueLockWait))
+    auto qlk = tryLockQueueFor(queueLockWait);
+    if (!qlk)
         return queueBusy("prev", "busy");
     kanariv::types::TrackRow t;
     auto r = queuePrevLocked(t);
-    if (!r) {
-        unlockQueue();
+    if (!r)
         return std::unexpected(r.error());
-    }
     auto pr = doPlayTrack(t);
-    unlockQueue();
+    qlk.release();
     if (!pr)
         return std::unexpected(pr.error());
     pushEvent(*pr);
@@ -1584,12 +1612,12 @@ bool Engine::Impl::hasDb() const noexcept {
     return storage_.complete() && storage_.queues->isOpen();
 }
 
-bool Engine::Impl::tryLockQueue() noexcept {
-    return queueMutex_.try_lock();
+Engine::Impl::QueueGuard Engine::Impl::tryLockQueue() noexcept {
+    return queueMutex_.try_lock() ? QueueGuard{this} : QueueGuard{};
 }
 
-bool Engine::Impl::tryLockQueueFor(std::chrono::milliseconds wait) noexcept {
-    return queueMutex_.try_lock_for(wait);
+Engine::Impl::QueueGuard Engine::Impl::tryLockQueueFor(std::chrono::milliseconds wait) noexcept {
+    return queueMutex_.try_lock_for(wait) ? QueueGuard{this} : QueueGuard{};
 }
 
 void Engine::Impl::unlockQueue() noexcept {
@@ -1744,6 +1772,21 @@ Engine::Impl::saveStateLocked(std::optional<int64_t> livePositionMs) {
     return result;
 }
 
+void Engine::Impl::saveStateBestEffort(std::optional<int64_t> livePositionMs) {
+    if (auto r = saveStateLocked(livePositionMs); !r && cfg_.logger)
+        cfg_.logger->warn("state persist failed: {}", r.error());
+}
+
+void Engine::Impl::startOutputBestEffort() {
+    if (auto r = output_->start(); !r && cfg_.logger)
+        cfg_.logger->warn("audio start failed: {}", r.error());
+}
+
+void Engine::Impl::stopOutputBestEffort() {
+    if (auto r = output_->stop(); !r && cfg_.logger)
+        cfg_.logger->warn("audio stop failed: {}", r.error());
+}
+
 std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
 Engine::Impl::fetchTrackByPosLocked(int64_t qid, int64_t pos) {
     if (!hasDb())
@@ -1872,13 +1915,13 @@ bool Engine::Impl::commitNextLocked(const QueueFingerprint& expected, PeekedNext
         queue_.perm = std::move(*next.plan.newPerm);
         queue_.shuffle.store(true, std::memory_order_relaxed);
         queue_.cursor = next.plan.cursor;
-        (void)saveStateLocked(livePositionMs);
+        saveStateBestEffort(livePositionMs);
         return true;
     }
     if (queue_.cursor == next.plan.cursor)
         return true; // RepeatMode::One replay: the cursor must not move.
     queue_.cursor = next.plan.cursor;
-    (void)saveStateLocked(livePositionMs);
+    saveStateBestEffort(livePositionMs);
     return true;
 }
 
@@ -1920,7 +1963,7 @@ Engine::Impl::queuePrevLocked(kanariv::types::TrackRow& out) {
         if (!tr)
             return std::unexpected(tr.error());
         queue_.cursor++;
-        (void)saveStateLocked();
+        saveStateBestEffort();
         out = tr.value();
         return {};
     }
@@ -1939,7 +1982,7 @@ Engine::Impl::queuePrevLocked(kanariv::types::TrackRow& out) {
     }
     int64_t pos = queue_.perm[queue_.cursor];
     queue_.cursor++;
-    (void)saveStateLocked();
+    saveStateBestEffort();
     auto tr = fetchTrackByPosLocked(qid, pos);
     if (!tr)
         return std::unexpected(tr.error());
@@ -1965,7 +2008,7 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
     // every caller already holds the queue lock.
     std::unique_lock<std::mutex> lk(decodeMtx_);
     if (output_) {
-        (void)output_->stop();
+        stopOutputBestEffort();
         output_.reset();
     }
     decoder_.reset();
@@ -1990,7 +2033,8 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
                 decoder_ = std::move(dRes.value());
                 opened = true;
                 duration_ = decoder_->totalFrames()
-                                ? static_cast<double>(decoder_->totalFrames()) / static_cast<double>(decoder_->sampleRate())
+                                ? static_cast<double>(decoder_->totalFrames()) /
+                                      static_cast<double>(decoder_->sampleRate())
                                 : t.duration;
                 if (duration_ <= 0)
                     duration_ = t.duration > 0 ? t.duration : 1.0;
@@ -2072,7 +2116,7 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
                     }
                     // preroll: decode some frames before start
                     preroll();
-                    (void)output_->start();
+                    startOutputBestEffort();
                 } else {
                     lastErr_ = oRes.error().message;
                 }
@@ -2146,7 +2190,7 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
     // queue lock the caller holds is what it requires).
     lk.unlock();
     if (hasDb())
-        (void)saveStateLocked();
+        saveStateBestEffort();
     kanariv::types::EngineEvent ev;
     ev.type = kanariv::types::EngineEventType::TrackStarted;
     ev.track_id = t.id;
@@ -2305,7 +2349,8 @@ void Engine::Impl::engineTick() {
     // history, event dispatch and the advance decisions then run lock-free, so
     // no callback and no database write happens under the queue lock. The
     // monitor is fail-fast: a contended tick is skipped and retried.
-    if (!tryLockQueue())
+    auto qlk = tryLockQueue();
+    if (!qlk)
         return;
     const TickSnapshot snap = snapshotLocked();
     if (snap.playback == kanariv::types::PlaybackState::Playing) {
@@ -2316,7 +2361,7 @@ void Engine::Impl::engineTick() {
                 lastPosSaveMs_.store(now, std::memory_order_release);
         }
     }
-    unlockQueue();
+    qlk.release();
 
     doHistoryMark(snap);
     if (snap.playback != kanariv::types::PlaybackState::Playing)
@@ -2406,7 +2451,8 @@ bool Engine::Impl::tryPublishCrossfade() {
         fadeOutSamples_ = 0;
         fadeOutStart_ = 0;
         if (cfg_.fadeOutMs > 0 && sampleRate > 0.0 && trackDuration > 0.0) {
-            fadeOutSamples_ = static_cast<uint64_t>(cfg_.fadeOutMs) * static_cast<uint64_t>(sampleRate) / 1000;
+            fadeOutSamples_ =
+                static_cast<uint64_t>(cfg_.fadeOutMs) * static_cast<uint64_t>(sampleRate) / 1000;
             fadeOutStart_ = trackDuration - static_cast<double>(cfg_.fadeOutMs) / 1000.0;
             if (fadeOutStart_ < 0.0)
                 fadeOutStart_ = 0.0;
@@ -2431,7 +2477,7 @@ bool Engine::Impl::tryPublishCrossfade() {
     state_.cursorPos.store(static_cast<int64_t>(queue_.cursor), std::memory_order_relaxed);
     resetPlaybackAccounting();
     if (hasDb())
-        (void)saveStateLocked();
+        saveStateBestEffort();
     const int64_t queueId = queue_.queue_id.load(std::memory_order_relaxed);
     qlk.unlock();
 
@@ -2594,8 +2640,8 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
                         uint32_t overlapRate = decoder_ ? decoder_->sampleRate() : 0;
                         if (overlapRate == 0)
                             overlapRate = crossfadeDecoder_->sampleRate();
-                        crossfadeSamples_ =
-                            static_cast<uint64_t>(cfg_.crossfadeMs) * static_cast<uint64_t>(overlapRate) / 1000;
+                        crossfadeSamples_ = static_cast<uint64_t>(cfg_.crossfadeMs) *
+                                            static_cast<uint64_t>(overlapRate) / 1000;
                         crossfadeSample_ = 0;
                         armed = true;
                     }

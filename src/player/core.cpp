@@ -12,8 +12,8 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/math.hpp>
-#include <kanariv/utils/status_format.hpp>
 #include <kanariv/utils/ring.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -121,8 +121,8 @@ Player::Player() : impl_(std::make_unique<Impl>()) {}
 Player::ExpectedPlayer Player::create(const PlayerOptions& opts) {
     auto p = std::unique_ptr<Player>(new Player());
     if (!p->impl_->init(opts)) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Device,
-                                                     std::string_view("player init failed")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Device,
+                                                         std::string_view("player init failed")));
     }
     return std::unique_ptr<Player>(std::move(p));
 }
@@ -196,8 +196,8 @@ bool Player::Impl::init(const PlayerOptions& opts) {
 
 Player::ExpectedVoid Player::Impl::open(std::string_view path) {
     if (path.empty()) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                     std::string_view("empty path")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("empty path")));
     }
     auto readerResult = kanariv::media::FileReader::open(path);
     if (!readerResult) {
@@ -217,8 +217,8 @@ Player::ExpectedVoid Player::Impl::open(std::string_view path) {
 
 Player::ExpectedVoid Player::Impl::openReader(std::unique_ptr<media::Reader> reader) {
     if (!reader) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                     std::string_view("null reader")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("null reader")));
     }
 
     std::lock_guard<std::mutex> control(controlMutex_);
@@ -253,8 +253,8 @@ Player::ExpectedVoid Player::Impl::openReader(std::unique_ptr<media::Reader> rea
 
     // Ring capacity is shared policy (see player/playback_policy.hpp); the
     // Engine keeps its own documented capacity there too.
-    auto ring = std::make_shared<kanariv::utils::SpscRing<float>>(
-        playback::policy::playerRingFrames, ch);
+    auto ring =
+        std::make_shared<kanariv::utils::SpscRing<float>>(playback::policy::playerRingFrames, ch);
 
     // Create audio output
     AudioOutput::Config cfg;
@@ -305,8 +305,8 @@ Player::ExpectedVoid Player::Impl::openReader(std::unique_ptr<media::Reader> rea
             state_.store(State::Error, std::memory_order_release);
             openGate_.store(true, std::memory_order_release);
             cv_.notify_all();
-            return std::unexpected(kanariv::utils::Error{
-                kanariv::utils::StatusCode::Io, std::string_view("preroll decode failed")});
+            return std::unexpected(kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Io, std::string_view("preroll decode failed")));
         }
         lastError_.clear();
         state_.store(State::Stopped, std::memory_order_release);
@@ -322,18 +322,18 @@ Player::ExpectedVoid Player::Impl::play() {
     std::lock_guard<std::mutex> graph(graphMutex_);
 
     if (!decoder_ || !ring_ || !output_) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
-                                                     std::string_view("not opened")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                         std::string_view("not opened")));
     }
 
     State s = state_.load(std::memory_order_acquire);
     if (s == State::Playing) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
-                                                     std::string_view("already playing")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                         std::string_view("already playing")));
     }
     if (s == State::Error) {
-        return std::unexpected(kanariv::utils::Error{
-            kanariv::utils::StatusCode::State, std::string_view("error state; reopen to play")});
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::State, std::string_view("error state; reopen to play")));
     }
 
     // Replay after a clean end of stream, or after stop() left the decoder
@@ -379,8 +379,8 @@ Player::ExpectedVoid Player::Impl::pause() {
     std::lock_guard<std::mutex> graph(graphMutex_);
 
     if (state_.load(std::memory_order_acquire) != State::Playing) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
-                                                     std::string_view("not playing")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                         std::string_view("not playing")));
     }
 
     isPlaying_.store(false, std::memory_order_release);
@@ -415,8 +415,8 @@ Player::ExpectedVoid Player::Impl::resume() {
     std::lock_guard<std::mutex> graph(graphMutex_);
 
     if (state_.load(std::memory_order_acquire) != State::Paused) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
-                                                     std::string_view("not paused")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                         std::string_view("not paused")));
     }
 
     openGate_.store(true, std::memory_order_release);
@@ -449,12 +449,12 @@ Player::ExpectedVoid Player::Impl::seek(double seconds) {
     std::lock_guard<std::mutex> graph(graphMutex_);
 
     if (!decoder_ || !ring_ || !output_) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
-                                                     std::string_view("not opened")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
+                                                         std::string_view("not opened")));
     }
     if (seconds < 0.0 || std::isnan(seconds) || std::isinf(seconds)) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                     std::string_view("bad seconds")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("bad seconds")));
     }
 
     State s = state_.load(std::memory_order_acquire);
@@ -512,8 +512,8 @@ Player::ExpectedVoid Player::Impl::seek(double seconds) {
 
 Player::ExpectedVoid Player::Impl::setVolume(float volume) {
     if (std::isnan(volume) || std::isinf(volume)) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                     std::string_view("bad volume")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("bad volume")));
     }
     float vol = kanariv::utils::clampVolume(volume);
 

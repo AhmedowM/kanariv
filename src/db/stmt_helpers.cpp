@@ -1,9 +1,9 @@
 #include <sqlite3.h>
 
-#include <kanariv/types/db.hpp>
 #include <cstdint>
 #include <cstring>
 #include <db/stmt_helpers.hpp>
+#include <kanariv/types/db.hpp>
 #include <string>
 #include <string_view>
 
@@ -12,6 +12,16 @@ namespace kanariv::db::internal {
 std::string_view columnText(sqlite3_stmt* stmt, int col) noexcept {
     auto* p = sqlite3_column_text(stmt, col);
     return p ? reinterpret_cast<const char*>(p) : "";
+}
+
+kanariv::utils::Error sqliteError(sqlite3* db, int rc) {
+    const int extended = sqlite3_extended_errcode(db);
+    auto code = kanariv::utils::StatusCode::Internal;
+    if (extended == SQLITE_CONSTRAINT_UNIQUE || rc == SQLITE_CONSTRAINT)
+        code = kanariv::utils::StatusCode::AlreadyExists;
+    else if (extended == SQLITE_BUSY || extended == SQLITE_LOCKED)
+        code = kanariv::utils::StatusCode::Busy;
+    return kanariv::utils::makeError(code, sqlite3_errmsg(db));
 }
 
 void fillTrackFromStmt(sqlite3_stmt* stmt, kanariv::types::TrackRow& t) {

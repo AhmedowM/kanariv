@@ -1,13 +1,13 @@
 ﻿#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <expected>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/status_format.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <cstdio>
-#include <expected>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -23,7 +23,7 @@ bool Decoder::probe(std::span<const std::byte> data) noexcept {
 }
 
 kanariv::utils::Expected<std::unique_ptr<Decoder>> Decoder::open(Reader& reader,
-                                                                kanariv::utils::Logger* logger) {
+                                                                 kanariv::utils::Logger* logger) {
     auto decoder = std::make_unique<Decoder>();
     decoder->logger_ = logger;
 
@@ -42,8 +42,8 @@ kanariv::utils::Expected<std::unique_ptr<Decoder>> Decoder::open(Reader& reader,
         (void)reader.seek(orig, SEEK_SET);
 
         if (!Decoder::probe(std::span<const std::byte>(buf.data(), n))) {
-            return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
-                                                         std::string_view("no decoder matched")});
+            return std::unexpected(kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Unsupported, std::string_view("no decoder matched")));
         }
     }
     // Non-seekable sources (pipes, one-shot host descriptors) are handed to

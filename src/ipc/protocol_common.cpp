@@ -9,7 +9,6 @@
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/types/format.hpp>
-#include <kanariv/types/format.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/types/wire.hpp>
 #include <kanariv/utils/error.hpp>
@@ -145,7 +144,7 @@ std::expected<kanariv::utils::Error, kanariv::utils::Error> errorFromJson(const 
         auto rc = resultCodeFromString(codeStr);
         if (!rc)
             return std::unexpected{rc.error()};
-        return kanariv::utils::Error{*rc, msg};
+        return kanariv::utils::makeError(*rc, msg);
     } catch (const std::exception& e) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Corrupt, e.what())};

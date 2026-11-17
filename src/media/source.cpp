@@ -1,8 +1,8 @@
+#include <cstddef>
+#include <expected>
 #include <kanariv/media/source.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/status_format.hpp>
-#include <cstddef>
-#include <expected>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -102,8 +102,8 @@ bool DescriptorSource::seekable() const noexcept {
 
 kanariv::utils::Expected<std::unique_ptr<Reader>> DescriptorSource::open() {
     if (consumed_) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::State,
-                                                    std::string_view("source already opened")});
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::State, std::string_view("source already opened")));
     }
     auto reader = DescriptorReader::open(descriptor_);
     if (!reader)

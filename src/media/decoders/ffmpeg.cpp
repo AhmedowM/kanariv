@@ -1,11 +1,4 @@
 ﻿#include <algorithm>
-#include <kanariv/media/decoder.hpp>
-#include <kanariv/media/reader.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/log.hpp>
-#include <kanariv/utils/status_format.hpp>
-#include <media/convert_loop.hpp>
-#include <media/ffmpeg_error.hpp>
 #include <cerrno>
 #include <cmath>
 #include <cstddef>
@@ -14,6 +7,13 @@
 #include <cstring>
 #include <expected>
 #include <initializer_list>
+#include <kanariv/media/decoder.hpp>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/log.hpp>
+#include <kanariv/utils/status_format.hpp>
+#include <media/convert_loop.hpp>
+#include <media/ffmpeg_error.hpp>
 #include <memory>
 #include <span>
 #include <string>
@@ -149,7 +149,7 @@ kanariv::utils::Expected<kanariv::types::TrackMetadata> extractMetadata(std::str
     AVFormatContext* fmt = avformat_alloc_context();
     if (!fmt) {
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::NoMem,
-                                                        "avformat_alloc_context failed"));
+                                                         "avformat_alloc_context failed"));
     }
 
     // Probing bounds must be in place before the context is opened:
@@ -171,9 +171,9 @@ kanariv::utils::Expected<kanariv::types::TrackMetadata> extractMetadata(std::str
     const int infoRet = avformat_find_stream_info(fmt, nullptr);
     if (infoRet < 0) {
         avformat_close_input(&fmt);
-        return std::unexpected(kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Io,
-            "avformat_find_stream_info failed: " + ffErrorString(infoRet)));
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Io,
+                                                         "avformat_find_stream_info failed: " +
+                                                             ffErrorString(infoRet)));
     }
 
     kanariv::types::TrackMetadata meta;
@@ -407,17 +407,17 @@ Decoder::Impl::DecodeResult Decoder::Impl::decode(std::span<float> out) {
 
 kanariv::utils::Expected<void> Decoder::Impl::seek(double seconds) {
     if (seconds < 0.0 || !std::isfinite(seconds) || !fmt_ || !dec_ || audioStreamIdx_ < 0) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("bad seconds")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("bad seconds")));
     }
     if (reader_ && !reader_->seekable()) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
-                                                    std::string_view("source is not seekable")});
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Unsupported, std::string_view("source is not seekable")));
     }
     AVStream* stream = fmt_->streams[audioStreamIdx_];
     if (!stream)
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
-                                                    std::string_view("no stream")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         std::string_view("no stream")));
     // Use stream time_base for seeking - dec time_base is codec, not correct for container
     int64_t seekTarget = av_rescale_q(static_cast<int64_t>(seconds * AV_TIME_BASE),
                                       AVRational{1, AV_TIME_BASE}, stream->time_base);
@@ -440,7 +440,7 @@ kanariv::utils::Expected<void> Decoder::Impl::seek(double seconds) {
             if (logger_)
                 logger_->warn("{}", message);
             return std::unexpected(
-                kanariv::utils::Error{kanariv::utils::StatusCode::Io, message});
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Io, message));
         }
     }
     avcodec_flush_buffers(dec_);
@@ -524,9 +524,8 @@ int Decoder::Impl::convertFrameBuffered(AVFrame* frame) {
             spill_.insert(spill_.end(), block.begin(), block.end());
             appended += static_cast<int>(block.size() / ch);
         };
-        const int rc =
-            internal::pumpConvert(std::span<float>(convertBuf_.data(), convertBuf_.size()), ch,
-                                  convert, append);
+        const int rc = internal::pumpConvert(
+            std::span<float>(convertBuf_.data(), convertBuf_.size()), ch, convert, append);
         if (rc < 0)
             return rc;
         return appended;
@@ -694,8 +693,7 @@ bool Decoder::Impl::init() {
     // Find audio stream
     audioStreamIdx_ = av_find_best_stream(fmt_, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     if (audioStreamIdx_ < 0) {
-        initError_ = "av_find_best_stream found no audio stream: "
-                     + ffErrorString(audioStreamIdx_);
+        initError_ = "av_find_best_stream found no audio stream: " + ffErrorString(audioStreamIdx_);
         cleanup();
         return false;
     }
@@ -703,8 +701,8 @@ bool Decoder::Impl::init() {
     AVStream* stream = fmt_->streams[audioStreamIdx_];
     const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
     if (!codec) {
-        initError_ = "avcodec_find_decoder failed for codec id "
-                     + std::to_string(static_cast<int>(stream->codecpar->codec_id));
+        initError_ = "avcodec_find_decoder failed for codec id " +
+                     std::to_string(static_cast<int>(stream->codecpar->codec_id));
         cleanup();
         return false;
     }
@@ -835,12 +833,12 @@ kanariv::utils::Expected<void> Decoder::init(Reader& reader) {
     if (!impl_->init()) {
         // Report the recorded cause, not just "init failed": FFmpeg logging is
         // muted process-wide, so initError_ is the only readable explanation (M4).
-        std::string message = impl_->initError_.empty() ? std::string{"FFmpeg init failed"}
-                                                       : impl_->initError_;
+        std::string message =
+            impl_->initError_.empty() ? std::string{"FFmpeg init failed"} : impl_->initError_;
         if (logger_)
             logger_->error("decoder init failed: " + message);
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
-                                                     message});
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Unsupported, message));
     }
     return {};
 }
@@ -877,8 +875,8 @@ std::size_t Decoder::decode(std::span<float> out, DecodeStatus* status) {
 
 kanariv::utils::Expected<void> Decoder::seek(double seconds) {
     if (!impl_)
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
-                                                     std::string_view("moved-from decoder")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         std::string_view("moved-from decoder")));
     return impl_->seek(seconds);
 }
 

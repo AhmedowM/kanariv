@@ -33,9 +33,9 @@ std::chrono::milliseconds readinessAttemptTimeout(std::chrono::milliseconds rema
 }
 
 kanariv::utils::Error daemonDownError() {
-    return kanariv::utils::Error{
+    return kanariv::utils::makeError(
         kanariv::utils::StatusCode::State,
-        "daemon not running\nhint: run `kanariv start` to start the daemon"};
+        "daemon not running\nhint: run `kanariv start` to start the daemon");
 }
 
 namespace {

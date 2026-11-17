@@ -1,9 +1,6 @@
 #include <stdio.h>
 
 #include <algorithm>
-#include <kanariv/media/reader.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/status_format.hpp>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +8,9 @@
 #include <cstring>
 #include <expected>
 #include <filesystem>
+#include <kanariv/media/reader.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -133,8 +133,8 @@ struct FileReader::Impl {
 kanariv::utils::Expected<std::unique_ptr<Reader>>
 FileReader::open(const std::filesystem::path& path) {
     if (path.empty()) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("empty path")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("empty path")));
     }
     FILE* f = nullptr;
 #if defined(_WIN32)
@@ -149,24 +149,24 @@ FileReader::open(const std::filesystem::path& path) {
     f = std::fopen(s.c_str(), "rb");
 #endif
     if (!f) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::NotFound,
-                                                    std::string_view("cannot open file")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
+                                                         std::string_view("cannot open file")));
     }
     if (detail::fseek64(f, 0, SEEK_END) != 0) {
         std::fclose(f);
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
-                                                    std::string_view("fseek failed")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         std::string_view("fseek failed")));
     }
     int64_t sz = detail::ftell64(f);
     if (sz < 0) {
         std::fclose(f);
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
-                                                    std::string_view("ftell failed")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         std::string_view("ftell failed")));
     }
     if (detail::fseek64(f, 0, SEEK_SET) != 0) {
         std::fclose(f);
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
-                                                    std::string_view("fseek failed")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         std::string_view("fseek failed")));
     }
     // Wrap immediately in unique_ptr so FILE* is owned even if Expected construction throws
     auto holder = std::unique_ptr<FileReader>(new FileReader(FileToken{}));
@@ -201,21 +201,21 @@ ReadStatus FileReader::lastReadStatus() const noexcept {
 
 kanariv::utils::Expected<void> FileReader::seek(int64_t offset, int whence) {
     if (!impl_->file)
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("null file")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("null file")));
     if (whence != SEEK_SET && whence != SEEK_CUR && whence != SEEK_END) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("bad whence")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("bad whence")));
     }
     std::lock_guard<std::mutex> lock(impl_->seekMutex);
     int64_t cur = detail::ftell64(impl_->file);
     if (cur < 0)
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
-                                                    std::string_view("ftell failed")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         std::string_view("ftell failed")));
     int64_t sz = impl_->fileSize;
     if (sz < 0)
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
-                                                    std::string_view("size not cached")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         std::string_view("size not cached")));
     int64_t base = 0;
     switch (whence) {
     case SEEK_SET:
@@ -228,17 +228,17 @@ kanariv::utils::Expected<void> FileReader::seek(int64_t offset, int whence) {
         base = sz;
         break;
     default:
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("bad whence")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("bad whence")));
     }
     int64_t newPos = base + offset;
     if (newPos < 0 || newPos > sz) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("seek out of range")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("seek out of range")));
     }
     if (detail::fseek64(impl_->file, newPos, SEEK_SET) != 0) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Internal,
-                                                    std::string_view("fseek failed")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         std::string_view("fseek failed")));
     }
     return {};
 }
@@ -271,14 +271,16 @@ struct DescriptorReader::Impl {
     mutable std::mutex mutex;
 };
 
-kanariv::utils::Expected<std::unique_ptr<Reader>> DescriptorReader::open(FileDescriptor descriptor) {
+kanariv::utils::Expected<std::unique_ptr<Reader>>
+DescriptorReader::open(FileDescriptor descriptor) {
     if (descriptor.value < 0) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("invalid descriptor")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("invalid descriptor")));
     }
     if (!descriptor.readable) {
-        return std::unexpected(kanariv::utils::Error{
-            kanariv::utils::StatusCode::InvalidArg, std::string_view("descriptor is not readable")});
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                      std::string_view("descriptor is not readable")));
     }
 
     int64_t size = -1;
@@ -288,8 +290,8 @@ kanariv::utils::Expected<std::unique_ptr<Reader>> DescriptorReader::open(FileDes
         if (pos < 0) {
             // The caller asserted seekability; fail without taking ownership.
             return std::unexpected(
-                kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
-                                     std::string_view("descriptor position unavailable")});
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Unsupported,
+                                          std::string_view("descriptor position unavailable")));
         }
         size = detail::fdSize(descriptor.value);
     }
@@ -346,16 +348,16 @@ ReadStatus DescriptorReader::lastReadStatus() const noexcept {
 
 kanariv::utils::Expected<void> DescriptorReader::seek(int64_t offset, int whence) {
     if (!impl_ || impl_->fd < 0) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("invalid descriptor")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("invalid descriptor")));
     }
     if (!impl_->seekable) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
-                                                    std::string_view("source is not seekable")});
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Unsupported, std::string_view("source is not seekable")));
     }
     if (whence != SEEK_SET && whence != SEEK_CUR && whence != SEEK_END) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("bad whence")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("bad whence")));
     }
 
     std::lock_guard<std::mutex> lock(impl_->mutex);
@@ -369,24 +371,24 @@ kanariv::utils::Expected<void> DescriptorReader::seek(int64_t offset, int whence
         break;
     case SEEK_END:
         if (impl_->size < 0) {
-            return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Unsupported,
-                                                        std::string_view("size is unknown")});
+            return std::unexpected(kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Unsupported, std::string_view("size is unknown")));
         }
         base = impl_->size;
         break;
     default:
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("bad whence")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("bad whence")));
     }
     int64_t newPos = base + offset;
     if (newPos < 0 || (impl_->size >= 0 && newPos > impl_->size)) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("seek out of range")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("seek out of range")));
     }
     int64_t landed = detail::fdSeek64(impl_->fd, newPos, SEEK_SET);
     if (landed < 0) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::Io,
-                                                    std::string_view("descriptor seek failed")});
+        return std::unexpected(kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Io, std::string_view("descriptor seek failed")));
     }
     impl_->pos = landed;
     return {};
@@ -421,10 +423,10 @@ MemoryReader::open(const std::vector<std::byte>& data) {
 }
 
 kanariv::utils::Expected<std::unique_ptr<Reader>> MemoryReader::open(const std::byte* data,
-                                                                    std::size_t len) {
+                                                                     std::size_t len) {
     if (len > 0 && data == nullptr) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("null data")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("null data")));
     }
     return open(std::span<const std::byte>(data, len));
 }
@@ -452,8 +454,8 @@ ReadStatus MemoryReader::lastReadStatus() const noexcept {
 
 kanariv::utils::Expected<void> MemoryReader::seek(int64_t offset, int whence) {
     if (whence != SEEK_SET && whence != SEEK_CUR && whence != SEEK_END) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("bad whence")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("bad whence")));
     }
     int64_t base = 0;
     switch (whence) {
@@ -467,13 +469,13 @@ kanariv::utils::Expected<void> MemoryReader::seek(int64_t offset, int whence) {
         base = static_cast<int64_t>(buf_.size());
         break;
     default:
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("bad whence")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("bad whence")));
     }
     int64_t newPos = base + offset;
     if (newPos < 0 || newPos > static_cast<int64_t>(buf_.size())) {
-        return std::unexpected(kanariv::utils::Error{kanariv::utils::StatusCode::InvalidArg,
-                                                    std::string_view("seek out of range")});
+        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         std::string_view("seek out of range")));
     }
     pos_ = static_cast<std::size_t>(newPos);
     return {};

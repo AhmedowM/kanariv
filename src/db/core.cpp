@@ -309,14 +309,8 @@ Database::Impl::insertTrackLocked(const kanariv::types::TrackRow& t) {
     bindTrackForInsert(st, t);
     int rc = st.stepDone();
     st.reset();
-    if (rc != SQLITE_DONE) {
-        int ec = sqlite3_extended_errcode(db_.get());
-        if (ec == SQLITE_CONSTRAINT_UNIQUE || rc == SQLITE_CONSTRAINT)
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::AlreadyExists, sqlite3_errmsg(db_.get()))};
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                         sqlite3_errmsg(db_.get()))};
-    }
+    if (rc != SQLITE_DONE)
+        return std::unexpected{kanariv::db::internal::sqliteError(db_.get(), rc)};
     return sqlite3_last_insert_rowid(db_.get());
 }
 
@@ -1577,14 +1571,8 @@ std::expected<int64_t, kanariv::utils::Error> Database::libraryAdd(std::string_v
     else
         st.bindText(2, name);
     int rc = st.stepDone();
-    if (rc != SQLITE_DONE) {
-        int ec = sqlite3_extended_errcode(impl_->db_.get());
-        if (ec == SQLITE_CONSTRAINT_UNIQUE || rc == SQLITE_CONSTRAINT)
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::AlreadyExists, sqlite3_errmsg(impl_->db_.get()))};
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                         sqlite3_errmsg(impl_->db_.get()))};
-    }
+    if (rc != SQLITE_DONE)
+        return std::unexpected{kanariv::db::internal::sqliteError(impl_->db_.get(), rc)};
     return sqlite3_last_insert_rowid(impl_->db_.get());
 }
 
@@ -1641,8 +1629,7 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::ge
     one("SELECT COUNT(*) FROM history", s.num_history);
     one("SELECT COUNT(*) FROM bookmarks", s.num_bookmarks);
     one("SELECT COUNT(*) FROM libraries", s.num_libraries);
-    if (auto sRes = impl_->getCachedForUse("SELECT COALESCE(SUM(duration),0) FROM tracks");
-        sRes) {
+    if (auto sRes = impl_->getCachedForUse("SELECT COALESCE(SUM(duration),0) FROM tracks"); sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
             s.total_duration_ms = static_cast<int64_t>((st.columnDouble(0) * 1000));
@@ -1676,8 +1663,7 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
     one("SELECT COUNT(*) FROM playlists", d.playlists);
 
     // Total duration
-    if (auto sRes = impl_->getCachedForUse("SELECT COALESCE(SUM(duration),0) FROM tracks");
-        sRes) {
+    if (auto sRes = impl_->getCachedForUse("SELECT COALESCE(SUM(duration),0) FROM tracks"); sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
             d.total_duration_ms = static_cast<int64_t>((st.columnDouble(0) * 1000));
@@ -1685,8 +1671,8 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
     }
 
     // Total play time (sum of play_count * duration)
-    if (auto sRes = impl_->getCachedForUse(
-            "SELECT COALESCE(SUM(play_count * duration),0) FROM tracks");
+    if (auto sRes =
+            impl_->getCachedForUse("SELECT COALESCE(SUM(play_count * duration),0) FROM tracks");
         sRes) {
         SqliteStatement& st = *(*sRes);
         if (st.step())
@@ -1702,10 +1688,9 @@ Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbum
     if (topTracks) {
         d.top_tracks.emplace();
         if (*topTracks > 0) {
-            std::string sql =
-                std::string(internal::selectTracksCols) +
-                " WHERE play_count > 0 ORDER BY play_count DESC LIMIT " +
-                std::to_string(*topTracks);
+            std::string sql = std::string(internal::selectTracksCols) +
+                              " WHERE play_count > 0 ORDER BY play_count DESC LIMIT " +
+                              std::to_string(*topTracks);
             auto sRes = impl_->getCachedForUse(sql);
             if (sRes) {
                 SqliteStatement& st = *(*sRes);
