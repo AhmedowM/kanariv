@@ -6,6 +6,10 @@ set(KANARIV_ENGINE_MODULE_SOURCES
 )
 set(KANARIV_ENGINE_SOURCES
   src/engine/engine.cpp
+  src/engine/engine_transport.cpp
+  src/engine/engine_persistence.cpp
+  src/engine/engine_queue.cpp
+  src/engine/engine_decode.cpp
   src/engine/history.cpp
   src/engine/shuffle.cpp
 )
