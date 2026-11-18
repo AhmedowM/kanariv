@@ -1,18 +1,20 @@
-#include <algorithm>
+#include <kiss_fft.h>
+#include <kiss_fftr.h>
+
 #include <cmath>
+#include <complex>
 #include <cstddef>
-#include <cstdint>
 #include <expected>
-#include <kanariv/media/fft.hpp>
+#include <kanariv/dsp/fft.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/status_format.hpp>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <span>
 #include <utility>
 #include <vector>
 
-namespace kanariv::media::fft {
+namespace kanariv::dsp::fft {
 
 namespace {
 
@@ -20,58 +22,10 @@ bool isPowerOfTwo(std::size_t n) noexcept {
     return n != 0 && (n & (n - 1)) == 0;
 }
 
-int log2OfPowerOfTwo(std::size_t n) noexcept {
-    int bits = 0;
-    while (n > 1) {
-        n >>= 1;
-        ++bits;
-    }
-    return bits;
-}
-
-// Bit-reverse the low `bits` bits of `idx`.
-std::size_t bitReverse(std::size_t idx, int bits) noexcept {
-    std::size_t rev = 0;
-    for (int i = 0; i < bits; ++i) {
-        rev = (rev << 1) | (idx & 1u);
-        idx >>= 1;
-    }
-    return rev;
-}
-
-// Iterative radix-2 decimation-in-time Cooley-Tukey.
-// `z` holds `n` complex samples in normal order; on return it holds the
-// transform in normal order. `inverse` applies a negative exponent and the
-// caller is responsible for the 1/n scaling.
-void fftRadix2(std::vector<std::complex<float>>& z, bool inverse) noexcept {
-    const std::size_t n = z.size();
-    const int bits = log2OfPowerOfTwo(n);
-
-    // Bit-reversal permutation.
-    for (std::size_t i = 0; i < n; ++i) {
-        const std::size_t j = bitReverse(i, bits);
-        if (i < j)
-            std::swap(z[i], z[j]);
-    }
-
-    // Butterflies.
-    for (std::size_t len = 2; len <= n; len <<= 1) {
-        const float sign = inverse ? 1.0f : -1.0f;
-        const float ang =
-            sign * 2.0f * static_cast<float>(std::numbers::pi) / static_cast<float>(len);
-        std::complex<float> wlen(std::cos(ang), std::sin(ang));
-        for (std::size_t i = 0; i < n; i += len) {
-            std::complex<float> w(1.0f);
-            const std::size_t half = len / 2;
-            for (std::size_t j = 0; j < half; ++j) {
-                std::complex<float> u = z[i + j];
-                std::complex<float> v = z[i + j + half] * w;
-                z[i + j] = u + v;
-                z[i + j + half] = u - v;
-                w *= wlen;
-            }
-        }
-    }
+// KissFFT sizes are ints; a power-of-two length that does not fit is rejected
+// rather than narrowed.
+bool fitsKissFftLength(std::size_t n) noexcept {
+    return n <= static_cast<std::size_t>(std::numeric_limits<int>::max());
 }
 
 } // namespace
@@ -79,12 +33,25 @@ void fftRadix2(std::vector<std::complex<float>>& z, bool inverse) noexcept {
 struct FftPlan::Impl {
     std::size_t length{0};
     std::size_t outputBins{0};
-    bool r2c{false};
+    kiss_fftr_cfg realForward{nullptr};
+    kiss_fft_cfg complexForward{nullptr};
+    kiss_fft_cfg complexInverse{nullptr};
     // Reused across executions and resized only when the length changes, so a
-    // steady stream of equal-length blocks allocates nothing. `mutable` because
-    // execute* is const; sharing this buffer is exactly why a plan is not
-    // reentrant (documented in fft.hpp).
-    mutable std::vector<std::complex<float>> scratch;
+    // steady stream of equal-length blocks allocates nothing. Two buffers keep
+    // the in-place path out of kiss_fft (which would allocate a temporary per
+    // call). `mutable` because execute* is const; sharing them is exactly why a
+    // plan is not reentrant (documented in fft.hpp).
+    mutable std::vector<kiss_fft_cpx> input;
+    mutable std::vector<kiss_fft_cpx> result;
+
+    ~Impl() {
+        if (realForward)
+            kiss_fftr_free(realForward);
+        if (complexForward)
+            kiss_fft_free(complexForward);
+        if (complexInverse)
+            kiss_fft_free(complexInverse);
+    }
 };
 
 FftPlan::FftPlan() noexcept = default;
@@ -104,11 +71,17 @@ std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error> FftPlan::createR2
     if (!isPowerOfTwo(n) || n < 2)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "fft length must be a power of two >= 2")};
+    if (!fitsKissFftLength(n))
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "fft length exceeds the plan limit")};
 
     auto impl = std::make_unique<Impl>();
     impl->length = n;
     impl->outputBins = n / 2 + 1;
-    impl->r2c = true;
+    impl->realForward = kiss_fftr_alloc(static_cast<int>(n), 0, nullptr, nullptr);
+    if (!impl->realForward)
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         "fft plan allocation failed")};
     return std::unique_ptr<FftPlan>(new FftPlan(std::move(impl)));
 }
 
@@ -116,62 +89,78 @@ std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error> FftPlan::createC2
     if (!isPowerOfTwo(n) || n < 2)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "fft length must be a power of two >= 2")};
+    if (!fitsKissFftLength(n))
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "fft length exceeds the plan limit")};
 
     auto impl = std::make_unique<Impl>();
     impl->length = n;
     impl->outputBins = n;
-    impl->r2c = false;
+    impl->complexForward = kiss_fft_alloc(static_cast<int>(n), 0, nullptr, nullptr);
+    impl->complexInverse = kiss_fft_alloc(static_cast<int>(n), 1, nullptr, nullptr);
+    if (!impl->complexForward || !impl->complexInverse)
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         "fft plan allocation failed")};
     return std::unique_ptr<FftPlan>(new FftPlan(std::move(impl)));
 }
 
 std::expected<void, kanariv::utils::Error>
-FftPlan::executeR2C(std::span<const float> input, std::span<std::complex<float>> output) const {
+FftPlan::executeR2C(std::span<const float> inputSpan, std::span<std::complex<float>> output) const {
     if (!impl_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "fft plan is empty")};
-    if (input.size() != impl_->length || output.size() != impl_->outputBins)
+    if (!impl_->realForward)
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, "fft plan was not created for real input")};
+    if (inputSpan.size() != impl_->length || output.size() != impl_->outputBins)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "span size mismatch")};
 
-    // Pack real input into the plan's reusable complex scratch (imag = 0), run
-    // a complex FFT, and keep the first n/2 + 1 bins (DC..Nyquist).
-    auto& z = impl_->scratch;
-    if (z.size() != impl_->length)
-        z.resize(impl_->length);
-    for (std::size_t i = 0; i < input.size(); ++i)
-        z[i] = std::complex<float>{input[i], 0.0f};
+    auto& result = impl_->result;
+    if (result.size() != impl_->outputBins)
+        result.resize(impl_->outputBins);
 
-    fftRadix2(z, false);
+    kiss_fftr(impl_->realForward, inputSpan.data(), result.data());
 
     for (std::size_t i = 0; i < output.size(); ++i)
-        output[i] = z[i];
+        output[i] = std::complex<float>{result[i].r, result[i].i};
     return {};
 }
 
 std::expected<void, kanariv::utils::Error>
-FftPlan::executeC2C(std::span<const std::complex<float>> input,
+FftPlan::executeC2C(std::span<const std::complex<float>> inputSpan,
                     std::span<std::complex<float>> output, bool inverse) const {
     if (!impl_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "fft plan is empty")};
-    if (input.size() != impl_->length || output.size() != impl_->length)
+    if (!impl_->complexForward)
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, "fft plan was not created for complex input")};
+    if (inputSpan.size() != impl_->length || output.size() != impl_->length)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "span size mismatch")};
 
-    auto& z = impl_->scratch;
-    if (z.size() != impl_->length)
-        z.resize(impl_->length);
-    std::copy(input.begin(), input.end(), z.begin());
+    auto& scratch = impl_->input;
+    auto& result = impl_->result;
+    if (scratch.size() != impl_->length)
+        scratch.resize(impl_->length);
+    if (result.size() != impl_->length)
+        result.resize(impl_->length);
 
-    fftRadix2(z, inverse);
-
-    if (inverse) {
-        const float scale = 1.0f / static_cast<float>(impl_->length);
-        for (auto& c : z)
-            c *= scale;
+    for (std::size_t i = 0; i < inputSpan.size(); ++i) {
+        scratch[i].r = inputSpan[i].real();
+        scratch[i].i = inputSpan[i].imag();
     }
 
-    std::copy(z.begin(), z.end(), output.begin());
+    kiss_fft(inverse ? impl_->complexInverse : impl_->complexForward, scratch.data(),
+             result.data());
+
+    // KissFFT leaves the inverse unnormalized; both directions keep the same
+    // scale contract the plan documented before the kernel swap.
+    const float scale = inverse ? 1.0f / static_cast<float>(impl_->length) : 1.0f;
+    for (std::size_t i = 0; i < output.size(); ++i) {
+        output[i] = std::complex<float>{result[i].r * scale, result[i].i * scale};
+    }
     return {};
 }
 
@@ -278,4 +267,4 @@ ifftReal(std::span<const std::complex<float>> bins) {
     return real;
 }
 
-} // namespace kanariv::media::fft
+} // namespace kanariv::dsp::fft

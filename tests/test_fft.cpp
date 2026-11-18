@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include <kanariv/media/fft.hpp>
+#include <kanariv/dsp/fft.hpp>
 #include <kanariv/utils/error.hpp>
 #include <common.hpp>
 
@@ -10,7 +10,7 @@
 #include <span>
 #include <vector>
 
-using namespace kanariv::media::fft;
+using namespace kanariv::dsp::fft;
 
 namespace {
 
@@ -28,7 +28,7 @@ bool closeEnough(float a, float b, float tol = 1e-3f) {
 
 } // namespace
 
-TEST_CASE("fft R2C round trip via ifftReal", "[media][fft]") {
+TEST_CASE("fft R2C round trip via ifftReal", "[dsp][fft]") {
     constexpr std::size_t n = 1024;
     auto samples = makeSine(n, 440.0, 44100.0);
 
@@ -45,7 +45,7 @@ TEST_CASE("fft R2C round trip via ifftReal", "[media][fft]") {
         CHECK(closeEnough(reconstructed->at(i), samples[i]));
 }
 
-TEST_CASE("fft R2C peak bin at sine frequency", "[media][fft]") {
+TEST_CASE("fft R2C peak bin at sine frequency", "[dsp][fft]") {
     constexpr std::size_t n = 1024;
     constexpr double sampleRate = 44100.0;
     constexpr double freqHz = 440.0;
@@ -70,7 +70,7 @@ TEST_CASE("fft R2C peak bin at sine frequency", "[media][fft]") {
     CHECK(peakBin == 10);
 }
 
-TEST_CASE("fft FftPlan executeR2C matches fftReal", "[media][fft]") {
+TEST_CASE("fft FftPlan executeR2C matches fftReal", "[dsp][fft]") {
     constexpr std::size_t n = 512;
     auto samples = makeSine(n, 1000.0, 44100.0);
 
@@ -92,7 +92,7 @@ TEST_CASE("fft FftPlan executeR2C matches fftReal", "[media][fft]") {
         CHECK(closeEnough(oneShot->at(i).imag(), bins[i].imag()));
 }
 
-TEST_CASE("fft FftPlan executeC2C inverse round trip", "[media][fft]") {
+TEST_CASE("fft FftPlan executeC2C inverse round trip", "[dsp][fft]") {
     constexpr std::size_t n = 256;
     std::vector<std::complex<float>> input(n);
     for (std::size_t i = 0; i < n; ++i)
@@ -116,7 +116,7 @@ TEST_CASE("fft FftPlan executeC2C inverse round trip", "[media][fft]") {
         CHECK(closeEnough(backward[i].imag(), input[i].imag()));
 }
 
-TEST_CASE("fft FftPlan reuse across calls stays stable", "[media][fft]") {
+TEST_CASE("fft FftPlan reuse across calls stays stable", "[dsp][fft]") {
     constexpr std::size_t n = 256;
     const auto first = makeSine(n, 440.0, 44100.0);
     const auto second = makeSine(n, 1000.0, 44100.0);
@@ -149,7 +149,7 @@ TEST_CASE("fft FftPlan reuse across calls stays stable", "[media][fft]") {
     CHECK(bins == once);
 }
 
-TEST_CASE("fft window hann", "[media][fft]") {
+TEST_CASE("fft window hann", "[dsp][fft]") {
     constexpr std::size_t n = 16;
     auto w = window::hann(n);
     REQUIRE(w.size() == n);
@@ -170,7 +170,7 @@ TEST_CASE("fft window hann", "[media][fft]") {
     }
 }
 
-TEST_CASE("fft window hamming", "[media][fft]") {
+TEST_CASE("fft window hamming", "[dsp][fft]") {
     constexpr std::size_t n = 16;
     auto w = window::hamming(n);
     REQUIRE(w.size() == n);
@@ -180,7 +180,7 @@ TEST_CASE("fft window hamming", "[media][fft]") {
     CHECK(std::abs(w.back() - 0.08f) < 1e-6f);
 }
 
-TEST_CASE("fft window applyInPlace", "[media][fft]") {
+TEST_CASE("fft window applyInPlace", "[dsp][fft]") {
     std::vector<float> samples(8, 1.0f);
     auto w = window::hann(8);
 
@@ -194,7 +194,7 @@ TEST_CASE("fft window applyInPlace", "[media][fft]") {
         CHECK(std::abs(samples[i] - w[i]) < 1e-6f);
 }
 
-TEST_CASE("fft window applyInPlace size mismatch", "[media][fft]") {
+TEST_CASE("fft window applyInPlace size mismatch", "[dsp][fft]") {
     std::vector<float> samples(4, 1.0f);
     auto w = window::hann(8);
     auto res = window::applyInPlace(samples, w);
@@ -202,7 +202,7 @@ TEST_CASE("fft window applyInPlace size mismatch", "[media][fft]") {
     REQUIRE(res.error().code == kanariv::utils::StatusCode::InvalidArg);
 }
 
-TEST_CASE("fft invalid length rejected", "[media][fft]") {
+TEST_CASE("fft invalid length rejected", "[dsp][fft]") {
     auto plan = FftPlan::createR2C(3);
     REQUIRE(!plan.has_value());
     REQUIRE(plan.error().code == kanariv::utils::StatusCode::InvalidArg);
@@ -214,7 +214,7 @@ TEST_CASE("fft invalid length rejected", "[media][fft]") {
     REQUIRE(!bad.has_value());
 }
 
-TEST_CASE("fft ifftReal invalid bin count rejected", "[media][fft]") {
+TEST_CASE("fft ifftReal invalid bin count rejected", "[dsp][fft]") {
     // bins.size() must be n/2 + 1 where n is power of two.
     // 6 bins => n = 10, not power of two.
     std::vector<std::complex<float>> bins(6, std::complex<float>{1.0f, 0.0f});

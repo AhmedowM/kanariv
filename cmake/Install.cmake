@@ -52,7 +52,7 @@ unset(_kanariv_objects)
 # Vendor libs ship as archives for static builds; in shared mode they are
 # DLLs and join the shared install set (DLL -> runtime, import lib -> dev).
 # Their headers still never ship: no public header references them.
-foreach(_vendor IN ITEMS sqlite3 blake3 tag)
+foreach(_vendor IN ITEMS sqlite3 blake3 kissfft tag)
   if(NOT TARGET ${_vendor})
     continue()
   endif()

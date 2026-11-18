@@ -365,6 +365,17 @@ target_include_directories(blake3 SYSTEM PUBLIC $<BUILD_INTERFACE:${CMAKE_CURREN
 target_compile_definitions(blake3 PRIVATE BLAKE3_NO_AVX512 BLAKE3_NO_AVX2 BLAKE3_NO_SSE41 BLAKE3_NO_SSE2 BLAKE3_USE_NEON=0)
 target_compile_options(blake3 PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W0> $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w>)
 
+# Vendor: KissFFT kernels for kanariv::dsp. Always STATIC, unlike sqlite3/tag:
+# it keeps no process-global state (twiddles live in each plan), so a shared
+# build embedding a copy in dsp and combined is harmless and avoids a fifth
+# DLL with its own export table. C_VISIBILITY_PRESET hidden keeps kiss_*
+# symbols out of the component shared objects' dynamic symbol tables.
+add_library(kissfft STATIC vendor/kissfft/kiss_fft.c vendor/kissfft/kiss_fftr.c)
+add_library(kanariv::kissfft ALIAS kissfft)
+target_include_directories(kissfft SYSTEM PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/kissfft>)
+target_compile_options(kissfft PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W0> $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w>)
+set_target_properties(kissfft PROPERTIES C_VISIBILITY_PRESET hidden)
+
 # FetchContent deps needed before components. CLI11/Catch2 are lazy: prefer
 # a system/vcpkg/Conan package first so plain configures don't pay for a git
 # clone; fetch only as fallback. nlohmann_json is vendored instead
@@ -478,6 +489,7 @@ set(KANARIV_COMPONENTS
   utils
   contracts
   config
+  dsp
   media
   player
   db
@@ -512,7 +524,7 @@ if(KANARIV_ENABLE_MODULES)
   add_library(kanariv_umbrella STATIC)
   target_sources(kanariv_umbrella PUBLIC FILE_SET CXX_MODULES TYPE CXX_MODULES BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/modules FILES modules/kanariv.cppm)
   target_include_directories(kanariv_umbrella PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>)
-  target_link_libraries(kanariv_umbrella PUBLIC kanariv::types kanariv::utils kanariv::contracts kanariv::config kanariv::media kanariv::player kanariv::db kanariv::library kanariv::engine kanariv::ipc kanariv::service kanariv::client kanariv::app)
+  target_link_libraries(kanariv_umbrella PUBLIC kanariv::types kanariv::utils kanariv::contracts kanariv::config kanariv::dsp kanariv::media kanariv::player kanariv::db kanariv::library kanariv::engine kanariv::ipc kanariv::service kanariv::client kanariv::app)
   ca_set_warnings(kanariv_umbrella)
   ca_set_module_warnings(kanariv_umbrella)
   kanariv_apply_extra_flags(kanariv_umbrella)

@@ -31,6 +31,7 @@ if(KANARIV_BUILD_SHARED AND KANARIV_BUILD_COMBINED)
   target_sources(combined PRIVATE
     $<TARGET_OBJECTS:utils_objects>
     $<TARGET_OBJECTS:config_objects>
+    $<TARGET_OBJECTS:dsp_objects>
     $<TARGET_OBJECTS:media_objects>
     $<TARGET_OBJECTS:player_objects>
     $<TARGET_OBJECTS:db_objects>
@@ -44,6 +45,7 @@ if(KANARIV_BUILD_SHARED AND KANARIV_BUILD_COMBINED)
   target_link_libraries(combined PRIVATE
     kanariv::sqlite3
     blake3
+    kissfft
     tag
     FFmpeg::avcodec FFmpeg::avformat FFmpeg::avutil FFmpeg::swresample
     Threads::Threads)

@@ -6,7 +6,6 @@ set(KANARIV_MEDIA_MODULE_SOURCES
   modules/kanariv/media/decoder.cppm
   modules/kanariv/media/audio_ext.cppm
   modules/kanariv/media/scan.cppm
-  modules/kanariv/media/fft.cppm
 )
 set(KANARIV_MEDIA_SOURCES
   src/media/reader.cpp
@@ -15,7 +14,6 @@ set(KANARIV_MEDIA_SOURCES
   src/media/decoders/ffmpeg.cpp
   src/media/scan.cpp
   src/media/fingerprint.cpp
-  src/media/fft.cpp
 )
 # INCLUDES vendor: src/media/scan.cpp and fingerprint.cpp include <blake3.h>.
 # PRIVATE_DEPS carries the decode backend (FFmpeg, used only by

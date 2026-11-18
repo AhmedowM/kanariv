@@ -265,6 +265,7 @@ Install exports provide these targets:
 | `kanariv::utils` | Errors, logging, JSON, queues, threads, and versioning |
 | `kanariv::types` | Shared value types |
 | `kanariv::contracts` | Backend-neutral interfaces |
+| `kanariv::dsp` | Signal processing over sample blocks (`FftPlan`, real/complex transforms, windowing) |
 | `kanariv::media` | Reading, decoding, metadata, and library discovery (`Source`, `PathSource`, `DescriptorSource`, `Reader`) |
 | `kanariv::player` | Audio output and playback primitives |
 | `kanariv::db` | SQLite storage and FTS5 search |
@@ -400,7 +401,7 @@ int main() {
 }
 ```
 
-Available named modules include `kanariv`, `kanariv.utils`, `kanariv.media`,
+Available named modules include `kanariv`, `kanariv.utils`, `kanariv.dsp`, `kanariv.media`,
 `kanariv.player`, `kanariv.db`, `kanariv.engine`, `kanariv.ipc`,
 `kanariv.service`, and `kanariv.client`, with partitions such as
 `kanariv.db:scan`. Consumers rebuild BMIs with their own compiler; prebuilt

@@ -197,7 +197,7 @@ jobs:
           failed=0
           # Components plus the combined libkanariv. Vendor libs are checked
           # below: they are separate shared objects that keep their own ABI.
-          for name in utils config media player db engine ipc client service app kanariv; do
+          for name in utils config dsp media player db engine ipc client service app kanariv; do
             lib="$BUILD_DIR/lib${name}.${ext}"
             if [ ! -e "$lib" ]; then
               echo "::error::missing shared library: $lib"
@@ -210,7 +210,7 @@ jobs:
             # KANARIV_API is the whole ABI. A vendor symbol (or a hidden
             # helper) escaping a component lib means the visibility preset
             # stopped applying, so the surface is no longer deliberate.
-            leaks="$(printf '%s\n' "$symbols" | grep -E '^_?(sqlite3_|blake3_|avcodec_|avformat_|avutil_|swr_|swresample_|ma_)|TagLib' || true)"
+            leaks="$(printf '%s\n' "$symbols" | grep -E '^_?(sqlite3_|blake3_|kiss_|avcodec_|avformat_|avutil_|swr_|swresample_|ma_)|TagLib' || true)"
             leak_count="$(printf '%s\n' "$leaks" | grep -c . || true)"
             echo "| lib${name}.${ext} | ${total} | ${kanariv} | ${leak_count} vendor |" >> "$GITHUB_STEP_SUMMARY"
             if [ "$kanariv" -lt 1 ]; then
@@ -445,7 +445,7 @@ jobs:
           # targets into the runtime component), the vendor libs it links and
           # the bundled FFmpeg.
           missing=""
-          for name in utils config media player db engine ipc client service app kanariv sqlite3 blake3 tag; do
+          for name in utils config dsp media player db engine ipc client service app kanariv sqlite3 blake3 tag; do
             if ! grep -qE "lib${name}\.(so|dylib|[0-9])" "$rtlist"; then
               missing="$missing $name"
             fi

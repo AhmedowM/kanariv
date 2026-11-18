@@ -14,6 +14,7 @@ export module kanariv;
 export import kanariv.version;
 export import kanariv.types;
 export import kanariv.utils;
+export import kanariv.dsp;
 export import kanariv.media;
 export import kanariv.player;
 export import kanariv.db;
