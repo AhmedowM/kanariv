@@ -5,10 +5,10 @@
 #include <expected>
 #include <format>
 #include <ipc/protocol_internal.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <kanariv/types/format.hpp>
 #include <kanariv/types/format.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/types/wire.hpp>
@@ -33,7 +33,7 @@ std::string serializeRequest(const IpcRequest& req) {
     return j.dump();
 }
 
-std::expected<IpcRequest, kanariv::utils::Error> deserializeRequest(std::string_view sv) {
+kanariv::utils::Expected<IpcRequest> deserializeRequest(std::string_view sv) {
     try {
         const Json j = Json::parse(sv);
         if (!j.contains("id") || !j.contains("cmd")) {
@@ -64,7 +64,7 @@ std::string serializeReply(const IpcReply& rep) {
     return j.dump();
 }
 
-std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view sv) {
+kanariv::utils::Expected<IpcReply> deserializeReply(std::string_view sv) {
     try {
         const Json j = Json::parse(sv);
         if (!j.contains("id")) {
@@ -114,7 +114,7 @@ std::array<std::byte, frameHeaderBytes> encodeFrameLength(std::uint32_t length) 
             static_cast<std::byte>((length >> 8) & 0xFF), static_cast<std::byte>(length & 0xFF)};
 }
 
-std::expected<std::uint32_t, kanariv::utils::Error>
+kanariv::utils::Expected<std::uint32_t>
 decodeFrameLength(std::span<const std::byte, frameHeaderBytes> header) {
     const std::uint32_t len =
         (static_cast<std::uint32_t>(std::to_integer<unsigned char>(header[0])) << 24) |
@@ -130,7 +130,7 @@ decodeFrameLength(std::span<const std::byte, frameHeaderBytes> header) {
     return len;
 }
 
-std::expected<std::vector<std::byte>, kanariv::utils::Error> frame(std::string_view json) {
+kanariv::utils::Expected<std::vector<std::byte>> frame(std::string_view json) {
     // Reject before narrowing size_t -> uint32_t: an oversized payload would
     // otherwise be framed with a bogus length and desync the stream.
     if (json.size() > maxFrameBytes) {
@@ -148,7 +148,7 @@ std::expected<std::vector<std::byte>, kanariv::utils::Error> frame(std::string_v
     return out;
 }
 
-std::expected<std::string, kanariv::utils::Error> deframe(std::span<const std::byte> buf) {
+kanariv::utils::Expected<std::string> deframe(std::span<const std::byte> buf) {
     if (buf.size() < frameHeaderBytes) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "frame too short")};

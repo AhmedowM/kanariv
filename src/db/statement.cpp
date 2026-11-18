@@ -1,11 +1,12 @@
 #include <sqlite3.h>
 
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/status_format.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <db/statement.hpp>
 #include <expected>
+#include <kanariv/fwd.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <limits>
 #include <span>
 #include <string>
@@ -32,15 +33,15 @@ SqliteStatement& SqliteStatement::operator=(SqliteStatement&& o) noexcept {
     return *this;
 }
 
-std::expected<void, kanariv::utils::Error> SqliteStatement::prepare(sqlite3* db,
-                                                                   std::string_view sql) {
+kanariv::utils::Expected<void> SqliteStatement::prepare(sqlite3* db, std::string_view sql) {
     if (stmt_)
         sqlite3_finalize(stmt_);
     stmt_ = nullptr;
     int rc = sqlite3_prepare_v2(db, sql.data(), static_cast<int>(sql.size()), &stmt_, nullptr);
     if (rc != SQLITE_OK) {
         std::string msg = db ? sqlite3_errmsg(db) : "prepare failed";
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg)};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg)};
     }
     return {};
 }

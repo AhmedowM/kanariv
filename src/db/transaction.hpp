@@ -1,8 +1,8 @@
 #pragma once
 
+#include <expected>
 #include <kanariv/fwd.hpp>
 #include <kanariv/utils.hpp>
-#include <expected>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -42,7 +42,7 @@ class KANARIV_API DbTransaction final {
      * @par Thread safety
      * Caller must hold Database::mutex().
      */
-    static std::expected<DbTransaction, kanariv::utils::Error> begin(sqlite3* db);
+    static kanariv::utils::Expected<DbTransaction> begin(sqlite3* db);
 
     /**
      * @brief Rolls back if not yet committed.
@@ -69,14 +69,14 @@ class KANARIV_API DbTransaction final {
      * @ingroup kanariv_db
      * @return Success or Error with StatusCode::Internal if no active transaction or COMMIT fails.
      */
-    [[nodiscard]] std::expected<void, kanariv::utils::Error> commit();
+    [[nodiscard]] kanariv::utils::Expected<void> commit();
     /**
      * @brief Rolls back the transaction.
      * @ingroup kanariv_db
      * @return Success or Error with StatusCode::Internal if no active transaction or ROLLBACK
      * fails.
      */
-    [[nodiscard]] std::expected<void, kanariv::utils::Error> rollback();
+    [[nodiscard]] kanariv::utils::Expected<void> rollback();
 
   private:
     explicit DbTransaction(sqlite3* db, bool committed);

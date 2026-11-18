@@ -14,7 +14,7 @@
  * other sizes, but the fixed-frame consumers (spectrum analysis) never ask for
  * anything else, so the restriction keeps one predictable code path.
  *
- * Error codes (via `std::expected<T, kanariv::utils::Error>`):
+ * Error codes (via `kanariv::utils::Expected<T>`):
  * - InvalidArg: zero-length or non-power-of-two `n`, mismatched span sizes,
  *   or a plan used for the transform kind it was not created for
  * - Internal: the plan was moved from (empty) or allocation failed
@@ -64,7 +64,7 @@ class KANARIV_API FftPlan {
      * @details `executeR2C` consumes `n` real samples and produces `n/2 + 1`
      * complex bins (DC through Nyquist).
      */
-    static std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error> createR2C(std::size_t n);
+    static kanariv::utils::Expected<std::unique_ptr<FftPlan>> createR2C(std::size_t n);
 
     /**
      * @brief Create a complex-input plan for length `n`.
@@ -74,7 +74,7 @@ class KANARIV_API FftPlan {
      * @details `executeC2C` consumes `n` complex samples and produces `n`
      * complex bins. Set `inverse=true` on `executeC2C` for an inverse FFT.
      */
-    static std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error> createC2C(std::size_t n);
+    static kanariv::utils::Expected<std::unique_ptr<FftPlan>> createC2C(std::size_t n);
 
     /**
      * @brief Execute a real-input FFT.
@@ -85,8 +85,8 @@ class KANARIV_API FftPlan {
      * plan was created with `createC2C`, or `Internal` when the plan is empty.
      * @warning Not reentrant: the plan's scratch buffer is used in place.
      */
-    std::expected<void, kanariv::utils::Error>
-    executeR2C(std::span<const float> input, std::span<std::complex<float>> output) const;
+    kanariv::utils::Expected<void> executeR2C(std::span<const float> input,
+                                              std::span<std::complex<float>> output) const;
 
     /**
      * @brief Execute a complex-input FFT (forward or inverse).
@@ -98,9 +98,9 @@ class KANARIV_API FftPlan {
      * plan was created with `createR2C`, or `Internal` when the plan is empty.
      * @warning Not reentrant: the plan's scratch buffer is used in place.
      */
-    std::expected<void, kanariv::utils::Error>
-    executeC2C(std::span<const std::complex<float>> input, std::span<std::complex<float>> output,
-               bool inverse = false) const;
+    kanariv::utils::Expected<void> executeC2C(std::span<const std::complex<float>> input,
+                                              std::span<std::complex<float>> output,
+                                              bool inverse = false) const;
 
     /**
      * @brief Transform length (power of two).
@@ -148,8 +148,8 @@ KANARIV_API std::vector<float> hamming(std::size_t n);
  * @return `Error::Ok` on success, or `InvalidArg` on size mismatch.
  * @details `samples[i] *= window[i]` for every `i`.
  */
-KANARIV_API std::expected<void, kanariv::utils::Error> applyInPlace(std::span<float> samples,
-                                                                    std::span<const float> window);
+KANARIV_API kanariv::utils::Expected<void> applyInPlace(std::span<float> samples,
+                                                        std::span<const float> window);
 
 } // namespace window
 
@@ -161,7 +161,7 @@ KANARIV_API std::expected<void, kanariv::utils::Error> applyInPlace(std::span<fl
  * @details Convenience wrapper; prefer `FftPlan` when transforming many
  * blocks of the same length to reuse the plan.
  */
-KANARIV_API std::expected<std::vector<std::complex<float>>, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<std::vector<std::complex<float>>>
 fftReal(std::span<const float> samples);
 
 /**
@@ -172,7 +172,7 @@ fftReal(std::span<const float> samples);
  * @details Reconstructs the full conjugate-symmetric spectrum, runs an
  * inverse complex FFT, scales by 1/n, and returns the real part.
  */
-KANARIV_API std::expected<std::vector<float>, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<std::vector<float>>
 ifftReal(std::span<const std::complex<float>> bins);
 
 } // namespace kanariv::dsp::fft

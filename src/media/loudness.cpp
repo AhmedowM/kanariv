@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <expected>
 #include <kanariv/dsp/loudness.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/media/loudness.hpp>
 #include <kanariv/utils/error.hpp>
 #include <media/convert_loop.hpp>
@@ -49,7 +50,7 @@ kanariv::utils::Expected<LoudnessAnalysis> analyzeLoudness(std::string_view path
         avformat_close_input(&fmt);
     };
     auto fail = [&](kanariv::utils::StatusCode code,
-                    std::string message) -> std::expected<LoudnessAnalysis, kanariv::utils::Error> {
+                    std::string message) -> kanariv::utils::Expected<LoudnessAnalysis> {
         release();
         return std::unexpected{kanariv::utils::makeError(code, message)};
     };

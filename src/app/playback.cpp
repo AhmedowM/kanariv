@@ -9,14 +9,15 @@
 
 #include <app/app_impl.hpp>
 #include <app/format_internal.hpp>
+#include <chrono>
+#include <expected>
+#include <format>
 #include <kanariv/app/app.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/math.hpp>
-#include <chrono>
-#include <expected>
-#include <format>
 #include <string>
 #include <thread>
 #include <utility>
@@ -25,8 +26,7 @@
 
 namespace kanariv::app {
 
-std::string
-App::Impl::transportWho(const std::expected<kanariv::ipc::Result, kanariv::utils::Error>& res) {
+std::string App::Impl::transportWho(const kanariv::utils::Expected<kanariv::ipc::Result>& res) {
     if (auto* st = std::get_if<kanariv::ipc::Status>(&*res))
         return kanariv::app::trackWho(*st);
     return std::string{"unknown track"};
@@ -84,11 +84,11 @@ AppResult App::pause() {
     }
     if (auto* st = std::get_if<kanariv::ipc::Status>(&*res)) {
         std::string who = impl_->transportWho(res);
-        return Outcome{.result = std::move(*res),
-                       .line =
-                           std::format("Paused {} at {}", who, kanariv::utils::formatClock(st->pos)),
-                       .toStderr = false,
-                       .failed = false};
+        return Outcome{
+            .result = std::move(*res),
+            .line = std::format("Paused {} at {}", who, kanariv::utils::formatClock(st->pos)),
+            .toStderr = false,
+            .failed = false};
     }
     return Outcome{
         .result = std::move(*res), .line = std::nullopt, .toStderr = false, .failed = false};
@@ -112,10 +112,8 @@ AppResult App::resume() {
         std::string line = st->transition == "started"
                                ? std::format("Playing {}", who)
                                : std::format("Resuming {} from {}", who, at);
-        return Outcome{.result = std::move(*res),
-                       .line = std::move(line),
-                       .toStderr = false,
-                       .failed = false};
+        return Outcome{
+            .result = std::move(*res), .line = std::move(line), .toStderr = false, .failed = false};
     }
     return Outcome{
         .result = std::move(*res), .line = std::nullopt, .toStderr = false, .failed = false};
@@ -198,9 +196,8 @@ AppResult App::seek(double target, bool isRelative) {
     // A relative seek stays one command: the daemon resolves the base
     // position and clamps at zero, so no client-side status read can race
     // another transport command between the two roundtrips.
-    kanariv::ipc::Command cmd =
-        isRelative ? kanariv::ipc::Command{kanariv::ipc::SeekBy{target}}
-                   : kanariv::ipc::Command{kanariv::ipc::Seek{target}};
+    kanariv::ipc::Command cmd = isRelative ? kanariv::ipc::Command{kanariv::ipc::SeekBy{target}}
+                                           : kanariv::ipc::Command{kanariv::ipc::Seek{target}};
     auto res = impl_->sendRaw(cmd);
     if (!res)
         return std::unexpected{res.error()};

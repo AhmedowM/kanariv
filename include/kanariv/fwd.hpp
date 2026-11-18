@@ -159,10 +159,12 @@ struct Error;
  * @brief Canonical alias for `std::expected<T, Error>`.
  * @ingroup kanariv
  * @tparam T Value type on success.
- * @details Defined here (single definition) so public headers can name
- * fallible return types as `Expected<T>` with only `fwd.hpp`, without
- * including `utils/error.hpp`. `Error` may be incomplete at any declaration
- * that merely returns or takes `Expected<T>`; only definitions need it whole.
+ * @details One name for every fallible return type: the alias binds the
+ * project's `Error`, so signatures stay short and the error type changes in
+ * one place. This is the only spelling for `Error`; a different error type is
+ * still written out as `std::expected<T, OtherError>`. `Error` is forward
+ * declared here, so a declaration-only header needs nothing heavier than this
+ * header; definitions still include `utils/error.hpp` whole.
  */
 template <typename T>
 using Expected = std::expected<T, Error>;

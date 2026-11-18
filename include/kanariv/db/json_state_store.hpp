@@ -54,15 +54,14 @@ class KANARIV_API JsonPlaybackStateStore final : public kanariv::contracts::IPla
      * @return State snapshot. A missing or unreadable file is success with a
      * default snapshot, so a damaged sidecar never blocks startup.
      */
-    std::expected<kanariv::types::EngineState, kanariv::utils::Error> load() override;
+    kanariv::utils::Expected<kanariv::types::EngineState> load() override;
 
     /**
      * @brief Replaces the stored snapshot atomically.
      * @param state State snapshot to write.
      * @return Success, or `Io` when the document cannot be written.
      */
-    std::expected<void, kanariv::utils::Error>
-    save(const kanariv::types::EngineState& state) override;
+    kanariv::utils::Expected<void> save(const kanariv::types::EngineState& state) override;
 
     /// @brief Always usable: the sidecar (or in-memory mode) needs no open step.
     bool isOpen() const noexcept override;

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <expected>
 #include <kanariv/dsp/fft.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 #include <limits>
 #include <memory>
@@ -67,7 +68,7 @@ FftPlan::~FftPlan() = default;
 
 FftPlan::FftPlan(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
-std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error> FftPlan::createR2C(std::size_t n) {
+kanariv::utils::Expected<std::unique_ptr<FftPlan>> FftPlan::createR2C(std::size_t n) {
     if (!isPowerOfTwo(n) || n < 2)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "fft length must be a power of two >= 2")};
@@ -85,7 +86,7 @@ std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error> FftPlan::createR2
     return std::unique_ptr<FftPlan>(new FftPlan(std::move(impl)));
 }
 
-std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error> FftPlan::createC2C(std::size_t n) {
+kanariv::utils::Expected<std::unique_ptr<FftPlan>> FftPlan::createC2C(std::size_t n) {
     if (!isPowerOfTwo(n) || n < 2)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "fft length must be a power of two >= 2")};
@@ -104,8 +105,8 @@ std::expected<std::unique_ptr<FftPlan>, kanariv::utils::Error> FftPlan::createC2
     return std::unique_ptr<FftPlan>(new FftPlan(std::move(impl)));
 }
 
-std::expected<void, kanariv::utils::Error>
-FftPlan::executeR2C(std::span<const float> inputSpan, std::span<std::complex<float>> output) const {
+kanariv::utils::Expected<void> FftPlan::executeR2C(std::span<const float> inputSpan,
+                                                   std::span<std::complex<float>> output) const {
     if (!impl_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "fft plan is empty")};
@@ -127,9 +128,9 @@ FftPlan::executeR2C(std::span<const float> inputSpan, std::span<std::complex<flo
     return {};
 }
 
-std::expected<void, kanariv::utils::Error>
-FftPlan::executeC2C(std::span<const std::complex<float>> inputSpan,
-                    std::span<std::complex<float>> output, bool inverse) const {
+kanariv::utils::Expected<void> FftPlan::executeC2C(std::span<const std::complex<float>> inputSpan,
+                                                   std::span<std::complex<float>> output,
+                                                   bool inverse) const {
     if (!impl_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "fft plan is empty")};
@@ -202,8 +203,8 @@ std::vector<float> window::hamming(std::size_t n) {
     return w;
 }
 
-std::expected<void, kanariv::utils::Error> window::applyInPlace(std::span<float> samples,
-                                                                std::span<const float> window) {
+kanariv::utils::Expected<void> window::applyInPlace(std::span<float> samples,
+                                                    std::span<const float> window) {
     if (samples.size() != window.size())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "window length must match sample length")};
@@ -212,8 +213,7 @@ std::expected<void, kanariv::utils::Error> window::applyInPlace(std::span<float>
     return {};
 }
 
-std::expected<std::vector<std::complex<float>>, kanariv::utils::Error>
-fftReal(std::span<const float> samples) {
+kanariv::utils::Expected<std::vector<std::complex<float>>> fftReal(std::span<const float> samples) {
     if (samples.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "samples must be non-empty")};
@@ -229,8 +229,7 @@ fftReal(std::span<const float> samples) {
     return bins;
 }
 
-std::expected<std::vector<float>, kanariv::utils::Error>
-ifftReal(std::span<const std::complex<float>> bins) {
+kanariv::utils::Expected<std::vector<float>> ifftReal(std::span<const std::complex<float>> bins) {
     if (bins.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "bins must be non-empty")};

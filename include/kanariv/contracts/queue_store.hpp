@@ -63,28 +63,27 @@ class IQueueStore : public IStore {
      * default queue.
      * @return Queue value, or `NotFound`/a backend error.
      */
-    virtual std::expected<kanariv::types::Queue, kanariv::utils::Error> getQueue(int64_t qid) = 0;
+    virtual kanariv::utils::Expected<kanariv::types::Queue> getQueue(int64_t qid) = 0;
 
     /**
      * @brief Reports whether a queue exists.
      * @param qid Queue id; implementations normalize zero to the default queue.
      * @return `true`/`false`, or a backend error.
      */
-    virtual std::expected<bool, kanariv::utils::Error> queueExists(int64_t qid) = 0;
+    virtual kanariv::utils::Expected<bool> queueExists(int64_t qid) = 0;
 
     /**
      * @brief Lists all queue containers.
      * @return Queue values, or a backend error.
      */
-    virtual std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error>
-    listQueues() = 0;
+    virtual kanariv::utils::Expected<std::vector<kanariv::types::Queue>> listQueues() = 0;
 
     /**
      * @brief Returns the number of items in a queue.
      * @param qid Queue identifier; zero selects the default queue.
      * @return Item count (zero for an empty queue), or a backend error.
      */
-    virtual std::expected<std::size_t, kanariv::utils::Error> queueCount(int64_t qid) = 0;
+    virtual kanariv::utils::Expected<std::size_t> queueCount(int64_t qid) = 0;
 
     /**
      * @brief Finds a track's zero-based index in a queue.
@@ -93,8 +92,8 @@ class IQueueStore : public IStore {
      * @return Zero-based index of the first matching item, `std::nullopt` when
      * the track is absent, or a backend error.
      */
-    virtual std::expected<std::optional<std::size_t>, kanariv::utils::Error>
-    queueIndexOf(int64_t qid, int64_t trackId) = 0;
+    virtual kanariv::utils::Expected<std::optional<std::size_t>> queueIndexOf(int64_t qid,
+                                                                              int64_t trackId) = 0;
 
     /**
      * @brief Loads the track at a zero-based queue index.
@@ -103,8 +102,8 @@ class IQueueStore : public IStore {
      * @return TrackRow on success, or `NotFound` when the index is beyond the
      * queue or the row is missing.
      */
-    virtual std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
-    queueTrackAt(int64_t qid, int64_t index) = 0;
+    virtual kanariv::utils::Expected<kanariv::types::TrackRow> queueTrackAt(int64_t qid,
+                                                                            int64_t index) = 0;
 
     /**
      * @brief Lists queue items in ascending position order.
@@ -112,7 +111,7 @@ class IQueueStore : public IStore {
      * @return Queue items, or a backend error. Each item's `position` is the
      * stored gap-based ordering value, not its zero-based index.
      */
-    virtual std::expected<std::vector<kanariv::types::QueueItem>, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<std::vector<kanariv::types::QueueItem>>
     listQueueItems(int64_t qid) = 0;
 
     /**
@@ -123,7 +122,7 @@ class IQueueStore : public IStore {
      * `listQueueItems()` row for row: a track queued twice appears twice, and
      * an item whose track row is missing is skipped.
      */
-    virtual std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
     tracksForQueue(int64_t qid) = 0;
 
     /**
@@ -132,15 +131,15 @@ class IQueueStore : public IStore {
      * @param library_id Owning library identifier.
      * @return The new queue identifier, or `InvalidArg`/a backend error.
      */
-    virtual std::expected<int64_t, kanariv::utils::Error> createQueue(std::string_view name,
-                                                                      int64_t library_id = 1) = 0;
+    virtual kanariv::utils::Expected<int64_t> createQueue(std::string_view name,
+                                                          int64_t library_id = 1) = 0;
 
     /**
      * @brief Deletes a queue container and its items.
      * @param qid Queue identifier; zero selects the default queue.
      * @return Success, or `NotFound`/a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> deleteQueue(int64_t qid) = 0;
+    virtual kanariv::utils::Expected<void> deleteQueue(int64_t qid) = 0;
 
     /**
      * @brief Sets whether a queue is temporary.
@@ -148,7 +147,7 @@ class IQueueStore : public IStore {
      * @param temp `true` to mark the queue temporary, otherwise `false`.
      * @return Success, or `NotFound`/a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> setQueueTemp(int64_t qid, bool temp) = 0;
+    virtual kanariv::utils::Expected<void> setQueueTemp(int64_t qid, bool temp) = 0;
 
     /**
      * @brief Sets the repeat mode stored for a queue.
@@ -156,8 +155,8 @@ class IQueueStore : public IStore {
      * @param mode Repeat mode to store.
      * @return Success, or `NotFound`/a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error>
-    setQueueRepeat(int64_t qid, kanariv::types::RepeatMode mode) = 0;
+    virtual kanariv::utils::Expected<void> setQueueRepeat(int64_t qid,
+                                                          kanariv::types::RepeatMode mode) = 0;
 
     /**
      * @brief Enqueues track identifiers atomically.
@@ -167,8 +166,8 @@ class IQueueStore : public IStore {
      * @details Atomic per call. Callers passing more than `queueBatchChunk`
      * identifiers must chunk the span so each write transaction stays bounded.
      */
-    virtual std::expected<void, kanariv::utils::Error>
-    queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) = 0;
+    virtual kanariv::utils::Expected<void> queueEnqueueBatch(int64_t qid,
+                                                             std::span<const int64_t> tids) = 0;
 
     /**
      * @brief Enqueues one track at a zero-based insertion index.
@@ -179,8 +178,8 @@ class IQueueStore : public IStore {
      * @return Success, or `InvalidArg` for an out-of-range index, `NotFound`,
      * or a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> queueEnqueue(int64_t qid, int64_t tid,
-                                                                    int64_t index = -1) = 0;
+    virtual kanariv::utils::Expected<void> queueEnqueue(int64_t qid, int64_t tid,
+                                                        int64_t index = -1) = 0;
 
     /**
      * @brief Removes the item at a zero-based queue index.
@@ -189,7 +188,7 @@ class IQueueStore : public IStore {
      * @return Success, or `InvalidArg` for a negative index, `NotFound` when
      * the index is beyond the queue, or a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> queueRemove(int64_t qid, int64_t index) = 0;
+    virtual kanariv::utils::Expected<void> queueRemove(int64_t qid, int64_t index) = 0;
 
     /**
      * @brief Moves one queue item to another zero-based index atomically.
@@ -203,15 +202,15 @@ class IQueueStore : public IStore {
      * `from == to`. Playback order is engine state, so callers notify the
      * engine after a successful move.
      */
-    virtual std::expected<void, kanariv::utils::Error> queueMove(int64_t qid, std::size_t from,
-                                                                 std::size_t to) = 0;
+    virtual kanariv::utils::Expected<void> queueMove(int64_t qid, std::size_t from,
+                                                     std::size_t to) = 0;
 
     /**
      * @brief Removes all items from a queue.
      * @param qid Queue identifier; zero selects the default queue.
      * @return Success, or a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> queueClear(int64_t qid) = 0;
+    virtual kanariv::utils::Expected<void> queueClear(int64_t qid) = 0;
 };
 
 } // namespace kanariv::contracts

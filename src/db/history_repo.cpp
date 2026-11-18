@@ -11,6 +11,7 @@
 #include <db/stmt_helpers.hpp>
 #include <expected>
 #include <kanariv/db/database.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/status_format.hpp>
@@ -24,7 +25,7 @@
 
 namespace kanariv::db {
 
-std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::HistoryEntry>>
 Database::queryHistory(const kanariv::types::HistoryQuery* q) {
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
@@ -76,7 +77,7 @@ Database::queryHistory(const kanariv::types::HistoryQuery* q) {
     return out;
 }
 
-std::expected<void, kanariv::utils::Error> Database::clearHistory() {
+kanariv::utils::Expected<void> Database::clearHistory() {
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
@@ -95,8 +96,8 @@ std::expected<void, kanariv::utils::Error> Database::clearHistory() {
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> Database::bookmarkAdd(int64_t tid, int64_t pos,
-                                                                 std::string_view note) {
+kanariv::utils::Expected<void> Database::bookmarkAdd(int64_t tid, int64_t pos,
+                                                     std::string_view note) {
     if (tid == 0 || pos < 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -121,7 +122,7 @@ std::expected<void, kanariv::utils::Error> Database::bookmarkAdd(int64_t tid, in
     return {};
 }
 
-std::expected<std::vector<kanariv::types::Bookmark>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::Bookmark>>
 Database::listBookmarks(int64_t tid) {
     if (tid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
@@ -150,7 +151,7 @@ Database::listBookmarks(int64_t tid) {
     return out;
 }
 
-std::expected<kanariv::types::Bookmark, kanariv::utils::Error> Database::bookmarkGet(int64_t id) {
+kanariv::utils::Expected<kanariv::types::Bookmark> Database::bookmarkGet(int64_t id) {
     if (id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -175,7 +176,7 @@ std::expected<kanariv::types::Bookmark, kanariv::utils::Error> Database::bookmar
     return b;
 }
 
-std::expected<void, kanariv::utils::Error> Database::bookmarkRemove(int64_t id) {
+kanariv::utils::Expected<void> Database::bookmarkRemove(int64_t id) {
     if (id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -195,10 +196,8 @@ std::expected<void, kanariv::utils::Error> Database::bookmarkRemove(int64_t id) 
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> Database::lyricsSet(int64_t tid,
-                                                               std::string_view lrc_text,
-                                                               bool is_synced,
-                                                               std::string_view source) {
+kanariv::utils::Expected<void> Database::lyricsSet(int64_t tid, std::string_view lrc_text,
+                                                   bool is_synced, std::string_view source) {
     if (tid == 0 || lrc_text.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -231,7 +230,7 @@ std::expected<void, kanariv::utils::Error> Database::lyricsSet(int64_t tid,
     return {};
 }
 
-std::expected<kanariv::types::Lyrics, kanariv::utils::Error> Database::lyricsGet(int64_t tid) {
+kanariv::utils::Expected<kanariv::types::Lyrics> Database::lyricsGet(int64_t tid) {
     if (tid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -259,7 +258,7 @@ std::expected<kanariv::types::Lyrics, kanariv::utils::Error> Database::lyricsGet
     return l;
 }
 
-std::expected<void, kanariv::utils::Error> Database::lyricsRemove(int64_t tid) {
+kanariv::utils::Expected<void> Database::lyricsRemove(int64_t tid) {
     if (tid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};

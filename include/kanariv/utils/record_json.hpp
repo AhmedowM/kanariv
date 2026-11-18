@@ -14,6 +14,7 @@
  */
 
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
@@ -43,6 +44,6 @@ KANARIV_API Json trackToJson(const kanariv::types::TrackRow& t);
  * Pure function, thread-safe.
  * @see trackToJson
  */
-KANARIV_API std::expected<kanariv::types::TrackRow, Error> trackFromJson(const Json& j);
+KANARIV_API kanariv::utils::Expected<kanariv::types::TrackRow> trackFromJson(const Json& j);
 
 } // namespace kanariv::utils

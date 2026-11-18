@@ -9,6 +9,7 @@
 #include <expected>
 #include <kanariv/db/database.hpp>
 #include <kanariv/dsp/loudness.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/library/analyze.hpp>
 #include <kanariv/media/loudness.hpp>
 #include <kanariv/types/db.hpp>
@@ -46,7 +47,7 @@ bool alreadyAnalyzed(const kanariv::types::TrackRow& t) {
 
 } // namespace
 
-std::expected<AnalyzeReport, kanariv::utils::Error>
+kanariv::utils::Expected<AnalyzeReport>
 analyzeLibrary(kanariv::db::Database& db, int64_t libraryId, AnalyzeOptions options,
                std::function<void(int64_t, int64_t, std::string_view)> progress) {
     std::optional<kanariv::types::TrackQuery> query;
@@ -151,7 +152,7 @@ analyzeLibrary(kanariv::db::Database& db, int64_t libraryId, AnalyzeOptions opti
 
 Analyzer::Analyzer(std::shared_ptr<kanariv::db::Database> db) : db_(std::move(db)) {}
 
-std::expected<contracts::LibraryAnalyzeReport, kanariv::utils::Error>
+kanariv::utils::Expected<contracts::LibraryAnalyzeReport>
 Analyzer::analyzeLibrary(int64_t libraryId, contracts::LibraryAnalyzeOptions options,
                          std::function<void(int64_t, int64_t, std::string_view)> progress) {
     auto report = kanariv::library::analyzeLibrary(

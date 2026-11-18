@@ -3,6 +3,7 @@
 #include <exception>
 #include <expected>
 #include <iterator>
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/status_format.hpp>
@@ -207,7 +208,7 @@ Json Json::parse(std::string_view text) {
     }
 }
 
-std::expected<Json, Error> Json::tryParse(std::string_view text) {
+kanariv::utils::Expected<Json> Json::tryParse(std::string_view text) {
     try {
         return parse(text);
     } catch (const JsonError& e) {
@@ -276,7 +277,7 @@ Json Json::operator[](std::string_view key) const {
     return out;
 }
 
-std::expected<Json, Error> Json::at(std::string_view key) const {
+kanariv::utils::Expected<Json> Json::at(std::string_view key) const {
     try {
         Json out;
         out.impl_->v = JsonSlots::get(resolveConstImpl(this, key, 0, false), key, 0, false);
@@ -286,7 +287,7 @@ std::expected<Json, Error> Json::at(std::string_view key) const {
     }
 }
 
-std::expected<Json, Error> Json::at(std::size_t index) const {
+kanariv::utils::Expected<Json> Json::at(std::size_t index) const {
     try {
         Json out;
         out.impl_->v = JsonSlots::get(resolveConstImpl(this, {}, index, true), {}, index, true);
@@ -296,7 +297,7 @@ std::expected<Json, Error> Json::at(std::size_t index) const {
     }
 }
 
-std::expected<std::string, Error> Json::keyAt(std::size_t index) const {
+kanariv::utils::Expected<std::string> Json::keyAt(std::size_t index) const {
     try {
         if (!impl_ || !impl_->v.is_object() || index >= impl_->v.size())
             throwJson("json: key index out of range");

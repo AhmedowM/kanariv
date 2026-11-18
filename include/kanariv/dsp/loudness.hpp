@@ -80,8 +80,8 @@ class KANARIV_API LoudnessMeter {
      * @details A non-integer sample rate is accepted; the 100 ms hop is
      * rounded to the nearest whole sample.
      */
-    static std::expected<std::unique_ptr<LoudnessMeter>, kanariv::utils::Error>
-    create(double sampleRate, unsigned channels);
+    static kanariv::utils::Expected<std::unique_ptr<LoudnessMeter>> create(double sampleRate,
+                                                                           unsigned channels);
 
     LoudnessMeter(LoudnessMeter&&) noexcept;
     LoudnessMeter& operator=(LoudnessMeter&&) noexcept;
@@ -97,7 +97,7 @@ class KANARIV_API LoudnessMeter {
      * @return `Error::Ok` on success, or `InvalidArg` when the frame size is
      * not a whole number of frames.
      */
-    std::expected<void, kanariv::utils::Error> addFrames(std::span<const float> interleaved);
+    kanariv::utils::Expected<void> addFrames(std::span<const float> interleaved);
 
     /**
      * @brief Weighted mean-square of every completed 400 ms block.

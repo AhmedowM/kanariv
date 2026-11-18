@@ -1,5 +1,6 @@
 #include <expected>
 #include <kanariv/contracts/storage.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/player/output.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
@@ -29,7 +30,7 @@ Engine::ExpectedVoid Engine::Impl::attachStorage(kanariv::contracts::Storage sto
     return {};
 }
 
-std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Engine::Impl::stats() {
+kanariv::utils::Expected<kanariv::types::PlaybackStats> Engine::Impl::stats() {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
@@ -39,7 +40,7 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Engine::Impl
     return *ds;
 }
 
-std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::HistoryEntry>>
 Engine::Impl::listHistory(int limit) {
     if (!hasDb())
         return std::unexpected(
@@ -47,7 +48,7 @@ Engine::Impl::listHistory(int limit) {
     return storage_.history->listHistory(limit);
 }
 
-std::expected<void, kanariv::utils::Error> Engine::Impl::clearHistory() {
+kanariv::utils::Expected<void> Engine::Impl::clearHistory() {
     if (!hasDb())
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
@@ -129,7 +130,7 @@ std::optional<kanariv::utils::Error> Engine::Impl::loadState() {
     return std::nullopt;
 }
 
-std::expected<void, kanariv::utils::Error>
+kanariv::utils::Expected<void>
 Engine::Impl::saveStateLocked(std::optional<int64_t> livePositionMs) {
     // @pre queueMutex_ held: state_/queue_.perm are queue-lock-only. The live
     // position needs decodeMtx_ (transport counters) when the caller cannot

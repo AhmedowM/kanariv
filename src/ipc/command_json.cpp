@@ -5,10 +5,10 @@
 #include <expected>
 #include <format>
 #include <ipc/protocol_internal.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <kanariv/types/format.hpp>
 #include <kanariv/types/format.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/types/wire.hpp>
@@ -28,7 +28,7 @@ namespace kanariv::ipc {
 
 // Defined after the serializer; the schema table below needs it by address.
 template <CommandAlternative T>
-std::expected<T, kanariv::utils::Error> parseCommandPayload(const Json& j);
+kanariv::utils::Expected<T> parseCommandPayload(const Json& j);
 
 // Dependent-false so a missing branch fails to compile only when instantiated.
 // Kept out of the anonymous namespace: nothing odr-uses it when coverage is
@@ -54,11 +54,11 @@ struct CommandSchema {
     std::string_view name;
     std::size_t index;
     TransportPolicy policy;
-    std::expected<Command, kanariv::utils::Error> (*parse)(const Json&);
+    kanariv::utils::Expected<Command> (*parse)(const Json&);
 };
 
 template <CommandAlternative T>
-std::expected<Command, kanariv::utils::Error> parseCommandSchema(const Json& j) {
+kanariv::utils::Expected<Command> parseCommandSchema(const Json& j) {
     auto parsed = parseCommandPayload<T>(j);
     if (!parsed)
         return std::unexpected{std::move(parsed.error())};
@@ -453,7 +453,7 @@ Json toJson(const Command& cmd) {
 }
 
 template <CommandAlternative T>
-std::expected<T, kanariv::utils::Error> parseCommandPayload(const Json& j) {
+kanariv::utils::Expected<T> parseCommandPayload(const Json& j) {
     // Strictness policy (I10): a field the serializer always writes is
     // mandatory; a field it emits as `null` (or omits) when unset stays
     // optional; a present field of the wrong type is InvalidArg -- never a
@@ -913,7 +913,7 @@ std::expected<T, kanariv::utils::Error> parseCommandPayload(const Json& j) {
     }
 }
 
-std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j) {
+kanariv::utils::Expected<Command> commandFromJson(const Json& j) {
     try {
         if (!j.contains("type") || !j["type"].isString()) {
             return std::unexpected{

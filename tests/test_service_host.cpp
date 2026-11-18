@@ -12,6 +12,7 @@
 #include <kanariv/config/runtime.hpp>
 #include <kanariv/contracts/storage.hpp>
 #include <kanariv/db/database.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -416,7 +417,7 @@ readReply(RawConnection& conn,
     return std::move(*reply);
 }
 
-std::expected<ipc::Result, kanariv::utils::Error> okDispatch(const ipc::Command&) {
+kanariv::utils::Expected<ipc::Result> okDispatch(const ipc::Command&) {
     return ipc::Result{ipc::Empty{}};
 }
 
@@ -821,8 +822,7 @@ TEST_CASE("queue batch commands report per-item outcomes", "[service][queue][a2b
     REQUIRE(queueIds() == std::vector<int64_t>{ids[1], ids[2]});
 
     // An unresolvable single query stays a command-level error.
-    auto missing = svc->dispatchCommand(
-        kanariv::ipc::QueueAdd{.query = "999999", .search = false});
+    auto missing = svc->dispatchCommand(kanariv::ipc::QueueAdd{.query = "999999", .search = false});
     REQUIRE_FALSE(missing.has_value());
     REQUIRE(missing.error().code == kanariv::utils::StatusCode::NotFound);
 }
@@ -870,8 +870,7 @@ TEST_CASE("art cache validates entries against the source stat", "[service][artc
 
     // A changed size, mtime or source path is a miss: the art may have changed.
     CHECK_FALSE(cache.get(7, cover, stamp, 4095).has_value());
-    CHECK_FALSE(
-        cache.get(7, cover, stamp + std::chrono::seconds{1}, 4096).has_value());
+    CHECK_FALSE(cache.get(7, cover, stamp + std::chrono::seconds{1}, 4096).has_value());
     CHECK_FALSE(cache.get(7, "other.jpg", stamp, 4096).has_value());
     CHECK_FALSE(cache.get(8, cover, stamp, 4096).has_value());
 

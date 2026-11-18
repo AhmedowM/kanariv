@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <expected>
 #include <kanariv/dsp/loudness.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 #include <limits>
 #include <memory>
@@ -216,8 +217,8 @@ LoudnessMeter& LoudnessMeter::operator=(LoudnessMeter&&) noexcept = default;
 
 LoudnessMeter::~LoudnessMeter() = default;
 
-std::expected<std::unique_ptr<LoudnessMeter>, kanariv::utils::Error>
-LoudnessMeter::create(double sampleRate, unsigned channels) {
+kanariv::utils::Expected<std::unique_ptr<LoudnessMeter>> LoudnessMeter::create(double sampleRate,
+                                                                               unsigned channels) {
     if (!std::isfinite(sampleRate) || sampleRate < kMinSampleRate || sampleRate > kMaxSampleRate)
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::InvalidArg,
@@ -241,8 +242,7 @@ LoudnessMeter::create(double sampleRate, unsigned channels) {
     return std::unique_ptr<LoudnessMeter>(new LoudnessMeter(std::move(impl)));
 }
 
-std::expected<void, kanariv::utils::Error>
-LoudnessMeter::addFrames(std::span<const float> interleaved) {
+kanariv::utils::Expected<void> LoudnessMeter::addFrames(std::span<const float> interleaved) {
     if (!impl_)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
                                                          "loudness meter is empty")};

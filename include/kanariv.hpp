@@ -34,7 +34,7 @@
  * - config -- JSON config file, socket/pid/lock path derivation.
  *
  * Layer rule (each line lists its direct kanariv dependencies; the
- * authoritative declarations live in cmake/components/*.cmake):
+ * authoritative declarations live in cmake/components/<component>.cmake):
  * @code
  * kanariv.types     (no deps)
  * kanariv.utils     (types)
@@ -60,7 +60,7 @@
  * - Background writer -- single consumer, bounded MPSC queue,
  *   `condition_variable` + `stop_token`.
  *
- * Error handling: All fallible public APIs return `std::expected<T, Error>`
+ * Error handling: All fallible public APIs return `kanariv::utils::Expected<T>`
  * with `StatusCode` enum (Ok, InvalidArg, NotFound, Unsupported, Io, Device,
  * State, NoMem, Internal, AlreadyExists, Busy, Corrupt, NoSpace).
  *
@@ -86,6 +86,7 @@
 #include <kanariv/config.hpp>
 #include <kanariv/db.hpp>
 #include <kanariv/engine.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc.hpp>
 #include <kanariv/library.hpp>
 #include <kanariv/media.hpp>

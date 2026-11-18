@@ -130,9 +130,9 @@ struct PlayerOptions {
 class KANARIV_API Player {
   public:
     /** @brief Expected result used by operations that return no value. */
-    using ExpectedVoid = std::expected<void, kanariv::utils::Error>;
+    using ExpectedVoid = kanariv::utils::Expected<void>;
     /** @brief Expected result returned by the factory. */
-    using ExpectedPlayer = std::expected<std::unique_ptr<Player>, kanariv::utils::Error>;
+    using ExpectedPlayer = kanariv::utils::Expected<std::unique_ptr<Player>>;
 
     /**
      * @brief Create a new Player instance

@@ -11,6 +11,7 @@
 #include <expected>
 #include <format>
 #include <kanariv/app/app.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
@@ -71,8 +72,7 @@ AppResult App::tagGet(std::string idOrPath, bool cover) {
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
-std::expected<TagValue, kanariv::utils::Error> App::tagValue(std::string idOrPath,
-                                                             const std::string& field) {
+kanariv::utils::Expected<TagValue> App::tagValue(std::string idOrPath, const std::string& field) {
     if (!isTagField(field)) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "unknown tag field '" + field + "'")};

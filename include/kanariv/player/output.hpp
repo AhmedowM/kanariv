@@ -113,9 +113,9 @@ KANARIV_API std::optional<std::uint32_t> legacyDeviceIndex(std::string_view id);
  */
 class KANARIV_API AudioOutput {
   public:
-    using Expected = std::expected<std::unique_ptr<AudioOutput>, kanariv::utils::Error>;
+    using Expected = kanariv::utils::Expected<std::unique_ptr<AudioOutput>>;
     /** @brief Result of control operations that produce no value. */
-    using ExpectedVoid = std::expected<void, kanariv::utils::Error>;
+    using ExpectedVoid = kanariv::utils::Expected<void>;
 
     /**
      * @struct Config

@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/service/service.hpp>
@@ -120,7 +121,7 @@ extractEmbeddedCoverArt(const std::filesystem::path& path, kanariv::utils::Logge
     return std::nullopt;
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
     if (cmd.id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -234,7 +235,7 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
     static const std::array<std::string_view, 8> allowed{
         "title", "artist", "album", "album_artist", "genre", "year", "track_number", "disc_number"};
@@ -418,7 +419,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
     return Result{std::move(out)};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::TagGet& cmd) {
     int64_t trackId = 0;
     if (cmd.id.has_value()) {

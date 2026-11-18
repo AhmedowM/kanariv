@@ -14,6 +14,7 @@
 #include <kanariv/app/app.hpp>
 #include <kanariv/client/client.hpp>
 #include <kanariv/config.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
@@ -66,8 +67,8 @@ struct App::Impl {
      * failure followed by a failed liveness probe is reported as the
      * canonical unreachable-daemon error.
      */
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    sendRaw(const kanariv::ipc::Command& cmd, std::chrono::milliseconds timeout = {});
+    kanariv::utils::Expected<kanariv::ipc::Result> sendRaw(const kanariv::ipc::Command& cmd,
+                                                           std::chrono::milliseconds timeout = {});
 
     /**
      * @brief Pairs a result with its success line, passing errors through.
@@ -75,7 +76,7 @@ struct App::Impl {
      * @param line Human success line; nullopt means bare-render the result.
      * @return Outcome data for the frontend; errors surface unchanged.
      */
-    AppResult confirm(std::expected<kanariv::ipc::Result, kanariv::utils::Error>&& res,
+    AppResult confirm(kanariv::utils::Expected<kanariv::ipc::Result>&& res,
                       std::optional<std::string> line = std::nullopt);
 
     /**
@@ -95,8 +96,7 @@ struct App::Impl {
      * @brief Sends a play-like command, autostarting a down daemon.
      * @param cmd IPC command to send.
      */
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    sendPlay(const kanariv::ipc::Command& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> sendPlay(const kanariv::ipc::Command& cmd);
 
     /**
      * @brief Starts the daemon (foreground service or background spawn).
@@ -119,7 +119,7 @@ struct App::Impl {
      * @brief Human track label for the last transport result.
      * @return TrackRow label, or "unknown track" for non-status results.
      */
-    std::string transportWho(const std::expected<kanariv::ipc::Result, kanariv::utils::Error>& res);
+    std::string transportWho(const kanariv::utils::Expected<kanariv::ipc::Result>& res);
 
   private:
     mutable std::mutex stateMutex_;  ///< Guards config_ and argv0_.

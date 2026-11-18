@@ -12,6 +12,7 @@
 #include <exception>
 #include <expected>
 #include <filesystem>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/media/audio_ext.hpp>
@@ -41,7 +42,7 @@ namespace detail {
 double durationFromDecoder(const std::filesystem::path& path) noexcept;
 } // namespace detail
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
     std::filesystem::path root;
     if (cmd.path)
@@ -126,7 +127,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
     return Result{kanariv::ipc::ScanReport{n}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LibraryAnalyze& cmd) {
     // Analysis decodes audio, so the port is only populated by the composition
     // root (kanariv::library::Analyzer); a bare backend reports the miswiring.
@@ -143,7 +144,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryAnalyze& cmd) {
                                               report->skipped}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LibrarySearch& cmd) {
     auto tracks = storage_.library->searchTracks(cmd.query, cmd.limit);
     if (!tracks)
@@ -154,7 +155,7 @@ Service::Impl::handle(const kanariv::ipc::LibrarySearch& cmd) {
     return Result{kanariv::ipc::SearchResults{cmd.query, std::move(out)}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LibraryStats& cmd) {
     auto st = storage_.library->libraryStats(cmd.top_tracks, cmd.top_albums, cmd.top_genres,
                                              cmd.top_artists);
@@ -163,7 +164,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryStats& cmd) {
     return Result{std::move(*st)};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LibraryList& cmd) {
     kanariv::types::TrackQuery q{};
     q.limit = cmd.limit;
@@ -186,8 +187,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryList& cmd) {
     return Result{Tracks{std::move(*tracks)}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::Info&) {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Info&) {
     // Get current track from engine status
     int64_t track_id = engine_->currentTrackId();
     if (track_id == 0) {
@@ -204,7 +204,7 @@ Service::Impl::handle(const kanariv::ipc::Info&) {
     return Result{std::move(ti)};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LibraryAdd& cmd) {
     if (cmd.path.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -215,8 +215,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryAdd& cmd) {
     if (ec || !exists)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                          "path not found: " + cmd.path)};
-    auto addSingleFile =
-        [&](const std::filesystem::path& fp) -> std::expected<void, kanariv::utils::Error> {
+    auto addSingleFile = [&](const std::filesystem::path& fp) -> kanariv::utils::Expected<void> {
         if (!kanariv::media::hasAudioExt(fp))
             return std::unexpected{kanariv::utils::makeError(
                 kanariv::utils::StatusCode::Unsupported,
@@ -310,7 +309,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryAdd& cmd) {
     }
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LibraryRemove& cmd) {
     if (cmd.query.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -371,12 +370,11 @@ Service::Impl::handle(const kanariv::ipc::LibraryRemove& cmd) {
                                                      "track not found: " + cmd.query)};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::Preview&) {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Preview&) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::TrackRate& cmd) {
     if (cmd.track_id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -394,7 +392,7 @@ Service::Impl::handle(const kanariv::ipc::TrackRate& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LibraryMaintenance& cmd) {
     if (cmd.action == "report") {
         auto report = storage_.library->libraryReport(cmd.library_id);

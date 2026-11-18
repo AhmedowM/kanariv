@@ -1,5 +1,6 @@
 #include <filesystem>
 #include <kanariv/db/maintenance.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/utils/log.hpp>
@@ -53,8 +54,7 @@ PathState classifyPath(std::string_view utf8Path) {
 
 } // namespace
 
-std::expected<LibraryMaintenanceReport, kanariv::utils::Error> libraryReport(Database& db,
-                                                                             int64_t libraryId) {
+kanariv::utils::Expected<LibraryMaintenanceReport> libraryReport(Database& db, int64_t libraryId) {
     if (libraryId <= 0)
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
                                                          "invalid library id"));
@@ -105,8 +105,8 @@ std::expected<LibraryMaintenanceReport, kanariv::utils::Error> libraryReport(Dat
     return report;
 }
 
-std::expected<std::size_t, kanariv::utils::Error>
-libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report) {
+kanariv::utils::Expected<std::size_t> libraryPruneMissing(Database& db,
+                                                          const LibraryMaintenanceReport& report) {
     std::size_t pruned = 0;
     for (const auto& track : report.missing_tracks) {
         // Re-check immediately before deleting: the report may be stale, and a
@@ -127,7 +127,7 @@ libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report) {
     return pruned;
 }
 
-std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
+kanariv::utils::Expected<LibraryMaintenanceReport>
 libraryApplyMaintenance(Database& db, int64_t libraryId, const LibraryMaintenanceOptions& options) {
     auto report = libraryReport(db, libraryId);
     if (!report)
@@ -140,12 +140,12 @@ libraryApplyMaintenance(Database& db, int64_t libraryId, const LibraryMaintenanc
     return report;
 }
 
-std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::types::LibraryMaintenanceReport>
 Database::libraryReport(int64_t libraryId) {
     return kanariv::db::libraryReport(*this, libraryId);
 }
 
-std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::types::LibraryMaintenanceReport>
 Database::libraryApplyMaintenance(int64_t libraryId,
                                   const kanariv::types::LibraryMaintenanceOptions& options) {
     return kanariv::db::libraryApplyMaintenance(*this, libraryId, options);

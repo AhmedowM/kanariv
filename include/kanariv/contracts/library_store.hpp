@@ -38,8 +38,7 @@ class ILibraryStore : public IStore {
      * @brief Lists configured library roots.
      * @return Library values, or a backend error.
      */
-    virtual std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error>
-    listLibraries() = 0;
+    virtual kanariv::utils::Expected<std::vector<kanariv::types::Library>> listLibraries() = 0;
 
     /**
      * @brief Adds a library root.
@@ -49,29 +48,28 @@ class ILibraryStore : public IStore {
      * @return The new identifier, or `InvalidArg`/`AlreadyExists`/a backend
      * error.
      */
-    virtual std::expected<int64_t, kanariv::utils::Error>
-    libraryAdd(std::string_view path, std::string_view name = {}) = 0;
+    virtual kanariv::utils::Expected<int64_t> libraryAdd(std::string_view path,
+                                                         std::string_view name = {}) = 0;
 
     /**
      * @brief Updates an existing library definition.
      * @param l Library value containing the identifier and new fields.
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error>
-    libraryUpdate(const kanariv::types::Library& l) = 0;
+    virtual kanariv::utils::Expected<void> libraryUpdate(const kanariv::types::Library& l) = 0;
 
     /**
      * @brief Deletes a library root by identifier.
      * @param id Library identifier.
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> libraryDelete(int64_t id) = 0;
+    virtual kanariv::utils::Expected<void> libraryDelete(int64_t id) = 0;
 
     /**
      * @brief Returns aggregate database statistics.
      * @return Statistics snapshot, or a backend error.
      */
-    virtual std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> getStats() = 0;
+    virtual kanariv::utils::Expected<kanariv::types::PlaybackStats> getStats() = 0;
 
     /**
      * @brief Returns library totals and optional top-N listening reports.
@@ -86,7 +84,7 @@ class ILibraryStore : public IStore {
      * @details Multi-artist tracks are split so each individual artist is
      * counted separately in `top_artists`.
      */
-    virtual std::expected<kanariv::types::LibraryStats, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<kanariv::types::LibraryStats>
     libraryStats(std::optional<int> topTracks = std::nullopt,
                  std::optional<int> topAlbums = std::nullopt,
                  std::optional<int> topGenres = std::nullopt,
@@ -98,7 +96,7 @@ class ILibraryStore : public IStore {
      * matches common text metadata. An empty filter lists all tracks ordered
      * by id.
      */
-    virtual std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
     listTracks(std::optional<kanariv::types::TrackQuery> q = std::nullopt) = 0;
 
     /**
@@ -111,7 +109,7 @@ class ILibraryStore : public IStore {
      * @details Implementations fall back to a substring match when the
      * full-text index yields nothing.
      */
-    virtual std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
     searchTracks(std::string_view query, int limit = 50) = 0;
 
     /**
@@ -122,7 +120,7 @@ class ILibraryStore : public IStore {
      * error.
      * @details Read-only: never deletes files or rows.
      */
-    virtual std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<kanariv::types::LibraryMaintenanceReport>
     libraryReport(int64_t library_id) = 0;
 
     /**
@@ -133,7 +131,7 @@ class ILibraryStore : public IStore {
      * @return Report describing the state before application, or an error.
      * @details Deleting rows is skipped when `options.dry_run` is true.
      */
-    virtual std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<kanariv::types::LibraryMaintenanceReport>
     libraryApplyMaintenance(int64_t library_id,
                             const kanariv::types::LibraryMaintenanceOptions& options) = 0;
 
@@ -142,8 +140,7 @@ class ILibraryStore : public IStore {
      * @param outPath Destination file path.
      * @return Success, or `Internal`/`Io`.
      */
-    virtual std::expected<void, kanariv::utils::Error>
-    exportJson(const std::filesystem::path& outPath) = 0;
+    virtual kanariv::utils::Expected<void> exportJson(const std::filesystem::path& outPath) = 0;
 
     /**
      * @brief Imports track rows from a JSON file inside one transaction.
@@ -152,8 +149,7 @@ class ILibraryStore : public IStore {
      * row, reported with its index) or `Internal`; the transaction rolls back
      * on any failure.
      */
-    virtual std::expected<void, kanariv::utils::Error>
-    importJson(const std::filesystem::path& inPath) = 0;
+    virtual kanariv::utils::Expected<void> importJson(const std::filesystem::path& inPath) = 0;
 };
 
 } // namespace kanariv::contracts

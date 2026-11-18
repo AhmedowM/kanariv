@@ -6,9 +6,9 @@
  * @ingroup kanariv_utils
  */
 
+#include <format>
 #include <kanariv/fwd.hpp>
 #include <kanariv/utils/status_format.hpp>
-#include <format>
 #include <string>
 #include <string_view>
 
@@ -17,7 +17,7 @@ namespace kanariv::utils {
 /**
  * @brief Carries a StatusCode plus an optional diagnostic message.
  * @ingroup kanariv_utils
- * @details Intended as the error type for `std::expected<T, Error>`.
+ * @details Intended as the error type for `kanariv::utils::Expected<T>`.
  * Equality is defaulted; message is owned (`std::string`) so the view
  * passed to the constructor is copied.
  *

@@ -33,9 +33,8 @@ namespace kanariv::media::internal {
  * depending on filesystem permission semantics, which differ per platform and
  * are bypassed when the tests run as root.
  */
-using FingerprintProvider =
-    std::function<std::expected<std::array<std::uint8_t, 32>, kanariv::utils::Error>(
-        const std::filesystem::path&, ScanMode)>;
+using FingerprintProvider = std::function<kanariv::utils::Expected<std::array<std::uint8_t, 32>>(
+    const std::filesystem::path&, ScanMode)>;
 
 /**
  * @brief Resumable audio-file walk behind every scan entry point.
@@ -72,7 +71,7 @@ class KANARIV_API ScanWalker {
      * cannot be opened (permission denied, path is a regular file, ...). A
      * failure is also reported as a `WalkError` issue.
      */
-    std::expected<void, kanariv::utils::Error> open();
+    kanariv::utils::Expected<void> open();
 
     /**
      * @brief Returns the next fully fingerprinted track.

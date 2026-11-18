@@ -22,6 +22,7 @@
 #include <kanariv/app/app.hpp>
 #include <kanariv/app/paths.hpp>
 #include <kanariv/client/output_formatter.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/types/engine.hpp>
@@ -64,7 +65,7 @@ AppResult App::queueList() {
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
-std::expected<TrackList, kanariv::utils::Error> App::queueTracks(const std::string& order) {
+kanariv::utils::Expected<TrackList> App::queueTracks(const std::string& order) {
     kanariv::ipc::Command cmd{kanariv::ipc::QueueList{order}};
     auto res = impl_->sendRaw(cmd);
     if (!res)

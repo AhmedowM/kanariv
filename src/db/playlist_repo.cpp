@@ -15,6 +15,7 @@
 #include <expected>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/smart.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/status_format.hpp>
@@ -29,8 +30,8 @@
 
 namespace kanariv::db {
 
-std::expected<int64_t, kanariv::utils::Error>
-Database::createPlaylist(std::string_view name, int type, std::string_view smart_query) {
+kanariv::utils::Expected<int64_t> Database::createPlaylist(std::string_view name, int type,
+                                                           std::string_view smart_query) {
     if (name.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -55,7 +56,7 @@ Database::createPlaylist(std::string_view name, int type, std::string_view smart
     return sqlite3_last_insert_rowid(impl_->db_.get());
 }
 
-std::expected<kanariv::types::Playlist, kanariv::utils::Error> Database::getPlaylist(int64_t id) {
+kanariv::utils::Expected<kanariv::types::Playlist> Database::getPlaylist(int64_t id) {
     if (id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -82,8 +83,7 @@ std::expected<kanariv::types::Playlist, kanariv::utils::Error> Database::getPlay
     return p;
 }
 
-std::expected<void, kanariv::utils::Error>
-Database::updatePlaylist(const kanariv::types::Playlist& p) {
+kanariv::utils::Expected<void> Database::updatePlaylist(const kanariv::types::Playlist& p) {
     if (p.id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -113,7 +113,7 @@ Database::updatePlaylist(const kanariv::types::Playlist& p) {
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> Database::deletePlaylist(int64_t id) {
+kanariv::utils::Expected<void> Database::deletePlaylist(int64_t id) {
     if (id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -133,8 +133,7 @@ std::expected<void, kanariv::utils::Error> Database::deletePlaylist(int64_t id) 
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> Database::renamePlaylist(int64_t id,
-                                                                    std::string_view newName) {
+kanariv::utils::Expected<void> Database::renamePlaylist(int64_t id, std::string_view newName) {
     if (id == 0 || newName.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -157,7 +156,7 @@ std::expected<void, kanariv::utils::Error> Database::renamePlaylist(int64_t id,
     return {};
 }
 
-std::expected<int64_t, kanariv::utils::Error>
+kanariv::utils::Expected<int64_t>
 Database::createPlaylistFromTracks(std::string_view name, std::span<const int64_t> trackIds) {
     if (name.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
@@ -183,7 +182,7 @@ Database::createPlaylistFromTracks(std::string_view name, std::span<const int64_
     return pid;
 }
 
-std::expected<int64_t, kanariv::utils::Error>
+kanariv::utils::Expected<int64_t>
 Database::Impl::createPlaylistLocked(std::string_view name, int type,
                                      std::string_view smart_query) {
     if (name.empty())
@@ -209,8 +208,8 @@ Database::Impl::createPlaylistLocked(std::string_view name, int type,
     return sqlite3_last_insert_rowid(db_.get());
 }
 
-std::expected<void, kanariv::utils::Error>
-Database::Impl::playlistAddTrackLocked(int64_t pid, int64_t tid, int64_t pos) {
+kanariv::utils::Expected<void> Database::Impl::playlistAddTrackLocked(int64_t pid, int64_t tid,
+                                                                      int64_t pos) {
     if (pid == 0 || tid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     if (!db_)
@@ -254,8 +253,7 @@ Database::Impl::playlistAddTrackLocked(int64_t pid, int64_t tid, int64_t pos) {
     return {};
 }
 
-std::expected<std::vector<kanariv::types::Playlist>, kanariv::utils::Error>
-Database::listPlaylists() {
+kanariv::utils::Expected<std::vector<kanariv::types::Playlist>> Database::listPlaylists() {
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
@@ -281,13 +279,12 @@ Database::listPlaylists() {
     return out;
 }
 
-std::expected<void, kanariv::utils::Error> Database::playlistAddTrack(int64_t pid, int64_t tid,
-                                                                      int64_t pos) {
+kanariv::utils::Expected<void> Database::playlistAddTrack(int64_t pid, int64_t tid, int64_t pos) {
     std::unique_lock lk{impl_->dbMutex_};
     return impl_->playlistAddTrackLocked(pid, tid, pos);
 }
 
-std::expected<void, kanariv::utils::Error> Database::playlistRemoveTrack(int64_t pid, int64_t tid) {
+kanariv::utils::Expected<void> Database::playlistRemoveTrack(int64_t pid, int64_t tid) {
     if (pid == 0 || tid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -310,8 +307,7 @@ std::expected<void, kanariv::utils::Error> Database::playlistRemoveTrack(int64_t
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> Database::playlistReorder(int64_t pid, int64_t from,
-                                                                     int64_t to) {
+kanariv::utils::Expected<void> Database::playlistReorder(int64_t pid, int64_t from, int64_t to) {
     if (pid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     if (from == to)
@@ -367,7 +363,7 @@ std::expected<void, kanariv::utils::Error> Database::playlistReorder(int64_t pid
     return {};
 }
 
-std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 Database::playlistGetTracks(int64_t pid) {
     if (pid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};

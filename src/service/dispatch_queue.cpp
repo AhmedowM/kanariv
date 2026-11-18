@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <kanariv/contracts/queue_store.hpp>
 #include <kanariv/contracts/track_store.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/media/audio_ext.hpp>
@@ -46,7 +47,7 @@ inline std::string_view trimAscii(std::string_view s) {
     return s;
 }
 
-inline std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+inline kanariv::utils::Expected<kanariv::types::TrackRow>
 ensureLibraryTrack(kanariv::contracts::ITrackStore& tracks, const std::filesystem::path& p) {
     auto fpRes = kanariv::media::internal::computeFingerprint(p);
     if (!fpRes)
@@ -91,9 +92,8 @@ ensureLibraryTrack(kanariv::contracts::ITrackStore& tracks, const std::filesyste
     return std::unexpected{ins.error()};
 }
 
-std::expected<void, kanariv::utils::Error> enqueueInChunks(kanariv::contracts::IQueueStore& queues,
-                                                           int64_t qid,
-                                                           std::span<const int64_t> ids) {
+kanariv::utils::Expected<void> enqueueInChunks(kanariv::contracts::IQueueStore& queues, int64_t qid,
+                                               std::span<const int64_t> ids) {
     for (std::size_t off = 0; off < ids.size(); off += kanariv::contracts::queueBatchChunk) {
         const std::size_t n = std::min(kanariv::contracts::queueBatchChunk, ids.size() - off);
         if (auto r = queues.queueEnqueueBatch(qid, ids.subspan(off, n)); !r)
@@ -108,7 +108,7 @@ struct QueueSelector final {
     bool byTrackId{false};
 };
 
-std::expected<QueueSelector, kanariv::utils::Error> parseQueueSelector(std::string_view raw) {
+kanariv::utils::Expected<QueueSelector> parseQueueSelector(std::string_view raw) {
     //   "#pos:<n>" = zero-based queue position, "#id:<n>" = track id. A bare
     //   number used to mean "position", which silently removed a different row
     //   when the client meant an id; it is rejected instead of guessed.
@@ -138,7 +138,7 @@ std::expected<QueueSelector, kanariv::utils::Error> parseQueueSelector(std::stri
  * @details Audio path, library id and path lookup behave as the direct-play
  * branch; anything else falls back to a library search capped at 50 matches.
  */
-std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 resolveAddQuery(kanariv::contracts::Storage& storage, std::string_view query, bool search) {
     if (search) {
         auto sr = storage.library->searchTracks(query, 50);
@@ -227,7 +227,7 @@ using kanariv::ipc::QueueRepeat;
 using kanariv::ipc::QueueShuffle;
 using kanariv::ipc::QueueSwitch;
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueList& ql) {
     if (ql.order != "playback" && ql.order != "added" && !ql.order.empty())
         return std::unexpected{kanariv::utils::makeError(
@@ -253,7 +253,8 @@ Service::Impl::handle(const kanariv::ipc::QueueList& ql) {
             ordered.reserve(tracks.size());
             std::vector<char> seen(tracks.size(), 0);
             for (int64_t p : perm) {
-                if (p >= 0 && static_cast<std::size_t>(p) < tracks.size() && !seen[static_cast<std::size_t>(p)]) {
+                if (p >= 0 && static_cast<std::size_t>(p) < tracks.size() &&
+                    !seen[static_cast<std::size_t>(p)]) {
                     ordered.push_back(tracks[static_cast<std::size_t>(p)]);
                     seen[static_cast<std::size_t>(p)] = 1;
                 }
@@ -268,7 +269,7 @@ Service::Impl::handle(const kanariv::ipc::QueueList& ql) {
     return Result{QueueTracks{std::move(tracks)}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueQueues&) {
     auto qs = storage_.queues->listQueues();
     if (!qs)
@@ -283,7 +284,7 @@ Service::Impl::handle(const kanariv::ipc::QueueQueues&) {
     return Result{std::move(out)};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueCreate& qc) {
     if (qc.name.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -302,7 +303,7 @@ Service::Impl::handle(const kanariv::ipc::QueueCreate& qc) {
     return Result{kanariv::ipc::QueueCreated{*id, qc.name}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueDelete& qd) {
     if (qd.qid == engine_->activeQueueId())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -316,7 +317,7 @@ Service::Impl::handle(const kanariv::ipc::QueueDelete& qd) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlayFiles& cmd) {
     if (cmd.paths.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -369,7 +370,7 @@ Service::Impl::handle(const kanariv::ipc::PlayFiles& cmd) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueSwitch& qs) {
     auto q = storage_.queues->getQueue(qs.qid);
     if (!q) {
@@ -384,7 +385,7 @@ Service::Impl::handle(const kanariv::ipc::QueueSwitch& qs) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
     int64_t qid = engine_->activeQueueId();
     auto q = storage_.queues->getQueue(qid);
@@ -429,7 +430,7 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
     return Result{std::move(report)};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueAddBatch& qb) {
     int64_t qid = engine_->activeQueueId();
     auto q = storage_.queues->getQueue(qid);
@@ -504,7 +505,7 @@ Service::Impl::handle(const kanariv::ipc::QueueAddBatch& qb) {
     return Result{std::move(report)};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
     int64_t qid = engine_->activeQueueId();
     auto q = storage_.queues->getQueue(qid);
@@ -535,7 +536,7 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
     return Result{QueueTracks{std::move(*tracks)}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueRemoveBatch& qb) {
     int64_t qid = engine_->activeQueueId();
     auto q = storage_.queues->getQueue(qid);
@@ -596,7 +597,7 @@ Service::Impl::handle(const kanariv::ipc::QueueRemoveBatch& qb) {
     return Result{std::move(report)};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueMove& qm) {
     int64_t qid = engine_->activeQueueId();
     auto q = storage_.queues->getQueue(qid);
@@ -615,7 +616,7 @@ Service::Impl::handle(const kanariv::ipc::QueueMove& qm) {
     return Result{QueueTracks{std::move(*tracks)}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueClear&) {
     int64_t qid = engine_->activeQueueId();
     auto q = storage_.queues->getQueue(qid);
@@ -632,7 +633,7 @@ Service::Impl::handle(const kanariv::ipc::QueueClear&) {
     return Result{QueueTracks{{}}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueShuffle& qs) {
     auto r = qs.on ? engine_->setShuffle(*qs.on) : engine_->toggleShuffle();
     if (!r)
@@ -640,7 +641,7 @@ Service::Impl::handle(const kanariv::ipc::QueueShuffle& qs) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::QueueRepeat& qr) {
     if (qr.mode.has_value()) {
         auto r = engine_->setRepeat(*qr.mode);

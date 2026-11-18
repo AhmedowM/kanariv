@@ -36,7 +36,7 @@ class IPlaybackStateStore : public IStore {
      * @return Saved state, or a backend error when it cannot be read. A
      * missing state is success with a default snapshot.
      */
-    virtual std::expected<kanariv::types::EngineState, kanariv::utils::Error> load() = 0;
+    virtual kanariv::utils::Expected<kanariv::types::EngineState> load() = 0;
 
     /**
      * @brief Persists the complete playback-engine state.
@@ -46,8 +46,7 @@ class IPlaybackStateStore : public IStore {
      * record, so cursor, shuffle and repeat changes always go through this one
      * call rather than through field-specific setters.
      */
-    virtual std::expected<void, kanariv::utils::Error>
-    save(const kanariv::types::EngineState& state) = 0;
+    virtual kanariv::utils::Expected<void> save(const kanariv::types::EngineState& state) = 0;
 };
 
 } // namespace kanariv::contracts

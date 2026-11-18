@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <expected>
 #include <kanariv/db/database.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/utils/error.hpp>
 #include <string>
@@ -33,8 +34,8 @@ using LibraryMaintenanceReport = kanariv::types::LibraryMaintenanceReport;
  * @return Reconciliation report or an error.
  * @details This function is read-only and never deletes files or database rows.
  */
-KANARIV_API std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
-libraryReport(Database& db, int64_t libraryId);
+KANARIV_API kanariv::utils::Expected<LibraryMaintenanceReport> libraryReport(Database& db,
+                                                                             int64_t libraryId);
 
 /**
  * @brief Deletes database rows for files that are no longer present.
@@ -46,7 +47,7 @@ libraryReport(Database& db, int64_t libraryId);
  * at the database implementation level only through its individual delete
  * calls; callers needing a preview should call `libraryReport` first.
  */
-KANARIV_API std::expected<std::size_t, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<std::size_t>
 libraryPruneMissing(Database& db, const LibraryMaintenanceReport& report);
 
 /**
@@ -67,7 +68,7 @@ using LibraryMaintenanceOptions = kanariv::types::LibraryMaintenanceOptions;
  * choosing a canonical row requires explicit queue, history, bookmark and
  * user-metadata policies.
  */
-KANARIV_API std::expected<LibraryMaintenanceReport, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<LibraryMaintenanceReport>
 libraryApplyMaintenance(Database& db, int64_t libraryId,
                         const LibraryMaintenanceOptions& options = {});
 

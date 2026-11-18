@@ -1,11 +1,5 @@
 ﻿#include <array>
 #include <atomic>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/ipc/protocol.hpp>
-#include <kanariv/ipc/result.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/status_format.hpp>
-#include <kanariv/windows_fwd.hpp>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -14,6 +8,13 @@
 #include <expected>
 #include <filesystem>
 #include <functional>
+#include <kanariv/fwd.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/protocol.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/status_format.hpp>
+#include <kanariv/windows_fwd.hpp>
 #include <memory>
 #include <mutex>
 #include <stop_token>
@@ -123,11 +124,11 @@ struct IpcServer::Impl {
     };
 
     kanariv::utils::Expected<void> listen(const std::filesystem::path& dbPath,
-                                         std::string_view socketPathOverride);
-    void run(std::stop_token st,
-             std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
-                 const kanariv::ipc::Command&)>
-                 dispatch);
+                                          std::string_view socketPathOverride);
+    void
+    run(std::stop_token st,
+        std::function<kanariv::utils::Expected<kanariv::ipc::Result>(const kanariv::ipc::Command&)>
+            dispatch);
     void retireClient();
     void shutdown();
 
@@ -153,14 +154,14 @@ IpcServer::~IpcServer() {
 }
 
 kanariv::utils::Expected<void> IpcServer::listen(const std::filesystem::path& dbPath,
-                                                std::string_view socketPathOverride) {
+                                                 std::string_view socketPathOverride) {
     return impl_->listen(dbPath, socketPathOverride);
 }
 
-void IpcServer::run(std::stop_token st,
-                    std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
-                        const kanariv::ipc::Command&)>
-                        dispatch) {
+void IpcServer::run(
+    std::stop_token st,
+    std::function<kanariv::utils::Expected<kanariv::ipc::Result>(const kanariv::ipc::Command&)>
+        dispatch) {
     impl_->run(st, std::move(dispatch));
 }
 
@@ -173,7 +174,7 @@ void IpcServer::shutdown() {
 }
 
 kanariv::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::path& dbPath,
-                                                      std::string_view socketPathOverride) {
+                                                       std::string_view socketPathOverride) {
     kanariv::utils::Expected<std::string> sp;
     if (!socketPathOverride.empty()) {
         sp = std::string(socketPathOverride.data(), socketPathOverride.size());
@@ -236,7 +237,7 @@ kanariv::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pa
     if (sockStr.size() >= sizeof(addr.sun_path)) {
         ::close(fd);
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                        "socket path too long")};
+                                                         "socket path too long")};
     }
     std::memcpy(addr.sun_path, sockStr.c_str(), sockStr.size() + 1);
     if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
@@ -257,10 +258,10 @@ kanariv::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pa
 #endif
 }
 
-void IpcServer::Impl::run(std::stop_token st,
-                          std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
-                              const kanariv::ipc::Command&)>
-                              dispatch) {
+void IpcServer::Impl::run(
+    std::stop_token st,
+    std::function<kanariv::utils::Expected<kanariv::ipc::Result>(const kanariv::ipc::Command&)>
+        dispatch) {
     if (running_.exchange(true)) {
         return;
     }

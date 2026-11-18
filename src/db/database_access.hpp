@@ -25,6 +25,7 @@
 #include <db/queue.hpp>
 #include <expected>
 #include <kanariv/db/database.hpp>
+#include <kanariv/fwd.hpp>
 #include <mutex>
 #include <string_view>
 #include <vector>
@@ -67,8 +68,8 @@ struct KANARIV_API DatabaseAccess {
      * @param sql SQL text used as cache key.
      * @return Prepared statement pointer, or Error (Internal) if prepare fails.
      */
-    static std::expected<SqliteStatement*, kanariv::utils::Error>
-    getCachedForUse(Database& db, std::string_view sql);
+    static kanariv::utils::Expected<SqliteStatement*> getCachedForUse(Database& db,
+                                                                      std::string_view sql);
 
     // --- TrackRow / library locked helpers ---
     /**
@@ -78,7 +79,7 @@ struct KANARIV_API DatabaseAccess {
      * @param path Exact path to search.
      * @return TrackRow or Error NotFound/Internal.
      */
-    static std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    static kanariv::utils::Expected<kanariv::types::TrackRow>
     findByPathLocked(Database& db, std::string_view path);
     /**
      * @brief Forwards to Database::findByFingerprintLocked().
@@ -87,7 +88,7 @@ struct KANARIV_API DatabaseAccess {
      * @param fp 32-byte fingerprint.
      * @return TrackRow or Error NotFound/Internal.
      */
-    static std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    static kanariv::utils::Expected<kanariv::types::TrackRow>
     findByFingerprintLocked(Database& db, const std::array<uint8_t, 32>& fp);
     /**
      * @brief Forwards to Database::getTrackLocked().
@@ -96,8 +97,8 @@ struct KANARIV_API DatabaseAccess {
      * @param id TrackRow id.
      * @return TrackRow or Error.
      */
-    static std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
-    getTrackLocked(Database& db, int64_t id);
+    static kanariv::utils::Expected<kanariv::types::TrackRow> getTrackLocked(Database& db,
+                                                                             int64_t id);
     /**
      * @brief Forwards to Database::insertTrackLocked().
      * @ingroup kanariv_db
@@ -105,8 +106,8 @@ struct KANARIV_API DatabaseAccess {
      * @param t TrackRow to insert.
      * @return New row id or Error AlreadyExists/Internal.
      */
-    static std::expected<int64_t, kanariv::utils::Error>
-    insertTrackLocked(Database& db, const kanariv::types::TrackRow& t);
+    static kanariv::utils::Expected<int64_t> insertTrackLocked(Database& db,
+                                                               const kanariv::types::TrackRow& t);
     /**
      * @brief Forwards to Database::updateTrackLocked().
      * @ingroup kanariv_db
@@ -114,8 +115,8 @@ struct KANARIV_API DatabaseAccess {
      * @param t TrackRow with fields to persist.
      * @return Success or Error InvalidArg/NotFound/Internal.
      */
-    static std::expected<void, kanariv::utils::Error>
-    updateTrackLocked(Database& db, const kanariv::types::TrackRow& t);
+    static kanariv::utils::Expected<void> updateTrackLocked(Database& db,
+                                                            const kanariv::types::TrackRow& t);
     /**
      * @brief Forwards to Database::setReplayGainLocked().
      * @ingroup kanariv_db
@@ -127,7 +128,7 @@ struct KANARIV_API DatabaseAccess {
      * @details Writes only the two gain columns so the analyze pass does not
      * rewrite (and cannot accidentally clobber) the rest of the row.
      */
-    static std::expected<void, kanariv::utils::Error>
+    static kanariv::utils::Expected<void>
     setReplayGainLocked(Database& db, int64_t id, double trackGainDb, double albumGainDb);
     /**
      * @brief Forwards to Database::deleteTrackLocked().
@@ -136,14 +137,14 @@ struct KANARIV_API DatabaseAccess {
      * @param id TrackRow id.
      * @return Success or Error NotFound/Internal.
      */
-    static std::expected<void, kanariv::utils::Error> deleteTrackLocked(Database& db, int64_t id);
+    static kanariv::utils::Expected<void> deleteTrackLocked(Database& db, int64_t id);
     /**
      * @brief Forwards to Database::libraryListLocked().
      * @ingroup kanariv_db
      * @param db Database instance.
      * @return Vector of libraries or Error.
      */
-    static std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error>
+    static kanariv::utils::Expected<std::vector<kanariv::types::Library>>
     libraryListLocked(Database& db);
     /**
      * @brief Forwards to Database::libraryUpdateLocked().
@@ -152,8 +153,8 @@ struct KANARIV_API DatabaseAccess {
      * @param l kanariv::types::Library with updated fields.
      * @return Success or Error InvalidArg/NotFound/Internal.
      */
-    static std::expected<void, kanariv::utils::Error>
-    libraryUpdateLocked(Database& db, const kanariv::types::Library& l);
+    static kanariv::utils::Expected<void> libraryUpdateLocked(Database& db,
+                                                              const kanariv::types::Library& l);
 
     // --- Playlist / queue locked helpers ---
     /**
@@ -165,7 +166,7 @@ struct KANARIV_API DatabaseAccess {
      * @param smart_query Smart filter (empty for manual).
      * @return New id or Error InvalidArg/Internal.
      */
-    static std::expected<int64_t, kanariv::utils::Error>
+    static kanariv::utils::Expected<int64_t>
     createPlaylistLocked(Database& db, std::string_view name, int type = 0,
                          std::string_view smart_query = {});
     /**
@@ -177,8 +178,8 @@ struct KANARIV_API DatabaseAccess {
      * @param pos Position (-1 = append).
      * @return Success or Error.
      */
-    static std::expected<void, kanariv::utils::Error>
-    playlistAddTrackLocked(Database& db, int64_t pid, int64_t tid, int64_t pos = -1);
+    static kanariv::utils::Expected<void> playlistAddTrackLocked(Database& db, int64_t pid,
+                                                                 int64_t tid, int64_t pos = -1);
     /**
      * @brief Forwards to Database::queueEnqueueLocked().
      * @ingroup kanariv_db
@@ -188,7 +189,7 @@ struct KANARIV_API DatabaseAccess {
      * @param index Zero-based insertion index, or appendIndex (-1) to append.
      * @return Success or Error.
      */
-    static std::expected<void, kanariv::utils::Error>
+    static kanariv::utils::Expected<void>
     queueEnqueueLocked(Database& db, int64_t qid, int64_t tid,
                        int64_t index = kanariv::db::appendIndex);
     /**
@@ -198,8 +199,8 @@ struct KANARIV_API DatabaseAccess {
      * @param qid kanariv::types::Queue id.
      * @return QueueItem or Error NotFound.
      */
-    static std::expected<kanariv::types::QueueItem, kanariv::utils::Error>
-    queueDequeueLocked(Database& db, int64_t qid);
+    static kanariv::utils::Expected<kanariv::types::QueueItem> queueDequeueLocked(Database& db,
+                                                                                  int64_t qid);
 };
 
 } // namespace kanariv::db

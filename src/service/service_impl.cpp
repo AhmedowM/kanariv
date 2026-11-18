@@ -16,6 +16,7 @@
 #include <iostream>
 #include <kanariv/config.hpp>
 #include <kanariv/contracts/storage.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -227,9 +228,9 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
         }
     }
 
-    auto svc = std::unique_ptr<Service>(new Service(
-        resolved, std::move(storage), std::move(eng), std::move(srvPtr), std::move(loggerPtr),
-        pidPath, lockPath, spStr, lockFd));
+    auto svc = std::unique_ptr<Service>(new Service(resolved, std::move(storage), std::move(eng),
+                                                    std::move(srvPtr), std::move(loggerPtr),
+                                                    pidPath, lockPath, spStr, lockFd));
     if (inProcess) {
         svc->impl_->logger_->info("service started in-process version={} db={}",
                                   kanariv::version::version(), dbPath.generic_string());
@@ -347,8 +348,8 @@ kanariv::utils::Expected<void> Service::Impl::run(std::stop_token st) {
     }
     lifeCv_.notify_all();
     // build dispatcher
-    auto dispatcher = [this](const kanariv::ipc::Command& cmd)
-        -> std::expected<kanariv::ipc::Result, kanariv::utils::Error> {
+    auto dispatcher =
+        [this](const kanariv::ipc::Command& cmd) -> kanariv::utils::Expected<kanariv::ipc::Result> {
         return this->dispatch(cmd);
     };
     if (server_)
@@ -501,7 +502,7 @@ void Service::Impl::waitForStatusChange(std::chrono::milliseconds timeout) {
                         [this, seq] { return status_seq_.load(std::memory_order_acquire) != seq; });
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::statusResult() {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::statusResult() {
     // Pure read: does not bump the status sequence (S5).
     auto st = detail::buildStatus(*engine_, storage_);
     if (!st)
@@ -509,12 +510,12 @@ std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::status
     return kanariv::ipc::Result{*st};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error> Service::Impl::statusAfterChange() {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::statusAfterChange() {
     noteStateChanged();
     return statusResult();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::statusAfterChange(std::string_view transition) {
     auto res = statusAfterChange();
     if (res && !transition.empty()) {
@@ -634,15 +635,14 @@ void Service::Impl::publishMediaSession() {
         // id 0. Keep the last now-playing item so the OS card shows the track
         // that just finished with a Stopped/play state instead of blanking.
         if (track_id != 0) {
-            if (auto e = mediaSession_->setMetadata(
-                    kanariv::media_session::Metadata{.title = title,
-                                                     .artist = artist,
-                                                     .album = album,
-                                                     .artworkPath = artworkPath,
-                                                     .artworkBase64 = art ? art->base64
-                                                                          : std::nullopt,
-                                                     .artworkMime = art ? art->mime : std::string{},
-                                                     .trackId = track_id});
+            if (auto e = mediaSession_->setMetadata(kanariv::media_session::Metadata{
+                    .title = title,
+                    .artist = artist,
+                    .album = album,
+                    .artworkPath = artworkPath,
+                    .artworkBase64 = art ? art->base64 : std::nullopt,
+                    .artworkMime = art ? art->mime : std::string{},
+                    .trackId = track_id});
                 !e && logger_)
                 logger_->warn("media session setMetadata failed: {}", e.error().message);
         }
@@ -703,7 +703,7 @@ bool commandRunsWithoutDatabase(const kanariv::ipc::Command& cmd) {
 
 } // namespace
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::dispatch(const kanariv::ipc::Command& cmd) {
     // Per-command trace at debug: what the daemon was asked to do. Guarded
     // by enabled() (dump() walks the whole command) and try/catch (a log
@@ -748,13 +748,13 @@ Service::Impl::dispatch(const kanariv::ipc::Command& cmd) {
         // message. The log keeps the detail.
         if (logger_)
             logger_->error("dispatch failed: {}", e.what());
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, "internal error handling command")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         "internal error handling command")};
     } catch (...) {
         if (logger_)
             logger_->error("dispatch failed with unknown exception");
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Internal, "internal error handling command")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         "internal error handling command")};
     }
 }
 

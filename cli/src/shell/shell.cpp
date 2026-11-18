@@ -15,6 +15,7 @@
 #include <iostream>
 #include <kanariv/app/app.hpp>
 #include <kanariv/config.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
@@ -37,7 +38,7 @@ namespace kanariv::app::cli {
 namespace detail {
 // Single source: delegate to kanariv::app::cli::parse::parseTime (parse.hpp) and adapt error type.
 // parse.hpp returns expected<double,string>; app layer wraps string into utils::Error.
-std::expected<double, kanariv::utils::Error> parseTime(std::string_view s) {
+kanariv::utils::Expected<double> parseTime(std::string_view s) {
     auto r = kanariv::app::cli::parse::parseTime(s);
     if (!r)
         return std::unexpected{
@@ -45,7 +46,7 @@ std::expected<double, kanariv::utils::Error> parseTime(std::string_view s) {
     return *r;
 }
 // Single source: delegate to kanariv::app::cli::parse::parseSeek and adapt error type.
-std::expected<double, kanariv::utils::Error> parseSeek(std::string_view s) {
+kanariv::utils::Expected<double> parseSeek(std::string_view s) {
     auto r = kanariv::app::cli::parse::parseSeek(s);
     if (!r)
         return std::unexpected{
@@ -53,7 +54,7 @@ std::expected<double, kanariv::utils::Error> parseSeek(std::string_view s) {
     return *r;
 }
 // Single source: delegate to kanariv::app::cli::parse::parseVolume and adapt error type.
-std::expected<kanariv::ipc::VolumeSet, kanariv::utils::Error> parseVolume(std::string_view s) {
+kanariv::utils::Expected<kanariv::ipc::VolumeSet> parseVolume(std::string_view s) {
     auto r = kanariv::app::cli::parse::parseVolume(s);
     if (!r)
         return std::unexpected{

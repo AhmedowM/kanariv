@@ -15,12 +15,12 @@
  * server; the public surface never names it.
  */
 
-#include <kanariv/fwd.hpp>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/ipc/result.hpp>
 #include <expected>
 #include <filesystem>
 #include <functional>
+#include <kanariv/fwd.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
 #include <memory>
 #include <stop_token>
 #include <string>
@@ -52,7 +52,7 @@ class IpcServer {
      * @return Success or `Io` Error (address in use, permission).
      */
     kanariv::utils::Expected<void> listen(const std::filesystem::path& dbPath,
-                                         std::string_view socketPathOverride = {});
+                                          std::string_view socketPathOverride = {});
 
     /**
      * @brief Serves connections until the stop token fires.
@@ -60,10 +60,10 @@ class IpcServer {
      * @param st Stop token ending the accept loop.
      * @param dispatch Called per request on a connection thread.
      */
-    void run(std::stop_token st,
-             std::function<std::expected<kanariv::ipc::Result, kanariv::utils::Error>(
-                 const kanariv::ipc::Command&)>
-                 dispatch);
+    void
+    run(std::stop_token st,
+        std::function<kanariv::utils::Expected<kanariv::ipc::Result>(const kanariv::ipc::Command&)>
+            dispatch);
 
     /**
      * @brief Stops accepting and joins connection threads (idempotent).

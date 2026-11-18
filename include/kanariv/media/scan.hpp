@@ -19,12 +19,13 @@
  * reports a missing/unreadable root and a truncated walk.
  */
 
-#include <kanariv/types/record.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/generator.hpp>
 #include <expected>
 #include <filesystem>
 #include <functional>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/record.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/generator.hpp>
 #include <string>
 #include <vector>
 
@@ -130,7 +131,7 @@ scanTracks(const std::filesystem::path& root, ScanMode mode, ScanIssueSink onIss
  * Re-entrant; not thread-safe with concurrent filesystem mutation.
  * @see scanTracks
  */
-KANARIV_API std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode = ScanMode::Sampled);
 
 /**
@@ -148,7 +149,7 @@ scanTracksToVector(const std::filesystem::path& root, ScanMode mode = ScanMode::
  * concurrent filesystem mutation.
  * @see ScanIssue
  */
-KANARIV_API std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode, ScanIssueSink onIssue);
 
 } // namespace kanariv::media

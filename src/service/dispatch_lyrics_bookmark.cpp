@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/service/service.hpp>
@@ -20,7 +21,7 @@ namespace kanariv::service {
 
 using namespace kanariv::ipc;
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::HistoryList& cmd) {
     int limit = cmd.limit.value_or(50);
     if (limit <= 0)
@@ -31,7 +32,7 @@ Service::Impl::handle(const kanariv::ipc::HistoryList& cmd) {
     return Result{kanariv::ipc::History{std::move(*hist)}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::HistoryClear&) {
     auto r = engine_->clearHistory();
     if (!r)
@@ -39,7 +40,7 @@ Service::Impl::handle(const kanariv::ipc::HistoryClear&) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::BookmarkList& cmd) {
     int64_t tid = cmd.track_id.value_or(engine_->currentTrackId());
     if (tid == 0)
@@ -51,7 +52,7 @@ Service::Impl::handle(const kanariv::ipc::BookmarkList& cmd) {
     return Result{kanariv::ipc::Bookmarks{std::move(*list)}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::BookmarkAdd& cmd) {
     if (cmd.position_ms < 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -68,7 +69,7 @@ Service::Impl::handle(const kanariv::ipc::BookmarkAdd& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::BookmarkRemove& cmd) {
     auto r = storage_.tracks->bookmarkRemove(cmd.id);
     if (!r)
@@ -76,7 +77,7 @@ Service::Impl::handle(const kanariv::ipc::BookmarkRemove& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::BookmarkGoto& cmd) {
     auto b = storage_.tracks->bookmarkGet(cmd.id);
     if (!b)
@@ -89,7 +90,7 @@ Service::Impl::handle(const kanariv::ipc::BookmarkGoto& cmd) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LyricsGet& cmd) {
     int64_t tid = cmd.track_id.value_or(engine_->currentTrackId());
     if (tid == 0)
@@ -102,7 +103,7 @@ Service::Impl::handle(const kanariv::ipc::LyricsGet& cmd) {
                                        std::move(l->source), l->fetched_at}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LyricsSet& cmd) {
     if (cmd.lrc_text.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -119,7 +120,7 @@ Service::Impl::handle(const kanariv::ipc::LyricsSet& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::LyricsRemove& cmd) {
     int64_t tid = cmd.track_id.value_or(engine_->currentTrackId());
     if (tid == 0)

@@ -1,8 +1,9 @@
-#include <kanariv/db/smart.hpp>
-#include <kanariv/utils/error.hpp>
-#include <charconv>
 #include <cctype>
+#include <charconv>
 #include <expected>
+#include <kanariv/db/smart.hpp>
+#include <kanariv/fwd.hpp>
+#include <kanariv/utils/error.hpp>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -97,7 +98,7 @@ std::optional<std::string_view> readOp(std::string_view& s) {
 
 } // namespace
 
-std::expected<kanariv::types::TrackQuery, kanariv::utils::Error> parseSmartQuery(std::string_view q) {
+kanariv::utils::Expected<kanariv::types::TrackQuery> parseSmartQuery(std::string_view q) {
     kanariv::types::TrackQuery tq{};
     q = trim(q);
     if (q.empty())
@@ -114,36 +115,36 @@ std::expected<kanariv::types::TrackQuery, kanariv::utils::Error> parseSmartQuery
             }
         }
         if (opPos == 0 || opPos == pred.size())
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::InvalidArg,
-                "smart query: malformed predicate '" + std::string(pred) + "'")};
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                             "smart query: malformed predicate '" +
+                                                                 std::string(pred) + "'")};
 
         std::string field = std::string(trim(pred.substr(0, opPos)));
         std::string_view rest = pred.substr(opPos);
         auto op = readOp(rest);
         if (!op.has_value())
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::InvalidArg,
-                "smart query: missing operator in '" + std::string(pred) + "'")};
+            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                             "smart query: missing operator in '" +
+                                                                 std::string(pred) + "'")};
         std::string value = std::string(trim(rest));
 
         if (field == "rating") {
             if (*op != "=")
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: rating supports only '='")};
+                return std::unexpected{
+                    kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                              "smart query: rating supports only '='")};
             int64_t v;
             if (!parseInt(value, v) || v < 0 || v > 5)
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: rating must be an integer 0..5")};
+                return std::unexpected{
+                    kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                              "smart query: rating must be an integer 0..5")};
             tq.rating = static_cast<int32_t>(v);
         } else if (field == "year") {
             int64_t v;
             if (!parseInt(value, v))
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: invalid year value '" + value + "'")};
+                return std::unexpected{
+                    kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                              "smart query: invalid year value '" + value + "'")};
             if (*op == "=")
                 tq.year = static_cast<int32_t>(v);
             else if (*op == ">=")
@@ -189,9 +190,9 @@ std::expected<kanariv::types::TrackQuery, kanariv::utils::Error> parseSmartQuery
                 tq.duration_max = v - 1.0;
         } else if (field == "artist" || field == "album" || field == "genre") {
             if (*op != "=")
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: " + field + " supports only '='")};
+                return std::unexpected{
+                    kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                              "smart query: " + field + " supports only '='")};
             if (field == "artist")
                 tq.artist = value;
             else if (field == "album")
@@ -200,14 +201,14 @@ std::expected<kanariv::types::TrackQuery, kanariv::utils::Error> parseSmartQuery
                 tq.genre = value;
         } else if (field == "search") {
             if (*op != "=")
-                return std::unexpected{kanariv::utils::makeError(
-                    kanariv::utils::StatusCode::InvalidArg,
-                    "smart query: search supports only '='")};
+                return std::unexpected{
+                    kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                              "smart query: search supports only '='")};
             tq.search = value;
         } else {
-            return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::InvalidArg,
-                "smart query: unknown field '" + field + "'")};
+            return std::unexpected{
+                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                          "smart query: unknown field '" + field + "'")};
         }
     }
 

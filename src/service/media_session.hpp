@@ -10,13 +10,13 @@
  * pending a Java/JNI implementation.
  */
 
+#include <cstdint>
+#include <expected>
+#include <functional>
 #include <kanariv/fwd.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/status_format.hpp>
-#include <cstdint>
-#include <expected>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -46,12 +46,12 @@ struct Metadata {
  * backend threads; the daemon must serialize them if it touches shared state.
  */
 struct Callbacks {
-    std::function<void()> onPlay{};      ///< Media key: play.
-    std::function<void()> onPause{};     ///< Media key: pause.
-    std::function<void()> onStop{};      ///< Media key: stop.
-    std::function<void()> onNext{};      ///< Media key: next track.
-    std::function<void()> onPrev{};      ///< Media key: previous track.
-    std::function<void(double)> onSeek{}; ///< Media key: seek (seconds, may be negative).
+    std::function<void()> onPlay{};         ///< Media key: play.
+    std::function<void()> onPause{};        ///< Media key: pause.
+    std::function<void()> onStop{};         ///< Media key: stop.
+    std::function<void()> onNext{};         ///< Media key: next track.
+    std::function<void()> onPrev{};         ///< Media key: previous track.
+    std::function<void(double)> onSeek{};   ///< Media key: seek (seconds, may be negative).
     std::function<void(double)> onSeekTo{}; ///< SMTC absolute seek position.
     std::function<void(kanariv::types::RepeatMode)> onRepeat{};
     std::function<void(bool)> onShuffle{};
@@ -74,10 +74,11 @@ struct Impl {
     virtual kanariv::utils::Expected<void> activate() = 0;
     virtual kanariv::utils::Expected<void> deactivate() = 0;
     virtual kanariv::utils::Expected<void> setMetadata(const Metadata&) = 0;
-    virtual kanariv::utils::Expected<void> setPlaybackState(
-        kanariv::types::PlaybackState, double, double) = 0;
-    virtual kanariv::utils::Expected<void> setPlaybackMode(
-      bool, kanariv::types::RepeatMode) { return {}; }
+    virtual kanariv::utils::Expected<void> setPlaybackState(kanariv::types::PlaybackState, double,
+                                                            double) = 0;
+    virtual kanariv::utils::Expected<void> setPlaybackMode(bool, kanariv::types::RepeatMode) {
+        return {};
+    }
     virtual void setLogger(kanariv::utils::Logger*) noexcept {}
     virtual kanariv::utils::Expected<void> setVolume(float, bool) = 0;
     virtual bool active() const noexcept = 0;
@@ -122,7 +123,7 @@ struct Impl {
  */
 class MediaSession {
   public:
-    using ExpectedSession = std::expected<std::unique_ptr<MediaSession>, kanariv::utils::Error>;
+    using ExpectedSession = kanariv::utils::Expected<std::unique_ptr<MediaSession>>;
 
     /**
      * @brief Factory signature for an externally-provided platform backend.
@@ -151,10 +152,8 @@ class MediaSession {
      * @param enableMediaKeys Handle media-key hardware events.
      * @return MediaSession on success, or Error if no backend is available.
      */
-    static ExpectedSession create(std::string appName,
-                                  std::string appIcon,
-                                  bool enableNotifications,
-                                  bool enableMediaKeys);
+    static ExpectedSession create(std::string appName, std::string appIcon,
+                                  bool enableNotifications, bool enableMediaKeys);
 
     /**
      * @brief Wrap an already-created backend implementation.
@@ -189,11 +188,10 @@ class MediaSession {
      * @param position Current position in seconds.
      * @param duration Total duration in seconds.
      */
-    kanariv::utils::Expected<void> setPlaybackState(
-        kanariv::types::PlaybackState state, double position, double duration);
+    kanariv::utils::Expected<void> setPlaybackState(kanariv::types::PlaybackState state,
+                                                    double position, double duration);
 
-    kanariv::utils::Expected<void> setPlaybackMode(
-      bool shuffle, kanariv::types::RepeatMode repeat);
+    kanariv::utils::Expected<void> setPlaybackMode(bool shuffle, kanariv::types::RepeatMode repeat);
 
     void setLogger(kanariv::utils::Logger* logger) noexcept;
 

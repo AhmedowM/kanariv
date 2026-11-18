@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
 #include <optional>
@@ -74,9 +75,9 @@ struct NextPlan {
  * @see Engine::Impl::peekNextLocked
  */
 template <typename CountFn, typename PermFn>
-std::expected<NextPlan, kanariv::utils::Error>
-planNext(bool shuffle, kanariv::types::RepeatMode repeat, std::size_t cursor,
-         std::span<const std::int64_t> perm, CountFn&& count, PermFn&& makePerm) {
+kanariv::utils::Expected<NextPlan> planNext(bool shuffle, kanariv::types::RepeatMode repeat,
+                                            std::size_t cursor, std::span<const std::int64_t> perm,
+                                            CountFn&& count, PermFn&& makePerm) {
     NextPlan plan;
     if (shuffle) {
         if (perm.empty()) {
@@ -170,8 +171,8 @@ struct PrevPlan {
  * @see Engine::Impl::queuePrevLocked
  */
 template <typename CountFn>
-std::expected<PrevPlan, kanariv::utils::Error>
-planPrev(bool shuffle, std::size_t cursor, std::span<const std::int64_t> perm, CountFn&& count) {
+kanariv::utils::Expected<PrevPlan> planPrev(bool shuffle, std::size_t cursor,
+                                            std::span<const std::int64_t> perm, CountFn&& count) {
     std::size_t n = 0;
     if (shuffle) {
         if (perm.empty())

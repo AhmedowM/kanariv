@@ -57,7 +57,7 @@ class KANARIV_API Scanner final : public contracts::ILibraryScanner {
      * and a crash leaves the database consistent per batch. Deduplication:
      * early exit on `path+size+mtime` match; otherwise fingerprint dedup.
      */
-    std::expected<void, kanariv::utils::Error>
+    kanariv::utils::Expected<void>
     scanLibrary(int64_t libraryId,
                 std::function<void(int64_t, int64_t, std::string_view)> progress = {},
                 contracts::ScanMode mode = contracts::ScanMode::Sampled) override;

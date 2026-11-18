@@ -7,6 +7,7 @@
 #include <engine/queue_next.hpp>
 #include <engine/shuffle.hpp>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
@@ -400,7 +401,7 @@ double Engine::Impl::currentPositionLocked() const noexcept {
     return pos;
 }
 
-std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::types::TrackRow>
 Engine::Impl::fetchTrackByPosLocked(int64_t qid, int64_t pos) {
     if (!hasDb())
         return std::unexpected(
@@ -408,7 +409,7 @@ Engine::Impl::fetchTrackByPosLocked(int64_t qid, int64_t pos) {
     return storage_.queues->queueTrackAt(qid, pos);
 }
 
-std::expected<void, kanariv::utils::Error> Engine::Impl::setShuffleLocked(bool on) {
+kanariv::utils::Expected<void> Engine::Impl::setShuffleLocked(bool on) {
     // assert: queueMutex_ locked by caller
     bool want = on;
     if (queue_.shuffle.load(std::memory_order_relaxed) == want && !queue_.perm.empty())
@@ -482,7 +483,7 @@ QueueFingerprint Engine::Impl::queueFingerprintLocked() const {
     return fp;
 }
 
-std::expected<Engine::Impl::PeekedNext, kanariv::utils::Error> Engine::Impl::peekNextLocked() {
+kanariv::utils::Expected<Engine::Impl::PeekedNext> Engine::Impl::peekNextLocked() {
     const int64_t rawQid = queue_.queue_id.load(std::memory_order_relaxed);
     const int64_t qid = rawQid != 0 ? rawQid : 1;
     const bool shuffle = queue_.shuffle.load(std::memory_order_relaxed);
@@ -538,8 +539,7 @@ bool Engine::Impl::commitNextLocked(const QueueFingerprint& expected, PeekedNext
     return true;
 }
 
-std::expected<void, kanariv::utils::Error>
-Engine::Impl::queueNextLocked(kanariv::types::TrackRow& out) {
+kanariv::utils::Expected<void> Engine::Impl::queueNextLocked(kanariv::types::TrackRow& out) {
     auto peeked = peekNextLocked();
     if (!peeked)
         return std::unexpected(peeked.error());
@@ -551,8 +551,7 @@ Engine::Impl::queueNextLocked(kanariv::types::TrackRow& out) {
     return {};
 }
 
-std::expected<void, kanariv::utils::Error>
-Engine::Impl::queuePrevLocked(kanariv::types::TrackRow& out) {
+kanariv::utils::Expected<void> Engine::Impl::queuePrevLocked(kanariv::types::TrackRow& out) {
     const int64_t qid = queue_.queue_id.load(std::memory_order_relaxed);
     const bool shuffle = queue_.shuffle.load(std::memory_order_relaxed);
     // planPrev performs no I/O; resolve the one item count it may need here.

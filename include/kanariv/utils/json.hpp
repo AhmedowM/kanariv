@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 #include <limits>
 #include <memory>
@@ -125,7 +126,7 @@ class KANARIV_API Json {
      * @note Not `noexcept`: the failure path allocates the error message, so a
      * `std::bad_alloc` must propagate instead of terminating.
      */
-    static std::expected<Json, Error> tryParse(std::string_view text);
+    static kanariv::utils::Expected<Json> tryParse(std::string_view text);
 
     /**
      * @brief Serializes to text.
@@ -181,19 +182,19 @@ class KANARIV_API Json {
      * @ingroup kanariv_utils
      * @note Not `noexcept`: the failure path allocates the error message.
      */
-    std::expected<Json, Error> at(std::string_view key) const;
+    kanariv::utils::Expected<Json> at(std::string_view key) const;
     /**
      * @brief Non-throwing array element access.
      * @ingroup kanariv_utils
      * @note Not `noexcept`: the failure path allocates the error message.
      */
-    std::expected<Json, Error> at(std::size_t index) const;
+    kanariv::utils::Expected<Json> at(std::size_t index) const;
     /**
      * @brief Key of the object member at position `index` (for index loops).
      * @ingroup kanariv_utils
      * @note Not `noexcept`: the failure path allocates the error message.
      */
-    std::expected<std::string, Error> keyAt(std::size_t index) const;
+    kanariv::utils::Expected<std::string> keyAt(std::size_t index) const;
 
     /**
      * @brief Typed read; strings, bools, integers, floats supported.

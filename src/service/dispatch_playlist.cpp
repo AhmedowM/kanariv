@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/service/service.hpp>
@@ -36,7 +37,7 @@ namespace kanariv::service {
 using kanariv::engine::detail::EngineAccess;
 using namespace kanariv::ipc;
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlaylistList&) {
     auto pls = storage_.playlists->listPlaylists();
     if (!pls)
@@ -46,7 +47,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistList&) {
     return Result{Playlists{std::move(out)}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlaylistTracks& cmd) {
     auto tracks = storage_.playlists->playlistGetTracks(cmd.pid);
     if (!tracks)
@@ -56,7 +57,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistTracks& cmd) {
     return Result{PlaylistData{std::move(out), {}}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlaylistLoad& cmd) {
     auto tracks = storage_.playlists->playlistGetTracks(cmd.pid);
     if (!tracks)
@@ -102,7 +103,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistLoad& cmd) {
     return Result{kanariv::ipc::PlaylistLoaded{qid, std::move(*st)}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlaylistSave& cmd) {
     if (cmd.name.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -129,7 +130,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistSave& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlaylistCreate& cmd) {
     if (cmd.name.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -141,7 +142,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistCreate& cmd) {
     return Result{kanariv::ipc::PlaylistCreated{*id, cmd.name}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlaylistAdd& cmd) {
     auto pl = storage_.playlists->getPlaylist(cmd.pid);
     if (!pl)
@@ -163,7 +164,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistAdd& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlaylistDelete& cmd) {
     auto r = storage_.playlists->deletePlaylist(cmd.pid);
     if (!r)
@@ -171,7 +172,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistDelete& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlaylistRename& cmd) {
     if (cmd.newName.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
@@ -182,7 +183,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistRename& cmd) {
     return Result{Empty{}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlaylistExport& cmd) {
     auto tracks = storage_.playlists->playlistGetTracks(cmd.pid);
     if (!tracks)
@@ -194,7 +195,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistExport& cmd) {
     return Result{PlaylistData{std::move(out), cmd.format}};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) {
     std::filesystem::path path = kanariv::utils::detail::pathFromUtf8(cmd.path);
     std::error_code ec;

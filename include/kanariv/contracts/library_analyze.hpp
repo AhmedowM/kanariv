@@ -69,7 +69,7 @@ class ILibraryAnalyzer {
      * @details Takes the store lock per group write; the caller must not hold
      * it across the call.
      */
-    virtual std::expected<LibraryAnalyzeReport, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<LibraryAnalyzeReport>
     analyzeLibrary(int64_t libraryId, LibraryAnalyzeOptions options = {},
                    std::function<void(int64_t, int64_t, std::string_view)> progress = {}) = 0;
 };

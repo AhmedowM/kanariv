@@ -1,20 +1,21 @@
 ﻿#include <blake3.h>
 
 #include <array>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/status_format.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <kanariv/fwd.hpp>
 #include <kanariv/media/fingerprint.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <system_error>
 
 namespace kanariv::media::internal {
 
-std::expected<std::array<uint8_t, 32>, kanariv::utils::Error>
+kanariv::utils::Expected<std::array<uint8_t, 32>>
 computeFingerprint(const std::filesystem::path& path) {
     std::error_code ec;
     auto sz = std::filesystem::file_size(path, ec);

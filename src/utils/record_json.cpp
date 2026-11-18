@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <exception>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/math.hpp>
@@ -72,7 +73,7 @@ Json trackToJson(const kanariv::types::TrackRow& t) {
     return j;
 }
 
-std::expected<kanariv::types::TrackRow, Error> trackFromJson(const Json& j) {
+kanariv::utils::Expected<kanariv::types::TrackRow> trackFromJson(const Json& j) {
     try {
         kanariv::types::TrackRow t;
         auto getI64 = [&](const char* k, int64_t& out, int64_t def = 0) {

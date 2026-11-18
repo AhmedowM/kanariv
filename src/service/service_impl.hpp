@@ -49,8 +49,8 @@ namespace detail {
  * @brief Enqueues ids in transactions of at most queueBatchChunk (K5).
  * @return Success, or the first error; chunks committed before it stay.
  */
-std::expected<void, kanariv::utils::Error>
-enqueueInChunks(kanariv::contracts::IQueueStore& queues, int64_t qid, std::span<const int64_t> ids);
+kanariv::utils::Expected<void> enqueueInChunks(kanariv::contracts::IQueueStore& queues, int64_t qid,
+                                               std::span<const int64_t> ids);
 } // namespace detail
 
 struct Service::Impl {
@@ -64,23 +64,21 @@ struct Service::Impl {
     bool waitUntilRunning() const;
     void shutdown();
     /** Status snapshot; a pure read that does not touch the change sequence. */
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> statusResult();
+    kanariv::utils::Expected<kanariv::ipc::Result> statusResult();
     /** Status snapshot after a real state change: bumps the sequence, then reads. */
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> statusAfterChange();
+    kanariv::utils::Expected<kanariv::ipc::Result> statusAfterChange();
     /**
      * @brief Status snapshot after a real state change, tagged with a transition.
      * @details Same as above, then stamps @p transition onto the Status result
      * ("started", "resumed", "already_playing") so clients word their output
      * from the reply instead of a second status probe.
      */
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    statusAfterChange(std::string_view transition);
+    kanariv::utils::Expected<kanariv::ipc::Result> statusAfterChange(std::string_view transition);
     /** Bumps the status change sequence and wakes StatusWait waiters. */
     void noteStateChanged();
     /** Blocks until the sequence changes or the timeout elapses. */
     void waitForStatusChange(std::chrono::milliseconds timeout);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    dispatch(const kanariv::ipc::Command& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> dispatch(const kanariv::ipc::Command& cmd);
 
     /**
      * @brief Requests a media-session refresh (never blocks the caller).
@@ -109,134 +107,76 @@ struct Service::Impl {
     };
 
     // Command handlers (defined in dispatch_*.cpp).
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::BookmarkAdd& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::BookmarkGoto& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::BookmarkList& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::BookmarkRemove& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::LyricsGet& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::LyricsSet& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::LyricsRemove& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::ConfigExport& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::ConfigGet& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::ConfigImport& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::ConfigList&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::ConfigReset& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::ConfigSet& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::DeviceList&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::DeviceSet& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::DeviceTest& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::HistoryClear&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::HistoryList& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Info&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::LibraryAdd& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::LibraryAnalyze& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::LibraryList& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::BookmarkAdd& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::BookmarkGoto& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::BookmarkList& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::BookmarkRemove& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::LyricsGet& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::LyricsSet& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::LyricsRemove& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::ConfigExport& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::ConfigGet& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::ConfigImport& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::ConfigList&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::ConfigReset& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::ConfigSet& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::DeviceList&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::DeviceSet& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::DeviceTest& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::HistoryClear&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::HistoryList& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Info&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::LibraryAdd& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::LibraryAnalyze& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::LibraryList& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result>
     handle(const kanariv::ipc::LibraryMaintenance& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::LibraryRemove& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::LibraryScan& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::LibrarySearch& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::LibraryStats&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Next&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Pause&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Play&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlayFiles&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlaylistDelete& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlaylistCreate& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlaylistAdd& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlaylistExport& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlaylistImport& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlaylistList&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlaylistLoad& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlaylistRename& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlaylistSave& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::PlaylistTracks& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Prev&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Preview&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueAdd& qa);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueAddBatch& qb);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueClear&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueCreate& qc);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueDelete& qd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueList&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueMove& qm);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueQueues&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueRemove& qr);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueRemoveBatch& qb);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueRepeat& qr);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueShuffle& qs);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::QueueSwitch& qs);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Restart&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Resume&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Seek& s);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::SeekBy& s);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::Shutdown&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::StatusReq&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::StatusWait&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error> handle(const kanariv::ipc::Stop&);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::TagEdit& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::TagGet& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::TagBatchEdit& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::TrackRate& cmd);
-    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-    handle(const kanariv::ipc::VolumeSet& v);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::LibraryRemove& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::LibraryScan& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::LibrarySearch& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::LibraryStats&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Next&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Pause&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Play&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlayFiles&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlaylistDelete& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlaylistCreate& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlaylistAdd& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlaylistExport& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlaylistImport& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlaylistList&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlaylistLoad& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlaylistRename& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlaylistSave& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::PlaylistTracks& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Prev&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Preview&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueAdd& qa);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueAddBatch& qb);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueClear&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueCreate& qc);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueDelete& qd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueList&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueMove& qm);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueQueues&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueRemove& qr);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueRemoveBatch& qb);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueRepeat& qr);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueShuffle& qs);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::QueueSwitch& qs);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Restart&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Resume&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Seek& s);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::SeekBy& s);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Shutdown&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::StatusReq&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::StatusWait&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::Stop&);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::TagEdit& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::TagGet& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::TagBatchEdit& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::TrackRate& cmd);
+    kanariv::utils::Expected<kanariv::ipc::Result> handle(const kanariv::ipc::VolumeSet& v);
 
     ServiceConfig config_;
     kanariv::contracts::Storage storage_;

@@ -5,10 +5,10 @@
 #include <expected>
 #include <format>
 #include <ipc/protocol_internal.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <kanariv/types/format.hpp>
 #include <kanariv/types/format.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/types/wire.hpp>
@@ -371,7 +371,7 @@ Json toJson(const Result& r) {
         r);
 }
 
-std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
+kanariv::utils::Expected<Result> resultFromJson(const Json& j) {
     try {
         if (!j.contains("type") || !j["type"].isString()) {
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 
 /**
@@ -67,7 +68,7 @@ inline constexpr size_t sample = 64uz * 1024uz;
  * @see sample
  * @note KANARIV_API: service.dll fingerprints via media.dll.
  */
-KANARIV_API std::expected<std::array<uint8_t, 32>, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<std::array<uint8_t, 32>>
 computeFingerprint(const std::filesystem::path& path);
 
 } // namespace kanariv::media::internal

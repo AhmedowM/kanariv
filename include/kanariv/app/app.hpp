@@ -24,13 +24,13 @@
  */
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <kanariv/config.hpp>
 #include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <expected>
 #include <optional>
 #include <stop_token>
 #include <string>
@@ -58,17 +58,17 @@ namespace kanariv::app {
  */
 struct KANARIV_API Outcome {
     std::optional<kanariv::ipc::Result> result; ///< Structured result for frontend rendering.
-    std::optional<std::string> line;           ///< Human-readable line, when applicable.
-    bool toStderr = false;                     ///< Render `line` on stderr instead of stdout.
-    bool failed = false;                       ///< Final failure line: stderr, exit code 1.
-    bool quiet = false;                        ///< Suppresses human rendering of `result`.
+    std::optional<std::string> line;            ///< Human-readable line, when applicable.
+    bool toStderr = false;                      ///< Render `line` on stderr instead of stdout.
+    bool failed = false;                        ///< Final failure line: stderr, exit code 1.
+    bool quiet = false;                         ///< Suppresses human rendering of `result`.
     /** @brief Creates a successful warning outcome written to stderr. */
-    static std::expected<Outcome, kanariv::utils::Error> warn(std::string message);
+    static kanariv::utils::Expected<Outcome> warn(std::string message);
     /** @brief Creates a failed outcome written to stderr. */
-    static std::expected<Outcome, kanariv::utils::Error> fail(std::string message);
+    static kanariv::utils::Expected<Outcome> fail(std::string message);
 };
 /** @brief Handler return: outcome data, or the error to render. @ingroup kanariv_app */
-using AppResult = std::expected<Outcome, kanariv::utils::Error>;
+using AppResult = kanariv::utils::Expected<Outcome>;
 
 /**
  * @brief Multi-step batch outcome: stdout/stderr blobs plus JSON payload.
@@ -80,19 +80,19 @@ using AppResult = std::expected<Outcome, kanariv::utils::Error>;
  */
 struct KANARIV_API BatchReport {
     std::optional<ipc::Result> json; ///< Structured result for JSON mode.
-    std::string out;                  ///< Human-readable stdout content.
-    std::string err;                  ///< Human-readable stderr content.
-    int exitCode = 0;                 ///< Process-compatible exit code.
+    std::string out;                 ///< Human-readable stdout content.
+    std::string err;                 ///< Human-readable stderr content.
+    int exitCode = 0;                ///< Process-compatible exit code.
     /** @brief Creates a failed batch report with stderr content. */
-    static std::expected<BatchReport, kanariv::utils::Error> fail(std::string message);
+    static kanariv::utils::Expected<BatchReport> fail(std::string message);
 };
 /** @brief Batch handler return. @ingroup kanariv_app */
-using BatchResult = std::expected<BatchReport, kanariv::utils::Error>;
+using BatchResult = kanariv::utils::Expected<BatchReport>;
 
 /** @brief Known tag fields accepted by tagValue. @ingroup kanariv_app */
-inline constexpr std::array<std::string_view, 9> tagFields{
-    "title", "artist", "album", "album_artist", "genre", "year", "track_number",
-    "disc_number", "cover"};
+inline constexpr std::array<std::string_view, 9> tagFields{"title",        "artist",      "album",
+                                                           "album_artist", "genre",       "year",
+                                                           "track_number", "disc_number", "cover"};
 
 /** @brief True when field names a known tag field. @ingroup kanariv_app */
 KANARIV_API bool isTagField(std::string_view field);
@@ -255,7 +255,7 @@ class KANARIV_API App {
      * @ingroup kanariv_app
      * @param order "added" for insertion order, anything else for playback.
      */
-    std::expected<TrackList, kanariv::utils::Error> queueTracks(const std::string& order);
+    kanariv::utils::Expected<TrackList> queueTracks(const std::string& order);
 
     /** @brief Switches the active queue. @ingroup kanariv_app */
     AppResult queueSwitch(std::int64_t qid);
@@ -326,8 +326,7 @@ class KANARIV_API App {
      * @param name Playlist name.
      * @param smart_query Optional smart-playlist filter expression.
      */
-    AppResult playlistCreate(const std::string& name,
-                             const std::string& smart_query = {});
+    AppResult playlistCreate(const std::string& name, const std::string& smart_query = {});
 
     /**
      * @brief Adds ids/paths to a playlist (resolving files via the library).
@@ -417,10 +416,10 @@ class KANARIV_API App {
      * @details Empty strings mean no filter; translated to nullopts here so
      * frontends pass plain values.
      */
-    AppResult libraryList(const std::string& query, int limit, int offset,
-                          const std::string& sort, const std::string& order,
-                          const std::string& artist, const std::string& album,
-                          const std::string& genre, std::optional<std::int32_t> rating = {});
+    AppResult libraryList(const std::string& query, int limit, int offset, const std::string& sort,
+                          const std::string& order, const std::string& artist,
+                          const std::string& album, const std::string& genre,
+                          std::optional<std::int32_t> rating = {});
 
     /**
      * @brief Lists favorited (rated) library tracks.
@@ -437,8 +436,7 @@ class KANARIV_API App {
      * @param dryRun Report only, no changes (default true).
      * @param libraryId Library id (default: 1).
      */
-    AppResult libraryMaintenance(const std::string& action, bool dryRun,
-                                 std::int64_t libraryId);
+    AppResult libraryMaintenance(const std::string& action, bool dryRun, std::int64_t libraryId);
 
     /** @brief Adds a file or directory to the library. @ingroup kanariv_app */
     AppResult libraryAdd(const std::string& path, bool recursive);
@@ -484,8 +482,7 @@ class KANARIV_API App {
      * @param field Must name a known field (see isTagField); frontends
      * validate before calling, unknown names fail as InvalidArg.
      */
-    std::expected<TagValue, kanariv::utils::Error> tagValue(std::string idOrPath,
-                                                           const std::string& field);
+    kanariv::utils::Expected<TagValue> tagValue(std::string idOrPath, const std::string& field);
 
     /**
      * @brief Sets the user rating (0..5) on a library track.

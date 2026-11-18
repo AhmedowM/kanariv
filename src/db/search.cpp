@@ -7,6 +7,7 @@
 #include <expected>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/search.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/status_format.hpp>
@@ -24,7 +25,7 @@ static void fillTrackSearch(sqlite3_stmt* s, kanariv::types::TrackRow& out) {
 }
 
 // TU-local single FTS5 MATCH query.
-static std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+static kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 tryFtsQuery(sqlite3* h, std::string_view query, int limit) {
     const char* sql =
         "SELECT t.id, t.fingerprint, t.path, t.size, t.mtime, t.duration, "
@@ -49,7 +50,7 @@ tryFtsQuery(sqlite3* h, std::string_view query, int limit) {
     return out;
 }
 
-std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 searchFts(Database& db, std::string_view query, int limit) {
     if (query.empty())
         return std::vector<kanariv::types::TrackRow>{};
@@ -99,7 +100,7 @@ searchFts(Database& db, std::string_view query, int limit) {
     return out;
 }
 
-std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 searchLike(Database& db, std::string_view query, int limit) {
     if (query.empty())
         return std::vector<kanariv::types::TrackRow>{};
@@ -142,12 +143,12 @@ std::string sanitizeFtsTerm(std::string_view term) {
     return internal::sanitizeFtsTerm(term);
 }
 
-std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 Database::searchTracks(std::string_view query, int limit) {
     return searchFts(*this, query, limit);
 }
 
-std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 search(Database& db, std::string_view query, int limit) {
     return searchFts(db, query, limit);
 }

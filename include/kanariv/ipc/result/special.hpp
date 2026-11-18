@@ -6,10 +6,11 @@
  * @ingroup kanariv_ipc
  *
  * @details A command failure is never a `Result`: `IpcReply.result` is the
- * single error channel (`std::expected<Result, Error>`), so there is no
+ * single error channel (`kanariv::utils::Expected<Result>`), so there is no
  * `Error` alternative in the variant.
  */
 
+#include <kanariv/fwd.hpp>
 #include <variant>
 
 namespace kanariv::ipc {

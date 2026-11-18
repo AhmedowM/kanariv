@@ -60,7 +60,7 @@ class KANARIV_API Host final {
      * @brief Result type returned by Host creation.
      * @ingroup kanariv_service
      */
-    using ExpectedHost = std::expected<std::unique_ptr<Host>, kanariv::utils::Error>;
+    using ExpectedHost = kanariv::utils::Expected<std::unique_ptr<Host>>;
 
     /**
      * @brief Creates and starts an in-process service.

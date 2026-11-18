@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils.hpp>
 #include <span>
 #include <string_view>
@@ -33,7 +34,7 @@ namespace kanariv::db::internal {
  * @param db SQLite handle.
  * @return Success, or the error that aborts (and rolls back) the step.
  */
-using MigrationFn = std::expected<void, kanariv::utils::Error> (*)(sqlite3* db);
+using MigrationFn = kanariv::utils::Expected<void> (*)(sqlite3* db);
 
 /**
  * @brief One ordered schema migration.
@@ -62,7 +63,7 @@ inline constexpr int schemaVersion = 9;
  * @details Must run before migrations: journal mode and page size cannot
  * change inside a transaction.
  */
-std::expected<void, kanariv::utils::Error> configureConnection(sqlite3* db);
+kanariv::utils::Expected<void> configureConnection(sqlite3* db);
 
 /**
  * @brief Returns the production migration ladder (ascending versions).
@@ -76,7 +77,7 @@ std::span<const MigrationStep> schemaMigrations() noexcept;
  * @param db SQLite handle (must not be null).
  * @return Stored schema version, or an error when the pragma cannot be read.
  */
-std::expected<int, kanariv::utils::Error> readUserVersion(sqlite3* db);
+kanariv::utils::Expected<int> readUserVersion(sqlite3* db);
 
 /**
  * @brief Applies every step above the database's stored version.
@@ -89,7 +90,6 @@ std::expected<int, kanariv::utils::Error> readUserVersion(sqlite3* db);
  * `user_version` is newer than the last step is rejected instead of being
  * downgraded.
  */
-std::expected<void, kanariv::utils::Error> applyMigrations(sqlite3* db,
-                                                           std::span<const MigrationStep> steps);
+kanariv::utils::Expected<void> applyMigrations(sqlite3* db, std::span<const MigrationStep> steps);
 
 } // namespace kanariv::db::internal

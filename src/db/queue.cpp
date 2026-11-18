@@ -1,15 +1,16 @@
 #include <sqlite3.h>
 
 #include <algorithm>
-#include <kanariv/types/db.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/status_format.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <db/queue.hpp>
 #include <db/statement.hpp>
 #include <db/stmt_helpers.hpp>
 #include <expected>
+#include <kanariv/fwd.hpp>
+#include <kanariv/types/db.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -48,14 +49,12 @@ constexpr int64_t positionGap = 1000000000LL;
  * @brief Position of the item at a given 0-based index (ORDER BY position),
  * or -1 if the index is beyond the queue length.
  */
-std::expected<int64_t, kanariv::utils::Error> positionAtIndex(sqlite3* db, int64_t qid,
-                                                              int64_t index) {
+kanariv::utils::Expected<int64_t> positionAtIndex(sqlite3* db, int64_t qid, int64_t index) {
     if (index < 0)
         return int64_t{-1};
     SqliteStatement st;
-    if (auto e = st.prepare(db,
-            "SELECT position FROM queue WHERE queue_id=? ORDER BY position "
-            "LIMIT 1 OFFSET ?");
+    if (auto e = st.prepare(db, "SELECT position FROM queue WHERE queue_id=? ORDER BY position "
+                                "LIMIT 1 OFFSET ?");
         !e) {
         return std::unexpected{e.error()};
     }
@@ -72,8 +71,8 @@ std::expected<int64_t, kanariv::utils::Error> positionAtIndex(sqlite3* db, int64
  * parking pass (a base above every current position) before the final pass
  * when UNIQUE(queue_id, position) could otherwise see a transient collision.
  */
-std::expected<void, kanariv::utils::Error>
-assignQueuePositions(sqlite3* db, const std::vector<int64_t>& ids, int64_t base) {
+kanariv::utils::Expected<void> assignQueuePositions(sqlite3* db, const std::vector<int64_t>& ids,
+                                                    int64_t base) {
     SqliteStatement upd;
     if (auto e = upd.prepare(db, "UPDATE queue SET position=? WHERE id=?"); !e)
         return std::unexpected{e.error()};
@@ -83,7 +82,7 @@ assignQueuePositions(sqlite3* db, const std::vector<int64_t>& ids, int64_t base)
         upd.bindInt(2, ids[i]);
         if (upd.stepDone() != SQLITE_DONE)
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                              sqlite3_errmsg(db))};
+                                                             sqlite3_errmsg(db))};
     }
     return {};
 }
@@ -91,7 +90,7 @@ assignQueuePositions(sqlite3* db, const std::vector<int64_t>& ids, int64_t base)
 /**
  * @brief Highest stored position in a queue (0 for an empty queue).
  */
-std::expected<int64_t, kanariv::utils::Error> maxQueuePositionLocked(sqlite3* db, int64_t qid) {
+kanariv::utils::Expected<int64_t> maxQueuePositionLocked(sqlite3* db, int64_t qid) {
     SqliteStatement maxStmt;
     if (auto e =
             maxStmt.prepare(db, "SELECT COALESCE(MAX(position), 0) FROM queue WHERE queue_id=?");
@@ -113,7 +112,7 @@ std::expected<int64_t, kanariv::utils::Error> maxQueuePositionLocked(sqlite3* db
  * assigns the dense final values. Both phases are ordered by the current
  * position, so queue order is unchanged.
  */
-std::expected<void, kanariv::utils::Error> renormalizeQueueLocked(sqlite3* db, int64_t qid) {
+kanariv::utils::Expected<void> renormalizeQueueLocked(sqlite3* db, int64_t qid) {
     SqliteStatement sel;
     if (auto e = sel.prepare(db, "SELECT id FROM queue WHERE queue_id=? ORDER BY position"); !e) {
         return std::unexpected{e.error()};
@@ -137,8 +136,8 @@ std::expected<void, kanariv::utils::Error> renormalizeQueueLocked(sqlite3* db, i
 
 } // namespace
 
-std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64_t qid, int64_t tid,
-                                                              int64_t index) {
+kanariv::utils::Expected<void> queueEnqueueLocked(sqlite3* db, int64_t qid, int64_t tid,
+                                                  int64_t index) {
     if (tid == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     if (!db)
@@ -157,9 +156,8 @@ std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64
             if (ms.step())
                 newPos = ms.columnInt(0);
             else
-                return std::unexpected{
-                    kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                              "max position query failed")};
+                return std::unexpected{kanariv::utils::makeError(
+                    kanariv::utils::StatusCode::Internal, "max position query failed")};
         } else {
             return std::unexpected{e.error()};
         }
@@ -220,8 +218,7 @@ std::expected<void, kanariv::utils::Error> queueEnqueueLocked(sqlite3* db, int64
     return {};
 }
 
-std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLocked(sqlite3* db,
-                                                                                 int64_t qid) {
+kanariv::utils::Expected<kanariv::types::QueueItem> queueDequeueLocked(sqlite3* db, int64_t qid) {
     qid = normalizeQueueId(qid);
     if (!db)
         return std::unexpected{
@@ -253,8 +250,7 @@ std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLock
     return it;
 }
 
-std::expected<void, kanariv::utils::Error> queueRemoveLocked(sqlite3* db, int64_t qid,
-                                                             int64_t index) {
+kanariv::utils::Expected<void> queueRemoveLocked(sqlite3* db, int64_t qid, int64_t index) {
     qid = normalizeQueueId(qid);
     if (!db)
         return std::unexpected{
@@ -283,7 +279,7 @@ std::expected<void, kanariv::utils::Error> queueRemoveLocked(sqlite3* db, int64_
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> queueClearLocked(sqlite3* db, int64_t qid) {
+kanariv::utils::Expected<void> queueClearLocked(sqlite3* db, int64_t qid) {
     qid = normalizeQueueId(qid);
     if (!db)
         return std::unexpected{
@@ -300,8 +296,8 @@ std::expected<void, kanariv::utils::Error> queueClearLocked(sqlite3* db, int64_t
     return {};
 }
 
-std::expected<std::vector<kanariv::types::QueueItem>, kanariv::utils::Error>
-queueListLocked(sqlite3* db, int64_t qid) {
+kanariv::utils::Expected<std::vector<kanariv::types::QueueItem>> queueListLocked(sqlite3* db,
+                                                                                 int64_t qid) {
     qid = normalizeQueueId(qid);
     if (!db)
         return std::unexpected{
@@ -371,8 +367,8 @@ std::optional<size_t> queueIndexOfLocked(sqlite3* db, int64_t qid, int64_t track
     }
 }
 
-std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
-queueTracksLocked(sqlite3* db, int64_t qid) {
+kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>> queueTracksLocked(sqlite3* db,
+                                                                                  int64_t qid) {
     qid = normalizeQueueId(qid);
     if (!db)
         return std::unexpected{
@@ -397,8 +393,8 @@ queueTracksLocked(sqlite3* db, int64_t qid) {
     return out;
 }
 
-std::expected<void, kanariv::utils::Error> queueMoveLocked(sqlite3* db, int64_t qid,
-                                                           std::size_t from, std::size_t to) {
+kanariv::utils::Expected<void> queueMoveLocked(sqlite3* db, int64_t qid, std::size_t from,
+                                               std::size_t to) {
     qid = normalizeQueueId(qid);
     if (!db)
         return std::unexpected{
@@ -411,8 +407,8 @@ std::expected<void, kanariv::utils::Error> queueMoveLocked(sqlite3* db, int64_t 
     while (sel.step())
         ids.push_back(sel.columnInt(0));
     if (from >= ids.size() || to >= ids.size())
-        return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::InvalidArg, "queue move: index out of range")};
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                                         "queue move: index out of range")};
     if (from == to)
         return {};
     const int64_t moved = ids[from];
@@ -428,7 +424,7 @@ std::expected<void, kanariv::utils::Error> queueMoveLocked(sqlite3* db, int64_t 
     return assignQueuePositions(db, ids, 0);
 }
 
-std::expected<kanariv::types::Queue, kanariv::utils::Error> getQueueLocked(sqlite3* db, int64_t qid) {
+kanariv::utils::Expected<kanariv::types::Queue> getQueueLocked(sqlite3* db, int64_t qid) {
     qid = normalizeQueueId(qid);
     if (!db)
         return std::unexpected{
@@ -451,7 +447,7 @@ std::expected<kanariv::types::Queue, kanariv::utils::Error> getQueueLocked(sqlit
     return q;
 }
 
-std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error> listQueuesLocked(sqlite3* db) {
+kanariv::utils::Expected<std::vector<kanariv::types::Queue>> listQueuesLocked(sqlite3* db) {
     if (!db)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -473,8 +469,8 @@ std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error> listQue
     return out;
 }
 
-std::expected<int64_t, kanariv::utils::Error> createQueueLocked(sqlite3* db, std::string_view name,
-                                                               int64_t library_id) {
+kanariv::utils::Expected<int64_t> createQueueLocked(sqlite3* db, std::string_view name,
+                                                    int64_t library_id) {
     if (name.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     if (!db)
@@ -494,7 +490,7 @@ std::expected<int64_t, kanariv::utils::Error> createQueueLocked(sqlite3* db, std
     return sqlite3_last_insert_rowid(db);
 }
 
-std::expected<void, kanariv::utils::Error> deleteQueueLocked(sqlite3* db, int64_t qid) {
+kanariv::utils::Expected<void> deleteQueueLocked(sqlite3* db, int64_t qid) {
     qid = normalizeQueueId(qid);
     if (!db)
         return std::unexpected{
@@ -522,8 +518,7 @@ std::expected<void, kanariv::utils::Error> deleteQueueLocked(sqlite3* db, int64_
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> setQueueRepeatLocked(sqlite3* db, int64_t qid,
-                                                               int repeat_mode) {
+kanariv::utils::Expected<void> setQueueRepeatLocked(sqlite3* db, int64_t qid, int repeat_mode) {
     qid = normalizeQueueId(qid);
     if (!db)
         return std::unexpected{
@@ -543,7 +538,7 @@ std::expected<void, kanariv::utils::Error> setQueueRepeatLocked(sqlite3* db, int
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> setQueueTempLocked(sqlite3* db, int64_t qid, bool temp) {
+kanariv::utils::Expected<void> setQueueTempLocked(sqlite3* db, int64_t qid, bool temp) {
     qid = normalizeQueueId(qid);
     if (!db)
         return std::unexpected{

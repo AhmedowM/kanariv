@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <expected>
 #include <kanariv/contracts/storage.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
@@ -87,16 +88,15 @@ kanariv::types::RepeatMode Engine::repeat() const noexcept {
     return impl_->repeat();
 }
 
-std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Engine::stats() {
+kanariv::utils::Expected<kanariv::types::PlaybackStats> Engine::stats() {
     return impl_->stats();
 }
 
-std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
-Engine::listHistory(int limit) {
+kanariv::utils::Expected<std::vector<kanariv::types::HistoryEntry>> Engine::listHistory(int limit) {
     return impl_->listHistory(limit);
 }
 
-std::expected<void, kanariv::utils::Error> Engine::clearHistory() {
+kanariv::utils::Expected<void> Engine::clearHistory() {
     return impl_->clearHistory();
 }
 
@@ -132,7 +132,7 @@ Engine::ExpectedVoid Engine::setCallbacks(const kanariv::types::EngineCallbacks&
     return impl_->setCallbacks(cbs);
 }
 
-std::expected<kanariv::types::EngineEvent, kanariv::utils::Error> Engine::pollEvent() {
+kanariv::utils::Expected<kanariv::types::EngineEvent> Engine::pollEvent() {
     return impl_->pollEvent();
 }
 

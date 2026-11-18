@@ -40,9 +40,9 @@ class IHistoryStore : public IStore {
      * @param queue_id Queue from which the track was played.
      * @return Success, or a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error>
-    markPlayed(int64_t track_id, int64_t started_at, int64_t completed_at, int64_t position_ms,
-               double completion_pct, int64_t queue_id) = 0;
+    virtual kanariv::utils::Expected<void> markPlayed(int64_t track_id, int64_t started_at,
+                                                      int64_t completed_at, int64_t position_ms,
+                                                      double completion_pct, int64_t queue_id) = 0;
 
     /**
      * @brief Lists playback history entries.
@@ -50,14 +50,14 @@ class IHistoryStore : public IStore {
      * behavior of non-positive values.
      * @return History entries, or a backend error.
      */
-    virtual std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<std::vector<kanariv::types::HistoryEntry>>
     listHistory(int limit) = 0;
 
     /**
      * @brief Clears playback history.
      * @return Success, or a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> clearHistory() = 0;
+    virtual kanariv::utils::Expected<void> clearHistory() = 0;
 };
 
 } // namespace kanariv::contracts

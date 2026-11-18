@@ -18,6 +18,7 @@
 #include <expected>
 #include <kanariv/contracts/storage.hpp>
 #include <kanariv/engine/engine.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/player/output.hpp>
@@ -135,7 +136,7 @@ struct Engine::Impl {
      * I/O therefore runs under the queue lock (the established persistence
      * story) but never under the decode lock.
      */
-    std::expected<void, kanariv::utils::Error>
+    kanariv::utils::Expected<void>
     saveStateLocked(std::optional<int64_t> livePositionMs = std::nullopt);
     /**
      * @brief saveStateLocked() ignoring the outcome, logging a failure.
@@ -148,8 +149,8 @@ struct Engine::Impl {
     void startOutputBestEffort();
     /// @brief output_->stop() ignoring the outcome, logging a failure.
     void stopOutputBestEffort();
-    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
-    fetchTrackByPosLocked(int64_t qid, int64_t pos);
+    kanariv::utils::Expected<kanariv::types::TrackRow> fetchTrackByPosLocked(int64_t qid,
+                                                                             int64_t pos);
 
     // queue locking
     /**
@@ -256,18 +257,17 @@ struct Engine::Impl {
     void noteEnqueued(int64_t qid, std::size_t count);
     void noteQueueMoved(int64_t qid, std::size_t from, std::size_t to);
     ExpectedVoid setShuffle(std::optional<bool> on);
-    std::expected<void, kanariv::utils::Error> setShuffleLocked(bool on);
+    kanariv::utils::Expected<void> setShuffleLocked(bool on);
     ExpectedVoid setRepeat(kanariv::types::RepeatMode m);
 
     // library / history
-    std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> stats();
-    std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
-    listHistory(int limit);
-    std::expected<void, kanariv::utils::Error> clearHistory();
+    kanariv::utils::Expected<kanariv::types::PlaybackStats> stats();
+    kanariv::utils::Expected<std::vector<kanariv::types::HistoryEntry>> listHistory(int limit);
+    kanariv::utils::Expected<void> clearHistory();
 
     // queue traversal
-    std::expected<void, kanariv::utils::Error> queueNextLocked(kanariv::types::TrackRow& out);
-    std::expected<void, kanariv::utils::Error> queuePrevLocked(kanariv::types::TrackRow& out);
+    kanariv::utils::Expected<void> queueNextLocked(kanariv::types::TrackRow& out);
+    kanariv::utils::Expected<void> queuePrevLocked(kanariv::types::TrackRow& out);
     /**
      * @brief Resolved next entry plus the cursor change that selects it.
      * @details Produced read-only by peekNextLocked(), applied by
@@ -282,7 +282,7 @@ struct Engine::Impl {
      * @brief Resolves the next queue entry without mutating cursor/perm.
      * @pre `queueMutex_` held by the caller.
      */
-    std::expected<PeekedNext, kanariv::utils::Error> peekNextLocked();
+    kanariv::utils::Expected<PeekedNext> peekNextLocked();
     /**
      * @brief Commits @p next when the queue still matches @p expected.
      * @pre `queueMutex_` held by the caller.
@@ -302,13 +302,13 @@ struct Engine::Impl {
      * releasing `queueMutex_`: callbacks run on the caller's thread and must
      * never fire under the queue lock (E8).
      */
-    std::expected<kanariv::types::EngineEvent, kanariv::utils::Error>
-    doPlayTrack(kanariv::types::TrackRow& t, double startSec = 0.0);
+    kanariv::utils::Expected<kanariv::types::EngineEvent> doPlayTrack(kanariv::types::TrackRow& t,
+                                                                      double startSec = 0.0);
     void preroll();
 
     // callbacks / events
     ExpectedVoid setCallbacks(const kanariv::types::EngineCallbacks& cbs);
-    std::expected<kanariv::types::EngineEvent, kanariv::utils::Error> pollEvent();
+    kanariv::utils::Expected<kanariv::types::EngineEvent> pollEvent();
     ExpectedVoid drainEvents(kanariv::types::EngineEvent* buf, size_t cap, size_t* n);
     std::vector<kanariv::types::EngineEvent> drainAll();
 

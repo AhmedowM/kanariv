@@ -73,7 +73,7 @@ struct AnalyzeReport {
  * @par Thread safety
  * Takes the database lock per group write. The caller must not hold it.
  */
-KANARIV_API std::expected<AnalyzeReport, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<AnalyzeReport>
 analyzeLibrary(kanariv::db::Database& db, int64_t libraryId = 0, AnalyzeOptions options = {},
                std::function<void(int64_t, int64_t, std::string_view)> progress = {});
 
@@ -102,7 +102,7 @@ class KANARIV_API Analyzer final : public contracts::ILibraryAnalyzer {
      * @param progress Optional callback `progress(done, total, path)`.
      * @return Counters, or the store error when the track list cannot be read.
      */
-    std::expected<contracts::LibraryAnalyzeReport, kanariv::utils::Error>
+    kanariv::utils::Expected<contracts::LibraryAnalyzeReport>
     analyzeLibrary(int64_t libraryId, contracts::LibraryAnalyzeOptions options = {},
                    std::function<void(int64_t, int64_t, std::string_view)> progress = {}) override;
 

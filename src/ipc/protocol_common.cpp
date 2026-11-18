@@ -5,6 +5,7 @@
 #include <expected>
 #include <format>
 #include <ipc/protocol_internal.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -29,8 +30,7 @@ std::string resultCodeToString(kanariv::utils::StatusCode r) {
     return std::string(kanariv::utils::toString(r));
 }
 
-std::expected<kanariv::utils::StatusCode, kanariv::utils::Error>
-resultCodeFromString(std::string_view sv) {
+kanariv::utils::Expected<kanariv::utils::StatusCode> resultCodeFromString(std::string_view sv) {
     using R = kanariv::utils::StatusCode;
     if (sv == "Ok")
         return R::Ok;
@@ -80,7 +80,7 @@ Json playlistToJson(const kanariv::types::Playlist& p) {
     return j;
 }
 
-std::expected<kanariv::types::Playlist, kanariv::utils::Error> playlistFromJson(const Json& j) {
+kanariv::utils::Expected<kanariv::types::Playlist> playlistFromJson(const Json& j) {
     try {
         kanariv::types::Playlist p{};
         if (j.contains("id") && j["id"].isNumber())
@@ -114,7 +114,7 @@ Json errorToJson(const kanariv::utils::Error& e) {
     return j;
 }
 
-std::expected<kanariv::utils::Error, kanariv::utils::Error> errorFromJson(const Json& j) {
+kanariv::utils::Expected<kanariv::utils::Error> errorFromJson(const Json& j) {
     try {
         std::string codeStr;
         std::string msg;

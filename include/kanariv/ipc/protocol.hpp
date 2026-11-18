@@ -112,9 +112,8 @@ struct IpcRequest final {
  */
 struct IpcReply final {
     uint32_t id{0}; ///< Request identifier copied from the originating request.
-    std::expected<Result, kanariv::utils::Error> result{
-        std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                  "reply result not populated")}};
+    kanariv::utils::Expected<Result> result{std::unexpected{kanariv::utils::makeError(
+        kanariv::utils::StatusCode::Internal, "reply result not populated")}};
 };
 // ---------------------------------------------------------------------------
 // Command JSON
@@ -133,7 +132,7 @@ KANARIV_API Json toJson(const Command& cmd);
  * @param j JSON object with "type" field and command-specific fields.
  * @return Command variant, or error if type is unknown or parsing fails.
  */
-KANARIV_API std::expected<Command, kanariv::utils::Error> commandFromJson(const Json& j);
+KANARIV_API kanariv::utils::Expected<Command> commandFromJson(const Json& j);
 
 /**
  * @brief Deserialize a Result from JSON (forward-declared so
@@ -142,7 +141,7 @@ KANARIV_API std::expected<Command, kanariv::utils::Error> commandFromJson(const 
  * @param j JSON object with "type" field and result-specific fields.
  * @return Result variant, or error if type is unknown or parsing fails.
  */
-KANARIV_API std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j);
+KANARIV_API kanariv::utils::Expected<Result> resultFromJson(const Json& j);
 
 // Generic fromJson template wrapper: fromJson<Command>(json)
 /**
@@ -153,14 +152,14 @@ KANARIV_API std::expected<Result, kanariv::utils::Error> resultFromJson(const Js
  * @return Deserialized value, or error if type is unsupported or parsing fails.
  */
 template <typename T>
-std::expected<T, kanariv::utils::Error> fromJson(const Json& j) {
+kanariv::utils::Expected<T> fromJson(const Json& j) {
     if constexpr (std::is_same_v<T, Command>) {
         return commandFromJson(j);
     } else if constexpr (std::is_same_v<T, Result>) {
         return resultFromJson(j);
     } else {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Unsupported,
-                                                        "unsupported fromJson type")};
+                                                         "unsupported fromJson type")};
     }
 }
 
@@ -192,7 +191,7 @@ KANARIV_API std::string serializeRequest(const IpcRequest& req);
  * @param sv JSON string to parse.
  * @return IpcRequest, or error if parsing fails or required fields are missing.
  */
-KANARIV_API std::expected<IpcRequest, kanariv::utils::Error> deserializeRequest(std::string_view sv);
+KANARIV_API kanariv::utils::Expected<IpcRequest> deserializeRequest(std::string_view sv);
 
 /**
  * @brief Serialize an IpcReply to JSON string.
@@ -208,7 +207,7 @@ KANARIV_API std::string serializeReply(const IpcReply& rep);
  * @param sv JSON string to parse.
  * @return IpcReply, or error if parsing fails or required fields are missing.
  */
-KANARIV_API std::expected<IpcReply, kanariv::utils::Error> deserializeReply(std::string_view sv);
+KANARIV_API kanariv::utils::Expected<IpcReply> deserializeReply(std::string_view sv);
 
 // ---------------------------------------------------------------------------
 // Framing: [4-byte BE len][json]
@@ -247,7 +246,7 @@ encodeFrameLength(std::uint32_t length) noexcept;
  * @return The declared payload length, or `InvalidArg` when it exceeds
  * `maxFrameBytes` (rejected before the caller allocates).
  */
-KANARIV_API std::expected<std::uint32_t, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<std::uint32_t>
 decodeFrameLength(std::span<const std::byte, frameHeaderBytes> header);
 
 /**
@@ -257,8 +256,7 @@ decodeFrameLength(std::span<const std::byte, frameHeaderBytes> header);
  * @return Vector of bytes `[len_be][json...]`, or `InvalidArg` when the
  * payload exceeds `maxFrameBytes` (no silent `uint32_t` truncation).
  */
-KANARIV_API std::expected<std::vector<std::byte>, kanariv::utils::Error>
-frame(std::string_view json);
+KANARIV_API kanariv::utils::Expected<std::vector<std::byte>> frame(std::string_view json);
 
 /**
  * @brief Extract JSON payload from framed buffer.
@@ -268,8 +266,7 @@ frame(std::string_view json);
  * declared length exceeds `maxFrameBytes`, the frame is incomplete, or bytes
  * trail the declared frame (protocol desync).
  */
-KANARIV_API std::expected<std::string, kanariv::utils::Error>
-deframe(std::span<const std::byte> buf);
+KANARIV_API kanariv::utils::Expected<std::string> deframe(std::span<const std::byte> buf);
 
 /**
  * @brief Serialize a Result to pretty-printed JSON string.

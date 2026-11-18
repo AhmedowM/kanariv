@@ -6,6 +6,7 @@
 #include <db/transaction.hpp>
 #include <expected>
 #include <kanariv/db/database.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 #include <mutex>
 #include <string>
@@ -14,7 +15,7 @@
 
 namespace kanariv::db {
 
-std::expected<bool, kanariv::utils::Error> Database::queueExists(int64_t qid) {
+kanariv::utils::Expected<bool> Database::queueExists(int64_t qid) {
     auto queue = getQueue(qid);
     if (!queue) {
         if (queue.error().code == kanariv::utils::StatusCode::NotFound)
@@ -28,8 +29,8 @@ bool Database::isOpen() const noexcept {
     return DatabaseAccess::handle(const_cast<Database&>(*this)) != nullptr;
 }
 
-std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
-Database::queueTrackAt(int64_t qid, int64_t index) {
+kanariv::utils::Expected<kanariv::types::TrackRow> Database::queueTrackAt(int64_t qid,
+                                                                          int64_t index) {
     qid = normalizeQueueId(qid);
     if (index < 0)
         return std::unexpected(
@@ -58,9 +59,9 @@ Database::queueTrackAt(int64_t qid, int64_t index) {
     return getTrack(trackId);
 }
 
-std::expected<void, kanariv::utils::Error>
-Database::markPlayed(int64_t trackId, int64_t startedAt, int64_t completedAt, int64_t positionMs,
-                     double completionPct, int64_t queueId) {
+kanariv::utils::Expected<void> Database::markPlayed(int64_t trackId, int64_t startedAt,
+                                                    int64_t completedAt, int64_t positionMs,
+                                                    double completionPct, int64_t queueId) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)
         return std::unexpected(
@@ -115,7 +116,7 @@ Database::markPlayed(int64_t trackId, int64_t startedAt, int64_t completedAt, in
     return transaction->commit();
 }
 
-std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::HistoryEntry>>
 Database::listHistory(int limit) {
     sqlite3* handle = DatabaseAccess::handle(*this);
     if (!handle)

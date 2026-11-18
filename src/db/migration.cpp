@@ -5,6 +5,7 @@
 #include <db/stmt_helpers.hpp>
 #include <db/transaction.hpp>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/status_format.hpp>
 #include <string>
@@ -24,11 +25,11 @@ using kanariv::utils::StatusCode;
  * so these run once on the raw handle in `Database::open()`.
  */
 inline constexpr std::string_view connectionPragmas = "PRAGMA journal_mode=WAL;"
-                                                       "PRAGMA synchronous=NORMAL;"
-                                                       "PRAGMA cache_size=-8000;"
-                                                       "PRAGMA busy_timeout=5000;"
-                                                       "PRAGMA page_size=4096;"
-                                                       "PRAGMA foreign_keys=ON;";
+                                                      "PRAGMA synchronous=NORMAL;"
+                                                      "PRAGMA cache_size=-8000;"
+                                                      "PRAGMA busy_timeout=5000;"
+                                                      "PRAGMA page_size=4096;"
+                                                      "PRAGMA foreign_keys=ON;";
 
 /**
  * @brief Base schema: every table, index and trigger that exists in version 1.
@@ -207,8 +208,8 @@ inline constexpr std::string_view dropRedundantIndexes =
     "DROP INDEX IF EXISTS idx_tracks_fingerprint;"
     "DROP INDEX IF EXISTS idx_queue_queue_pos;";
 
-std::expected<void, kanariv::utils::Error> execSql(sqlite3* db, std::string_view sql,
-                                                   std::string_view context) {
+kanariv::utils::Expected<void> execSql(sqlite3* db, std::string_view sql,
+                                       std::string_view context) {
     char* err = nullptr;
     SqliteErrGuard guard{err};
     int rc = sqlite3_exec(db, std::string(sql).c_str(), nullptr, nullptr, &err);
@@ -218,13 +219,12 @@ std::expected<void, kanariv::utils::Error> execSql(sqlite3* db, std::string_view
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> setUserVersion(sqlite3* db, int version,
-                                                          std::string_view context) {
+kanariv::utils::Expected<void> setUserVersion(sqlite3* db, int version, std::string_view context) {
     return execSql(db, "PRAGMA user_version = " + std::to_string(version), context);
 }
 
-std::expected<bool, kanariv::utils::Error> hasColumn(sqlite3* db, std::string_view table,
-                                                     std::string_view column) {
+kanariv::utils::Expected<bool> hasColumn(sqlite3* db, std::string_view table,
+                                         std::string_view column) {
     std::string sql = "PRAGMA table_info(" + std::string(table) + ")";
     sqlite3_stmt* raw = nullptr;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &raw, nullptr) != SQLITE_OK)
@@ -238,9 +238,8 @@ std::expected<bool, kanariv::utils::Error> hasColumn(sqlite3* db, std::string_vi
     return false;
 }
 
-std::expected<void, kanariv::utils::Error> ensureColumn(sqlite3* db, std::string_view table,
-                                                        std::string_view column,
-                                                        std::string_view alterSql) {
+kanariv::utils::Expected<void> ensureColumn(sqlite3* db, std::string_view table,
+                                            std::string_view column, std::string_view alterSql) {
     auto exists = hasColumn(db, table, column);
     if (!exists)
         return std::unexpected{exists.error()};
@@ -254,7 +253,7 @@ std::expected<void, kanariv::utils::Error> ensureColumn(sqlite3* db, std::string
  * @details Idempotent because legacy databases at `user_version == 0` may
  * already hold any subset of these columns from the old unconditional ALTERs.
  */
-std::expected<void, kanariv::utils::Error> migrateSourceIdentity(sqlite3* db) {
+kanariv::utils::Expected<void> migrateSourceIdentity(sqlite3* db) {
     for (const auto& [table, column, alter] :
          std::array<std::tuple<std::string_view, std::string_view, std::string_view>, 7>{
              {std::tuple{"queues", "temp", "ALTER TABLE queues ADD COLUMN temp INTEGER DEFAULT 0"},
@@ -295,7 +294,7 @@ std::expected<void, kanariv::utils::Error> migrateSourceIdentity(sqlite3* db) {
  * had the column, hence the guard; it is neither indexed nor named by any
  * trigger or view, which is the prerequisite for `DROP COLUMN`.
  */
-std::expected<void, kanariv::utils::Error> dropDeletedAt(sqlite3* db) {
+kanariv::utils::Expected<void> dropDeletedAt(sqlite3* db) {
     auto exists = hasColumn(db, "tracks", "deleted_at");
     if (!exists)
         return std::unexpected{exists.error()};
@@ -306,7 +305,7 @@ std::expected<void, kanariv::utils::Error> dropDeletedAt(sqlite3* db) {
 
 } // namespace
 
-std::expected<void, kanariv::utils::Error> configureConnection(sqlite3* db) {
+kanariv::utils::Expected<void> configureConnection(sqlite3* db) {
     if (!db)
         return std::unexpected{makeError(StatusCode::InvalidArg, "null db")};
     return execSql(db, connectionPragmas, "connection pragmas");
@@ -340,7 +339,7 @@ std::span<const MigrationStep> schemaMigrations() noexcept {
     return steps;
 }
 
-std::expected<int, kanariv::utils::Error> readUserVersion(sqlite3* db) {
+kanariv::utils::Expected<int> readUserVersion(sqlite3* db) {
     if (!db)
         return std::unexpected{makeError(StatusCode::InvalidArg, "null db")};
     sqlite3_stmt* raw = nullptr;
@@ -352,8 +351,7 @@ std::expected<int, kanariv::utils::Error> readUserVersion(sqlite3* db) {
     return sqlite3_column_int(raw, 0);
 }
 
-std::expected<void, kanariv::utils::Error> applyMigrations(sqlite3* db,
-                                                           std::span<const MigrationStep> steps) {
+kanariv::utils::Expected<void> applyMigrations(sqlite3* db, std::span<const MigrationStep> steps) {
     if (!db)
         return std::unexpected{makeError(StatusCode::InvalidArg, "null db")};
     auto stored = readUserVersion(db);

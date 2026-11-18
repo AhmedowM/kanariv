@@ -9,13 +9,14 @@
  * installed) so downstream consumers never see them.
  */
 
+#include <cstddef>
+#include <expected>
+#include <format>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
-#include <cstddef>
-#include <expected>
-#include <format>
 #include <limits>
 #include <optional>
 #include <string>
@@ -70,9 +71,8 @@ inline kanariv::utils::Error outOfRangeError(std::string_view key) {
  * omits) when unset stays optional; a present field of the wrong type is
  * always `InvalidArg`, never a silent default.
  */
-inline std::expected<void, kanariv::utils::Error> requiredString(const Json& j,
-                                                                 std::string_view key,
-                                                                 std::string& out) {
+inline kanariv::utils::Expected<void> requiredString(const Json& j, std::string_view key,
+                                                     std::string& out) {
     if (!j.contains(key))
         return std::unexpected{missingFieldError(key)};
     const Json v = j[key];
@@ -83,9 +83,8 @@ inline std::expected<void, kanariv::utils::Error> requiredString(const Json& j,
 }
 
 /** @brief Reads an optional string field; absent or `null` keeps `out` unset. */
-inline std::expected<void, kanariv::utils::Error> optionalString(const Json& j,
-                                                                 std::string_view key,
-                                                                 std::optional<std::string>& out) {
+inline kanariv::utils::Expected<void> optionalString(const Json& j, std::string_view key,
+                                                     std::optional<std::string>& out) {
     if (!j.contains(key))
         return {};
     const Json v = j[key];
@@ -98,8 +97,7 @@ inline std::expected<void, kanariv::utils::Error> optionalString(const Json& j,
 }
 
 /** @brief Reads a mandatory boolean field. */
-inline std::expected<void, kanariv::utils::Error> requiredBool(const Json& j, std::string_view key,
-                                                               bool& out) {
+inline kanariv::utils::Expected<void> requiredBool(const Json& j, std::string_view key, bool& out) {
     if (!j.contains(key))
         return std::unexpected{missingFieldError(key)};
     const Json v = j[key];
@@ -110,8 +108,8 @@ inline std::expected<void, kanariv::utils::Error> requiredBool(const Json& j, st
 }
 
 /** @brief Reads an optional boolean field; absent or `null` keeps `out` unset. */
-inline std::expected<void, kanariv::utils::Error> optionalBool(const Json& j, std::string_view key,
-                                                               std::optional<bool>& out) {
+inline kanariv::utils::Expected<void> optionalBool(const Json& j, std::string_view key,
+                                                   std::optional<bool>& out) {
     if (!j.contains(key))
         return {};
     const Json v = j[key];
@@ -132,11 +130,11 @@ inline std::expected<void, kanariv::utils::Error> optionalBool(const Json& j, st
  */
 template <typename T>
     requires(std::is_arithmetic_v<T> && !std::is_same_v<T, bool>)
-std::expected<void, kanariv::utils::Error> readNumber(const Json& v, std::string_view key, T& out) {
+kanariv::utils::Expected<void> readNumber(const Json& v, std::string_view key, T& out) {
     try {
         if constexpr (std::is_integral_v<T> && std::is_signed_v<T>) {
-            if (v.isUnsigned() && v.get<uint64_t>() >
-                                      static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+            if (v.isUnsigned() &&
+                v.get<uint64_t>() > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
                 return std::unexpected{outOfRangeError(key)};
         }
         out = v.get<T>();
@@ -155,8 +153,7 @@ std::expected<void, kanariv::utils::Error> readNumber(const Json& v, std::string
  */
 template <typename T>
     requires(std::is_arithmetic_v<T> && !std::is_same_v<T, bool>)
-std::expected<void, kanariv::utils::Error> requiredNumber(const Json& j, std::string_view key,
-                                                          T& out) {
+kanariv::utils::Expected<void> requiredNumber(const Json& j, std::string_view key, T& out) {
     if (!j.contains(key))
         return std::unexpected{missingFieldError(key)};
     const Json v = j[key];
@@ -173,8 +170,8 @@ std::expected<void, kanariv::utils::Error> requiredNumber(const Json& j, std::st
 /** @brief Reads an optional numeric field; absent or `null` keeps `out` unset. */
 template <typename T>
     requires(std::is_arithmetic_v<T> && !std::is_same_v<T, bool>)
-std::expected<void, kanariv::utils::Error> optionalNumber(const Json& j, std::string_view key,
-                                                          std::optional<T>& out) {
+kanariv::utils::Expected<void> optionalNumber(const Json& j, std::string_view key,
+                                              std::optional<T>& out) {
     if (!j.contains(key))
         return {};
     const Json v = j[key];
@@ -200,9 +197,8 @@ std::expected<void, kanariv::utils::Error> optionalNumber(const Json& j, std::st
  * @details The previous parser dropped non-string items, so a malformed
  * `paths` list played a subset of what the client sent.
  */
-inline std::expected<void, kanariv::utils::Error> requiredStringArray(const Json& j,
-                                                                      std::string_view key,
-                                                                      std::vector<std::string>& out) {
+inline kanariv::utils::Expected<void> requiredStringArray(const Json& j, std::string_view key,
+                                                          std::vector<std::string>& out) {
     if (!j.contains(key))
         return std::unexpected{missingFieldError(key)};
     const Json v = j[key];
@@ -237,8 +233,7 @@ std::string resultCodeToString(kanariv::utils::StatusCode r);
  * @param sv String to parse.
  * @return StatusCode enum value, or error if unknown.
  */
-std::expected<kanariv::utils::StatusCode, kanariv::utils::Error>
-resultCodeFromString(std::string_view sv);
+kanariv::utils::Expected<kanariv::utils::StatusCode> resultCodeFromString(std::string_view sv);
 
 /**
  * @brief Convert Playlist struct to JSON object.
@@ -254,7 +249,7 @@ Json playlistToJson(const kanariv::types::Playlist& p);
  * @param j JSON object with playlist fields.
  * @return Playlist struct, or error if parsing fails.
  */
-std::expected<kanariv::types::Playlist, kanariv::utils::Error> playlistFromJson(const Json& j);
+kanariv::utils::Expected<kanariv::types::Playlist> playlistFromJson(const Json& j);
 
 /**
  * @brief Convert Error struct to JSON object.
@@ -270,6 +265,6 @@ Json errorToJson(const kanariv::utils::Error& e);
  * @param j JSON object with code/code_value and message fields.
  * @return Error struct, or error if parsing fails.
  */
-std::expected<kanariv::utils::Error, kanariv::utils::Error> errorFromJson(const Json& j);
+kanariv::utils::Expected<kanariv::utils::Error> errorFromJson(const Json& j);
 
 } // namespace kanariv::ipc::detail

@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <kanariv/db/database.hpp>
 #include <kanariv/engine/engine.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/utils/error.hpp>
 #include <memory>
@@ -12,7 +13,7 @@
 
 namespace kanariv::test_helpers {
 
-inline std::expected<std::unique_ptr<kanariv::engine::Engine>, kanariv::utils::Error>
+inline kanariv::utils::Expected<std::unique_ptr<kanariv::engine::Engine>>
 openEngineWithDatabase(std::string_view path, const kanariv::types::EngineConfig& config) {
     auto database = kanariv::db::Database::open(path);
     if (!database)
@@ -30,7 +31,7 @@ openEngineWithDatabase(std::string_view path, const kanariv::types::EngineConfig
         return std::unexpected(attached.error());
     return instance;
 }
-inline std::expected<std::unique_ptr<kanariv::service::Service>, kanariv::utils::Error>
+inline kanariv::utils::Expected<std::unique_ptr<kanariv::service::Service>>
 openServiceWithDatabase(std::string_view path, const kanariv::service::ServiceConfig& config) {
     auto database = kanariv::db::Database::open(path);
     if (!database)

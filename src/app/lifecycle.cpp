@@ -8,8 +8,9 @@
  * Rendering still happens here; Phase 1 moves it to callers.
  */
 
-#include <kanariv/utils/status_format.hpp>
 #include <cstddef>
+#include <kanariv/fwd.hpp>
+#include <kanariv/utils/status_format.hpp>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -405,7 +406,7 @@ AppResult App::shutdownDaemon() {
     return Outcome{std::nullopt, "daemon stopped", false, false};
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 App::Impl::sendRaw(const kanariv::ipc::Command& cmd, std::chrono::milliseconds timeout) {
     kanariv::client::Client client = makeClient();
     auto res = client.send(cmd, timeout);
@@ -420,7 +421,7 @@ App::Impl::sendRaw(const kanariv::ipc::Command& cmd, std::chrono::milliseconds t
     return res;
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 App::Impl::sendPlay(const kanariv::ipc::Command& cmd) {
     auto res = sendRaw(cmd);
     if (!res && !daemonReachable()) {
@@ -449,7 +450,7 @@ BatchResult BatchReport::fail(std::string message) {
     return BatchReport{std::nullopt, "", std::move(message), 1};
 }
 
-AppResult App::Impl::confirm(std::expected<kanariv::ipc::Result, kanariv::utils::Error>&& res,
+AppResult App::Impl::confirm(kanariv::utils::Expected<kanariv::ipc::Result>&& res,
                              std::optional<std::string> line) {
     auto owned = std::move(res);
     if (!owned)

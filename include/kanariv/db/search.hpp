@@ -37,7 +37,7 @@ namespace kanariv::db {
  * @see tryFtsQuery
  * @see searchLike
  */
-KANARIV_API std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 searchFts(db::Database& db, std::string_view query, int limit = 50);
 
 /**
@@ -51,7 +51,7 @@ searchFts(db::Database& db, std::string_view query, int limit = 50);
  * @par Thread safety
  * Thread-safe: acquires `unique_lock`.
  */
-KANARIV_API std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 searchLike(db::Database& db, std::string_view query, int limit = 50);
 
 /**
@@ -74,7 +74,7 @@ KANARIV_API std::string sanitizeFtsTerm(std::string_view term);
  * Thread-safe (delegates to `searchFts`).
  * @see searchFts
  */
-KANARIV_API std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 search(db::Database& db, std::string_view query, int limit = 50);
 
 } // namespace kanariv::db

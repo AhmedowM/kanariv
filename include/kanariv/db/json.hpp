@@ -30,8 +30,8 @@ namespace kanariv::db {
  * @see importJson
  * @see trackToJson
  */
-KANARIV_API std::expected<void, kanariv::utils::Error>
-exportJson(db::Database& db, const std::filesystem::path& outPath);
+KANARIV_API kanariv::utils::Expected<void> exportJson(db::Database& db,
+                                                      const std::filesystem::path& outPath);
 
 /**
  * @brief Imports tracks from a JSON file (transactional upsert).
@@ -56,7 +56,7 @@ exportJson(db::Database& db, const std::filesystem::path& outPath);
  * @see exportJson
  * @see trackFromJson
  */
-KANARIV_API std::expected<void, kanariv::utils::Error>
-importJson(db::Database& db, const std::filesystem::path& inPath);
+KANARIV_API kanariv::utils::Expected<void> importJson(db::Database& db,
+                                                      const std::filesystem::path& inPath);
 
 } // namespace kanariv::db

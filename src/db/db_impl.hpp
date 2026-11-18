@@ -19,6 +19,7 @@
 #include <expected>
 #include <filesystem>
 #include <kanariv/db/database.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
@@ -70,39 +71,35 @@ struct Database::Impl {
     mutable std::unordered_map<std::string, std::unique_ptr<SqliteStatement>> stmtCache_;
 
     // Raw locking surface
-    std::expected<SqliteStatement*, kanariv::utils::Error>
-    getCachedForUse(std::string_view sql) const;
+    kanariv::utils::Expected<SqliteStatement*> getCachedForUse(std::string_view sql) const;
     sqlite3* handle() const noexcept;
     sqlite3* handleLocked() const noexcept;
     std::mutex& mutex() const noexcept;
 
     // TrackRow / library locked helpers
-    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
-    findByPathLocked(std::string_view path);
-    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    kanariv::utils::Expected<kanariv::types::TrackRow> findByPathLocked(std::string_view path);
+    kanariv::utils::Expected<kanariv::types::TrackRow>
     findBySourceLocked(const kanariv::types::SourceRef& source);
-    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    kanariv::utils::Expected<kanariv::types::TrackRow>
     findByFingerprintLocked(const std::array<uint8_t, 32>& fp);
-    std::expected<int64_t, kanariv::utils::Error>
-    insertTrackLocked(const kanariv::types::TrackRow& t);
-    std::expected<void, kanariv::utils::Error> updateTrackLocked(const kanariv::types::TrackRow& t);
+    kanariv::utils::Expected<int64_t> insertTrackLocked(const kanariv::types::TrackRow& t);
+    kanariv::utils::Expected<void> updateTrackLocked(const kanariv::types::TrackRow& t);
     /// Writes only the two ReplayGain columns (0 = unanalyzed, see analyze).
-    std::expected<void, kanariv::utils::Error> setReplayGainLocked(int64_t id, double trackGainDb,
-                                                                   double albumGainDb);
-    std::expected<void, kanariv::utils::Error> deleteTrackLocked(int64_t id);
-    std::expected<kanariv::types::TrackRow, kanariv::utils::Error> getTrackLocked(int64_t id);
-    std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error> libraryListLocked();
-    std::expected<void, kanariv::utils::Error>
-    libraryUpdateLocked(const kanariv::types::Library& l);
+    kanariv::utils::Expected<void> setReplayGainLocked(int64_t id, double trackGainDb,
+                                                       double albumGainDb);
+    kanariv::utils::Expected<void> deleteTrackLocked(int64_t id);
+    kanariv::utils::Expected<kanariv::types::TrackRow> getTrackLocked(int64_t id);
+    kanariv::utils::Expected<std::vector<kanariv::types::Library>> libraryListLocked();
+    kanariv::utils::Expected<void> libraryUpdateLocked(const kanariv::types::Library& l);
 
     // Playlist / queue locked helpers
-    std::expected<int64_t, kanariv::utils::Error>
-    createPlaylistLocked(std::string_view name, int type = 0, std::string_view smart_query = {});
-    std::expected<void, kanariv::utils::Error> playlistAddTrackLocked(int64_t pid, int64_t tid,
-                                                                      int64_t pos = -1);
-    std::expected<void, kanariv::utils::Error> queueEnqueueLocked(int64_t qid, int64_t tid,
-                                                                  int64_t index = appendIndex);
-    std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeueLocked(int64_t qid);
+    kanariv::utils::Expected<int64_t> createPlaylistLocked(std::string_view name, int type = 0,
+                                                           std::string_view smart_query = {});
+    kanariv::utils::Expected<void> playlistAddTrackLocked(int64_t pid, int64_t tid,
+                                                          int64_t pos = -1);
+    kanariv::utils::Expected<void> queueEnqueueLocked(int64_t qid, int64_t tid,
+                                                      int64_t index = appendIndex);
+    kanariv::utils::Expected<kanariv::types::QueueItem> queueDequeueLocked(int64_t qid);
     std::size_t queueCountLocked(int64_t qid);
 };
 

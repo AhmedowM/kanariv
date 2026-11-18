@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <functional>
 #include <kanariv/db/database.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/library/scan.hpp>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/fingerprint.hpp>
@@ -113,7 +114,7 @@ void clearMetadata(kanariv::types::TrackRow& t) {
 
 Scanner::Scanner(std::shared_ptr<kanariv::db::Database> db) : db_(std::move(db)) {}
 
-std::expected<void, kanariv::utils::Error>
+kanariv::utils::Expected<void>
 Scanner::scanLibrary(int64_t libraryId,
                      std::function<void(int64_t, int64_t, std::string_view)> progress,
                      kanariv::contracts::ScanMode mode) {
@@ -150,7 +151,7 @@ Scanner::scanLibrary(int64_t libraryId,
     // path, including a failed BEGIN. No error path re-enters the mutex.
     std::unique_lock<std::mutex> batchLock;
     std::optional<kanariv::db::DbTransaction> batchTx;
-    auto beginBatch = [&]() -> std::expected<void, kanariv::utils::Error> {
+    auto beginBatch = [&]() -> kanariv::utils::Expected<void> {
         if (batchTx)
             return {};
         batchLock = std::unique_lock<std::mutex>(kanariv::db::DatabaseAccess::mutex(db));
@@ -168,7 +169,7 @@ Scanner::scanLibrary(int64_t libraryId,
         batchPending = 0;
         return {};
     };
-    auto commitBatch = [&]() -> std::expected<void, kanariv::utils::Error> {
+    auto commitBatch = [&]() -> kanariv::utils::Expected<void> {
         if (!batchTx)
             return {};
         auto committed = batchTx->commit();

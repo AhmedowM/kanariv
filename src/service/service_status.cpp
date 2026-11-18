@@ -20,6 +20,7 @@
 #include <kanariv/config.hpp>
 #include <kanariv/contracts/storage.hpp>
 #include <kanariv/engine.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc.hpp>
 #include <kanariv/player.hpp>
 #include <kanariv/utils.hpp>
@@ -28,7 +29,7 @@
 #include <kanariv/windows_fwd.hpp>
 
 namespace kanariv::service::detail {
-std::expected<kanariv::ipc::Status, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Status>
 buildStatus(kanariv::engine::Engine& eng, const kanariv::contracts::Storage& storage) {
     kanariv::ipc::Status s{};
     s.version = std::string(kanariv::version::version());

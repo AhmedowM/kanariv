@@ -102,9 +102,9 @@ struct EngineAccess;
  */
 class KANARIV_API Engine final {
   public:
-    using ExpectedVoid = std::expected<void, kanariv::utils::Error>; ///< Void or Error.
+    using ExpectedVoid = kanariv::utils::Expected<void>; ///< Void or Error.
     using ExpectedEngine =
-        std::expected<std::unique_ptr<Engine>, kanariv::utils::Error>; ///< Engine ptr or Error.
+        kanariv::utils::Expected<std::unique_ptr<Engine>>; ///< Engine ptr or Error.
 
     /**
      * @brief Creates an Engine with no database attached.
@@ -313,35 +313,34 @@ class KANARIV_API Engine final {
     /**
      * @brief Returns database statistics.
      * @ingroup kanariv_engine
-     * @return `std::expected<types::PlaybackStats, Error>` -- stats on success, Error if no db.
+     * @return `kanariv::utils::Expected<types::PlaybackStats>` -- stats on success, Error if no db.
      * @par Thread safety
      * Thread-safe; delegates to Database::getStats() which takes the db lock.
      * @see kanariv::db::Database::getStats
      * @see kanariv::types::PlaybackStats
      */
-    std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> stats();
+    kanariv::utils::Expected<kanariv::types::PlaybackStats> stats();
 
     /**
      * @brief Lists history entries.
      * @ingroup kanariv_engine
      * @param limit Max rows (0 = no limit, default 50).
-     * @return `std::expected<std::vector<types::HistoryEntry>, Error>` -- vector on success, State
-     * if no db. Entries carry track snapshots (title/artist/path/duration).
+     * @return `kanariv::utils::Expected<std::vector<types::HistoryEntry>>` -- vector on success,
+     * State if no db. Entries carry track snapshots (title/artist/path/duration).
      * @par Thread safety
      * Thread-safe; takes the database mutex exclusively.
      * @see kanariv::types::HistoryEntry
      */
-    std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
-    listHistory(int limit = 50);
+    kanariv::utils::Expected<std::vector<kanariv::types::HistoryEntry>> listHistory(int limit = 50);
 
     /**
      * @brief Clears all history entries.
      * @ingroup kanariv_engine
-     * @return `std::expected<void, Error>` -- success or State/Internal.
+     * @return `kanariv::utils::Expected<void>` -- success or State/Internal.
      * @par Thread safety
      * Thread-safe; takes unique_lock on the database mutex.
      */
-    std::expected<void, kanariv::utils::Error> clearHistory();
+    kanariv::utils::Expected<void> clearHistory();
 
     // Queue selection and navigation
     /**
@@ -454,15 +453,15 @@ class KANARIV_API Engine final {
     /**
      * @brief Pops one event from the MPSC queue (non-blocking).
      * @ingroup kanariv_engine
-     * @return `std::expected<kanariv::types::EngineEvent, Error>` -- event on success, NotFound if
-     * queue empty.
+     * @return `kanariv::utils::Expected<kanariv::types::EngineEvent>` -- event on success, NotFound
+     * if queue empty.
      * @par Thread safety
      * Thread-safe; the event queue is a bounded MPSC.
      * @see drainEvents
      * @see drainAll
      * @see kanariv::types::EngineEvent
      */
-    std::expected<kanariv::types::EngineEvent, kanariv::utils::Error> pollEvent();
+    kanariv::utils::Expected<kanariv::types::EngineEvent> pollEvent();
 
     /**
      * @brief Drains up to cap events into a caller-provided buffer.
@@ -470,7 +469,7 @@ class KANARIV_API Engine final {
      * @param buf Output buffer (may be null if cap==0).
      * @param cap Capacity of buf.
      * @param n Out: number of events written (must be non-null).
-     * @return `std::expected<void, Error>` -- success or InvalidArg if n is null or buf is null
+     * @return `kanariv::utils::Expected<void>` -- success or InvalidArg if n is null or buf is null
      * with cap>0.
      * @par Thread safety
      * Thread-safe; pops from the event queue (bounded MPSC).

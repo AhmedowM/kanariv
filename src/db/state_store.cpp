@@ -7,6 +7,7 @@
 #include <iterator>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/json_state_store.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/log.hpp>
@@ -157,8 +158,8 @@ kanariv::utils::Error ioError(std::string_view what, const std::filesystem::path
 }
 
 /// Writes `payload` to `target` via a flushed temp file and a rename.
-std::expected<void, kanariv::utils::Error> writeAtomic(const std::filesystem::path& target,
-                                                       std::string_view payload) {
+kanariv::utils::Expected<void> writeAtomic(const std::filesystem::path& target,
+                                           std::string_view payload) {
     namespace fs = std::filesystem;
     const fs::path tmp = withSuffix(target, ".tmp");
 #ifdef _WIN32
@@ -206,7 +207,7 @@ JsonPlaybackStateStore::JsonPlaybackStateStore(std::filesystem::path path,
 
 JsonPlaybackStateStore::~JsonPlaybackStateStore() = default;
 
-std::expected<kanariv::types::EngineState, kanariv::utils::Error> JsonPlaybackStateStore::load() {
+kanariv::utils::Expected<kanariv::types::EngineState> JsonPlaybackStateStore::load() {
     std::lock_guard<std::mutex> lk(mutex_);
     if (path_.empty())
         return memory_.value_or(kanariv::types::EngineState{});
@@ -228,7 +229,7 @@ std::expected<kanariv::types::EngineState, kanariv::utils::Error> JsonPlaybackSt
     return kanariv::types::EngineState{};
 }
 
-std::expected<void, kanariv::utils::Error>
+kanariv::utils::Expected<void>
 JsonPlaybackStateStore::save(const kanariv::types::EngineState& state) {
     std::lock_guard<std::mutex> lk(mutex_);
     if (path_.empty()) {

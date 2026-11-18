@@ -1,10 +1,11 @@
 #include <sqlite3.h>
 
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/status_format.hpp>
 #include <db/stmt_helpers.hpp>
 #include <db/transaction.hpp>
 #include <expected>
+#include <kanariv/fwd.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <string>
 #include <utility>
 
@@ -12,7 +13,7 @@ namespace kanariv::db {
 
 DbTransaction::DbTransaction(sqlite3* db, bool committed) : db_(db), committed_(committed) {}
 
-std::expected<DbTransaction, kanariv::utils::Error> DbTransaction::begin(sqlite3* db) {
+kanariv::utils::Expected<DbTransaction> DbTransaction::begin(sqlite3* db) {
     if (!db) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "null db")};
@@ -56,34 +57,36 @@ DbTransaction& DbTransaction::operator=(DbTransaction&& o) noexcept {
     return *this;
 }
 
-std::expected<void, kanariv::utils::Error> DbTransaction::commit() {
+kanariv::utils::Expected<void> DbTransaction::commit() {
     if (!db_) {
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        "no active DbTransaction"));
+                                                         "no active DbTransaction"));
     }
     char* err = nullptr;
     internal::SqliteErrGuard guard{err};
     int rc = sqlite3_exec(db_, "COMMIT", nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
         std::string msg = err ? err : "commit failed";
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg));
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg));
     }
     committed_ = true;
     db_ = nullptr;
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> DbTransaction::rollback() {
+kanariv::utils::Expected<void> DbTransaction::rollback() {
     if (!db_) {
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
-                                                        "no active DbTransaction"));
+                                                         "no active DbTransaction"));
     }
     char* err = nullptr;
     internal::SqliteErrGuard guard{err};
     int rc = sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
         std::string msg = err ? err : "rollback failed";
-        return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg));
+        return std::unexpected(
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg));
     }
     committed_ = true;
     db_ = nullptr;

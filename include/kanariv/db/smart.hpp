@@ -10,9 +10,10 @@
  * duration, artist, album, genre, search. Ops: =, >=, <=, >, <.
  */
 
+#include <expected>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
-#include <expected>
 #include <string_view>
 
 namespace kanariv::db {
@@ -30,7 +31,7 @@ namespace kanariv::db {
  * @par Thread safety
  * Pure function; no locking.
  */
-KANARIV_API std::expected<kanariv::types::TrackQuery, kanariv::utils::Error>
+KANARIV_API kanariv::utils::Expected<kanariv::types::TrackQuery>
 parseSmartQuery(std::string_view q);
 
 } // namespace kanariv::db

@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <expected>
 #include <kanariv/contracts/history_store.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/record.hpp>
 #include <kanariv/utils/error.hpp>
 #include <vector>
@@ -23,18 +24,19 @@ namespace kanariv::test_helpers {
  */
 class NullHistoryStore final : public kanariv::contracts::IHistoryStore {
   public:
-    std::expected<void, kanariv::utils::Error>
-    markPlayed(int64_t /*track_id*/, int64_t /*started_at*/, int64_t /*completed_at*/,
-               int64_t /*position_ms*/, double /*completion_pct*/, int64_t /*queue_id*/) override {
+    kanariv::utils::Expected<void> markPlayed(int64_t /*track_id*/, int64_t /*started_at*/,
+                                              int64_t /*completed_at*/, int64_t /*position_ms*/,
+                                              double /*completion_pct*/,
+                                              int64_t /*queue_id*/) override {
         return {};
     }
 
-    std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
+    kanariv::utils::Expected<std::vector<kanariv::types::HistoryEntry>>
     listHistory(int /*limit*/) override {
         return std::vector<kanariv::types::HistoryEntry>{};
     }
 
-    std::expected<void, kanariv::utils::Error> clearHistory() override {
+    kanariv::utils::Expected<void> clearHistory() override {
         return {};
     }
 

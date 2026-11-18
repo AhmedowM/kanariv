@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <kanariv/fwd.hpp>
 #include <kanariv/media/fingerprint.hpp>
 #include <kanariv/media/scan.hpp>
 #include <kanariv/utils/error.hpp>
@@ -34,16 +35,16 @@ void writeDummyFile(const std::filesystem::path& p, std::string_view content = "
 }
 
 kanariv::media::internal::FingerprintProvider failingProvider() {
-    return [](const std::filesystem::path&,
-              ScanMode) -> std::expected<PathBytes, kanariv::utils::Error> {
+    return [](const std::filesystem::path&, ScanMode) -> kanariv::utils::Expected<PathBytes> {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Io, "simulated unreadable file")};
     };
 }
 
 kanariv::media::internal::FingerprintProvider zeroProvider() {
-    return [](const std::filesystem::path&,
-              ScanMode) -> std::expected<PathBytes, kanariv::utils::Error> { return PathBytes{}; };
+    return [](const std::filesystem::path&, ScanMode) -> kanariv::utils::Expected<PathBytes> {
+        return PathBytes{};
+    };
 }
 
 } // namespace

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <kanariv/fwd.hpp>
 #include <kanariv/media/audio_ext.hpp>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/fingerprint.hpp>
@@ -30,7 +31,7 @@ using kanariv::utils::makeError;
 using kanariv::utils::StatusCode;
 
 /// Full-file BLAKE3: the `ScanMode::Full` counterpart of `computeFingerprint`.
-std::expected<std::array<uint8_t, 32>, Error>
+kanariv::utils::Expected<std::array<uint8_t, 32>>
 fullFileFingerprint(const std::filesystem::path& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f)
@@ -79,9 +80,9 @@ void applyMetadata(kanariv::types::TrackRow& t) {
 
 /// Builds a TrackRow for one audio file. Never returns a TrackRow without a usable
 /// fingerprint: a hashing failure (or the all-zero sentinel) is an error.
-std::expected<kanariv::types::TrackRow, Error> buildTrack(const std::filesystem::path& path,
-                                                       ScanMode mode,
-                                                       const FingerprintProvider& fingerprint) {
+kanariv::utils::Expected<kanariv::types::TrackRow>
+buildTrack(const std::filesystem::path& path, ScanMode mode,
+           const FingerprintProvider& fingerprint) {
     kanariv::types::TrackRow t;
     // UTF-8, not generic_string(): the latter throws on Windows for characters
     // outside the ANSI code page, which aborted the whole scan at the first
@@ -148,7 +149,7 @@ ScanWalker::ScanWalker(std::filesystem::path root, ScanMode mode, ScanIssueSink 
 
 ScanWalker::~ScanWalker() = default;
 
-std::expected<void, kanariv::utils::Error> ScanWalker::open() {
+kanariv::utils::Expected<void> ScanWalker::open() {
     if (!impl_)
         return std::unexpected{makeError(StatusCode::Internal, "moved-from walker")};
     std::error_code ec;
@@ -235,12 +236,12 @@ scanTracks(const std::filesystem::path& root, ScanMode mode, ScanIssueSink onIss
         co_yield std::move(*track);
 }
 
-std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode) {
     return scanTracksToVector(root, mode, ScanIssueSink{});
 }
 
-std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode, ScanIssueSink onIssue) {
     internal::ScanWalker walker(root, mode, std::move(onIssue));
     if (auto opened = walker.open(); !opened)

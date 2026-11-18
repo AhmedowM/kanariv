@@ -1,14 +1,15 @@
-#include <kanariv/types/engine.hpp>
-#include <kanariv/ipc/command.hpp>
-#include <kanariv/ipc/result.hpp>
-#include <kanariv/service/service.hpp>
-#include <kanariv/utils/error.hpp>
-#include <kanariv/utils/status_format.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <engine/engine_access.hpp>
 #include <expected>
+#include <kanariv/fwd.hpp>
+#include <kanariv/ipc/command.hpp>
+#include <kanariv/ipc/result.hpp>
+#include <kanariv/service/service.hpp>
+#include <kanariv/types/engine.hpp>
+#include <kanariv/utils/error.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -34,8 +35,7 @@ using kanariv::ipc::Stop;
 using kanariv::ipc::VolumeSet;
 
 // Play command: start/resume playback of active queue
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::Play&) {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Play&) {
     const auto before = engine_->state();
     const int64_t beforeTrack = engine_->currentTrackId();
     const double beforePos = engine_->position();
@@ -60,8 +60,7 @@ Service::Impl::handle(const kanariv::ipc::Play&) {
     return statusAfterChange(resumed ? "resumed" : "started");
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::Pause&) {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Pause&) {
     auto r = engine_->pause();
     if (!r)
         return std::unexpected{r.error()};
@@ -71,8 +70,7 @@ Service::Impl::handle(const kanariv::ipc::Pause&) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::Resume&) {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Resume&) {
     // Forgiving resume, resolved server-side: Playing is a no-op success the
     // reply marks "already_playing" (clients used to warn), and Stopped
     // replays the persisted track instead of failing State.
@@ -91,8 +89,7 @@ Service::Impl::handle(const kanariv::ipc::Resume&) {
     return statusAfterChange(wasPaused ? "resumed" : "started");
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::Restart&) {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Restart&) {
     // Restart always begins at the head of the current track. Stopped is the
     // only state without a loaded track (stop, natural end and loadState all
     // clear it), so that is the one case that starts the active queue instead
@@ -119,8 +116,7 @@ Service::Impl::handle(const kanariv::ipc::Restart&) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::Stop&) {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Stop&) {
     auto r = engine_->stop();
     if (!r)
         return std::unexpected{r.error()};
@@ -130,8 +126,7 @@ Service::Impl::handle(const kanariv::ipc::Stop&) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::Next&) {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Next&) {
     auto r = engine_->next();
     if (!r)
         return std::unexpected{r.error()};
@@ -141,8 +136,7 @@ Service::Impl::handle(const kanariv::ipc::Next&) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::Prev&) {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Prev&) {
     auto r = engine_->prev();
     if (!r)
         return std::unexpected{r.error()};
@@ -152,11 +146,10 @@ Service::Impl::handle(const kanariv::ipc::Prev&) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
-Service::Impl::handle(const kanariv::ipc::Seek& s) {
+kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Seek& s) {
     if (!std::isfinite(s.seconds) || s.seconds < 0) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                        "seek: invalid seconds")};
+                                                         "seek: invalid seconds")};
     }
     auto r = engine_->seek(s.seconds);
     if (!r)
@@ -167,11 +160,11 @@ Service::Impl::handle(const kanariv::ipc::Seek& s) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::SeekBy& s) {
     if (!std::isfinite(s.delta)) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                        "seek: invalid delta")};
+                                                         "seek: invalid delta")};
     }
     // Resolve the base and clamp under the dispatch lock, so a relative seek
     // cannot race another client's transport command between two roundtrips.
@@ -187,14 +180,14 @@ Service::Impl::handle(const kanariv::ipc::SeekBy& s) {
     return statusAfterChange();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::StatusReq&) {
     // Pure read: never bumps the status sequence, so polling clients cannot
     // wake StatusWait waiters (S5).
     return statusResult();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::StatusWait& cmd) {
     // Normally intercepted by dispatch() so the wait does not hold the
     // dispatch mutex; kept consistent for direct callers (S5).
@@ -202,7 +195,7 @@ Service::Impl::handle(const kanariv::ipc::StatusWait& cmd) {
     return statusResult();
 }
 
-std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Result>
 Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
     float cur = engine_->volume();
     float target = cur;
@@ -213,7 +206,7 @@ Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
         float lvl = *v.level;
         if (!std::isfinite(lvl)) {
             return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                            "volume: invalid level")};
+                                                             "volume: invalid level")};
         }
         // clamp 0-100 -> 0.0-1.0
         if (lvl < 0.0f)

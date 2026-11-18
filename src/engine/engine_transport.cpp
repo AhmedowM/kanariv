@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <engine/history.hpp>
 #include <expected>
+#include <kanariv/fwd.hpp>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/reader.hpp>
 #include <kanariv/player/output.hpp>
@@ -516,7 +517,7 @@ Engine::ExpectedVoid Engine::Impl::setCallbacks(const kanariv::types::EngineCall
     return {};
 }
 
-std::expected<kanariv::types::EngineEvent, kanariv::utils::Error> Engine::Impl::pollEvent() {
+kanariv::utils::Expected<kanariv::types::EngineEvent> Engine::Impl::pollEvent() {
     auto r = eventQueue_.pop();
     if (!r)
         return std::unexpected(
@@ -555,7 +556,7 @@ std::vector<kanariv::types::EngineEvent> Engine::Impl::drainAll() {
     return out;
 }
 
-std::expected<kanariv::types::EngineEvent, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::types::EngineEvent>
 Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
     // try to open decoder path
     std::string path = t.path;

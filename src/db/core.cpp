@@ -16,6 +16,7 @@
 #include <format>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/json_state_store.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
@@ -65,7 +66,7 @@ const std::filesystem::path& Database::path() const noexcept {
     return impl_ ? impl_->path_ : empty;
 }
 
-std::expected<SqliteStatement*, kanariv::utils::Error>
+kanariv::utils::Expected<SqliteStatement*>
 Database::Impl::getCachedForUse(std::string_view sql) const {
     // Caller must hold dbMutex_; see method docs.
     std::string key(sql);
@@ -82,8 +83,8 @@ Database::Impl::getCachedForUse(std::string_view sql) const {
     return raw;
 }
 
-std::expected<std::unique_ptr<Database>, kanariv::utils::Error>
-Database::open(std::string_view path, const DatabaseOptions& opts) {
+kanariv::utils::Expected<std::unique_ptr<Database>> Database::open(std::string_view path,
+                                                                   const DatabaseOptions& opts) {
     std::string dbPath = path.empty() ? ":memory:" : std::string(path);
     sqlite3* raw = nullptr;
     int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
@@ -134,8 +135,7 @@ sqlite3* Database::Impl::handleLocked() const noexcept {
     return db_.get();
 }
 
-std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error>
-Database::Impl::libraryListLocked() {
+kanariv::utils::Expected<std::vector<kanariv::types::Library>> Database::Impl::libraryListLocked() {
     if (!db_)
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
@@ -161,7 +161,7 @@ Database::Impl::libraryListLocked() {
     return out;
 }
 
-std::expected<void, kanariv::utils::Error>
+kanariv::utils::Expected<void>
 Database::Impl::libraryUpdateLocked(const kanariv::types::Library& l) {
     if (l.id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
@@ -192,8 +192,8 @@ Database::Impl::libraryUpdateLocked(const kanariv::types::Library& l) {
     return {};
 }
 
-std::expected<int64_t, kanariv::utils::Error> Database::libraryAdd(std::string_view path,
-                                                                   std::string_view name) {
+kanariv::utils::Expected<int64_t> Database::libraryAdd(std::string_view path,
+                                                       std::string_view name) {
     if (path.empty())
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -215,19 +215,17 @@ std::expected<int64_t, kanariv::utils::Error> Database::libraryAdd(std::string_v
     return sqlite3_last_insert_rowid(impl_->db_.get());
 }
 
-std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error>
-Database::listLibraries() {
+kanariv::utils::Expected<std::vector<kanariv::types::Library>> Database::listLibraries() {
     std::unique_lock lk{impl_->dbMutex_};
     return impl_->libraryListLocked();
 }
 
-std::expected<void, kanariv::utils::Error>
-Database::libraryUpdate(const kanariv::types::Library& l) {
+kanariv::utils::Expected<void> Database::libraryUpdate(const kanariv::types::Library& l) {
     std::unique_lock lk{impl_->dbMutex_};
     return impl_->libraryUpdateLocked(l);
 }
 
-std::expected<void, kanariv::utils::Error> Database::libraryDelete(int64_t id) {
+kanariv::utils::Expected<void> Database::libraryDelete(int64_t id) {
     if (id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};
     std::unique_lock lk{impl_->dbMutex_};
@@ -247,7 +245,7 @@ std::expected<void, kanariv::utils::Error> Database::libraryDelete(int64_t id) {
     return {};
 }
 
-std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::getStats() {
+kanariv::utils::Expected<kanariv::types::PlaybackStats> Database::getStats() {
     std::unique_lock lk{impl_->dbMutex_};
     if (!impl_->db_)
         return std::unexpected{
@@ -277,7 +275,7 @@ std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> Database::ge
     return s;
 }
 
-std::expected<kanariv::types::LibraryStats, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::types::LibraryStats>
 Database::libraryStats(std::optional<int> topTracks, std::optional<int> topAlbums,
                        std::optional<int> topGenres, std::optional<int> topArtists) {
     std::unique_lock lk{impl_->dbMutex_};
@@ -480,75 +478,73 @@ std::mutex& DatabaseAccess::mutex(Database& db) noexcept {
     return db.impl_->mutex();
 }
 
-std::expected<SqliteStatement*, kanariv::utils::Error>
-DatabaseAccess::getCachedForUse(Database& db, std::string_view sql) {
+kanariv::utils::Expected<SqliteStatement*> DatabaseAccess::getCachedForUse(Database& db,
+                                                                           std::string_view sql) {
     return db.impl_->getCachedForUse(sql);
 }
 
-std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::types::TrackRow>
 DatabaseAccess::findByPathLocked(Database& db, std::string_view path) {
     return db.impl_->findByPathLocked(path);
 }
 
-std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::types::TrackRow>
 DatabaseAccess::findByFingerprintLocked(Database& db, const std::array<uint8_t, 32>& fp) {
     return db.impl_->findByFingerprintLocked(fp);
 }
 
-std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
-DatabaseAccess::getTrackLocked(Database& db, int64_t id) {
+kanariv::utils::Expected<kanariv::types::TrackRow> DatabaseAccess::getTrackLocked(Database& db,
+                                                                                  int64_t id) {
     return db.impl_->getTrackLocked(id);
 }
 
-std::expected<int64_t, kanariv::utils::Error>
+kanariv::utils::Expected<int64_t>
 DatabaseAccess::insertTrackLocked(Database& db, const kanariv::types::TrackRow& t) {
     return db.impl_->insertTrackLocked(t);
 }
 
-std::expected<void, kanariv::utils::Error>
+kanariv::utils::Expected<void>
 DatabaseAccess::updateTrackLocked(Database& db, const kanariv::types::TrackRow& t) {
     return db.impl_->updateTrackLocked(t);
 }
 
-std::expected<void, kanariv::utils::Error> DatabaseAccess::setReplayGainLocked(Database& db,
-                                                                               int64_t id,
-                                                                               double trackGainDb,
-                                                                               double albumGainDb) {
+kanariv::utils::Expected<void> DatabaseAccess::setReplayGainLocked(Database& db, int64_t id,
+                                                                   double trackGainDb,
+                                                                   double albumGainDb) {
     return db.impl_->setReplayGainLocked(id, trackGainDb, albumGainDb);
 }
 
-std::expected<void, kanariv::utils::Error> DatabaseAccess::deleteTrackLocked(Database& db,
-                                                                             int64_t id) {
+kanariv::utils::Expected<void> DatabaseAccess::deleteTrackLocked(Database& db, int64_t id) {
     return db.impl_->deleteTrackLocked(id);
 }
 
-std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error>
+kanariv::utils::Expected<std::vector<kanariv::types::Library>>
 DatabaseAccess::libraryListLocked(Database& db) {
     return db.impl_->libraryListLocked();
 }
 
-std::expected<void, kanariv::utils::Error>
+kanariv::utils::Expected<void>
 DatabaseAccess::libraryUpdateLocked(Database& db, const kanariv::types::Library& l) {
     return db.impl_->libraryUpdateLocked(l);
 }
 
-std::expected<int64_t, kanariv::utils::Error>
+kanariv::utils::Expected<int64_t>
 DatabaseAccess::createPlaylistLocked(Database& db, std::string_view name, int type,
                                      std::string_view smart_query) {
     return db.impl_->createPlaylistLocked(name, type, smart_query);
 }
 
-std::expected<void, kanariv::utils::Error>
-DatabaseAccess::playlistAddTrackLocked(Database& db, int64_t pid, int64_t tid, int64_t pos) {
+kanariv::utils::Expected<void> DatabaseAccess::playlistAddTrackLocked(Database& db, int64_t pid,
+                                                                      int64_t tid, int64_t pos) {
     return db.impl_->playlistAddTrackLocked(pid, tid, pos);
 }
 
-std::expected<void, kanariv::utils::Error>
-DatabaseAccess::queueEnqueueLocked(Database& db, int64_t qid, int64_t tid, int64_t index) {
+kanariv::utils::Expected<void> DatabaseAccess::queueEnqueueLocked(Database& db, int64_t qid,
+                                                                  int64_t tid, int64_t index) {
     return db.impl_->queueEnqueueLocked(qid, tid, index);
 }
 
-std::expected<kanariv::types::QueueItem, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::types::QueueItem>
 DatabaseAccess::queueDequeueLocked(Database& db, int64_t qid) {
     return db.impl_->queueDequeueLocked(qid);
 }

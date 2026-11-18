@@ -110,7 +110,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe for distinct paths; the returned Database is not shared until open returns.
      */
-    static std::expected<std::unique_ptr<Database>, kanariv::utils::Error>
+    static kanariv::utils::Expected<std::unique_ptr<Database>>
     open(std::string_view path, const DatabaseOptions& opts = {});
     /**
      * @brief Reports whether the SQLite handle is open.
@@ -148,8 +148,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe: unique_lock on dbMutex_.
      * @see queueMove
      */
-    std::expected<void, kanariv::utils::Error>
-    queueEnqueueBatch(int64_t qid, std::span<const int64_t> tids) override;
+    kanariv::utils::Expected<void> queueEnqueueBatch(int64_t qid,
+                                                     std::span<const int64_t> tids) override;
 
   private:
     friend struct DatabaseAccess;
@@ -171,8 +171,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe: unique_lock on dbMutex_.
      * @see insertTrackLocked
      */
-    std::expected<int64_t, kanariv::utils::Error>
-    insertTrack(const kanariv::types::TrackRow& t) override;
+    kanariv::utils::Expected<int64_t> insertTrack(const kanariv::types::TrackRow& t) override;
     /**
      * @brief Updates a track by id.
      * @ingroup kanariv_db
@@ -181,8 +180,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<void, kanariv::utils::Error>
-    updateTrack(const kanariv::types::TrackRow& t) override;
+    kanariv::utils::Expected<void> updateTrack(const kanariv::types::TrackRow& t) override;
     /**
      * @brief Deletes a track by id.
      * @ingroup kanariv_db
@@ -191,7 +189,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<void, kanariv::utils::Error> deleteTrack(int64_t id) override;
+    kanariv::utils::Expected<void> deleteTrack(int64_t id) override;
     /**
      * @brief Gets a track by id.
      * @ingroup kanariv_db
@@ -200,7 +198,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<kanariv::types::TrackRow, kanariv::utils::Error> getTrack(int64_t id) override;
+    kanariv::utils::Expected<kanariv::types::TrackRow> getTrack(int64_t id) override;
 
     /**
      * @brief Finds a track by fingerprint.
@@ -210,7 +208,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    kanariv::utils::Expected<kanariv::types::TrackRow>
     findByFingerprint(const std::array<uint8_t, 32>& fp) override;
     /**
      * @brief Finds a track by path.
@@ -220,8 +218,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
-    findByPath(std::string_view path) override;
+    kanariv::utils::Expected<kanariv::types::TrackRow> findByPath(std::string_view path) override;
     /**
      * @brief Finds a track by durable source identity.
      * @ingroup kanariv_db
@@ -235,7 +232,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe: unique_lock on dbMutex_.
      * @see kanariv::types::normalizedSource
      */
-    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
+    kanariv::utils::Expected<kanariv::types::TrackRow>
     findBySource(const kanariv::types::SourceRef& source) override;
     /**
      * @brief Lists tracks with optional filters.
@@ -248,7 +245,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe: unique_lock on dbMutex_.
      * @see kanariv::types::TrackQuery
      */
-    std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+    kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
     listTracks(std::optional<kanariv::types::TrackQuery> q = std::nullopt) override;
     /**
      * @brief Searches track metadata with FTS5 and a LIKE fallback.
@@ -259,7 +256,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe: unique_lock for the whole operation.
      * @ingroup kanariv_db
      */
-    std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+    kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
     searchTracks(std::string_view query, int limit = 50) override;
     /**
      * @brief Sets the dirty flag for a track.
@@ -270,7 +267,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<void, kanariv::utils::Error> setDirty(int64_t id, int dirty);
+    kanariv::utils::Expected<void> setDirty(int64_t id, int dirty);
     /**
      * @brief Sets the user rating for a track.
      * @ingroup kanariv_db
@@ -280,7 +277,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<void, kanariv::utils::Error> setRating(int64_t id, int32_t rating) override;
+    kanariv::utils::Expected<void> setRating(int64_t id, int32_t rating) override;
 
     // Playlists
     // Queue operations
@@ -294,8 +291,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<int64_t, kanariv::utils::Error>
-    createPlaylist(std::string_view name, int type = 0, std::string_view smart_query = {}) override;
+    kanariv::utils::Expected<int64_t> createPlaylist(std::string_view name, int type = 0,
+                                                     std::string_view smart_query = {}) override;
     /**
      * @brief Gets a playlist by id.
      * @ingroup kanariv_db
@@ -304,7 +301,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<kanariv::types::Playlist, kanariv::utils::Error> getPlaylist(int64_t id) override;
+    kanariv::utils::Expected<kanariv::types::Playlist> getPlaylist(int64_t id) override;
     /**
      * @brief Updates a playlist.
      * @ingroup kanariv_db
@@ -313,7 +310,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> updatePlaylist(const kanariv::types::Playlist& p);
+    kanariv::utils::Expected<void> updatePlaylist(const kanariv::types::Playlist& p);
     /**
      * @brief Deletes a playlist.
      * @ingroup kanariv_db
@@ -322,7 +319,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> deletePlaylist(int64_t id) override;
+    kanariv::utils::Expected<void> deletePlaylist(int64_t id) override;
     /**
      * @brief Renames a playlist.
      * @ingroup kanariv_db
@@ -332,8 +329,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> renamePlaylist(int64_t id,
-                                                              std::string_view newName) override;
+    kanariv::utils::Expected<void> renamePlaylist(int64_t id, std::string_view newName) override;
     /**
      * @brief Creates a manual playlist and populates it in one operation.
      * @param name Playlist display name; must be non-empty.
@@ -343,7 +339,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe; serializes the write under the database mutex.
      */
-    std::expected<int64_t, kanariv::utils::Error>
+    kanariv::utils::Expected<int64_t>
     createPlaylistFromTracks(std::string_view name, std::span<const int64_t> trackIds) override;
     /**
      * @brief Lists all playlists ordered by id.
@@ -352,8 +348,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<std::vector<kanariv::types::Playlist>, kanariv::utils::Error>
-    listPlaylists() override;
+    kanariv::utils::Expected<std::vector<kanariv::types::Playlist>> listPlaylists() override;
     /**
      * @brief Adds a track to a playlist.
      * @param pid Playlist identifier.
@@ -364,8 +359,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes the database write lock.
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error> playlistAddTrack(int64_t pid, int64_t tid,
-                                                                int64_t pos = -1) override;
+    kanariv::utils::Expected<void> playlistAddTrack(int64_t pid, int64_t tid,
+                                                    int64_t pos = -1) override;
     /**
      * @brief Removes a track from a playlist.
      * @param pid Playlist identifier.
@@ -375,8 +370,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes the database write lock.
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error> playlistRemoveTrack(int64_t pid,
-                                                                   int64_t tid) override;
+    kanariv::utils::Expected<void> playlistRemoveTrack(int64_t pid, int64_t tid) override;
     /**
      * @brief Moves a playlist item between positions.
      * @param pid Playlist identifier.
@@ -387,8 +381,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes the database write lock.
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error> playlistReorder(int64_t pid, int64_t from,
-                                                               int64_t to) override;
+    kanariv::utils::Expected<void> playlistReorder(int64_t pid, int64_t from, int64_t to) override;
     /**
      * @brief Gets all tracks in a playlist ordered by position.
      * @ingroup kanariv_db
@@ -397,7 +390,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+    kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
     playlistGetTracks(int64_t pid) override;
 
     /**
@@ -423,8 +416,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> queueEnqueue(int64_t qid, int64_t tid,
-                                                            int64_t index = -1) override;
+    kanariv::utils::Expected<void> queueEnqueue(int64_t qid, int64_t tid,
+                                                int64_t index = -1) override;
 
     /**
      * @brief Dequeues the head item.
@@ -434,7 +427,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<kanariv::types::QueueItem, kanariv::utils::Error> queueDequeue(int64_t qid);
+    kanariv::utils::Expected<kanariv::types::QueueItem> queueDequeue(int64_t qid);
 
     /**
      * @brief Removes the item at a zero-based index.
@@ -445,7 +438,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> queueRemove(int64_t qid, int64_t index) override;
+    kanariv::utils::Expected<void> queueRemove(int64_t qid, int64_t index) override;
 
     /**
      * @brief Moves one queue item to another zero-based index atomically.
@@ -459,8 +452,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> queueMove(int64_t qid, std::size_t from,
-                                                         std::size_t to) override;
+    kanariv::utils::Expected<void> queueMove(int64_t qid, std::size_t from,
+                                             std::size_t to) override;
 
     /**
      * @brief Clears a queue.
@@ -470,7 +463,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> queueClear(int64_t qid) override;
+    kanariv::utils::Expected<void> queueClear(int64_t qid) override;
 
     /**
      * @brief Lists all items in a queue ordered by position.
@@ -480,7 +473,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<std::vector<kanariv::types::QueueItem>, kanariv::utils::Error>
+    kanariv::utils::Expected<std::vector<kanariv::types::QueueItem>>
     listQueueItems(int64_t qid) override;
 
     /**
@@ -492,7 +485,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+    kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
     tracksForQueue(int64_t qid) override;
 
     /**
@@ -504,8 +497,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes a shared database lock.
      * @ingroup kanariv_db
      */
-    std::expected<kanariv::types::TrackRow, kanariv::utils::Error>
-    queueTrackAt(int64_t qid, int64_t index) override;
+    kanariv::utils::Expected<kanariv::types::TrackRow> queueTrackAt(int64_t qid,
+                                                                    int64_t index) override;
 
     /**
      * @brief Loads a queue container by identifier.
@@ -515,7 +508,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes a shared database lock.
      * @ingroup kanariv_db
      */
-    std::expected<kanariv::types::Queue, kanariv::utils::Error> getQueue(int64_t qid) override;
+    kanariv::utils::Expected<kanariv::types::Queue> getQueue(int64_t qid) override;
     /**
      * @brief Reports whether a queue exists.
      * @param qid Queue identifier; zero selects the default queue.
@@ -525,7 +518,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes a shared database lock.
      * @ingroup kanariv_db
      */
-    std::expected<bool, kanariv::utils::Error> queueExists(int64_t qid) override;
+    kanariv::utils::Expected<bool> queueExists(int64_t qid) override;
 
     /**
      * @brief Lists queue containers.
@@ -534,7 +527,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes a shared database lock.
      * @ingroup kanariv_db
      */
-    std::expected<std::vector<kanariv::types::Queue>, kanariv::utils::Error> listQueues() override;
+    kanariv::utils::Expected<std::vector<kanariv::types::Queue>> listQueues() override;
 
     /**
      * @brief Creates a queue container.
@@ -545,8 +538,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes the database write lock.
      * @ingroup kanariv_db
      */
-    std::expected<int64_t, kanariv::utils::Error> createQueue(std::string_view name,
-                                                              int64_t library_id = 1) override;
+    kanariv::utils::Expected<int64_t> createQueue(std::string_view name,
+                                                  int64_t library_id = 1) override;
 
     /**
      * @brief Deletes a queue container.
@@ -556,7 +549,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes the database write lock.
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error> deleteQueue(int64_t qid) override;
+    kanariv::utils::Expected<void> deleteQueue(int64_t qid) override;
 
     /**
      * @brief Sets the repeat mode stored for a queue.
@@ -567,8 +560,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes the database write lock.
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error>
-    setQueueRepeat(int64_t qid, kanariv::types::RepeatMode mode) override;
+    kanariv::utils::Expected<void> setQueueRepeat(int64_t qid,
+                                                  kanariv::types::RepeatMode mode) override;
 
     /**
      * @brief Sets the temporary flag for a queue.
@@ -579,7 +572,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> setQueueTemp(int64_t qid, bool temp) override;
+    kanariv::utils::Expected<void> setQueueTemp(int64_t qid, bool temp) override;
 
     /**
      * @brief Returns the number of items in a queue.
@@ -589,7 +582,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_; delegates to queueCountLocked().
      */
-    std::expected<std::size_t, kanariv::utils::Error> queueCount(int64_t qid) override;
+    kanariv::utils::Expected<std::size_t> queueCount(int64_t qid) override;
 
     /**
      * @brief Finds the 0-based index of a track in a queue.
@@ -603,8 +596,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<std::optional<std::size_t>, kanariv::utils::Error>
-    queueIndexOf(int64_t qid, int64_t trackId) override;
+    kanariv::utils::Expected<std::optional<std::size_t>> queueIndexOf(int64_t qid,
+                                                                      int64_t trackId) override;
 
     // History
     /**
@@ -617,7 +610,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
+    kanariv::utils::Expected<std::vector<kanariv::types::HistoryEntry>>
     queryHistory(const kanariv::types::HistoryQuery* q = nullptr);
 
     // Bookmarks
@@ -631,8 +624,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> bookmarkAdd(int64_t tid, int64_t pos,
-                                                           std::string_view note = {}) override;
+    kanariv::utils::Expected<void> bookmarkAdd(int64_t tid, int64_t pos,
+                                               std::string_view note = {}) override;
     /**
      * @brief Lists bookmarks for a track.
      * @ingroup kanariv_db
@@ -641,7 +634,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<std::vector<kanariv::types::Bookmark>, kanariv::utils::Error>
+    kanariv::utils::Expected<std::vector<kanariv::types::Bookmark>>
     listBookmarks(int64_t tid) override;
     /**
      * @brief Gets a bookmark by id.
@@ -651,7 +644,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<kanariv::types::Bookmark, kanariv::utils::Error> bookmarkGet(int64_t id) override;
+    kanariv::utils::Expected<kanariv::types::Bookmark> bookmarkGet(int64_t id) override;
     /**
      * @brief Removes a bookmark by id.
      * @ingroup kanariv_db
@@ -660,7 +653,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> bookmarkRemove(int64_t id) override;
+    kanariv::utils::Expected<void> bookmarkRemove(int64_t id) override;
 
     // Lyrics
     /**
@@ -674,9 +667,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> lyricsSet(int64_t tid, std::string_view lrc_text,
-                                                         bool is_synced,
-                                                         std::string_view source) override;
+    kanariv::utils::Expected<void> lyricsSet(int64_t tid, std::string_view lrc_text, bool is_synced,
+                                             std::string_view source) override;
     /**
      * @brief Gets lyrics for a track.
      * @ingroup kanariv_db
@@ -685,7 +677,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<kanariv::types::Lyrics, kanariv::utils::Error> lyricsGet(int64_t tid) override;
+    kanariv::utils::Expected<kanariv::types::Lyrics> lyricsGet(int64_t tid) override;
     /**
      * @brief Removes lyrics for a track.
      * @ingroup kanariv_db
@@ -694,7 +686,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<void, kanariv::utils::Error> lyricsRemove(int64_t tid) override;
+    kanariv::utils::Expected<void> lyricsRemove(int64_t tid) override;
 
     // Libraries and aggregate statistics
     /**
@@ -706,8 +698,8 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock.
      */
-    std::expected<int64_t, kanariv::utils::Error> libraryAdd(std::string_view path,
-                                                             std::string_view name = {}) override;
+    kanariv::utils::Expected<int64_t> libraryAdd(std::string_view path,
+                                                 std::string_view name = {}) override;
     /**
      * @brief Lists all libraries.
      * @ingroup kanariv_db
@@ -715,8 +707,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_ (delegates to libraryListLocked).
      */
-    std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error>
-    listLibraries() override;
+    kanariv::utils::Expected<std::vector<kanariv::types::Library>> listLibraries() override;
     /**
      * @brief Updates a library definition.
      * @param l Library value containing the existing identifier and new fields.
@@ -725,8 +716,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes the database write lock.
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error>
-    libraryUpdate(const kanariv::types::Library& l) override;
+    kanariv::utils::Expected<void> libraryUpdate(const kanariv::types::Library& l) override;
     /**
      * @brief Deletes a library definition.
      * @param id Library identifier.
@@ -735,7 +725,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes the database write lock.
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error> libraryDelete(int64_t id) override;
+    kanariv::utils::Expected<void> libraryDelete(int64_t id) override;
 
     /**
      * @brief Returns aggregate DB stats.
@@ -744,7 +734,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_ (cached statements included).
      */
-    std::expected<kanariv::types::PlaybackStats, kanariv::utils::Error> getStats() override;
+    kanariv::utils::Expected<kanariv::types::PlaybackStats> getStats() override;
 
     /**
      * @brief Returns library stats (counts and totals, optionally top-N lists).
@@ -762,7 +752,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @par Thread safety
      * Thread-safe: unique_lock on dbMutex_.
      */
-    std::expected<kanariv::types::LibraryStats, kanariv::utils::Error>
+    kanariv::utils::Expected<kanariv::types::LibraryStats>
     libraryStats(std::optional<int> topTracks = std::nullopt,
                  std::optional<int> topAlbums = std::nullopt,
                  std::optional<int> topGenres = std::nullopt,
@@ -775,7 +765,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; delegates to the maintenance helpers.
      * @ingroup kanariv_db
      */
-    std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+    kanariv::utils::Expected<kanariv::types::LibraryMaintenanceReport>
     libraryReport(int64_t libraryId) override;
     /**
      * @brief Applies selected maintenance actions after producing a report.
@@ -786,7 +776,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; delegates to the maintenance helpers.
      * @ingroup kanariv_db
      */
-    std::expected<kanariv::types::LibraryMaintenanceReport, kanariv::utils::Error>
+    kanariv::utils::Expected<kanariv::types::LibraryMaintenanceReport>
     libraryApplyMaintenance(int64_t libraryId,
                             const kanariv::types::LibraryMaintenanceOptions& options) override;
     /**
@@ -797,8 +787,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe (shared lock through `listTracks`).
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error>
-    exportJson(const std::filesystem::path& outPath) override;
+    kanariv::utils::Expected<void> exportJson(const std::filesystem::path& outPath) override;
     /**
      * @brief Imports track rows from a JSON file inside one transaction.
      * @param inPath Source file path.
@@ -807,8 +796,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * Thread-safe; takes the database write lock for the transaction.
      * @ingroup kanariv_db
      */
-    std::expected<void, kanariv::utils::Error>
-    importJson(const std::filesystem::path& inPath) override;
+    kanariv::utils::Expected<void> importJson(const std::filesystem::path& inPath) override;
 
     // Playback history
     /**
@@ -821,22 +809,21 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
      * @param queue_id Queue identifier.
      * @return Success, or a backend error.
      */
-    std::expected<void, kanariv::utils::Error> markPlayed(int64_t track_id, int64_t started_at,
-                                                          int64_t completed_at, int64_t position_ms,
-                                                          double completion_pct,
-                                                          int64_t queue_id) override;
+    kanariv::utils::Expected<void> markPlayed(int64_t track_id, int64_t started_at,
+                                              int64_t completed_at, int64_t position_ms,
+                                              double completion_pct, int64_t queue_id) override;
     /**
      * @brief Lists engine history entries, joined with track metadata.
      * @param limit Maximum number of entries; non-positive means no limit.
      * @return History entries, or a backend error.
      */
-    std::expected<std::vector<kanariv::types::HistoryEntry>, kanariv::utils::Error>
+    kanariv::utils::Expected<std::vector<kanariv::types::HistoryEntry>>
     listHistory(int limit) override;
     /**
      * @brief Clears playback history.
      * @return Success, or a backend error.
      */
-    std::expected<void, kanariv::utils::Error> clearHistory() override;
+    kanariv::utils::Expected<void> clearHistory() override;
 
 }; // class Database
 

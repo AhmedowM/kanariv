@@ -13,6 +13,7 @@
 #include <iterator>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/json.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
@@ -27,8 +28,7 @@ namespace kanariv::db {
 
 using kanariv::utils::Json;
 
-std::expected<void, kanariv::utils::Error> exportJson(Database& db,
-                                                      const std::filesystem::path& outPath) {
+kanariv::utils::Expected<void> exportJson(Database& db, const std::filesystem::path& outPath) {
     auto tracks = db.listTracks();
     if (!tracks)
         return std::unexpected{tracks.error()};
@@ -48,8 +48,7 @@ std::expected<void, kanariv::utils::Error> exportJson(Database& db,
     return {};
 }
 
-std::expected<void, kanariv::utils::Error> importJson(Database& db,
-                                                      const std::filesystem::path& inPath) {
+kanariv::utils::Expected<void> importJson(Database& db, const std::filesystem::path& inPath) {
     std::ifstream f(inPath, std::ios::binary);
     if (!f)
         return std::unexpected{
@@ -231,13 +230,11 @@ std::expected<void, kanariv::utils::Error> importJson(Database& db,
     return {};
 }
 
-std::expected<void, kanariv::utils::Error>
-Database::exportJson(const std::filesystem::path& outPath) {
+kanariv::utils::Expected<void> Database::exportJson(const std::filesystem::path& outPath) {
     return kanariv::db::exportJson(*this, outPath);
 }
 
-std::expected<void, kanariv::utils::Error>
-Database::importJson(const std::filesystem::path& inPath) {
+kanariv::utils::Expected<void> Database::importJson(const std::filesystem::path& inPath) {
     return kanariv::db::importJson(*this, inPath);
 }
 

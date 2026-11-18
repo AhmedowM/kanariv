@@ -57,7 +57,7 @@ class ILibraryScanner {
      * @details Discovery runs outside the store lock; persistence proceeds in
      * bounded batches. Callers must not hold the store lock across the call.
      */
-    virtual std::expected<void, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<void>
     scanLibrary(int64_t library_id,
                 std::function<void(int64_t, int64_t, std::string_view)> progress = {},
                 ScanMode mode = ScanMode::Sampled) = 0;

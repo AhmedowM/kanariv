@@ -34,15 +34,14 @@ class IPlaylistStore : public IStore {
      * @brief Lists playlists.
      * @return Playlist values, or a backend error.
      */
-    virtual std::expected<std::vector<kanariv::types::Playlist>, kanariv::utils::Error>
-    listPlaylists() = 0;
+    virtual kanariv::utils::Expected<std::vector<kanariv::types::Playlist>> listPlaylists() = 0;
 
     /**
      * @brief Lists tracks in a playlist ordered by position.
      * @param pid Playlist identifier.
      * @return TrackRow values, or `NotFound`/a backend error.
      */
-    virtual std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<std::vector<kanariv::types::TrackRow>>
     playlistGetTracks(int64_t pid) = 0;
 
     /**
@@ -50,8 +49,7 @@ class IPlaylistStore : public IStore {
      * @param id Playlist identifier.
      * @return Playlist, or `InvalidArg`/`NotFound`/a backend error.
      */
-    virtual std::expected<kanariv::types::Playlist, kanariv::utils::Error>
-    getPlaylist(int64_t id) = 0;
+    virtual kanariv::utils::Expected<kanariv::types::Playlist> getPlaylist(int64_t id) = 0;
 
     /**
      * @brief Creates a playlist and returns its identifier.
@@ -60,8 +58,8 @@ class IPlaylistStore : public IStore {
      * @param smart_query Smart-playlist query; empty for a manual playlist.
      * @return New identifier, or `InvalidArg`/a backend error.
      */
-    virtual std::expected<int64_t, kanariv::utils::Error>
-    createPlaylist(std::string_view name, int type = 0, std::string_view smart_query = {}) = 0;
+    virtual kanariv::utils::Expected<int64_t> createPlaylist(std::string_view name, int type = 0,
+                                                             std::string_view smart_query = {}) = 0;
 
     /**
      * @brief Adds a track to a playlist.
@@ -70,8 +68,8 @@ class IPlaylistStore : public IStore {
      * @param pos Zero-based insertion position, or `-1` to append.
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> playlistAddTrack(int64_t pid, int64_t tid,
-                                                                        int64_t pos = -1) = 0;
+    virtual kanariv::utils::Expected<void> playlistAddTrack(int64_t pid, int64_t tid,
+                                                            int64_t pos = -1) = 0;
 
     /**
      * @brief Removes a track from a playlist.
@@ -79,8 +77,7 @@ class IPlaylistStore : public IStore {
      * @param tid TrackRow identifier.
      * @return Success, or `NotFound`/a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> playlistRemoveTrack(int64_t pid,
-                                                                           int64_t tid) = 0;
+    virtual kanariv::utils::Expected<void> playlistRemoveTrack(int64_t pid, int64_t tid) = 0;
 
     /**
      * @brief Moves a playlist item between positions.
@@ -89,8 +86,8 @@ class IPlaylistStore : public IStore {
      * @param to Destination zero-based position.
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> playlistReorder(int64_t pid, int64_t from,
-                                                                       int64_t to) = 0;
+    virtual kanariv::utils::Expected<void> playlistReorder(int64_t pid, int64_t from,
+                                                           int64_t to) = 0;
 
     /**
      * @brief Changes a playlist name.
@@ -98,8 +95,7 @@ class IPlaylistStore : public IStore {
      * @param newName Replacement display name.
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> renamePlaylist(int64_t id,
-                                                                      std::string_view newName) = 0;
+    virtual kanariv::utils::Expected<void> renamePlaylist(int64_t id, std::string_view newName) = 0;
 
     /**
      * @brief Creates a playlist from an ordered list of track identifiers.
@@ -108,7 +104,7 @@ class IPlaylistStore : public IStore {
      * @return New playlist identifier, or an error; implementations must
      * create the playlist and its items atomically.
      */
-    virtual std::expected<int64_t, kanariv::utils::Error>
+    virtual kanariv::utils::Expected<int64_t>
     createPlaylistFromTracks(std::string_view name, std::span<const int64_t> trackIds) = 0;
 
     /**
@@ -116,7 +112,7 @@ class IPlaylistStore : public IStore {
      * @param id Playlist identifier.
      * @return Success, or `InvalidArg`/`NotFound`/a backend error.
      */
-    virtual std::expected<void, kanariv::utils::Error> deletePlaylist(int64_t id) = 0;
+    virtual kanariv::utils::Expected<void> deletePlaylist(int64_t id) = 0;
 };
 
 } // namespace kanariv::contracts

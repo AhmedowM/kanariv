@@ -85,7 +85,7 @@ class KANARIV_API Service final {
      * the error identifies configuration, single-instance, database, or IPC
      * initialization failure.
      */
-    using ExpectedService = std::expected<std::unique_ptr<Service>, kanariv::utils::Error>;
+    using ExpectedService = kanariv::utils::Expected<std::unique_ptr<Service>>;
 
     /**
      * @brief Factory method to create and initialize a Service instance.

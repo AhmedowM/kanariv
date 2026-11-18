@@ -8,6 +8,7 @@
 
 #include <expected>
 #include <kanariv/contracts/storage.hpp>
+#include <kanariv/fwd.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils.hpp>
 
@@ -26,7 +27,7 @@ namespace kanariv::service::detail {
  * reported (title/artist/path and queue counters stay at their defaults).
  * @return Status on success, Error on failure.
  */
-std::expected<kanariv::ipc::Status, kanariv::utils::Error>
+kanariv::utils::Expected<kanariv::ipc::Status>
 buildStatus(kanariv::engine::Engine& eng, const kanariv::contracts::Storage& storage);
 
 } // namespace kanariv::service::detail
