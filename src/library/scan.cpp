@@ -263,9 +263,9 @@ Scanner::scanLibrary(int64_t libraryId,
             upd.play_count = keepPlay;
             upd.rating = keepRating;
             upd.date_added = keepAdded;
-            // replay_gain_track/album are deliberately left untouched: the scanner
-            // no longer synthesises gain values (M10), and the previous write was a
-            // mis-scaled loudness heuristic, not ReplayGain.
+            // replay_gain_track/album are deliberately left untouched: they are
+            // owned by the explicit analysis pass (library::analyzeLibrary), so a
+            // rescan never discards a measurement or resurrects the old heuristic.
             if (kanariv::db::DatabaseAccess::updateTrackLocked(db, upd))
                 updated++;
             else {
@@ -302,10 +302,9 @@ Scanner::scanLibrary(int64_t libraryId,
         lg->info("scan finished root={} scanned={} added={} updated={} failed={}", libPath, scanned,
                  added, updated, failed);
 
-    // Album gain is no longer derived here (M10): the old block averaged the
-    // per-track values the scanner had synthesised from a loudness heuristic and
-    // wrote the result into replay_gain_album as if it were ReplayGain. The
-    // columns are reserved for tag-imported values, which nothing writes yet.
+    // Album gain is not derived here: it is a property of the loudness analysis
+    // pass (library::analyzeLibrary), which measures whole album groups. A scan
+    // only discovers and upserts rows.
 
     auto libs2 = db.listLibraries();
     if (libs2) {

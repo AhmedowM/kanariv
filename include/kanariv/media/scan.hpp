@@ -26,7 +26,6 @@
 #include <filesystem>
 #include <functional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace kanariv::media {
@@ -151,24 +150,5 @@ scanTracksToVector(const std::filesystem::path& root, ScanMode mode = ScanMode::
  */
 KANARIV_API std::expected<std::vector<kanariv::types::TrackRow>, kanariv::utils::Error>
 scanTracksToVector(const std::filesystem::path& root, ScanMode mode, ScanIssueSink onIssue);
-
-/**
- * @brief Private loudness heuristic: gain (dB) that brings a track's high-passed RMS to -14 dBFS.
- * @ingroup kanariv_media
- * @param path Audio file path.
- * @return Gain in dB (positive = boost, negative = attenuate), or `Error` when
- * the file cannot be opened, decoded or contains no audible samples.
- * @details Decodes the full stream with FFmpeg, applies a first-order 65 Hz
- * high-pass (the ReplayGain 1.0 "head" filter, no A-weighting) and returns
- * `-14 dBFS - 20*log10(rms)`. This is **not** ReplayGain: neither ReplayGain
- * 1.0 (89 dB reference SPL) nor ReplayGain 2.0 (EBU R128 / -18 LUFS), and gains
- * computed this way are not interchangeable with tagged values.
- * @note Values from this function are deliberately **not** persisted into
- * `tracks.replay_gain_track` / `tracks.replay_gain_album` and must not be
- * advertised as ReplayGain to other players (e.g. over MPRIS).
- * @par Thread safety
- * Re-entrant; the FFmpeg session is local to the call.
- */
-KANARIV_API kanariv::utils::Expected<double> computeLoudnessGain(std::string_view path);
 
 } // namespace kanariv::media

@@ -135,6 +135,19 @@ struct KANARIV_API DatabaseAccess {
     static std::expected<void, kanariv::utils::Error>
     updateTrackLocked(Database& db, const kanariv::types::TrackRow& t);
     /**
+     * @brief Forwards to Database::setReplayGainLocked().
+     * @ingroup kanariv_db
+     * @param db Database instance.
+     * @param id TrackRow id.
+     * @param trackGainDb ReplayGain 2.0 track gain in dB (0 = unanalyzed).
+     * @param albumGainDb ReplayGain 2.0 album gain in dB (0 = unanalyzed or no album).
+     * @return Success or Error NotFound/Internal.
+     * @details Writes only the two gain columns so the analyze pass does not
+     * rewrite (and cannot accidentally clobber) the rest of the row.
+     */
+    static std::expected<void, kanariv::utils::Error>
+    setReplayGainLocked(Database& db, int64_t id, double trackGainDb, double albumGainDb);
+    /**
      * @brief Forwards to Database::deleteTrackLocked().
      * @ingroup kanariv_db
      * @param db Database instance.

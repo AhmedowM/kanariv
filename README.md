@@ -266,9 +266,10 @@ Install exports provide these targets:
 | `kanariv::types` | Shared value types |
 | `kanariv::contracts` | Backend-neutral interfaces |
 | `kanariv::dsp` | Signal processing over sample blocks (`FftPlan`, real/complex transforms, windowing, EBU R128 loudness/true peak) |
-| `kanariv::media` | Reading, decoding, metadata, and library discovery (`Source`, `PathSource`, `DescriptorSource`, `Reader`) |
+| `kanariv::media` | Reading, decoding, metadata, library discovery and ReplayGain 2.0 analysis (`Source`, `PathSource`, `DescriptorSource`, `Reader`, `analyzeLoudness`) |
 | `kanariv::player` | Audio output and playback primitives |
 | `kanariv::db` | SQLite storage and FTS5 search |
+| `kanariv::library` | DB-coupled library scan and the explicit ReplayGain analysis pass (`Scanner`, `analyzeLibrary`) |
 | `kanariv::engine` | Queue, shuffle, repeat, history, and playback state |
 | `kanariv::ipc` | Daemon protocol, framing, and configuration |
 | `kanariv::client` | Daemon client and output formatting |

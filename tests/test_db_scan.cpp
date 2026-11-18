@@ -260,27 +260,6 @@ TEST_CASE("scan non-existent dir reports NotFound instead of an empty library", 
     REQUIRE(tracks.error().code == StatusCode::NotFound);
 }
 
-TEST_CASE("computeLoudnessGain accepts a non-NUL-terminated path view", "[db_scan]") {
-    auto dir = tempDirPath("replaygain");
-    const auto p = dir / "tone.wav";
-    {
-        const auto wav = makeSineWav();
-        std::ofstream f(p, std::ios::binary);
-        f.write(reinterpret_cast<const char*>(wav.data()),
-                static_cast<std::streamsize>(wav.size()));
-    }
-    const std::string raw = p.string();
-    // The view ends before the string's terminator; M5 required an owned copy
-    // so FFmpeg never reads the trailing bytes as part of the path.
-    const std::string padded = raw + "garbage";
-    const std::string_view view(padded.data(), raw.size());
-    auto gain = kanariv::media::computeLoudnessGain(view);
-    REQUIRE(gain.has_value());
-    REQUIRE(std::isfinite(*gain));
-    std::error_code ec;
-    std::filesystem::remove_all(dir, ec);
-}
-
 TEST_CASE("library maintenance reports missing and duplicate rows", "[db_scan]") {
     auto root = tempDirPath("maintenance");
     std::filesystem::create_directories(root);

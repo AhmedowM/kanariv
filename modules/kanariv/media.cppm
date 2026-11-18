@@ -5,3 +5,4 @@ export import :source;
 export import :decoder;
 export import :audio_ext;
 export import :scan;
+export import :loudness;

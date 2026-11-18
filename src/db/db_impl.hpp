@@ -51,6 +51,8 @@ inline constexpr std::string_view updateTrackSql =
     "track_num=?, disc_num=?, cover_art_path=?, rating=?, play_count=?, last_played=?, "
     "date_added=?, last_scanned=?, dirty=?, library_id=?, source_kind=?, source_key=?, "
     "source_available=?, source_display_name=? WHERE id=?";
+inline constexpr std::string_view updateReplayGainSql =
+    "UPDATE tracks SET replay_gain_track=?, replay_gain_album=? WHERE id=?";
 
 // Private implementation: the SQLite handle, statement cache and locks live
 // here so the public header stays include-light. Member order is load-bearing:
@@ -84,6 +86,9 @@ struct Database::Impl {
     std::expected<int64_t, kanariv::utils::Error>
     insertTrackLocked(const kanariv::types::TrackRow& t);
     std::expected<void, kanariv::utils::Error> updateTrackLocked(const kanariv::types::TrackRow& t);
+    /// Writes only the two ReplayGain columns (0 = unanalyzed, see analyze).
+    std::expected<void, kanariv::utils::Error> setReplayGainLocked(int64_t id, double trackGainDb,
+                                                                   double albumGainDb);
     std::expected<void, kanariv::utils::Error> deleteTrackLocked(int64_t id);
     std::expected<kanariv::types::TrackRow, kanariv::utils::Error> getTrackLocked(int64_t id);
     std::expected<std::vector<kanariv::types::Library>, kanariv::utils::Error> libraryListLocked();

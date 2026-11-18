@@ -510,6 +510,13 @@ DatabaseAccess::updateTrackLocked(Database& db, const kanariv::types::TrackRow& 
     return db.impl_->updateTrackLocked(t);
 }
 
+std::expected<void, kanariv::utils::Error> DatabaseAccess::setReplayGainLocked(Database& db,
+                                                                               int64_t id,
+                                                                               double trackGainDb,
+                                                                               double albumGainDb) {
+    return db.impl_->setReplayGainLocked(id, trackGainDb, albumGainDb);
+}
+
 std::expected<void, kanariv::utils::Error> DatabaseAccess::deleteTrackLocked(Database& db,
                                                                              int64_t id) {
     return db.impl_->deleteTrackLocked(id);

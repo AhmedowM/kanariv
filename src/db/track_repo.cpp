@@ -139,6 +139,31 @@ Database::Impl::updateTrackLocked(const kanariv::types::TrackRow& t) {
     return {};
 }
 
+std::expected<void, kanariv::utils::Error>
+Database::Impl::setReplayGainLocked(int64_t id, double trackGainDb, double albumGainDb) {
+    if (id == 0)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg, "id 0")};
+    if (!db_)
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
+    auto sRes = getCachedForUse(updateReplayGainSql);
+    if (!sRes)
+        return std::unexpected{sRes.error()};
+    SqliteStatement& st = *(*sRes);
+    st.bindDouble(1, trackGainDb);
+    st.bindDouble(2, albumGainDb);
+    st.bindInt(3, id);
+    int rc = st.stepDone();
+    st.reset();
+    if (rc != SQLITE_DONE)
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
+                                                         sqlite3_errmsg(db_.get()))};
+    if (sqlite3_changes(db_.get()) == 0)
+        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound)};
+    return {};
+}
+
 std::expected<void, kanariv::utils::Error> Database::Impl::deleteTrackLocked(int64_t id) {
     if (id == 0)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg)};

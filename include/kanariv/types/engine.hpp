@@ -80,9 +80,10 @@ enum class ReplayGainMode : std::uint8_t {
     Track = 1, ///< Per-track gain normalization (replay_gain_track).
     Album = 2, ///< Per-album gain normalization (replay_gain_album).
 };
-// Both Track and Album consume TrackRow::replayGainTrack / replayGainAlbum. Nothing
-// populates those columns yet (the scanner does not analyse loudness and there is
-// no tag importer), so both modes are currently no-ops.
+// Both Track and Album consume TrackRow::replayGainTrack / replayGainAlbum, which
+// only kanariv::library::analyzeLibrary writes (as the last step of the explicit
+// analysis pass). Album mode falls back to the track gain when the album column
+// is still 0 (unanalyzed); 0 in both columns means the mode is a no-op.
 
 /**
  * @brief Configuration for Engine construction.
@@ -102,8 +103,8 @@ enum class ReplayGainMode : std::uint8_t {
  * Playback polish (all configurable, default off = gapless/raw):
  * - `replayGain`: TrackRow/Album/Off normalization applied as a volume
  *   multiplier at track load time from `TrackRow::replayGainTrack` /
- *   `TrackRow::replayGainAlbum` (dB). Nothing populates those columns yet, so this
- *   setting currently has no audible effect.
+ *   `TrackRow::replayGainAlbum` (dB). The columns are written only by the
+ *   explicit analysis pass; until it has run, every mode behaves as Off.
  * - `fadeInMs`/`fadeOutMs`: fade envelope applied to decoded samples in the
  *   decode loop (real-time safe, no blocking).
  * - `crossfadeMs`: equal-power overlap with the next track over the last

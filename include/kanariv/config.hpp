@@ -106,9 +106,9 @@ struct Config {
      * @details Loaded from `"off"`, `"track"`, or `"album"` (case-insensitive;
      * unknown text falls back to Off without failing the load) and written
      * back by saveConfig in lowercase. Reads `TrackRow::replayGainTrack` /
-     * `replayGainAlbum` at load time. Nothing populates those columns yet (the
-     * scanner does not measure loudness and no tag importer exists), so all
-     * modes currently behave as Off.
+     * `replayGainAlbum` at load time; those columns are written only by the
+     * library's explicit ReplayGain analysis pass, so before it has run every
+     * mode behaves as Off.
      */
     kanariv::types::ReplayGainMode replayGain{kanariv::types::ReplayGainMode::Off};
     /** @brief Fade-in duration in ms (0 = off). Default: 0. */

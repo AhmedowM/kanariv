@@ -147,9 +147,11 @@ struct TrackRow {
     std::array<uint8_t, 32> fingerprint{}; ///< BLAKE3-256 content fingerprint (UNIQUE).
     bool dirty{false};                     ///< True if metadata needs re-scan.
     SourceRef source{};                    ///< Durable source identity (path by default).
-    /// ReplayGain track gain (dB); reserved for tag-imported values, unpopulated today.
+    /// ReplayGain 2.0 track gain (dB); written by the library's analysis pass.
+    /// 0 means "not analyzed" (a legitimate exactly-0 dB gain is re-measured).
     double replayGainTrack{};
-    /// ReplayGain album gain (dB); reserved for tag-imported values, unpopulated today.
+    /// ReplayGain 2.0 album gain (dB); written by the library's analysis pass.
+    /// 0 means "no album measurement"; playback falls back to `replayGainTrack`.
     double replayGainAlbum{};
 
 };

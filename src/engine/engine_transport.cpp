@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "engine_impl.hpp"
+#include "replay_gain.hpp"
 
 namespace kanariv::engine {
 
@@ -634,20 +635,13 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
                 cfg.sampleRate = sr;
                 cfg.channels = ch;
                 cfg.ring = ring_.get();
-                // ReplayGain: apply track/album gain (dB) as a volume multiplier
-                // on top of the user volume. dB -> linear: 10^(dB/20). Nothing
-                // populates the gain columns yet (no tag importer), so gainDb
-                // stays 0 and this is currently a no-op (M10).
+                // ReplayGain: apply the mode-selected gain (dB) as a volume
+                // multiplier on top of the user volume. dB -> linear:
+                // 10^(dB/20). Gains come from the explicit analysis pass.
                 float gain = volume_.load(std::memory_order_relaxed);
-                if (cfg_.replayGain != kanariv::types::ReplayGainMode::Off) {
-                    double gainDb = 0.0;
-                    if (cfg_.replayGain == kanariv::types::ReplayGainMode::Track)
-                        gainDb = t.replayGainTrack;
-                    else if (cfg_.replayGain == kanariv::types::ReplayGainMode::Album)
-                        gainDb = t.replayGainAlbum;
-                    if (gainDb != 0.0)
-                        gain = static_cast<float>((gain * std::pow(10.0, gainDb / 20.0)));
-                }
+                const double gainDb = detail::replayGainDbFor(cfg_.replayGain, t);
+                if (gainDb != 0.0)
+                    gain = static_cast<float>((gain * std::pow(10.0, gainDb / 20.0)));
                 cfg.volume = gain;
                 cfg.logger = cfg_.logger;
                 cfg.deviceId = cfg_.device;
