@@ -12,7 +12,7 @@
  * outside the enum range render as `"Unknown"`.
  *
  * Wire spellings (byte-identical to the IPC JSON payload):
- * - `PlaybackState`: "Stopped", "Ready", "Playing", "Paused", "Unknown"
+ * - `PlaybackState`: "Stopped", "Ready", "Playing", "Paused", "Error", "Unknown"
  * - `RepeatMode`: "Off", "All", "One", "Unknown"
  *
  * The inverse mapping (`parsePlaybackState`, `parseRepeatMode`) lives below;
@@ -20,8 +20,8 @@
  * `std::nullopt` so the caller can raise its own error.
  */
 
-#include <kanariv/types/wire.hpp>
 #include <format>
+#include <kanariv/types/wire.hpp>
 #include <optional>
 #include <string_view>
 
@@ -44,6 +44,8 @@ constexpr std::string_view toString(PlaybackState s) noexcept {
         return "Playing";
     case Paused:
         return "Paused";
+    case Error:
+        return "Error";
     default:
         return "Unknown";
     }
@@ -74,7 +76,7 @@ constexpr std::string_view toString(RepeatMode m) noexcept {
 /**
  * @brief Parses the wire text of a PlaybackState.
  * @ingroup kanariv_types
- * @param sv Text to parse ("Stopped", "Ready", "Playing", "Paused").
+ * @param sv Text to parse ("Stopped", "Ready", "Playing", "Paused", "Error").
  * @return The parsed state, or `std::nullopt` for any other text.
  */
 constexpr std::optional<PlaybackState> parsePlaybackState(std::string_view sv) noexcept {
@@ -86,6 +88,8 @@ constexpr std::optional<PlaybackState> parsePlaybackState(std::string_view sv) n
         return PlaybackState::Playing;
     if (sv == "Paused")
         return PlaybackState::Paused;
+    if (sv == "Error")
+        return PlaybackState::Error;
     return std::nullopt;
 }
 

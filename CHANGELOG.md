@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loaded-track suspend/resume. Reports per-entry success/failure; `--dry-run`
   validates without writing.
 
+### Changed
+- One playback-state vocabulary: `player::State` is now an alias for
+  `types::PlaybackState`, which gained `Error = 4` for the player's
+  decoder/device fault arm (the engine never emits it, so it cannot appear in
+  `Status`). `Player::state()` returns the shared enum; the alias keeps
+  existing source building.
+
 ### Removed
 - The shared-memory status channel (`ShmStatusReader`/`ShmStatusWriter`,
   `AtomicShmStatus`, the daemon-side writer and the per-endpoint segment).

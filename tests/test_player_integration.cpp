@@ -15,8 +15,8 @@
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/status_format.hpp>
 #include <kanariv/utils/ring.hpp>
+#include <kanariv/utils/status_format.hpp>
 #include <limits>
 #include <memory>
 #include <span>
@@ -34,15 +34,12 @@ using namespace kanariv::test_helpers;
 using kanariv::media::Decoder;
 using kanariv::media::FileReader;
 
-static_assert(static_cast<int>(kanariv::player::State::Stopped) == 0);
-static_assert(static_cast<int>(kanariv::player::State::Playing) == 1);
-static_assert(static_cast<int>(kanariv::player::State::Paused) == 2);
-static_assert(static_cast<int>(kanariv::player::State::Error) == 3);
 static_assert(static_cast<int>(kanariv::types::PlaybackState::Stopped) == 0);
 static_assert(static_cast<int>(kanariv::types::PlaybackState::Ready) == 1);
 static_assert(static_cast<int>(kanariv::types::PlaybackState::Playing) == 2);
 static_assert(static_cast<int>(kanariv::types::PlaybackState::Paused) == 3);
-static_assert(!std::is_same_v<kanariv::player::State, kanariv::types::PlaybackState>);
+static_assert(static_cast<int>(kanariv::types::PlaybackState::Error) == 4);
+static_assert(std::is_same_v<kanariv::player::State, kanariv::types::PlaybackState>);
 
 static std::string fixturePath(const std::string& name) {
     for (auto c : {std::string("tests/fixtures/") + name, std::string("../tests/fixtures/") + name,

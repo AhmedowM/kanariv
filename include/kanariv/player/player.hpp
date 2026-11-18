@@ -51,6 +51,7 @@
 #include <cstdint>
 #include <expected>
 #include <kanariv/fwd.hpp>
+#include <kanariv/types/wire.hpp>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -58,16 +59,15 @@
 namespace kanariv::player {
 
 /**
- * @enum State
- * @brief Playback state enumeration
+ * @brief Playback state vocabulary used by the Player.
  * @ingroup kanariv_player
- *
- * Represents the current state of the Player. Transitions:
+ * @details Same enum as the engine, so the process has one playback
+ * vocabulary. Transitions:
  * - Stopped <-> Playing (play/stop)
  * - Playing <-> Paused (pause/resume)
- * - Any -> Error (on decoder/output failure)
+ * - Any -> Error (on decoder/output failure; cleared by the next open)
  */
-enum class State : uint8_t { Stopped = 0, Playing = 1, Paused = 2, Error = 3 };
+using State = kanariv::types::PlaybackState;
 
 /**
  * @struct PlayerOptions
@@ -311,12 +311,12 @@ class KANARIV_API Player {
 
     /**
      * @brief Get current playback state
-     * @return Current State enum value
+     * @return Current PlaybackState value
      *
      * @par Thread safety
      * Thread-safe; loads the state atomically.
      */
-    State state() const noexcept;
+    kanariv::types::PlaybackState state() const noexcept;
 
     /**
      * @brief Get current playback position
@@ -335,7 +335,7 @@ class KANARIV_API Player {
      * @return Last error message; empty when no failure was recorded
      *
      * Asynchronous failures (decode thread, audio device) surface only as
-     * `State::Error` at the call site; this accessor carries their reason.
+     * `PlaybackState::Error` at the call site; this accessor carries their reason.
      * A later successful open()/play() replaces it.
      *
      * @par Thread safety

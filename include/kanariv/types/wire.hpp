@@ -45,19 +45,25 @@ static_assert(static_cast<int>(RepeatMode::One) == 2, "RepeatMode::One wire valu
 /**
  * @brief Playback state machine (wire value).
  * @ingroup kanariv_types
- * @details State transitions (Engine):
+ * @details The process-wide playback vocabulary: the engine's transport state
+ * and the player's fault state share this enum.
+ * State transitions (Engine):
  * - `Stopped -> Playing` via Engine::play().
  * - `Playing -> Paused` via Engine::pause().
  * - `Paused -> Playing` via Engine::resume() / play() resume path.
  * - `Playing -> Playing` (restart) via play() when already playing (seek 0).
  * - Any -> `Stopped` via Engine::stop().
+ * `Error` is the player's arm: a decoder or audio-device failure ends
+ * playback and only a reopen clears it. The engine never emits it, so it does
+ * not appear in `ipc::Status` payloads.
  * @see kanariv::ipc::Status
  */
 enum class PlaybackState : std::uint8_t {
     Stopped = 0, ///< No track is currently playing.
     Ready = 1,   ///< The engine is initialized and ready to play.
     Playing = 2, ///< Audio playback is active.
-    Paused = 3   ///< Playback is paused with the current position retained.
+    Paused = 3,  ///< Playback is paused with the current position retained.
+    Error = 4    ///< Playback stopped on a decoder/device failure; reopen to play.
 };
 
 } // namespace kanariv::types
