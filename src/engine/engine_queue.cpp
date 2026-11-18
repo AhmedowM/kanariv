@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -22,6 +23,20 @@
 #include "engine_impl.hpp"
 
 namespace kanariv::engine {
+
+namespace detail {
+
+void shufflePerm(std::vector<int64_t>& perm, std::mt19937& rng) {
+    std::ranges::shuffle(perm, rng);
+}
+
+void shufflePerm(std::vector<int64_t>& perm) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    shufflePerm(perm, gen);
+}
+
+} // namespace detail
 
 std::vector<int64_t> Engine::Impl::shufflePermFor(int64_t qid) {
     auto qlk = tryLockQueue();
