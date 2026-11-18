@@ -297,6 +297,88 @@ function(kanariv_check_component_includes)
   endforeach()
 endfunction()
 
+# Configure-time boundary gate (AR-03): the whole repo `src/` directory is on
+# every component's private include path, so nothing stops one component from
+# reaching into another's internals. This walks `src/<component>/` for
+# `#include <other/...>` or `#include "other/..."` naming another component's
+# directory, plus the repo-root shared headers under `src/`, and fails unless
+# the pair is on the allowlist below. The allowlist is checked in both
+# directions so it cannot rot: a new leak fails, and an entry that no longer
+# matches fails too.
+#
+# A deliberate exception belongs here with the reason recorded in the
+# architecture review (AR-03). If a shared internal becomes structural, give it
+# a real home under include/kanariv/ (an installed contract) instead of adding
+# a row. `src/utils/` is the bottom layer and is shared by design.
+function(kanariv_check_src_boundaries)
+  set(_allowed
+    "app:config/raw.hpp"
+    "config:config_detail.hpp"
+    "engine:player/playback_policy.hpp"
+    "library:db/database_access.hpp"
+    "library:db/transaction.hpp"
+    "service:config/raw.hpp"
+    "service:config_detail.hpp"
+    "service:engine/engine_access.hpp")
+  set(_matched "")
+  foreach(_from IN LISTS KANARIV_COMPONENTS)
+    set(_from_dir "${CMAKE_SOURCE_DIR}/src/${_from}")
+    if(NOT IS_DIRECTORY "${_from_dir}")
+      continue()
+    endif()
+    file(GLOB_RECURSE _files
+      "${_from_dir}/*.cpp" "${_from_dir}/*.hpp" "${_from_dir}/*.mm" "${_from_dir}/*.c")
+    foreach(_file IN LISTS _files)
+      file(STRINGS "${_file}" _include_lines
+        REGEX "^[ \t]*#[ \t]*include[ \t]*[<\"]")
+      foreach(_line IN LISTS _include_lines)
+        string(REGEX MATCH "[<\"]([^>\"]+)[>\"]" _ignored "${_line}")
+        set(_include "${CMAKE_MATCH_1}")
+        if(NOT _include)
+          continue()
+        endif()
+        # Public headers belong to the component include gate; utils internals
+        # are the shared bottom layer.
+        if(_include MATCHES "^(kanariv|utils)/")
+          continue()
+        endif()
+        if(_include MATCHES "/")
+          string(REGEX REPLACE "/.*$" "" _to "${_include}")
+          if(NOT _to IN_LIST KANARIV_COMPONENTS
+             OR _to STREQUAL _from
+             OR NOT IS_DIRECTORY "${CMAKE_SOURCE_DIR}/src/${_to}")
+            continue()
+          endif()
+        elseif(NOT EXISTS "${CMAKE_SOURCE_DIR}/src/${_include}")
+          # Not a component directory and not a repo-root header: not ours.
+          continue()
+        endif()
+        set(_key "${_from}:${_include}")
+        if(_key IN_LIST _allowed)
+          list(APPEND _matched "${_key}")
+          continue()
+        endif()
+        string(REPLACE "${CMAKE_SOURCE_DIR}/" "" _rel "${_file}")
+        message(FATAL_ERROR
+          "kanariv src boundary gate: '${_from}' includes <${_include}> "
+          "(${_rel}), reaching into another component's internals. Move the "
+          "declaration under include/kanariv/detail/ (a real installed "
+          "contract), or add '${_key}' to the allowlist in "
+          "kanariv_check_src_boundaries with the reason recorded in the "
+          "architecture review.")
+      endforeach()
+    endforeach()
+  endforeach()
+  foreach(_key IN LISTS _allowed)
+    if(NOT _key IN_LIST _matched)
+      message(FATAL_ERROR
+        "kanariv src boundary gate: allowlist entry '${_key}' no longer "
+        "matches any include. Delete the stale row in "
+        "kanariv_check_src_boundaries.")
+    endif()
+  endforeach()
+endfunction()
+
 # The real target backing a component name (see kanariv_add_component). Files
 # that configure a component directly -- extra link libraries, compile
 # definitions, platform include dirs -- must use it: target_* commands reject
@@ -307,6 +389,66 @@ function(kanariv_component_target NAME out)
     message(FATAL_ERROR "kanariv_component_target(${NAME}): no such component")
   endif()
   set(${out} "${_tgt}" PARENT_SCOPE)
+endfunction()
+
+# Discovers libdbus-1 (MPRIS backend) and publishes KANARIV_DBUS_FOUND,
+# KANARIV_DBUS_LIBRARIES and KANARIV_DBUS_INCLUDE_DIRS to the caller's scope.
+function(_kanariv_find_dbus)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(KANARIV_DBUS dbus-1)
+  endif()
+  if(NOT KANARIV_DBUS_FOUND)
+    find_library(KANARIV_DBUS_LIB dbus-1)
+    find_path(KANARIV_DBUS_INCLUDE_DIR NAMES dbus/dbus.h PATHS /usr/include/dbus-1.0)
+    if(KANARIV_DBUS_LIB AND KANARIV_DBUS_INCLUDE_DIR)
+      set(KANARIV_DBUS_LIBRARIES ${KANARIV_DBUS_LIB})
+      set(KANARIV_DBUS_INCLUDE_DIRS ${KANARIV_DBUS_INCLUDE_DIR})
+      set(KANARIV_DBUS_FOUND TRUE)
+    endif()
+  endif()
+  if(NOT KANARIV_DBUS_FOUND)
+    get_property(_warned GLOBAL PROPERTY KANARIV_DBUS_WARNED)
+    if(NOT _warned)
+      message(WARNING
+        "libdbus-1 not found: Linux MPRIS media-session backend will fail "
+        "to activate at runtime (install libdbus-1-dev)")
+      set_property(GLOBAL PROPERTY KANARIV_DBUS_WARNED TRUE)
+    endif()
+  endif()
+  set(KANARIV_DBUS_FOUND "${KANARIV_DBUS_FOUND}" PARENT_SCOPE)
+  set(KANARIV_DBUS_LIBRARIES "${KANARIV_DBUS_LIBRARIES}" PARENT_SCOPE)
+  set(KANARIV_DBUS_INCLUDE_DIRS "${KANARIV_DBUS_INCLUDE_DIRS}" PARENT_SCOPE)
+endfunction()
+
+# Platform libraries the media-session backend needs, in one place (AR-05).
+# `service` links them for its own targets and `combined` links them again
+# because it carries the same object files; re-stating the list in both files
+# let a framework added to one silently miss the other.
+#
+# Usage: kanariv_service_platform_libs(<target> [OBJECTS <obj-target>...])
+# Link libraries apply to <target>; the OBJECTS targets receive the dbus
+# include directories (compile-time only, needed by media_session_linux.cpp).
+function(kanariv_service_platform_libs target)
+  cmake_parse_arguments(ARG "" "" "OBJECTS" ${ARGN})
+  if(WIN32)
+    # runtimeobject.lib ships with the Windows SDK's um/ directory, already on
+    # the compiler driver's default library search path, so link it by name.
+    target_link_libraries(${target} PRIVATE user32 ole32 shcore runtimeobject)
+  elseif(APPLE)
+    # AppKit provides NSImage, used to build MPMediaItemArtwork from cover art.
+    target_link_libraries(${target} PRIVATE "-framework MediaPlayer"
+      "-framework Foundation" "-framework AppKit")
+  elseif(UNIX)
+    _kanariv_find_dbus()
+    if(KANARIV_DBUS_FOUND)
+      target_link_libraries(${target} PRIVATE ${KANARIV_DBUS_LIBRARIES})
+      target_include_directories(${target} SYSTEM PRIVATE ${KANARIV_DBUS_INCLUDE_DIRS})
+      foreach(_obj IN LISTS ARG_OBJECTS)
+        target_include_directories(${_obj} SYSTEM PRIVATE ${KANARIV_DBUS_INCLUDE_DIRS})
+      endforeach()
+    endif()
+  endif()
 endfunction()
 
 # Map a component dependency list onto its static flavour: every kanariv::<x>

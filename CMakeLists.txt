@@ -511,6 +511,11 @@ unset(_comp)
 # does not declare. Runs after every component registered its file list.
 kanariv_check_component_includes()
 
+# AR-03: the same include root also exposes every component's private src/
+# headers. Fail the configure when one component reaches into another's
+# internals without a recorded exception.
+kanariv_check_src_boundaries()
+
 # D-4 header self-containment gate: compiles every public header as a
 # standalone TU (compile-only, nothing is linked, no Catch2 involved). It is
 # gated on its own option and deliberately lives outside cmake/Tests.cmake so

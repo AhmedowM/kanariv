@@ -42,49 +42,10 @@ endif()
 # the same dependency instead of repeating it below.
 kanariv_add_component(service SOURCES ${KANARIV_SERVICE_SOURCES} MODULE_SOURCES ${KANARIV_SERVICE_MODULE_SOURCES} DEPS kanariv::config kanariv::contracts kanariv::ipc kanariv::types kanariv::utils Threads::Threads PRIVATE_DEPS kanariv::engine kanariv::db kanariv::media kanariv::player tag INCLUDES vendor ${KANARIV_TAGLIB_BUILD_INCLUDES})
 kanariv_component_target(service KANARIV_SERVICE_TARGET)
-if(WIN32)
-  # runtimeobject.lib (RoGetActivationFactory, WindowsCreateString, ...) ships
-  # with the Windows SDK and the selected SDK's um/ directory is already on the
-  # compiler driver's default library search path, so link it by name. Pinning
-  # "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/um" only worked on
-  # machines with that exact SDK.
-  set(_K_WIN_LIBS user32 ole32 shcore runtimeobject)
-  target_link_libraries(${KANARIV_SERVICE_TARGET} PRIVATE ${_K_WIN_LIBS})
-elseif(APPLE)
-  # AppKit provides NSImage, used to build MPMediaItemArtwork from cover art.
-  target_link_libraries(${KANARIV_SERVICE_TARGET} PRIVATE "-framework MediaPlayer" "-framework Foundation"
-    "-framework AppKit")
-elseif(UNIX)
-  # Linux MPRIS backend needs libdbus-1 (library + include dirs).
-  # pkg-config is installed on all Linux CI jobs; dbus-1.pc returns both
-  # include paths needed: /usr/include/dbus-1.0 (for dbus/dbus.h) and the
-  # arch-specific dir (e.g. /usr/lib/x86_64-linux-gnu/dbus-1.0/include)
-  # for dbus/dbus-arch-deps.h, which dbus/dbus.h #includes.
-  find_package(PkgConfig QUIET)
-  if(PkgConfig_FOUND)
-    pkg_check_modules(KANARIV_DBUS dbus-1)
-  endif()
-  if(NOT KANARIV_DBUS_FOUND)
-    find_library(KANARIV_DBUS_LIB dbus-1)
-    find_path(KANARIV_DBUS_INCLUDE_DIR NAMES dbus/dbus.h PATHS /usr/include/dbus-1.0)
-    if(KANARIV_DBUS_LIB AND KANARIV_DBUS_INCLUDE_DIR)
-      set(KANARIV_DBUS_LIBRARIES ${KANARIV_DBUS_LIB})
-      set(KANARIV_DBUS_INCLUDE_DIRS ${KANARIV_DBUS_INCLUDE_DIR})
-      set(KANARIV_DBUS_FOUND TRUE)
-    endif()
-  endif()
-  if(KANARIV_DBUS_FOUND)
-    target_link_libraries(${KANARIV_SERVICE_TARGET} PRIVATE ${KANARIV_DBUS_LIBRARIES})
-    target_include_directories(${KANARIV_SERVICE_TARGET} SYSTEM PRIVATE ${KANARIV_DBUS_INCLUDE_DIRS})
-    # service_objects compiles the same sources; propagate include dirs so
-    # media_session_linux.cpp can find dbus/dbus.h at compile time.
-    target_include_directories(service_objects SYSTEM PRIVATE ${KANARIV_DBUS_INCLUDE_DIRS})
-  else()
-    message(WARNING
-      "libdbus-1 not found: Linux MPRIS media-session backend will fail "
-      "to activate at runtime (install libdbus-1-dev)")
-  endif()
-endif()
+# The media-session backend pulls in platform libraries (WinRT/COM, MediaPlayer,
+# libdbus-1). combined links the same object files, so the list lives in one
+# helper shared by both instead of being restated per target.
+kanariv_service_platform_libs(${KANARIV_SERVICE_TARGET} OBJECTS service_objects)
 
 # STATIC is a per-target definition, not an include path: the amalgamation is
 # linked directly in static builds, so TagLib must not expand its dllimport
@@ -156,17 +117,8 @@ if(KANARIV_BUILD_SHARED)
     # service_shared to service, and CMake rejects target_* commands on ALIAS
     # targets. service already carries these platform deps (applied above),
     # so the alias needs nothing extra.
-    if(WIN32)
-      target_link_libraries(service_shared PRIVATE ${_K_WIN_LIBS})
-    elseif(APPLE)
-      target_link_libraries(service_shared PRIVATE "-framework MediaPlayer"
-        "-framework Foundation" "-framework AppKit")
-    elseif(UNIX)
-      if(KANARIV_DBUS_FOUND)
-        target_link_libraries(service_shared PRIVATE ${KANARIV_DBUS_LIBRARIES})
-        target_include_directories(service_shared SYSTEM PRIVATE
-          ${KANARIV_DBUS_INCLUDE_DIRS})
-      endif()
-    endif()
+    # service_shared carries $<TARGET_OBJECTS:service_objects>, so the dbus
+    # include dirs are already on the objects; only the link line is needed.
+    kanariv_service_platform_libs(service_shared)
   endif()
 endif()
