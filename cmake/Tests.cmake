@@ -116,6 +116,7 @@ if(KANARIV_ENABLE_TESTS)
   # playback state and remote-command modes back. Verifies behaviour rather
   # than just linkage (the .mm only compiles on macOS).
   kanariv_add_catch_test(test_fft tests/test_fft.cpp LIBS kanariv::dsp kanariv::utils)
+  kanariv_add_catch_test(test_loudness tests/test_loudness.cpp LIBS kanariv::dsp kanariv::utils)
 
   # M8/M10: scan-walker skip/issue reporting and the swr spill-loop helper.
   kanariv_add_catch_test(test_media_scan tests/test_media_scan.cpp LIBS kanariv::media kanariv::utils)

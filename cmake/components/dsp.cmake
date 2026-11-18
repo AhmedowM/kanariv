@@ -6,6 +6,7 @@ set(KANARIV_DSP_MODULE_SOURCES
 )
 set(KANARIV_DSP_SOURCES
   src/dsp/fft.cpp
+  src/dsp/loudness.cpp
 )
 kanariv_add_component(dsp SOURCES ${KANARIV_DSP_SOURCES} MODULE_SOURCES ${KANARIV_DSP_MODULE_SOURCES} DEPS kanariv::utils PRIVATE_DEPS kissfft)
 ca_set_module_warnings(dsp)

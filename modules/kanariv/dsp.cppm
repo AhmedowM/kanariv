@@ -14,3 +14,12 @@ using ::kanariv::dsp::fft::window::applyInPlace;
 using ::kanariv::dsp::fft::window::hamming;
 using ::kanariv::dsp::fft::window::hann;
 } // namespace kanariv::dsp::fft::window
+
+export namespace kanariv::dsp::loudness {
+using ::kanariv::dsp::loudness::integratedLoudness;
+using ::kanariv::dsp::loudness::kReplayGain2ReferenceLufs;
+using ::kanariv::dsp::loudness::linearToDbtp;
+using ::kanariv::dsp::loudness::LoudnessMeter;
+using ::kanariv::dsp::loudness::LoudnessResult;
+using ::kanariv::dsp::loudness::replayGainDb;
+} // namespace kanariv::dsp::loudness
