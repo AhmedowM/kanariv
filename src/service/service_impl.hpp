@@ -149,6 +149,8 @@ struct Service::Impl {
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::LibraryAdd& cmd);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+    handle(const kanariv::ipc::LibraryAnalyze& cmd);
+    std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::LibraryList& cmd);
     std::expected<kanariv::ipc::Result, kanariv::utils::Error>
     handle(const kanariv::ipc::LibraryMaintenance& cmd);

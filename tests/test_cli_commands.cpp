@@ -74,6 +74,7 @@ TEST_CASE("declareAll matches the documented leaf vocabulary", "[cli][commands]"
         "playlist export",
         "playlist import",
         "library scan",
+        "library analyze",
         "library search",
         "library stats",
         "library add",

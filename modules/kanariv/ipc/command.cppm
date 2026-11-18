@@ -20,6 +20,7 @@ using ::kanariv::ipc::HistoryClear;
 using ::kanariv::ipc::HistoryList;
 using ::kanariv::ipc::Info;
 using ::kanariv::ipc::LibraryAdd;
+using ::kanariv::ipc::LibraryAnalyze;
 using ::kanariv::ipc::LibraryList;
 using ::kanariv::ipc::LibraryRemove;
 using ::kanariv::ipc::LibraryScan;

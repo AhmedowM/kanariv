@@ -165,13 +165,17 @@ struct PlaylistOptions {
     bool importJson = false;
 };
 
-/** @brief `library` plus its eight subcommands. @ingroup kanariv_app */
+/** @brief `library` plus its nine subcommands. @ingroup kanariv_app */
 struct LibraryOptions {
     CLI::App* library = nullptr;
     CLI::App* scan = nullptr;
     std::string scanPath;
     bool scanFullHash = false;
     bool scanJson = false;
+    CLI::App* analyze = nullptr;
+    bool analyzeReanalyze = false;
+    std::int64_t analyzeLibraryId = 0;
+    bool analyzeJson = false;
     CLI::App* search = nullptr;
     std::string searchQuery;
     int searchLimit = 50;

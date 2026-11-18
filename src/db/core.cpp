@@ -570,6 +570,8 @@ contracts::Storage makeStorage(std::shared_ptr<Database> db) {
         // Scanning combines discovery with persistence; only the composition
         // root that links the media stack can supply one (kanariv::library).
         .scanner = nullptr,
+        // Analysis decodes audio; same story as the scanner.
+        .analyzer = nullptr,
     };
 }
 } // namespace kanariv::db

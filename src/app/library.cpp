@@ -32,6 +32,13 @@ AppResult App::libraryScan(std::optional<std::string> path, bool fullHash) {
     return impl_->confirm(impl_->sendRaw(cmd));
 }
 
+AppResult App::libraryAnalyze(bool reanalyze, std::optional<std::int64_t> libraryId) {
+    kanariv::ipc::LibraryAnalyze cmd{};
+    cmd.reanalyze = reanalyze;
+    cmd.library_id = libraryId;
+    return impl_->confirm(impl_->sendRaw(kanariv::ipc::Command{std::move(cmd)}));
+}
+
 AppResult App::librarySearch(const std::string& query, int limit) {
     kanariv::ipc::Command cmd{kanariv::ipc::LibrarySearch{query, limit}};
     return impl_->confirm(impl_->sendRaw(cmd));

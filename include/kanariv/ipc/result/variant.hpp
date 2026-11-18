@@ -43,8 +43,8 @@ using Result =
     std::variant<Status, QueueTracks, QueueAddReport, QueueRemoveReport, Queues, QueueCreated,
                  PlaylistLoaded, VolumeInfo, kanariv::types::LibraryStats, Tracks, SearchResults,
                  Playlists, PlaylistData, PlaylistCreated, PlaylistImportReport, ScanReport,
-                 LibraryMaintenanceReport, ConfigValue, ConfigValues, SingleTrack, TrackInfo,
-                 History, Bookmarks, Lyrics, TagBatchEditResult, Empty, Devices>;
+                 AnalyzeReport, LibraryMaintenanceReport, ConfigValue, ConfigValues, SingleTrack,
+                 TrackInfo, History, Bookmarks, Lyrics, TagBatchEditResult, Empty, Devices>;
 
 /**
  * @brief Expected type for replies that can fail.

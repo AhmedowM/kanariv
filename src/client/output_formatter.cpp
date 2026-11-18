@@ -400,6 +400,10 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
                 else
                     kanariv::println(os, "{} tracks added", v.added);
             },
+            [&os](const kanariv::ipc::AnalyzeReport& v) {
+                kanariv::println(os, "ReplayGain: {} analyzed, {} failed, {} skipped of {} tracks",
+                                 v.analyzed, v.failed, v.skipped, v.tracks);
+            },
             [&os](const kanariv::ipc::PlaylistCreated& v) {
                 kanariv::println(os, "Created playlist {} '{}'", v.id, v.name);
             },

@@ -111,6 +111,7 @@ constexpr std::array commandSchemas{
     commandSchema<PlaylistExport>("PlaylistExport", TransportPolicy::Batch),
     commandSchema<PlaylistImport>("PlaylistImport", TransportPolicy::Batch),
     commandSchema<LibraryScan>("LibraryScan", TransportPolicy::LongRunning),
+    commandSchema<LibraryAnalyze>("LibraryAnalyze", TransportPolicy::LongRunning),
     commandSchema<LibrarySearch>("LibrarySearch"),
     commandSchema<LibraryStats>("LibraryStats"),
     commandSchema<LibraryAdd>("LibraryAdd", TransportPolicy::Batch),
@@ -299,6 +300,12 @@ Json toJson(const Command& cmd) {
                 else
                     j["path"] = nullptr;
                 j["full_hash"] = v.full_hash;
+            } else if constexpr (std::is_same_v<T, LibraryAnalyze>) {
+                j["reanalyze"] = v.reanalyze;
+                if (v.library_id.has_value())
+                    j["library_id"] = *v.library_id;
+                else
+                    j["library_id"] = nullptr;
             } else if constexpr (std::is_same_v<T, LibrarySearch>) {
                 j["query"] = v.query;
                 j["limit"] = v.limit;
@@ -656,6 +663,15 @@ std::expected<T, kanariv::utils::Error> parseCommandPayload(const Json& j) {
             } else {
                 return std::unexpected{detail::missingFieldError("full_hash")};
             }
+            return v;
+        } else if constexpr (std::is_same_v<T, LibraryAnalyze>) {
+            LibraryAnalyze v{};
+            if (j.contains("reanalyze")) {
+                if (auto r = detail::requiredBool(j, "reanalyze", v.reanalyze); !r)
+                    return std::unexpected{std::move(r.error())};
+            }
+            if (auto r = detail::optionalNumber(j, "library_id", v.library_id); !r)
+                return std::unexpected{std::move(r.error())};
             return v;
         } else if constexpr (std::is_same_v<T, LibrarySearch>) {
             LibrarySearch v{};

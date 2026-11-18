@@ -60,8 +60,9 @@ bool isMutating(const Options& o) {
            o.global.save ||
            (cfg.config->parsed() &&
             (cfg.set->parsed() || cfg.importFile->parsed() || cfg.reset->parsed())) ||
-           (lib.library->parsed() && (lib.scan->parsed() || lib.add->parsed() ||
-                                      lib.remove->parsed() || lib.maintenance->parsed())) ||
+           (lib.library->parsed() &&
+            (lib.scan->parsed() || lib.analyze->parsed() || lib.add->parsed() ||
+             lib.remove->parsed() || lib.maintenance->parsed())) ||
            (o.tag.tag->parsed() && (o.tag.edit->parsed() || o.tag.batch->parsed())) ||
            (o.tag.track->parsed() && o.tag.rate->parsed()) ||
            (q.queue->parsed() &&

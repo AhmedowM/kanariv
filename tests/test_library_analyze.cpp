@@ -200,3 +200,33 @@ TEST_CASE("an undecodable track fails alone and keeps its album unmeasured", "[a
     CHECK(badRow->replayGainTrack == 0.0);
     CHECK(badRow->replayGainAlbum == 0.0);
 }
+
+TEST_CASE("Analyzer adapter forwards through the daemon port", "[analyze]") {
+    auto dir = tempDirPath("analyze_adapter");
+    const auto wav = dir / "tone.wav";
+    writeSineWav(wav, 0.1);
+
+    auto db = openDb();
+    insertTrack(*db, wav, 0x51, "Adapter Album");
+
+    kanariv::library::Analyzer analyzer{db};
+    kanariv::contracts::ILibraryAnalyzer& port = analyzer;
+
+    // A library id with no rows is an empty pass, not an error.
+    auto empty = port.analyzeLibrary(999);
+    REQUIRE(empty.has_value());
+    CHECK(empty->tracks == 0);
+
+    auto report = port.analyzeLibrary(kanariv::types::defaultLibraryId);
+    REQUIRE(report.has_value());
+    CHECK(report->tracks == 1);
+    CHECK(report->analyzed == 1);
+    CHECK(report->failed == 0);
+    CHECK(report->skipped == 0);
+
+    auto again = port.analyzeLibrary(kanariv::types::defaultLibraryId,
+                                     kanariv::contracts::LibraryAnalyzeOptions{});
+    REQUIRE(again.has_value());
+    CHECK(again->analyzed == 0);
+    CHECK(again->skipped == 1);
+}

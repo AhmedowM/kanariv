@@ -243,6 +243,40 @@ TEST_CASE("library stats summary protocol roundtrip", "[ipc]") {
     CHECK_FALSE(stats->top_tracks.has_value());
 }
 
+TEST_CASE("library analyze protocol roundtrip", "[ipc]") {
+    Command analyze{LibraryAnalyze{.reanalyze = true, .library_id = 2}};
+    auto json = toJson(analyze);
+    CHECK(json["type"].snapshot().get<std::string>() == "LibraryAnalyze");
+    auto back = commandFromJson(json);
+    REQUIRE(back.has_value());
+    auto* val = std::get_if<LibraryAnalyze>(&*back);
+    REQUIRE(val != nullptr);
+    CHECK(val->reanalyze);
+    REQUIRE(val->library_id.has_value());
+    CHECK(*val->library_id == 2);
+
+    // Omitted library: wire null, parsed back unset (whole library).
+    auto allJson = toJson(Command{LibraryAnalyze{}});
+    CHECK(allJson["library_id"].snapshot().isNull());
+    auto allBack = commandFromJson(allJson);
+    REQUIRE(allBack.has_value());
+    auto* allVal = std::get_if<LibraryAnalyze>(&*allBack);
+    REQUIRE(allVal != nullptr);
+    CHECK_FALSE(allVal->reanalyze);
+    CHECK_FALSE(allVal->library_id.has_value());
+
+    Result res{AnalyzeReport{.tracks = 120, .analyzed = 118, .failed = 2, .skipped = 0}};
+    auto resJson = toJson(res);
+    auto resBack = resultFromJson(resJson);
+    REQUIRE(resBack.has_value());
+    auto* report = std::get_if<AnalyzeReport>(&*resBack);
+    REQUIRE(report != nullptr);
+    CHECK(report->tracks == 120);
+    CHECK(report->analyzed == 118);
+    CHECK(report->failed == 2);
+    CHECK(report->skipped == 0);
+}
+
 TEST_CASE("library stats command roundtrip", "[ipc]") {
     auto summary = toJson(Command{LibraryStats{}});
     CHECK(summary["type"].snapshot().get<std::string>() == "LibraryStats");
@@ -584,6 +618,15 @@ TEST_CASE("command payloads reject missing and wrong-typed fields", "[ipc]") {
         CHECK_FALSE(v->level.has_value());
         CHECK_FALSE(v->mute.has_value());
         CHECK_FALSE(v->deltaPct.has_value());
+    }
+
+    SECTION("LibraryAnalyze rejects a non-boolean reanalyze") {
+        Json j;
+        j["type"] = "LibraryAnalyze";
+        j["reanalyze"] = "yes";
+        const auto r = commandFromJson(j);
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().code == StatusCode::InvalidArg);
     }
 
     SECTION("the legacy LibraryScan mode alias still parses") {

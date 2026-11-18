@@ -77,6 +77,38 @@ struct ScanReport final {
     std::size_t added{0};
 };
 
+/**
+ * @struct AnalyzeReport
+ * @brief ReplayGain analysis outcome (returned by LibraryAnalyze).
+ * @ingroup kanariv_ipc
+ *
+ * @json_example {"type": "AnalyzeReport", "tracks": 120, "analyzed": 118, "failed": 2,
+ *   "skipped": 0}
+ *
+ * @param tracks Tracks considered in the pass.
+ * @param analyzed Tracks measured and written.
+ * @param failed Tracks that could not be measured or stored.
+ * @param skipped Tracks left alone because they already had gains.
+ */
+struct AnalyzeReport final {
+    /**
+     * @brief Tracks considered in the pass.
+     */
+    int64_t tracks{0};
+    /**
+     * @brief Tracks measured and written.
+     */
+    int64_t analyzed{0};
+    /**
+     * @brief Tracks that could not be measured or stored.
+     */
+    int64_t failed{0};
+    /**
+     * @brief Tracks left alone because they already had gains.
+     */
+    int64_t skipped{0};
+};
+
 // ---------------------------------------------------------------------------
 // TrackRow Detail Results
 // ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@
  */
 
 #include <kanariv/contracts/history_store.hpp>
+#include <kanariv/contracts/library_analyze.hpp>
 #include <kanariv/contracts/library_scan.hpp>
 #include <kanariv/contracts/library_store.hpp>
 #include <kanariv/contracts/playback_state_store.hpp>
@@ -41,6 +42,9 @@ struct Storage {
     /// Scan orchestration (discovery + upsert). Optional: it is a service over
     /// the store, not a store itself, so `complete()` does not require it.
     std::shared_ptr<ILibraryScanner> scanner;
+    /// ReplayGain measurement pass. Optional for the same reason as `scanner`:
+    /// it decodes audio and only the composition root can supply one.
+    std::shared_ptr<ILibraryAnalyzer> analyzer;
 
     /// True when every port is populated.
     [[nodiscard]] bool complete() const noexcept {

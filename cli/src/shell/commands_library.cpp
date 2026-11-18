@@ -23,6 +23,11 @@ void declareLibrary(CLI::App& cli, Options& o) {
     lib.scan->add_option("--path", lib.scanPath, "Scan path (default: library music dir)");
     lib.scan->add_flag("--full-hash", lib.scanFullHash, "Full-file BLAKE3 (slower)");
     addJsonFlag(lib.scan, lib.scanJson);
+    lib.analyze = lib.library->add_subcommand("analyze", "Measure ReplayGain 2.0 gains");
+    lib.analyze->add_flag("--reanalyze", lib.analyzeReanalyze,
+                          "Re-measure tracks that already carry gains");
+    lib.analyze->add_option("--library", lib.analyzeLibraryId, "Library id (0 = all tracks)");
+    addJsonFlag(lib.analyze, lib.analyzeJson);
     lib.search = lib.library->add_subcommand("search", "Search library");
     lib.search->add_option("query", lib.searchQuery, "FTS query")->required();
     lib.search->add_option("--limit", lib.searchLimit, "Limit");
@@ -85,6 +90,12 @@ std::optional<int> runLibrary(App& app, const Options& o) {
         if (!lib.scanPath.empty())
             p = lib.scanPath;
         return render(app.libraryScan(p, lib.scanFullHash), lib.scanJson);
+    }
+    if (lib.analyze->parsed()) {
+        std::optional<std::int64_t> id;
+        if (lib.analyzeLibraryId != 0)
+            id = lib.analyzeLibraryId;
+        return render(app.libraryAnalyze(lib.analyzeReanalyze, id), lib.analyzeJson);
     }
     if (lib.search->parsed()) {
         auto sr = app.librarySearch(lib.searchQuery, lib.searchLimit);

@@ -185,6 +185,14 @@ Json toJson(const Result& r) {
                 j["type"] = "ScanReport";
                 j["added"] = v.added;
                 return j;
+            } else if constexpr (std::is_same_v<T, AnalyzeReport>) {
+                Json j;
+                j["type"] = "AnalyzeReport";
+                j["tracks"] = v.tracks;
+                j["analyzed"] = v.analyzed;
+                j["failed"] = v.failed;
+                j["skipped"] = v.skipped;
+                return j;
             } else if constexpr (std::is_same_v<T, Playlists>) {
                 Json j;
                 j["type"] = "Playlists";
@@ -660,6 +668,18 @@ std::expected<Result, kanariv::utils::Error> resultFromJson(const Json& j) {
             if (j.contains("added") && j["added"].isNumber())
                 sr.added = j["added"].get<std::size_t>();
             return Result{std::move(sr)};
+        }
+        if (t == "AnalyzeReport") {
+            AnalyzeReport ar{};
+            if (j.contains("tracks") && j["tracks"].isNumber())
+                ar.tracks = j["tracks"].get<int64_t>();
+            if (j.contains("analyzed") && j["analyzed"].isNumber())
+                ar.analyzed = j["analyzed"].get<int64_t>();
+            if (j.contains("failed") && j["failed"].isNumber())
+                ar.failed = j["failed"].get<int64_t>();
+            if (j.contains("skipped") && j["skipped"].isNumber())
+                ar.skipped = j["skipped"].get<int64_t>();
+            return Result{std::move(ar)};
         }
         if (t == "Playlists") {
             Playlists pl{};

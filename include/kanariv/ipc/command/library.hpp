@@ -41,6 +41,30 @@ struct LibraryScan final {
 };
 
 /**
+ * @struct LibraryAnalyze
+ * @brief Measure ReplayGain 2.0 gains for a library's tracks.
+ * @ingroup kanariv_ipc
+ *
+ * @json_example {"type": "LibraryAnalyze", "reanalyze": false, "library_id": 1}
+ *
+ * @param reanalyze Re-measure tracks that already carry gains (default false).
+ * @param library_id Restrict to one library; omitted = every track.
+ * @return AnalyzeReport object with the pass counters.
+ * @details Decodes each track's audio, so the command carries the LongRunning
+ * transport policy. The pass is explicit: scans and playback never trigger it.
+ */
+struct LibraryAnalyze final {
+    /**
+     * @brief Re-measure tracks that already carry gains.
+     */
+    bool reanalyze{false};
+    /**
+     * @brief Restrict to one library; omitted = every track.
+     */
+    std::optional<int64_t> library_id{};
+};
+
+/**
  * @struct LibrarySearch
  * @brief Search the library using full-text search.
  * @ingroup kanariv_ipc

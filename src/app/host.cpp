@@ -11,6 +11,7 @@
 #include <format>
 #include <iostream>
 #include <kanariv/db/database.hpp>
+#include <kanariv/library/analyze.hpp>
 #include <kanariv/library/scan.hpp>
 #include <kanariv/service/service.hpp>
 #include <kanariv/utils/print.hpp>
@@ -36,6 +37,7 @@ AppResult App::Impl::runForeground(std::stop_token stop) {
     std::shared_ptr<kanariv::db::Database> database = std::move(db.value());
     auto storage = kanariv::db::makeStorage(database);
     storage.scanner = std::make_shared<kanariv::library::Scanner>(database);
+    storage.analyzer = std::make_shared<kanariv::library::Analyzer>(database);
     auto svc = kanariv::service::Service::create(scfg, std::move(storage));
     if (!svc) {
         return Outcome::fail(std::format("start failed: {} (db: {})", svc.error().message,

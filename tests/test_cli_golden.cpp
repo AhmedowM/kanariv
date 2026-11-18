@@ -483,6 +483,15 @@ TEST_CASE("cli daemon lifecycle", "[cli]") {
     REQUIRE(search.exitCode == 0);
     REQUIRE(contains(search.out, "1 track found:"));
     REQUIRE(contains(search.out, "song.mp3"));
+    // Analysis decodes each track. The dummy files cannot be decoded, which
+    // must be counted as failures, not abort the command or the daemon.
+    auto analyze = run({"library", "analyze"});
+    REQUIRE(analyze.exitCode == 0);
+    REQUIRE(contains(analyze.out, "ReplayGain: 0 analyzed"));
+    REQUIRE(contains(analyze.out, "2 failed"));
+    auto analyzeJson = run({"library", "analyze", "--json"});
+    REQUIRE(analyzeJson.exitCode == 0);
+    REQUIRE(contains(analyzeJson.out, "\"AnalyzeReport\""));
     auto add = run({"queue", "add", (music / "song.mp3").generic_string()});
     REQUIRE(add.exitCode == 0);
     auto ql = run({"queue", "list"});

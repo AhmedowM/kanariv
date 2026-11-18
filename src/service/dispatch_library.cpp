@@ -127,6 +127,23 @@ Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
 }
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
+Service::Impl::handle(const kanariv::ipc::LibraryAnalyze& cmd) {
+    // Analysis decodes audio, so the port is only populated by the composition
+    // root (kanariv::library::Analyzer); a bare backend reports the miswiring.
+    if (!storage_.analyzer) {
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::Internal,
+            "library analyze: no analyzer configured (start the daemon from the app)")};
+    }
+    auto report = storage_.analyzer->analyzeLibrary(
+        cmd.library_id.value_or(0), kanariv::contracts::LibraryAnalyzeOptions{cmd.reanalyze});
+    if (!report)
+        return std::unexpected{report.error()};
+    return Result{kanariv::ipc::AnalyzeReport{report->tracks, report->analyzed, report->failed,
+                                              report->skipped}};
+}
+
+std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::LibrarySearch& cmd) {
     auto tracks = storage_.library->searchTracks(cmd.query, cmd.limit);
     if (!tracks)

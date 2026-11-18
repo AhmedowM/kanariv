@@ -383,6 +383,14 @@ class KANARIV_API App {
     AppResult libraryScan(std::optional<std::string> path, bool fullHash);
 
     /**
+     * @brief Measures and stores ReplayGain 2.0 gains for the library.
+     * @ingroup kanariv_app
+     * @param reanalyze Re-measure tracks that already carry gains.
+     * @param libraryId Restrict to one library; nullopt = every track.
+     */
+    AppResult libraryAnalyze(bool reanalyze, std::optional<std::int64_t> libraryId);
+
+    /**
      * @brief Searches the library (filenames included).
      * @ingroup kanariv_app
      */

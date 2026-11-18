@@ -480,6 +480,9 @@ TEST_CASE("transport policy classifies long-running commands", "[client][c2]") {
     // A tree walk outlives even the batch budget.
     CHECK(ipc::transportPolicyFor(ipc::Command{ipc::LibraryScan{}}) ==
           TransportPolicy::LongRunning);
+    // Decoding every track to measure loudness is the same order of work.
+    CHECK(ipc::transportPolicyFor(ipc::Command{ipc::LibraryAnalyze{}}) ==
+          TransportPolicy::LongRunning);
 
     CHECK(ipc::transportDeadline(TransportPolicy::Interactive) == std::chrono::seconds{2});
     CHECK(ipc::transportDeadline(TransportPolicy::Batch) == std::chrono::minutes{5});

@@ -8,5 +8,6 @@ export module kanariv.library:analyze;
 export namespace kanariv::library {
 using ::kanariv::library::analyzeLibrary;
 using ::kanariv::library::AnalyzeOptions;
+using ::kanariv::library::Analyzer;
 using ::kanariv::library::AnalyzeReport;
 } // namespace kanariv::library

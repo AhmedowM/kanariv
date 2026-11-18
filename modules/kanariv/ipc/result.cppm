@@ -4,6 +4,7 @@ module;
 export module kanariv.ipc:result;
 
 export namespace kanariv::ipc {
+using ::kanariv::ipc::AnalyzeReport;
 using ::kanariv::ipc::Bookmarks;
 using ::kanariv::ipc::ConfigValue;
 using ::kanariv::ipc::ConfigValues;

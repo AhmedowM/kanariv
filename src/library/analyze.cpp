@@ -149,4 +149,17 @@ analyzeLibrary(kanariv::db::Database& db, int64_t libraryId, AnalyzeOptions opti
     return report;
 }
 
+Analyzer::Analyzer(std::shared_ptr<kanariv::db::Database> db) : db_(std::move(db)) {}
+
+std::expected<contracts::LibraryAnalyzeReport, kanariv::utils::Error>
+Analyzer::analyzeLibrary(int64_t libraryId, contracts::LibraryAnalyzeOptions options,
+                         std::function<void(int64_t, int64_t, std::string_view)> progress) {
+    auto report = kanariv::library::analyzeLibrary(
+        *db_, libraryId, AnalyzeOptions{options.reanalyze}, std::move(progress));
+    if (!report)
+        return std::unexpected{report.error()};
+    return contracts::LibraryAnalyzeReport{report->tracks, report->analyzed, report->failed,
+                                           report->skipped};
+}
+
 } // namespace kanariv::library

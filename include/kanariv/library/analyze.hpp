@@ -21,8 +21,10 @@
 
 #include <cstdint>
 #include <functional>
+#include <kanariv/contracts/library_analyze.hpp>
 #include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
+#include <memory>
 #include <string_view>
 
 namespace kanariv::db {
@@ -74,5 +76,38 @@ struct AnalyzeReport {
 KANARIV_API std::expected<AnalyzeReport, kanariv::utils::Error>
 analyzeLibrary(kanariv::db::Database& db, int64_t libraryId = 0, AnalyzeOptions options = {},
                std::function<void(int64_t, int64_t, std::string_view)> progress = {});
+
+/**
+ * @brief Analyzer over one open database, exposed through the daemon's port.
+ * @ingroup kanariv_library
+ * @details Implements `contracts::ILibraryAnalyzer` so the service can trigger
+ * a pass without linking this component. The adapter keeps the database alive
+ * for as long as it lives.
+ * @par Thread safety
+ * Thread-safe: the pass takes the database lock per group write. The caller
+ * must not hold the database lock across the call.
+ */
+class KANARIV_API Analyzer final : public contracts::ILibraryAnalyzer {
+  public:
+    /**
+     * @brief Creates an analyzer over an open database.
+     * @param db Database to read tracks from and write gains to; must not be null.
+     */
+    explicit Analyzer(std::shared_ptr<kanariv::db::Database> db);
+
+    /**
+     * @brief Measures one library's tracks (or all) and writes the gains.
+     * @param libraryId Library identifier, or 0 for every track.
+     * @param options Re-analysis switch.
+     * @param progress Optional callback `progress(done, total, path)`.
+     * @return Counters, or the store error when the track list cannot be read.
+     */
+    std::expected<contracts::LibraryAnalyzeReport, kanariv::utils::Error>
+    analyzeLibrary(int64_t libraryId, contracts::LibraryAnalyzeOptions options = {},
+                   std::function<void(int64_t, int64_t, std::string_view)> progress = {}) override;
+
+  private:
+    std::shared_ptr<kanariv::db::Database> db_;
+};
 
 } // namespace kanariv::library

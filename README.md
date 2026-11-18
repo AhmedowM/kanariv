@@ -209,6 +209,7 @@ After building with the `dev` intent:
 
 ```sh
 ./build/dev/kanariv library scan --path ~/Music
+./build/dev/kanariv library analyze        # measure ReplayGain 2.0 gains
 ./build/dev/kanariv library search "miles davis" --limit 10
 ./build/dev/kanariv queue add ~/Music/Kind\ of\ Blue/*.flac
 ./build/dev/kanariv play
@@ -269,7 +270,7 @@ Install exports provide these targets:
 | `kanariv::media` | Reading, decoding, metadata, library discovery and ReplayGain 2.0 analysis (`Source`, `PathSource`, `DescriptorSource`, `Reader`, `analyzeLoudness`) |
 | `kanariv::player` | Audio output and playback primitives |
 | `kanariv::db` | SQLite storage and FTS5 search |
-| `kanariv::library` | DB-coupled library scan and the explicit ReplayGain analysis pass (`Scanner`, `analyzeLibrary`) |
+| `kanariv::library` | DB-coupled library scan and the explicit ReplayGain analysis pass (`Scanner`, `Analyzer`, `analyzeLibrary`) |
 | `kanariv::engine` | Queue, shuffle, repeat, history, and playback state |
 | `kanariv::ipc` | Daemon protocol, framing, and configuration |
 | `kanariv::client` | Daemon client and output formatting |
