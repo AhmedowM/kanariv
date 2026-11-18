@@ -41,7 +41,7 @@
 
 namespace kanariv::service {
 
-using kanariv::engine::detail::ServiceAccess;
+using kanariv::engine::detail::EngineAccess;
 using namespace kanariv::ipc;
 
 std::optional<std::pair<std::vector<std::byte>, std::string>>
@@ -204,7 +204,7 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
     if (loaded) {
         resumePos = eng.position();
         wasPaused = (eng.state() == kanariv::types::PlaybackState::Paused);
-        if (auto s = ServiceAccess::suspendCurrentTrack(eng); !s)
+        if (auto s = EngineAccess::suspendCurrentTrack(eng); !s)
             return std::unexpected{s.error()};
     }
     auto wr = detail::writeFileTags(t.path, t);
@@ -215,17 +215,17 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
             logger_->warn("tag write failed file={} field={} err={}", t.path, cmd.field,
                           wr.error().message);
         if (loaded)
-            (void)ServiceAccess::resumeAfterTagWrite(eng, t, resumePos, wasPaused);
+            (void)EngineAccess::resumeAfterTagWrite(eng, t, resumePos, wasPaused);
         return std::unexpected{wr.error()};
     }
     auto reg = detail::reregisterTrackRow(*storage_.tracks, t);
     if (!reg) {
         if (loaded)
-            (void)ServiceAccess::resumeAfterTagWrite(eng, t, resumePos, wasPaused);
+            (void)EngineAccess::resumeAfterTagWrite(eng, t, resumePos, wasPaused);
         return std::unexpected{reg.error()};
     }
     if (loaded) {
-        if (auto r = ServiceAccess::resumeAfterTagWrite(eng, *reg, resumePos, wasPaused); !r)
+        if (auto r = EngineAccess::resumeAfterTagWrite(eng, *reg, resumePos, wasPaused); !r)
             return std::unexpected{r.error()};
     }
     if (logger_)
@@ -373,7 +373,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
         if (loaded) {
             resumePos = eng.position();
             wasPaused = (eng.state() == kanariv::types::PlaybackState::Paused);
-            if (auto s = ServiceAccess::suspendCurrentTrack(eng); !s) {
+            if (auto s = EngineAccess::suspendCurrentTrack(eng); !s) {
                 er.ok = false;
                 er.error = s.error().message;
                 out.results.push_back(std::move(er));
@@ -384,7 +384,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
         auto wr = detail::writeFileTags(t.path, t);
         if (!wr) {
             if (loaded)
-                (void)ServiceAccess::resumeAfterTagWrite(eng, t, resumePos, wasPaused);
+                (void)EngineAccess::resumeAfterTagWrite(eng, t, resumePos, wasPaused);
             er.ok = false;
             er.error = wr.error().message;
             out.results.push_back(std::move(er));
@@ -394,7 +394,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
         auto reg = detail::reregisterTrackRow(*storage_.tracks, t);
         if (!reg) {
             if (loaded)
-                (void)ServiceAccess::resumeAfterTagWrite(eng, t, resumePos, wasPaused);
+                (void)EngineAccess::resumeAfterTagWrite(eng, t, resumePos, wasPaused);
             er.ok = false;
             er.error = reg.error().message;
             out.results.push_back(std::move(er));
@@ -402,7 +402,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
             continue;
         }
         if (loaded) {
-            if (auto r = ServiceAccess::resumeAfterTagWrite(eng, *reg, resumePos, wasPaused); !r) {
+            if (auto r = EngineAccess::resumeAfterTagWrite(eng, *reg, resumePos, wasPaused); !r) {
                 er.ok = false;
                 er.error = r.error().message;
                 out.results.push_back(std::move(er));

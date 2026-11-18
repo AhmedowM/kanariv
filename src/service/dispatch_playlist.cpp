@@ -33,7 +33,7 @@
 
 namespace kanariv::service {
 
-using kanariv::engine::detail::ServiceAccess;
+using kanariv::engine::detail::EngineAccess;
 using namespace kanariv::ipc;
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
@@ -86,7 +86,7 @@ Service::Impl::handle(const kanariv::ipc::PlaylistLoad& cmd) {
         if (!er)
             return std::unexpected{er.error()};
     }
-    ServiceAccess::noteEnqueued(*engine_, qid, ids.size());
+    EngineAccess::noteEnqueued(*engine_, qid, ids.size());
     if (cmd.play) {
         auto sw = engine_->switchQueue(qid);
         if (!sw)

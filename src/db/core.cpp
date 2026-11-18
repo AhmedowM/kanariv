@@ -546,10 +546,6 @@ DatabaseAccess::queueDequeueLocked(Database& db, int64_t qid) {
     return db.impl_->queueDequeueLocked(qid);
 }
 
-std::optional<kanariv::types::EngineState> DatabaseAccess::legacyEngineState(Database& db) {
-    return db.legacyEngineState();
-}
-
 contracts::Storage makeStorage(std::shared_ptr<Database> db) {
     if (!db)
         return {};

@@ -64,13 +64,13 @@ namespace kanariv::engine {
 
 namespace detail {
 /**
- * @brief Service-only access to `Engine`'s private members.
+ * @brief Service-only access to `Engine`'s implementation.
  * @ingroup kanariv_engine
  * @details Declared here so `Engine` can name it as its single friend; the
  * definition lives in the internal header `src/engine/engine_access.hpp` and
  * is never installed.
  */
-struct ServiceAccess;
+struct EngineAccess;
 } // namespace detail
 
 /**
@@ -165,7 +165,7 @@ class KANARIV_API Engine final {
      * @details State machine:
      * - Paused -> Playing: resume (no dequeue), restart monotonic clock,
      *   start AudioOutput. Fails State when the paused track is suspended
-     *   for a tag write (no decoder to start; see resumeAfterTagWrite).
+     *   for a tag write (no decoder to start; the daemon reopens it).
      * - Playing -> Playing: restart current track (seek 0 under decodeMtx_,
      *   ring reset).
      * - Stopped -> Playing: queueNextLocked under queueMutex_ (bounded
@@ -216,7 +216,7 @@ class KANARIV_API Engine final {
      * @ingroup kanariv_engine
      * @return Success or Error State if not paused, or if the paused track is
      * suspended for a tag write (the decoder is closed; only
-     * resumeAfterTagWrite() may reopen it).
+     * the daemon's tag-write path may reopen it).
      * @par Thread safety
      * Thread-safe; notifies decode/monitor cvs.
      */
@@ -494,105 +494,9 @@ class KANARIV_API Engine final {
 
   private:
     // The members below are service-only: they are not part of the public
-    // playback API. `detail::ServiceAccess` (src/engine/engine_access.hpp) is
+    // playback API. `detail::EngineAccess` (src/engine/engine_access.hpp) is
     // the single friend that lets `src/service` reach them.
-    friend struct engine::detail::ServiceAccess;
-
-    /**
-     * @brief Suspends the loaded track and releases its file handles.
-     * @ingroup kanariv_engine
-     * @return Success or Error State/Busy.
-     * @retval StatusCode::State if no track is loaded.
-     * @retval StatusCode::Busy if the queue stays contended past the wait budget.
-     * @details Closes reader/decoder (releasing the audio file) without
-     * touching queue cursor, current track, or history mark. The file is
-     * free for out-of-band modification (tag write) until
-     * resumeAfterTagWrite(). State becomes Paused and the position is
-     * frozen; resume()/play()/seek() fail State until the reopen, so no
-     * caller can observe Playing with no audio.
-     * @par Thread safety
-     * Thread-safe; holds the queue lock across teardown (queue to
-     * decodeMtx_ order, matching the rest of the engine).
-     * @see resumeAfterTagWrite
-     */
-    ExpectedVoid suspendCurrentTrack();
-
-    /**
-     * @brief Reopens the suspended track at a captured position.
-     * @ingroup kanariv_engine
-     * @param t TrackRow row to open (usually re-registered after a tag write).
-     * @param pos Seconds to resume from (clamped to duration).
-     * @param wasPaused Restore Paused instead of Playing when true.
-     * @return Success or Error Busy/NotFound/Device/Internal.
-     * @details No-op success when the current track id no longer matches
-     * (the user moved on while suspended; the tag/db update already
-     * landed). Otherwise replays via doPlayTrack, restores position with
-     * seek, preserves the history mark (a tag edit is not a new listen),
-     * and restores the prior paused/playing state.
-     * @par Thread safety
-     * Thread-safe; holds the queue lock across reopen (same order as above).
-     * @see suspendCurrentTrack
-     */
-    ExpectedVoid resumeAfterTagWrite(const kanariv::types::TrackRow& t, double pos, bool wasPaused);
-
-    /** @brief Returns the unmute restore level (0,1]. @ingroup kanariv_engine
-     * @details Last non-zero level before mute (persisted pre_mute_volume).
-     * @return Restore level (atomic load, relaxed). */
-    float preMuteVolume() const noexcept;
-
-    /** @brief Sets the unmute restore level (sanitized, persisted on next save).
-     * @ingroup kanariv_engine
-     * @param g Level in (0,1]; anything else becomes 0.5.
-     * @details Callers follow with setVolume(), which persists via saveState().
-     * @par Thread safety
-     * Thread-safe; atomic store. */
-    ExpectedVoid setPreMuteVolume(float g);
-
-    /** @brief Returns the shuffle permutation (positions) for a queue.
-     * @ingroup kanariv_engine
-     * @param qid Queue id.
-     * @return Perm copy when shuffle applies to qid, else empty (insertion order).
-     * Empty on lock contention too (callers fall back to insertion order).
-     * @par Thread safety
-     * Thread-safe; try_lock on queueMutex_. */
-    std::vector<int64_t> shufflePermFor(int64_t qid);
-
-    /** @brief Extends the shuffle permutation after tracks were appended.
-     * @ingroup kanariv_engine
-     * @param qid Queue id the tracks were appended to.
-     * @param count Number of appended tracks (at the queue end).
-     * @details Best-effort: no-op unless shuffle applies to qid or the queue
-     * lock is contended (stale-perm fallbacks cover display and playback).
-     * @par Thread safety
-     * Thread-safe; try_lock on queueMutex_. */
-    void noteEnqueued(int64_t qid, std::size_t count);
-
-    /** @brief Remaps the shuffle permutation after a queue item moved.
-     * @ingroup kanariv_engine
-     * @param qid Queue id the item moved in.
-     * @param from Old zero-based queue index.
-     * @param to New zero-based queue index.
-     * @details Playback order is engine state: the service moves the row, then
-     * reports the structural change. The permutation already lists the same
-     * items in the same play order, so only the position indexes are remapped
-     * (an item keeps its place in the shuffled sequence). Best-effort: no-op
-     * unless shuffle applies to qid or the queue lock is contended.
-     * @par Thread safety
-     * Thread-safe; try_lock on queueMutex_. */
-    void noteQueueMoved(int64_t qid, std::size_t from, std::size_t to);
-
-    /**
-     * @brief Monitor auto-advance: like next(), but halts at queue end.
-     * @ingroup kanariv_engine
-     * @return Success or Error State/Busy/NotFound/Device.
-     * @details With repeat Off and the cursor past the end, stops playback
-     * (cursor stays parked so a later play wraps to the head) instead of
-     * wrapping like next(). Repeat One/All behave like next().
-     * @par Thread safety
-     * Thread-safe; same locking as next().
-     * @see next
-     */
-    ExpectedVoid autoNext();
+    friend struct engine::detail::EngineAccess;
 
     /**
      * @brief Constructs Engine with config defaults applied.

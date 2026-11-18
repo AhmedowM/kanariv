@@ -156,18 +156,6 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
     struct Impl;
     std::unique_ptr<Impl> impl_;
 
-    /**
-     * @brief Reads the pre-sidecar `engine_state` row once.
-     * @return Converted state, or `std::nullopt` when the table or row is absent
-     * or unreadable.
-     * @details Only used by `db::makePlaybackStateStore` to seed the JSON
-     * sidecar for a database written by an older release. Ids are converted to
-     * the stable identities `EngineState` stores (`queue_name`, `current_path`).
-     * @par Thread safety
-     * Thread-safe; takes the database read lock.
-     */
-    std::optional<kanariv::types::EngineState> legacyEngineState();
-
   public:
     // TrackRow CRUD and search
     /**

@@ -62,11 +62,11 @@ Database::queueTrackAt(int64_t qid, int64_t index) {
     return getTrack(trackId);
 }
 
-std::optional<kanariv::types::EngineState> Database::legacyEngineState() {
-    sqlite3* handle = DatabaseAccess::handle(*this);
+std::optional<kanariv::types::EngineState> DatabaseAccess::legacyEngineState(Database& db) {
+    sqlite3* handle = DatabaseAccess::handle(db);
     if (!handle)
         return std::nullopt;
-    std::unique_lock lock(DatabaseAccess::mutex(*this));
+    std::unique_lock lock(DatabaseAccess::mutex(db));
     sqlite3_stmt* raw = nullptr;
     const char* sql = "SELECT shuffle_enabled, repeat_mode, cursor_pos, current_track_id, volume, "
                       "shuffle_perm, active_queue_id, pre_mute_volume, position_ms "

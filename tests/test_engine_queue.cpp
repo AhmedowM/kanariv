@@ -886,7 +886,7 @@ TEST_CASE("queue move remaps the shuffle permutation", "[engine_queue][shuffle][
     REQUIRE(eng->attachStorage(kanariv::db::makeStorage(sharedDb)).has_value());
     REQUIRE(eng->setShuffle(true).has_value());
 
-    const auto permBefore = kanariv::engine::detail::ServiceAccess::shufflePermFor(*eng, 1);
+    const auto permBefore = kanariv::engine::detail::EngineAccess::shufflePermFor(*eng, 1);
     REQUIRE(permBefore.size() == tracks);
     constexpr std::size_t from = 3;
     constexpr std::size_t to = 0;
@@ -902,9 +902,9 @@ TEST_CASE("queue move remaps the shuffle permutation", "[engine_queue][shuffle][
     REQUIRE(neighbourSlot < permBefore.size());
 
     REQUIRE(sharedDb->queueMove(1, from, to).has_value());
-    kanariv::engine::detail::ServiceAccess::noteQueueMoved(*eng, 1, from, to);
+    kanariv::engine::detail::EngineAccess::noteQueueMoved(*eng, 1, from, to);
 
-    const auto permAfter = kanariv::engine::detail::ServiceAccess::shufflePermFor(*eng, 1);
+    const auto permAfter = kanariv::engine::detail::EngineAccess::shufflePermFor(*eng, 1);
     REQUIRE(permAfter.size() == permBefore.size());
     std::set<int64_t> seen(permAfter.begin(), permAfter.end());
     CHECK(seen.size() == tracks);

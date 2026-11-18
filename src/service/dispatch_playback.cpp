@@ -18,7 +18,7 @@
 
 namespace kanariv::service {
 
-using kanariv::engine::detail::ServiceAccess;
+using kanariv::engine::detail::EngineAccess;
 using namespace kanariv::ipc;
 using kanariv::ipc::Next;
 using kanariv::ipc::Pause;
@@ -223,12 +223,12 @@ Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
         target = lvl / 100.0f;
         if (target <= 0.0f) {
             if (cur > 0.0f) {
-                if (auto pr = ServiceAccess::setPreMuteVolume(*engine_, cur); !pr)
+                if (auto pr = EngineAccess::setPreMuteVolume(*engine_, cur); !pr)
                     return std::unexpected{pr.error()};
             }
             target = 0.0f;
         } else {
-            if (auto pr = ServiceAccess::setPreMuteVolume(*engine_, target); !pr)
+            if (auto pr = EngineAccess::setPreMuteVolume(*engine_, target); !pr)
                 return std::unexpected{pr.error()};
         }
         hasTarget = true;
@@ -244,12 +244,12 @@ Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
         target = np / 100.0f;
         if (target <= 0.0f) {
             if (cur > 0.0f) {
-                if (auto pr = ServiceAccess::setPreMuteVolume(*engine_, cur); !pr)
+                if (auto pr = EngineAccess::setPreMuteVolume(*engine_, cur); !pr)
                     return std::unexpected{pr.error()};
             }
             target = 0.0f;
         } else {
-            if (auto pr = ServiceAccess::setPreMuteVolume(*engine_, target); !pr)
+            if (auto pr = EngineAccess::setPreMuteVolume(*engine_, target); !pr)
                 return std::unexpected{pr.error()};
         }
         hasTarget = true;
@@ -257,14 +257,14 @@ Service::Impl::handle(const kanariv::ipc::VolumeSet& v) {
     if (v.mute.has_value()) {
         if (*v.mute) {
             if (cur > 0.0f) {
-                if (auto pr = ServiceAccess::setPreMuteVolume(*engine_, cur); !pr)
+                if (auto pr = EngineAccess::setPreMuteVolume(*engine_, cur); !pr)
                     return std::unexpected{pr.error()};
             }
             target = 0.0f;
             hasTarget = true;
         } else {
             if (cur == 0.0f && !hasTarget) {
-                target = ServiceAccess::preMuteVolume(*engine_);
+                target = EngineAccess::preMuteVolume(*engine_);
                 hasTarget = true;
             }
         }

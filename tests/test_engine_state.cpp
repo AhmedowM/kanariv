@@ -391,7 +391,7 @@ TEST_CASE("suspended track rejects resume play and seek", "[engine_state]") {
 
         // A tag write releases the file: transport keeps reporting Paused, the
         // position freezes at the live value, and nothing may claim playback.
-        REQUIRE(kanariv::engine::detail::ServiceAccess::suspendCurrentTrack(*eng).has_value());
+        REQUIRE(kanariv::engine::detail::EngineAccess::suspendCurrentTrack(*eng).has_value());
         REQUIRE(eng->state() == kanariv::types::PlaybackState::Paused);
         const double frozen = eng->position();
         REQUIRE(frozen >= before);
@@ -412,7 +412,7 @@ TEST_CASE("suspended track rejects resume play and seek", "[engine_state]") {
 
         // The reopen ends the suspension and restores playback at the captured
         // offset (the service's resumeAfterTagWrite path).
-        REQUIRE(kanariv::engine::detail::ServiceAccess::resumeAfterTagWrite(*eng, t, 2.0, false)
+        REQUIRE(kanariv::engine::detail::EngineAccess::resumeAfterTagWrite(*eng, t, 2.0, false)
                     .has_value());
         REQUIRE(eng->state() == kanariv::types::PlaybackState::Playing);
         REQUIRE(eng->position() >= 2.0);

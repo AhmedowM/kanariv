@@ -20,11 +20,11 @@
  */
 
 #include <array>
-#include <kanariv/db/database.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <db/queue.hpp>
 #include <expected>
+#include <kanariv/db/database.hpp>
 #include <mutex>
 #include <optional>
 #include <string_view>
@@ -73,10 +73,18 @@ struct KANARIV_API DatabaseAccess {
 
     // --- Playback state ---
     /**
-     * @brief Forwards to Database::legacyEngineState().
+     * @brief Reads the pre-sidecar `engine_state` row once.
      * @ingroup kanariv_db
      * @param db Database instance.
-     * @return Converted legacy state, or `std::nullopt` when absent.
+     * @return Converted legacy state, or `std::nullopt` when the table or row
+     * is absent or unreadable.
+     * @details Only used by `db::makePlaybackStateStore` to seed the JSON
+     * sidecar for a database written by an older release. Ids are converted to
+     * the stable identities `EngineState` stores (`queue_name`, `current_path`).
+     * Lives here rather than on `Database` so the installed class keeps no
+     * migration-only operation.
+     * @par Thread safety
+     * Thread-safe; takes the database read lock.
      */
     static std::optional<kanariv::types::EngineState> legacyEngineState(Database& db);
 
@@ -149,8 +157,8 @@ struct KANARIV_API DatabaseAccess {
      * @param l kanariv::types::Library with updated fields.
      * @return Success or Error InvalidArg/NotFound/Internal.
      */
-    static std::expected<void, kanariv::utils::Error> libraryUpdateLocked(Database& db,
-                                                                         const kanariv::types::Library& l);
+    static std::expected<void, kanariv::utils::Error>
+    libraryUpdateLocked(Database& db, const kanariv::types::Library& l);
 
     // --- Playlist / queue locked helpers ---
     /**

@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "engine_access.hpp"
 #include "engine_impl.hpp"
 
 namespace kanariv::engine {
@@ -54,29 +55,12 @@ Engine::ExpectedVoid Engine::seek(double seconds) {
     return impl_->seek(seconds);
 }
 
-Engine::ExpectedVoid Engine::suspendCurrentTrack() {
-    return impl_->suspendCurrentTrack();
-}
-
-Engine::ExpectedVoid Engine::resumeAfterTagWrite(const kanariv::types::TrackRow& t, double pos,
-                                                 bool wasPaused) {
-    return impl_->resumeAfterTagWrite(t, pos, wasPaused);
-}
-
 Engine::ExpectedVoid Engine::setVolume(float g) {
     return impl_->setVolume(g);
 }
 
 float Engine::volume() const noexcept {
     return impl_->volume();
-}
-
-float Engine::preMuteVolume() const noexcept {
-    return impl_->preMuteVolume();
-}
-
-Engine::ExpectedVoid Engine::setPreMuteVolume(float g) {
-    return impl_->setPreMuteVolume(g);
 }
 
 kanariv::types::PlaybackState Engine::state() const noexcept {
@@ -97,18 +81,6 @@ int64_t Engine::currentTrackId() const noexcept {
 
 bool Engine::shuffle() const noexcept {
     return impl_->shuffle();
-}
-
-std::vector<int64_t> Engine::shufflePermFor(int64_t qid) {
-    return impl_->shufflePermFor(qid);
-}
-
-void Engine::noteEnqueued(int64_t qid, std::size_t count) {
-    impl_->noteEnqueued(qid, count);
-}
-
-void Engine::noteQueueMoved(int64_t qid, std::size_t from, std::size_t to) {
-    impl_->noteQueueMoved(qid, from, to);
 }
 
 kanariv::types::RepeatMode Engine::repeat() const noexcept {
@@ -150,10 +122,6 @@ Engine::ExpectedVoid Engine::switchQueue(int64_t qid) {
 
 Engine::ExpectedVoid Engine::next() {
     return impl_->next();
-}
-
-Engine::ExpectedVoid Engine::autoNext() {
-    return impl_->autoNext();
 }
 
 Engine::ExpectedVoid Engine::prev() {
@@ -268,6 +236,38 @@ std::optional<kanariv::utils::Error> Engine::Impl::init() {
 
 bool Engine::Impl::hasDb() const noexcept {
     return storage_.complete() && storage_.queues->isOpen();
+}
+
+// EngineAccess forwarders -- defined here where Impl is complete.
+Engine::ExpectedVoid detail::EngineAccess::suspendCurrentTrack(Engine& eng) {
+    return eng.impl_->suspendCurrentTrack();
+}
+
+Engine::ExpectedVoid detail::EngineAccess::resumeAfterTagWrite(Engine& eng,
+                                                               const kanariv::types::TrackRow& t,
+                                                               double pos, bool wasPaused) {
+    return eng.impl_->resumeAfterTagWrite(t, pos, wasPaused);
+}
+
+float detail::EngineAccess::preMuteVolume(const Engine& eng) noexcept {
+    return eng.impl_->preMuteVolume();
+}
+
+Engine::ExpectedVoid detail::EngineAccess::setPreMuteVolume(Engine& eng, float g) {
+    return eng.impl_->setPreMuteVolume(g);
+}
+
+std::vector<int64_t> detail::EngineAccess::shufflePermFor(Engine& eng, int64_t qid) {
+    return eng.impl_->shufflePermFor(qid);
+}
+
+void detail::EngineAccess::noteEnqueued(Engine& eng, int64_t qid, std::size_t count) {
+    eng.impl_->noteEnqueued(qid, count);
+}
+
+void detail::EngineAccess::noteQueueMoved(Engine& eng, int64_t qid, std::size_t from,
+                                          std::size_t to) {
+    eng.impl_->noteQueueMoved(qid, from, to);
 }
 
 } // namespace kanariv::engine

@@ -215,7 +215,7 @@ double durationFromDecoder(const std::filesystem::path& path) noexcept {
 
 } // namespace detail
 
-using kanariv::engine::detail::ServiceAccess;
+using kanariv::engine::detail::EngineAccess;
 using namespace kanariv::ipc;
 using kanariv::ipc::QueueAdd;
 using kanariv::ipc::QueueClear;
@@ -247,7 +247,7 @@ Service::Impl::handle(const kanariv::ipc::QueueList& ql) {
         // Playback (shuffle) order: perm holds queue positions. A stale perm
         // (queue mutated after shuffle) contributes its valid entries first;
         // anything missing follows in insertion order.
-        auto perm = ServiceAccess::shufflePermFor(*engine_, qid);
+        auto perm = EngineAccess::shufflePermFor(*engine_, qid);
         if (!perm.empty()) {
             std::vector<kanariv::types::TrackRow> ordered;
             ordered.reserve(tracks.size());
@@ -354,7 +354,7 @@ Service::Impl::handle(const kanariv::ipc::PlayFiles& cmd) {
     auto er = detail::enqueueInChunks(*storage_.queues, *qid, ids);
     if (!er)
         return std::unexpected{er.error()};
-    ServiceAccess::noteEnqueued(*engine_, *qid, ids.size());
+    EngineAccess::noteEnqueued(*engine_, *qid, ids.size());
     // Stop first: play() while playing restarts the current track instead
     // of starting the new queue.
     auto stp = engine_->stop();
@@ -423,7 +423,7 @@ Service::Impl::handle(const kanariv::ipc::QueueAdd& qa) {
         auto er = detail::enqueueInChunks(*storage_.queues, qid, fresh);
         if (!er)
             return std::unexpected{er.error()};
-        ServiceAccess::noteEnqueued(*engine_, qid, fresh.size());
+        EngineAccess::noteEnqueued(*engine_, qid, fresh.size());
         noteStateChanged();
     }
     return Result{std::move(report)};
@@ -494,10 +494,10 @@ Service::Impl::handle(const kanariv::ipc::QueueAddBatch& qb) {
             }
             if (landedCount == 0)
                 return std::unexpected{er.error()};
-            ServiceAccess::noteEnqueued(*engine_, qid, landedCount);
+            EngineAccess::noteEnqueued(*engine_, qid, landedCount);
             noteStateChanged();
         } else {
-            ServiceAccess::noteEnqueued(*engine_, qid, fresh.size());
+            EngineAccess::noteEnqueued(*engine_, qid, fresh.size());
             noteStateChanged();
         }
     }
@@ -607,7 +607,7 @@ Service::Impl::handle(const kanariv::ipc::QueueMove& qm) {
         return std::unexpected{moved.error()};
     // Playback order is engine state: the row moved, so let the engine remap
     // its permutation before the client reads the playback order back.
-    ServiceAccess::noteQueueMoved(*engine_, qid, qm.from, qm.to);
+    EngineAccess::noteQueueMoved(*engine_, qid, qm.from, qm.to);
     auto tracks = storage_.queues->tracksForQueue(qid);
     if (!tracks)
         return std::unexpected{tracks.error()};

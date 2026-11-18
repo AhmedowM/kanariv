@@ -2,112 +2,102 @@
 
 /**
  * @file engine_access.hpp
- * @brief Single friendship surface for `Engine`'s service-only members.
+ * @brief Single friendship surface for `Engine`'s service-only operations.
  * @ingroup kanariv_engine
- * @details `Engine` keeps `suspendCurrentTrack`, `resumeAfterTagWrite`,
- * `preMuteVolume`, `setPreMuteVolume`, `shufflePermFor` and `noteEnqueued`
- * private: they exist for the daemon's tag-write and queue bookkeeping, not
- * for the public playback API. This struct is the sole `friend` of `Engine`
- * and exposes static forwarders so `src/service` can reach those members
- * without befriending individual functions or classes.
+ * @details The tag-write and queue bookkeeping entry points stay off the
+ * public class: they exist for the daemon, not for playback clients.
+ * `EngineAccess` is the sole `friend` of `Engine` and reaches its `Impl`
+ * directly, so none of those operations appear in the installed header.
  *
- * Every forwarder only delegates; the locking contract stays with `Engine`.
+ * The forwarders are defined out-of-line in the engine component because the
+ * return values must cross the DLL boundary in shared builds where
+ * `Engine::Impl` is not exported. Every forwarder delegates one-for-one; the
+ * locking contract stays with `Engine::Impl`.
  *
  * Internal header: lives in `src/`, not installed.
  */
 
-#include <kanariv/engine/engine.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/engine/engine.hpp>
 #include <vector>
 
 namespace kanariv::engine::detail {
 
 /**
- * @brief Static forwarders to the private members of `Engine`.
+ * @brief Static forwarders to the service-only operations of `Engine`.
  * @ingroup kanariv_engine
  * @details Sole friend of `Engine`. Each function forwards to the matching
- * private member one-for-one.
+ * `Engine::Impl` member one-for-one.
  */
-struct ServiceAccess {
+struct EngineAccess {
     /**
-     * @brief Forwards to Engine::suspendCurrentTrack().
+     * @brief Suspends the loaded track and releases its file handles.
      * @ingroup kanariv_engine
      * @param eng Engine instance.
      * @return Success or Error State/Busy.
+     * @see Engine::Impl::suspendCurrentTrack
      */
-    static Engine::ExpectedVoid suspendCurrentTrack(Engine& eng) {
-        return eng.suspendCurrentTrack();
-    }
+    KANARIV_API static Engine::ExpectedVoid suspendCurrentTrack(Engine& eng);
 
     /**
-     * @brief Forwards to Engine::resumeAfterTagWrite().
+     * @brief Reopens the suspended track at a captured position.
      * @ingroup kanariv_engine
      * @param eng Engine instance.
      * @param t TrackRow row to open (usually re-registered after a tag write).
      * @param pos Seconds to resume from (clamped to duration).
      * @param wasPaused Restore Paused instead of Playing when true.
      * @return Success or Error Busy/NotFound/Device/Internal.
+     * @see Engine::Impl::resumeAfterTagWrite
      */
-    static Engine::ExpectedVoid resumeAfterTagWrite(Engine& eng, const kanariv::types::TrackRow& t,
-                                                    double pos, bool wasPaused) {
-        return eng.resumeAfterTagWrite(t, pos, wasPaused);
-    }
+    KANARIV_API static Engine::ExpectedVoid
+    resumeAfterTagWrite(Engine& eng, const kanariv::types::TrackRow& t, double pos, bool wasPaused);
 
     /**
-     * @brief Forwards to Engine::preMuteVolume().
+     * @brief Returns the unmute restore level.
      * @ingroup kanariv_engine
      * @param eng Engine instance.
-     * @return Restore level (atomic load, relaxed).
+     * @return Last non-zero level before mute, in (0,1].
      */
-    static float preMuteVolume(Engine& eng) noexcept {
-        return eng.preMuteVolume();
-    }
+    KANARIV_API static float preMuteVolume(const Engine& eng) noexcept;
 
     /**
-     * @brief Forwards to Engine::setPreMuteVolume().
+     * @brief Sets the unmute restore level (sanitized; persisted on next save).
      * @ingroup kanariv_engine
      * @param eng Engine instance.
      * @param g Level in (0,1]; anything else becomes 0.5.
-     * @return Success (always).
+     * @return Success or Error.
      */
-    static Engine::ExpectedVoid setPreMuteVolume(Engine& eng, float g) {
-        return eng.setPreMuteVolume(g);
-    }
+    KANARIV_API static Engine::ExpectedVoid setPreMuteVolume(Engine& eng, float g);
 
     /**
-     * @brief Forwards to Engine::shufflePermFor().
+     * @brief Returns the shuffle permutation (positions) for a queue.
      * @ingroup kanariv_engine
      * @param eng Engine instance.
      * @param qid Queue id.
      * @return Perm copy when shuffle applies to qid, else empty.
      */
-    static std::vector<int64_t> shufflePermFor(Engine& eng, int64_t qid) {
-        return eng.shufflePermFor(qid);
-    }
+    KANARIV_API static std::vector<int64_t> shufflePermFor(Engine& eng, int64_t qid);
 
     /**
-     * @brief Forwards to Engine::noteEnqueued().
+     * @brief Extends the shuffle permutation after tracks were appended.
      * @ingroup kanariv_engine
      * @param eng Engine instance.
      * @param qid Queue id the tracks were appended to.
      * @param count Number of appended tracks (at the queue end).
      */
-    static void noteEnqueued(Engine& eng, int64_t qid, std::size_t count) {
-        eng.noteEnqueued(qid, count);
-    }
+    KANARIV_API static void noteEnqueued(Engine& eng, int64_t qid, std::size_t count);
 
     /**
-     * @brief Forwards to Engine::noteQueueMoved().
+     * @brief Remaps the shuffle permutation after a queue item moved.
      * @ingroup kanariv_engine
      * @param eng Engine instance.
      * @param qid Queue id the item moved in.
      * @param from Old zero-based queue index.
      * @param to New zero-based queue index.
      */
-    static void noteQueueMoved(Engine& eng, int64_t qid, std::size_t from, std::size_t to) {
-        eng.noteQueueMoved(qid, from, to);
-    }
+    KANARIV_API static void noteQueueMoved(Engine& eng, int64_t qid, std::size_t from,
+                                           std::size_t to);
 };
 
 } // namespace kanariv::engine::detail

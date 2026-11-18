@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   No shipped client read it; clients use `StatusReq` for a snapshot and
   `StatusWait` to block until the next real state change. The daemon no longer
   links `librt` on Linux.
+- Service-only operations are gone from the installed class headers:
+  `Engine::suspendCurrentTrack|resumeAfterTagWrite|preMuteVolume|
+  setPreMuteVolume|shufflePermFor|noteEnqueued|noteQueueMoved|autoNext` and
+  `Database::legacyEngineState`. The daemon reaches them through
+  `engine::detail::EngineAccess` / `db::DatabaseAccess` in `src/`, so the
+  shared-library ABI no longer exports them as class members.
 
 ## [v2.0.0] - 2026-11-10
 
