@@ -13,7 +13,7 @@
 #include <app/paths_internal.hpp>
 #include <kanariv/app/app.hpp>
 #include <kanariv/app/paths.hpp>
-#include <kanariv/client/client.hpp>
+#include <kanariv/client/output_formatter.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
@@ -104,7 +104,7 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
         kanariv::ipc::Command acmd{kanariv::ipc::LibraryAdd{.path = f, .recursive = false}};
         auto ares = impl_->sendRaw(acmd);
         if (!ares) {
-            detail::renderErrorInto(rep.err, ares.error());
+            detail::appendBlock(rep.err, kanariv::client::formatError(ares.error()));
             hardFail = true;
             continue;
         }
@@ -113,13 +113,13 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
         kanariv::ipc::Command scmd{kanariv::ipc::LibrarySearch{.query = fn, .limit = 50}};
         auto sres = impl_->sendRaw(scmd);
         if (!sres) {
-            detail::renderErrorInto(rep.err, sres.error());
+            detail::appendBlock(rep.err, kanariv::client::formatError(sres.error()));
             hardFail = true;
             continue;
         }
         auto* sr = std::get_if<kanariv::ipc::SearchResults>(&*sres);
         if (!sr) {
-            detail::renderInto(rep.out, *sres);
+            detail::appendBlock(rep.out, kanariv::client::formatResult(*sres));
             hardFail = true;
             continue;
         }
@@ -147,7 +147,7 @@ BatchResult App::playlistAdd(std::int64_t pid, const std::vector<std::string>& i
                 detail::emitLine(rep.err, std::format("already on playlist: track {}", tid));
                 continue;
             }
-            detail::renderErrorInto(rep.err, e);
+            detail::appendBlock(rep.err, kanariv::client::formatError(e));
             hardFail = true;
             continue;
         }

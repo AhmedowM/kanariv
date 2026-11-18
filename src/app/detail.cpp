@@ -2,8 +2,9 @@
  * @file detail.cpp
  * @brief App-internal reporting helpers (NOT public API).
  * @details Builds the human-readable text for CLI reports directly from
- * IPC results. Result presentation itself is `kanariv::client::OutputFormatter`,
- * the same renderer the CLI uses, so both paths stay byte-identical.
+ * IPC results. Result text itself is `kanariv::client::formatResult` /
+ * `formatError`, the same renderer the CLI uses, so both paths stay
+ * byte-identical; these helpers only join lines into a blob.
  */
 
 #include <algorithm>
@@ -16,7 +17,6 @@
 #include <kanariv/ipc/protocol.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
-#include <sstream>
 #include <string>
 
 namespace kanariv::app::detail {
@@ -58,16 +58,10 @@ void appendBlock(std::string& blob, const std::string& text) {
     }
 }
 
-void renderInto(std::string& blob, const kanariv::ipc::Result& res) {
-    std::ostringstream os;
-    kanariv::client::OutputFormatter{}.print(res, os);
-    appendBlock(blob, os.str());
-}
-
 int printAddReportText(const kanariv::ipc::Result& res, std::string& out, std::string& err) {
     auto* rep = std::get_if<kanariv::ipc::QueueAddReport>(&res);
     if (!rep) {
-        renderInto(out, res);
+        appendBlock(out, kanariv::client::formatResult(res));
         return 0;
     }
     int added = 0;
@@ -88,7 +82,7 @@ int printAddReportText(const kanariv::ipc::Result& res, std::string& out, std::s
 int printRemoveReportText(const kanariv::ipc::Result& res, std::string& out, std::string& err) {
     auto* rep = std::get_if<kanariv::ipc::QueueRemoveReport>(&res);
     if (!rep) {
-        renderInto(out, res);
+        appendBlock(out, kanariv::client::formatResult(res));
         return 0;
     }
     int removed = 0;
@@ -111,12 +105,6 @@ void countLineText(int added, std::string& out) {
         emitLine(out, "1 track added");
     else
         emitLine(out, std::format("{} tracks added", added));
-}
-
-void renderErrorInto(std::string& err, const kanariv::utils::Error& e) {
-    std::ostringstream os;
-    kanariv::client::OutputFormatter{}.printError(e, os);
-    appendBlock(err, os.str());
 }
 
 } // namespace kanariv::app::detail

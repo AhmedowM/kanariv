@@ -42,13 +42,10 @@ void emitLine(std::string& blob, const std::string& line);
 
 /**
  * @brief Appends formatter-style block text, preserving interior blanks.
+ * @details Result and error text comes from `kanariv::client::formatResult` /
+ * `formatError`; this helper only joins it into an accumulated blob.
  */
 void appendBlock(std::string& blob, const std::string& text);
-
-/**
- * @brief Renders a result with `kanariv::client::OutputFormatter` into a blob.
- */
-void renderInto(std::string& blob, const kanariv::ipc::Result& res);
 
 /**
  * @brief Builds per-item lines for a QueueAddReport result.
@@ -68,13 +65,6 @@ int printRemoveReportText(const kanariv::ipc::Result& res, std::string& out, std
  * @brief Builds the "N track(s) added" total line.
  */
 void countLineText(int added, std::string& out);
-
-/**
- * @brief Renders an error into a blob.
- * @details Shared by batch loops and the shell error path through the one
- * `OutputFormatter::printError`, so both render byte-identical text.
- */
-KANARIV_API void renderErrorInto(std::string& err, const kanariv::utils::Error& e);
 
 /**
  * @brief Canonical error for an unreachable daemon, including the start hint.

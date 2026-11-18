@@ -49,7 +49,7 @@ std::string statusLine(const kanariv::ipc::Status& st) {
 }
 
 int renderError(const kanariv::utils::Error& e) {
-    // Same renderer as app::detail::renderErrorInto, so both paths emit the
+    // Same renderer as kanariv::client::formatError, so both paths emit the
     // exact same "Error: <Code>: <message>" bytes.
     kanariv::client::OutputFormatter{}.printError(e, std::cerr);
     return exitCodeForError(e);

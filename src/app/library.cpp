@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <format>
 #include <kanariv/app/app.hpp>
+#include <kanariv/client/output_formatter.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/utils/error.hpp>
@@ -58,7 +59,7 @@ BatchResult App::libraryStats(std::optional<int> topTracks, std::optional<int> t
     if (!statsRes)
         return std::unexpected{statsRes.error()};
     rep.json = std::move(*statsRes);
-    detail::renderInto(rep.out, *rep.json);
+    detail::appendBlock(rep.out, kanariv::client::formatResult(*rep.json));
     if (!queues.empty() || !playlists.empty())
         rep.out += '\n';
     if (!queues.empty()) {
@@ -68,7 +69,7 @@ BatchResult App::libraryStats(std::optional<int> topTracks, std::optional<int> t
             return std::unexpected{res.error()};
         auto* qs = std::get_if<kanariv::ipc::Queues>(&*res);
         if (!qs) {
-            detail::renderInto(rep.out, *res);
+            detail::appendBlock(rep.out, kanariv::client::formatResult(*res));
             return rep;
         }
         bool all = false;
@@ -79,7 +80,7 @@ BatchResult App::libraryStats(std::optional<int> topTracks, std::optional<int> t
             }
         }
         if (all) {
-            detail::renderInto(rep.out, *res);
+            detail::appendBlock(rep.out, kanariv::client::formatResult(*res));
         } else {
             for (auto& q : queues) {
                 const auto id = kanariv::utils::parseId(q);
@@ -108,7 +109,7 @@ BatchResult App::libraryStats(std::optional<int> topTracks, std::optional<int> t
             return std::unexpected{res.error()};
         auto* pd = std::get_if<kanariv::ipc::PlaylistData>(&*res);
         if (!pd) {
-            detail::renderInto(rep.out, *res);
+            detail::appendBlock(rep.out, kanariv::client::formatResult(*res));
             continue;
         }
         std::string name;

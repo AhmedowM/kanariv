@@ -21,7 +21,7 @@
 #include <format>
 #include <kanariv/app/app.hpp>
 #include <kanariv/app/paths.hpp>
-#include <kanariv/client/client.hpp>
+#include <kanariv/client/output_formatter.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/types/engine.hpp>
@@ -136,7 +136,7 @@ BatchResult App::queueAdd(const std::vector<std::string>& paths, const std::stri
             return std::unexpected{tres.error()};
         auto* pd = std::get_if<kanariv::ipc::PlaylistData>(&*tres);
         if (!pd) {
-            detail::renderInto(rep.out, *tres);
+            detail::appendBlock(rep.out, kanariv::client::formatResult(*tres));
             rep.exitCode = 0;
             return rep;
         }
@@ -243,7 +243,7 @@ BatchResult App::queueRemove(const std::string& id, const std::string& pos,
                 all.push_back(RemTarget{.pos = i, .track = qt->tracks[i]});
         } else {
             BatchReport rep;
-            detail::renderInto(rep.out, *ps);
+            detail::appendBlock(rep.out, kanariv::client::formatResult(*ps));
             rep.exitCode = 0;
             return rep;
         }

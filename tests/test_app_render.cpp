@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <kanariv/app/app.hpp>
+#include <kanariv/client/output_formatter.hpp>
 #include <kanariv/config.hpp>
 #include <kanariv/ipc/result.hpp>
 #include <kanariv/types/record.hpp>
@@ -48,7 +49,7 @@ TEST_CASE("library stats summary when no top report is requested", "[app_render]
     v.playlists = 2;
 
     std::string out;
-    kanariv::app::detail::renderInto(out, kanariv::ipc::Result{v});
+    kanariv::app::detail::appendBlock(out, kanariv::client::formatResult(kanariv::ipc::Result{v}));
 
     REQUIRE(out.find("Tracks: 3 Queues: 1 Playlists: 2") != std::string::npos);
     REQUIRE(out.find("Library Stats (Detailed):") == std::string::npos);
@@ -71,7 +72,7 @@ TEST_CASE("library stats renders every requested top report", "[app_render]") {
     v.top_artists->push_back(entity("Artist X", 3, 9));
 
     std::string out;
-    kanariv::app::detail::renderInto(out, kanariv::ipc::Result{v});
+    kanariv::app::detail::appendBlock(out, kanariv::client::formatResult(kanariv::ipc::Result{v}));
 
     REQUIRE(out.find("Library Stats (Detailed):") != std::string::npos);
     REQUIRE(out.find("Top Albums by Plays:") != std::string::npos);
@@ -104,7 +105,7 @@ TEST_CASE("daemon-down error renders the start hint", "[app_render]") {
     REQUIRE(e.code == kanariv::utils::StatusCode::State);
 
     std::string err;
-    kanariv::app::detail::renderErrorInto(err, e);
+    kanariv::app::detail::appendBlock(err, kanariv::client::formatError(e));
 
     REQUIRE(err == "Error: State daemon not running\n"
                    "hint: run `kanariv start` to start the daemon");

@@ -12,6 +12,7 @@
 #include <kanariv/utils/json.hpp>
 #include <kanariv/utils/print.hpp>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -566,6 +567,18 @@ void OutputFormatter::print(const kanariv::ipc::Result& r, std::ostream& os) con
 
 void OutputFormatter::printError(const kanariv::utils::Error& e, std::ostream& err) const {
     kanariv::println(err, "Error: {} {}", kanariv::utils::toString(e.code), e.message);
+}
+
+std::string formatResult(const kanariv::ipc::Result& r) {
+    std::ostringstream os;
+    OutputFormatter{}.print(r, os);
+    return os.str();
+}
+
+std::string formatError(const kanariv::utils::Error& e) {
+    std::ostringstream os;
+    OutputFormatter{}.printError(e, os);
+    return os.str();
 }
 
 } // namespace kanariv::client

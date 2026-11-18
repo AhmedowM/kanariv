@@ -94,4 +94,24 @@ class KANARIV_API OutputFormatter final {
     void printError(const kanariv::utils::Error& e, std::ostream& err) const;
 };
 
+/**
+ * @brief Renders a result with the default human formatter into a string.
+ * @ingroup kanariv_client
+ * @param r Result variant to format.
+ * @return The formatter's text, exactly as `OutputFormatter{}.print(r, os)`
+ * would write it (including its trailing newline).
+ * @details For report builders that accumulate text in a blob before
+ * printing. Rendering itself stays in this module; callers only join lines.
+ */
+KANARIV_API std::string formatResult(const kanariv::ipc::Result& r);
+
+/**
+ * @brief Renders an error with the default formatter into a string.
+ * @ingroup kanariv_client
+ * @param e Error to format.
+ * @return `Error: <Code>[: message]` (plus any multi-line detail), exactly as
+ * `OutputFormatter{}.printError(e, os)` would write it.
+ */
+KANARIV_API std::string formatError(const kanariv::utils::Error& e);
+
 } // namespace kanariv::client
