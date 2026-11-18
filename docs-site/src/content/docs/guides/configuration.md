@@ -81,8 +81,9 @@ client derives the old name and will report the daemon as not running. Setting
 
 ## ServiceConfig (C++ API)
 
-For in-process service hosts, `kanariv::service::ServiceConfig` extends
-`kanariv::config::Config`:
+For in-process service hosts, `kanariv::service::ServiceConfig` composes
+`kanariv::config::Config` (reachable as `cfg.base`) and adds the service's own
+switches:
 
 ```cpp
 kanariv::service::ServiceConfig cfg;

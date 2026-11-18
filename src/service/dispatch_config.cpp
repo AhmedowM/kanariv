@@ -47,7 +47,7 @@ using kanariv::ipc::Shutdown;
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::ConfigGet& cmd) {
-    auto p = detail::resolveConfigPath(config_.configPath, config_.dbPath);
+    auto p = detail::resolveConfigPath(config_.base.configPath, config_.base.dbPath);
     auto vRes = kanariv::config::detail::configGetRaw(p, cmd.key);
     if (!vRes)
         return std::unexpected{vRes.error()};
@@ -56,7 +56,7 @@ Service::Impl::handle(const kanariv::ipc::ConfigGet& cmd) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::ConfigSet& cmd) {
-    auto p = detail::resolveConfigPath(config_.configPath, config_.dbPath);
+    auto p = detail::resolveConfigPath(config_.base.configPath, config_.base.dbPath);
     // logLevel applies live: validate first (garbage is rejected, never
     // stored), canonicalize names to ints on write, then setLevel.
     bool isLevel = (cmd.key == "logLevel" || cmd.key == "log_level");
@@ -86,7 +86,7 @@ Service::Impl::handle(const kanariv::ipc::ConfigSet& cmd) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::ConfigList&) {
-    auto p = detail::resolveConfigPath(config_.configPath, config_.dbPath);
+    auto p = detail::resolveConfigPath(config_.base.configPath, config_.base.dbPath);
     auto lRes = kanariv::config::detail::configListRaw(p);
     if (!lRes)
         return std::unexpected{lRes.error()};
@@ -99,7 +99,7 @@ Service::Impl::handle(const kanariv::ipc::ConfigList&) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::ConfigExport& cmd) {
-    auto src = detail::resolveConfigPath(config_.configPath, config_.dbPath);
+    auto src = detail::resolveConfigPath(config_.base.configPath, config_.base.dbPath);
     std::filesystem::path dst{cmd.path};
     std::error_code ec;
     if (!std::filesystem::exists(src, ec)) {
@@ -116,7 +116,7 @@ Service::Impl::handle(const kanariv::ipc::ConfigExport& cmd) {
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::ConfigImport& cmd) {
     std::filesystem::path src{cmd.path};
-    auto dst = detail::resolveConfigPath(config_.configPath, config_.dbPath);
+    auto dst = detail::resolveConfigPath(config_.base.configPath, config_.base.dbPath);
     std::error_code ec;
     if (!std::filesystem::exists(src, ec)) {
         return std::unexpected{
@@ -173,7 +173,7 @@ Service::Impl::handle(const kanariv::ipc::ConfigImport& cmd) {
 
 std::expected<kanariv::ipc::Result, kanariv::utils::Error>
 Service::Impl::handle(const kanariv::ipc::ConfigReset& cmd) {
-    auto p = detail::resolveConfigPath(config_.configPath, config_.dbPath);
+    auto p = detail::resolveConfigPath(config_.base.configPath, config_.base.dbPath);
     if (cmd.key.has_value() && !cmd.key->empty()) {
         auto r = kanariv::config::detail::configDeleteRaw(p, *cmd.key);
         if (!r)
@@ -238,7 +238,7 @@ Service::Impl::handle(const kanariv::ipc::DeviceSet& cmd) {
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
                                                         "device not found: " + cmd.id)};
     }
-    auto cfgPath = detail::resolveConfigPath(config_.configPath, config_.dbPath);
+    auto cfgPath = detail::resolveConfigPath(config_.base.configPath, config_.base.dbPath);
     if (auto res = kanariv::config::detail::configSetRaw(cfgPath, "device", device->id); !res)
         return std::unexpected{res.error()};
     if (auto res = kanariv::config::detail::configSetRaw(cfgPath, "deviceName", device->name);
@@ -257,7 +257,7 @@ Service::Impl::handle(const kanariv::ipc::DeviceTest& cmd) {
         testId = *cmd.id;
     } else {
         // Use current config device
-        auto cfgPath = detail::resolveConfigPath(config_.configPath, config_.dbPath);
+        auto cfgPath = detail::resolveConfigPath(config_.base.configPath, config_.base.dbPath);
         auto devRes = kanariv::config::detail::configGetRaw(cfgPath, "device");
         if (devRes) {
             testId = *devRes;

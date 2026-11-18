@@ -15,7 +15,6 @@ using ::kanariv::contracts::IStore;
 using ::kanariv::contracts::ITrackStore;
 using ::kanariv::contracts::LibraryAnalyzeOptions;
 using ::kanariv::contracts::LibraryAnalyzeReport;
-using ::kanariv::contracts::NullHistoryStore;
 using ::kanariv::contracts::ScanMode;
 using ::kanariv::contracts::Storage;
 } // namespace kanariv::contracts

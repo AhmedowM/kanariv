@@ -81,7 +81,9 @@ cannot truncate the live config file.
 
 ## ServiceConfig (in-process hosts)
 
-`kanariv::service::ServiceConfig` extends `Config` for in-process use:
+`kanariv::service::ServiceConfig` composes `Config` and adds the service's own
+switches (`inProcess`, `logToStderr`, `runtime`); user-facing settings are
+reached through `base` (`cfg.base.dbPath`, `cfg.base.logLevel`, ...):
 
 ```cpp
 kanariv::service::ServiceConfig cfg;

@@ -53,21 +53,21 @@ Service::~Service() {
 
 Service::ExpectedService Service::create(const ServiceConfig& cfg,
                                          kanariv::contracts::Storage storage) {
-    // Host-supplied runtime paths are authoritative over the inherited fields.
+    // Host-supplied runtime paths are authoritative over the base fields.
     // Desktop callers leave RuntimePaths empty and keep the existing behavior.
     ServiceConfig resolved = cfg;
     if (!cfg.runtime.database.empty())
-        resolved.dbPath = cfg.runtime.database;
+        resolved.base.dbPath = cfg.runtime.database;
     if (!cfg.runtime.configuration.empty())
-        resolved.configPath = cfg.runtime.configuration;
+        resolved.base.configPath = cfg.runtime.configuration;
     if (!cfg.runtime.socket.empty())
-        resolved.socketPath = cfg.runtime.socket;
+        resolved.base.socketPath = cfg.runtime.socket;
 
     if (auto dirs = cfg.runtime.ensureDirectories(); !dirs)
         return std::unexpected{dirs.error()};
 
     const bool inProcess = cfg.inProcess;
-    const std::filesystem::path& dbPath = resolved.dbPath;
+    const std::filesystem::path& dbPath = resolved.base.dbPath;
 
     std::string spStr;
     std::filesystem::path lockPath;
@@ -79,13 +79,13 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
         // Determine socket path: explicit override, else derived from the database.
         // Only an explicit socket re-keys the pid/lock files; a derived one
         // must keep the database-derived names clients already look for.
-        const bool explicitSocket = !resolved.socketPath.empty();
+        const bool explicitSocket = !resolved.base.socketPath.empty();
         if (explicitSocket) {
-            spStr = resolved.socketPath;
+            spStr = resolved.base.socketPath;
         } else {
             spStr = detail::socketPathForDb(dbPath);
         }
-        resolved.socketPath = spStr;
+        resolved.base.socketPath = spStr;
         const std::string socketKey = explicitSocket ? spStr : std::string{};
 
         // Single-instance enforcement via flock lock file
@@ -165,24 +165,25 @@ Service::ExpectedService Service::create(const ServiceConfig& cfg,
             logCb = sink->callback();
     }
     auto loggerPtr = std::make_unique<kanariv::utils::Logger>(
-        std::move(logCb), static_cast<kanariv::utils::LogLevel>(std::clamp(
-                              cfg.logLevel, std::to_underlying(kanariv::utils::LogLevel::Trace),
-                              std::to_underlying(kanariv::utils::LogLevel::Error))));
+        std::move(logCb),
+        static_cast<kanariv::utils::LogLevel>(
+            std::clamp(cfg.base.logLevel, std::to_underlying(kanariv::utils::LogLevel::Trace),
+                       std::to_underlying(kanariv::utils::LogLevel::Error))));
     kanariv::utils::Logger* logger = loggerPtr.get();
-    for (const auto& key : cfg.unknownKeys)
+    for (const auto& key : cfg.base.unknownKeys)
         logger->warn("config: ignoring unknown key '{}'", key);
 
     // create Engine
     kanariv::types::EngineConfig ecfg{};
     ecfg.logger = logger;
-    ecfg.autoResumeOnPlay = cfg.autoResumeOnPlay;
-    ecfg.replayGain = cfg.replayGain;
-    ecfg.fadeInMs = cfg.fadeInMs;
-    ecfg.fadeOutMs = cfg.fadeOutMs;
-    ecfg.crossfadeMs = cfg.crossfadeMs;
-    ecfg.interTrackGapMs = cfg.interTrackGapMs;
-    ecfg.device = cfg.device;
-    ecfg.deviceName = cfg.deviceName;
+    ecfg.autoResumeOnPlay = cfg.base.autoResumeOnPlay;
+    ecfg.replayGain = cfg.base.replayGain;
+    ecfg.fadeInMs = cfg.base.fadeInMs;
+    ecfg.fadeOutMs = cfg.base.fadeOutMs;
+    ecfg.crossfadeMs = cfg.base.crossfadeMs;
+    ecfg.interTrackGapMs = cfg.base.interTrackGapMs;
+    ecfg.device = cfg.base.device;
+    ecfg.deviceName = cfg.base.deviceName;
     auto engRes = kanariv::engine::Engine::create(ecfg);
     if (!engRes) {
         detail::releaseLock(lockFd);

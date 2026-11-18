@@ -170,7 +170,7 @@ TEST_CASE("queue create maps repeatDefault to RepeatMode", "[service][queue][rep
         std::filesystem::create_directories(logsDir);
 
         auto cfg = inProcessConfig(dbPath, logsDir);
-        cfg.repeatDefault = c.repeatDefault;
+        cfg.base.repeatDefault = c.repeatDefault;
 
         auto dbRes = kanariv::db::Database::open(dbPath.generic_string());
         REQUIRE(dbRes.has_value());
@@ -833,17 +833,17 @@ TEST_CASE("explicit sockets give daemons independent pid and lock files", "[serv
 
     auto cfg1 = inProcessConfig(dbPath, dir / "logs");
     cfg1.inProcess = false;
-    cfg1.socketPath = uniqueTestSocket(dir, "one");
-    cfg1.configPath = dir / "config1.json";
+    cfg1.base.socketPath = uniqueTestSocket(dir, "one");
+    cfg1.base.configPath = dir / "config1.json";
     auto cfg2 = cfg1;
-    cfg2.socketPath = uniqueTestSocket(dir, "two");
-    cfg2.configPath = dir / "config2.json";
+    cfg2.base.socketPath = uniqueTestSocket(dir, "two");
+    cfg2.base.configPath = dir / "config2.json";
 
-    const auto pid1 = svcd::pidPathForSocket(dbPath, cfg1.socketPath);
-    const auto pid2 = svcd::pidPathForSocket(dbPath, cfg2.socketPath);
+    const auto pid1 = svcd::pidPathForSocket(dbPath, cfg1.base.socketPath);
+    const auto pid2 = svcd::pidPathForSocket(dbPath, cfg2.base.socketPath);
     REQUIRE(pid1 != pid2);
-    REQUIRE(svcd::lockPathForSocket(dbPath, cfg1.socketPath) !=
-            svcd::lockPathForSocket(dbPath, cfg2.socketPath));
+    REQUIRE(svcd::lockPathForSocket(dbPath, cfg1.base.socketPath) !=
+            svcd::lockPathForSocket(dbPath, cfg2.base.socketPath));
 
     // Same database, different explicit sockets: both must start (before S9
     // the second one lost the database-derived lock and failed AlreadyExists).

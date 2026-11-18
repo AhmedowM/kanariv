@@ -8,7 +8,6 @@
 #include <db/migration.hpp>
 #include <expected>
 #include <fstream>
-#include <kanariv/contracts/null_history_store.hpp>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/json_state_store.hpp>
 #include <kanariv/db/smart.hpp>
@@ -21,6 +20,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <support/null_history_store.hpp>
 #include <utility>
 #include <vector>
 using namespace kanariv::db;
@@ -1073,7 +1073,7 @@ TEST_CASE("queue insertion renormalizes exhausted gaps without changing order",
 }
 
 TEST_CASE("NullHistoryStore accepts writes and lists nothing", "[db][contracts]") {
-    kanariv::contracts::NullHistoryStore store;
+    kanariv::test_helpers::NullHistoryStore store;
     CHECK(store.isOpen());
     CHECK(store.markPlayed(1, 10, 20, 1000, 50.0, 1).has_value());
     auto listed = store.listHistory(10);

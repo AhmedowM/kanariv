@@ -294,7 +294,7 @@ Service::Impl::handle(const kanariv::ipc::QueueCreate& qc) {
     // Apply the configured default repeat mode to the new queue. `repeatDefault` is
     // already parsed; the stored integer is the wire value of RepeatMode
     // (Off=0, All=1, One=2).
-    const auto mode = config_.repeatDefault;
+    const auto mode = config_.base.repeatDefault;
     if (mode != kanariv::types::RepeatMode::Off) {
         if (auto e = storage_.queues->setQueueRepeat(*id, mode); !e)
             return std::unexpected{e.error()};
@@ -624,7 +624,7 @@ Service::Impl::handle(const kanariv::ipc::QueueClear&) {
     auto r = storage_.queues->queueClear(qid);
     if (!r)
         return std::unexpected{r.error()};
-    if (config_.clearStopsPlayback) {
+    if (config_.base.clearStopsPlayback) {
         if (auto e = engine_->stop(); !e)
             return std::unexpected{e.error()};
     }

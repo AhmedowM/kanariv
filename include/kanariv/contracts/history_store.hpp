@@ -4,10 +4,9 @@
  * @file history_store.hpp
  * @brief Playback history port.
  * @ingroup kanariv_contracts
- * @details History and play counts are strictly opt-in: consumers that do not
- * want them depend on a `NullHistoryStore` instead of the database-backed
- * implementation, and the engine treats a missing store as "history off"
- * rather than an error.
+ * @details History and play counts are strictly opt-in: a consumer that does
+ * not want them keeps the port wired but never queries it, and the engine
+ * treats a missing store as "history off" rather than an error.
  *
  * @par Error behavior
  * Implementations use `StatusCode::NotFound` for absent rows and `Io` or

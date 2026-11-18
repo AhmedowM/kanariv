@@ -27,8 +27,14 @@ namespace kanariv::service {
 /**
  * @brief Configuration for Service creation.
  * @ingroup kanariv_service
+ * @details Composes the user-facing `kanariv::config::Config` instead of
+ * inheriting it: the service adds only its own switches, and every base field
+ * stays reachable through `base` (`cfg.base.dbPath`, ...).
  */
-struct ServiceConfig : public kanariv::config::Config {
+struct ServiceConfig {
+    /** @brief User-facing configuration (paths, engine defaults, log level). */
+    kanariv::config::Config base;
+
     /** @brief Echo log lines to stderr (foreground mode). Default: false. */
     bool logToStderr{false};
 
@@ -47,9 +53,9 @@ struct ServiceConfig : public kanariv::config::Config {
      * @brief Explicit host-supplied directories and transport path.
      *
      * Empty fields retain existing desktop behavior. When `database` is set it
-     * takes precedence over the inherited `dbPath`; `socket` takes precedence
-     * over the inherited `socketPath`. In-process hosts should set at least
-     * `database` so no desktop path discovery is required.
+     * takes precedence over `base.dbPath`; `socket` takes precedence over
+     * `base.socketPath`. In-process hosts should set at least `database` so no
+     * desktop path discovery is required.
      */
     kanariv::config::RuntimePaths runtime{};
 };
@@ -84,7 +90,8 @@ class KANARIV_API Service final {
     /**
      * @brief Factory method to create and initialize a Service instance.
      * @ingroup kanariv_service
-     * @param cfg Service configuration (dbPath, optional socketPath, configPath, logLevel).
+     * @param cfg Service configuration (`base` paths/engine defaults plus the
+     * service's own switches).
      * @param storage Optional already-open persistence ports; when omitted, the
      * service runs without persistence (commands that need it fail with
      * StatusCode::State).
@@ -92,7 +99,7 @@ class KANARIV_API Service final {
      *
      * Resolves host-supplied runtime paths first (`runtime.database`,
      * `runtime.configuration`, `runtime.socket` take precedence over the
-     * inherited fields) and creates any supplied directories.
+     * corresponding `base` fields) and creates any supplied directories.
      *
      * When `cfg.inProcess` is false, performs single-instance enforcement via
      * flock lock file and PID file checks, creates a PID file, and starts the

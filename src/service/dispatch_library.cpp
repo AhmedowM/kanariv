@@ -48,7 +48,7 @@ Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
         // Command paths travel as UTF-8 (see src/utils/path_utf8.hpp).
         root = kanariv::utils::detail::pathFromUtf8(*cmd.path);
     else {
-        auto pp = config_.dbPath.parent_path();
+        auto pp = config_.base.dbPath.parent_path();
         if (pp.empty())
             pp = std::filesystem::current_path();
         root = pp / "music";
