@@ -8,8 +8,7 @@
  * shuffle permutation, volume, resume position) is a fixed record with no
  * relational needs. The default adapter (`db::JsonPlaybackStateStore`) writes a
  * versioned JSON sidecar, so remembering volume and position does not require a
- * database; `db::makeStorage` seeds it once from the legacy `engine_state` row
- * of an existing database.
+ * database.
  *
  * @par Ownership
  * State is produced and consumed by the daemon only (one writer), so adapters

@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decoder/device fault arm (the engine never emits it, so it cannot appear in
   `Status`). `Player::state()` returns the shared enum; the alias keeps
   existing source building.
+- **BREAKING** `service::ServiceConfig` composes `kanariv::config::Config` as
+  its `base` member instead of inheriting it, so user-facing settings are
+  spelled `cfg.base.dbPath`, `cfg.base.logLevel`, ... and the service-config
+  ABI no longer tracks every config field. `ServiceConfig scfg{cfg}` still
+  copies a config snapshot into `base`.
+- Schema version 9 retires the legacy `engine_state` table: the JSON sidecar
+  is the only playback-state store. An upgraded database starts playback
+  state at defaults instead of importing the retired row.
 
 ### Removed
 - The shared-memory status channel (`ShmStatusReader`/`ShmStatusWriter`,
@@ -40,10 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   links `librt` on Linux.
 - Service-only operations are gone from the installed class headers:
   `Engine::suspendCurrentTrack|resumeAfterTagWrite|preMuteVolume|
-  setPreMuteVolume|shufflePermFor|noteEnqueued|noteQueueMoved|autoNext` and
-  `Database::legacyEngineState`. The daemon reaches them through
-  `engine::detail::EngineAccess` / `db::DatabaseAccess` in `src/`, so the
-  shared-library ABI no longer exports them as class members.
+  setPreMuteVolume|shufflePermFor|noteEnqueued|noteQueueMoved|autoNext`.
+  The daemon reaches them through `engine::detail::EngineAccess` in `src/`,
+  so the shared-library ABI no longer exports them as class members.
+- `db::DatabaseAccess::legacyEngineState` (the pre-sidecar import path) and
+  `contracts::NullHistoryStore`, which no installed code used. The null
+  history adapter now lives in the tests' support headers.
 
 ## [v2.0.0] - 2026-11-10
 

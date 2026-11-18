@@ -26,7 +26,6 @@
 #include <expected>
 #include <kanariv/db/database.hpp>
 #include <mutex>
-#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -70,23 +69,6 @@ struct KANARIV_API DatabaseAccess {
      */
     static std::expected<SqliteStatement*, kanariv::utils::Error>
     getCachedForUse(Database& db, std::string_view sql);
-
-    // --- Playback state ---
-    /**
-     * @brief Reads the pre-sidecar `engine_state` row once.
-     * @ingroup kanariv_db
-     * @param db Database instance.
-     * @return Converted legacy state, or `std::nullopt` when the table or row
-     * is absent or unreadable.
-     * @details Only used by `db::makePlaybackStateStore` to seed the JSON
-     * sidecar for a database written by an older release. Ids are converted to
-     * the stable identities `EngineState` stores (`queue_name`, `current_path`).
-     * Lives here rather than on `Database` so the installed class keeps no
-     * migration-only operation.
-     * @par Thread safety
-     * Thread-safe; takes the database read lock.
-     */
-    static std::optional<kanariv::types::EngineState> legacyEngineState(Database& db);
 
     // --- TrackRow / library locked helpers ---
     /**

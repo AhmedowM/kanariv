@@ -11,9 +11,8 @@
  * corrupt file falls back to the last good generation instead of losing the
  * volume and resume position.
  *
- * `makePlaybackStateStore()` is what `makeStorage()` uses. On first use with an
- * existing database it imports the legacy `engine_state` row once, then the
- * sidecar is the only state written.
+ * `makePlaybackStateStore()` is what `makeStorage()` uses; the sidecar is the
+ * only place engine state is read from and written to.
  *
  * @par Thread safety
  * `load()` and `save()` serialize on an internal mutex; the engine calls them
@@ -85,9 +84,8 @@ class KANARIV_API JsonPlaybackStateStore final : public kanariv::contracts::IPla
  * @brief Builds the playback-state port for a database.
  * @ingroup kanariv_db
  * @param db Database whose siblings receive the sidecar.
- * @return Store writing `<database>.state.json`, an in-memory store for a
- * database without a filesystem path, or the JSON store seeded once from the
- * legacy `engine_state` row when the sidecar does not exist yet.
+ * @return Store writing `<database>.state.json`, or an in-memory store for a
+ * database without a filesystem path.
  * @details Never returns null.
  */
 KANARIV_API std::shared_ptr<kanariv::contracts::IPlaybackStateStore>

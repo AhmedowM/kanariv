@@ -7,6 +7,7 @@
 #include <db/database_access.hpp>
 #include <db/migration.hpp>
 #include <expected>
+#include <filesystem>
 #include <fstream>
 #include <kanariv/db/database.hpp>
 #include <kanariv/db/json_state_store.hpp>
@@ -1185,69 +1186,46 @@ TEST_CASE("JsonPlaybackStateStore recovers from the previous generation", "[db][
     CHECK(recovered->volume < 0.21f);
 }
 
-TEST_CASE("makeStorage imports the legacy engine_state row once", "[db][state_store][migration]") {
+TEST_CASE("migration 9 drops the legacy engine_state table", "[db][state_store][migration]") {
     const std::string dbPath = tempDbPath("state_import").string();
-    auto dbRes = Database::open(dbPath);
-    REQUIRE(dbRes.has_value());
-    auto db = std::shared_ptr<Database>(std::move(dbRes.value()));
-
-    auto trackId = db->insertTrack(makeTrack(7, "legacy/current.flac"));
-    REQUIRE(trackId.has_value());
-    auto qid = db->createQueue("chill");
-    REQUIRE(qid.has_value());
-
-    // Simulate a pre-sidecar database: migrations no longer create the table.
-    const int64_t perm[2] = {1, 2};
     {
-        sqlite3* h = nullptr;
-        REQUIRE(sqlite3_open(dbPath.c_str(), &h) == SQLITE_OK);
-        REQUIRE(sqlite3_exec(h,
+        // Stop at v8: the last schema that could still meet a pre-sidecar file.
+        sqlite3* handle = nullptr;
+        REQUIRE(sqlite3_open(dbPath.c_str(), &handle) == SQLITE_OK);
+        auto raw = std::unique_ptr<sqlite3, SqliteHandleCloser>{handle};
+        const auto steps = internal::schemaMigrations();
+        REQUIRE(steps.size() >= 9);
+        REQUIRE(internal::applyMigrations(handle, steps.first(8)).has_value());
+        char* err = nullptr;
+        REQUIRE(sqlite3_exec(handle,
                              "CREATE TABLE engine_state(id INTEGER PRIMARY KEY, "
                              "active_queue_id INTEGER, cursor_pos INTEGER, shuffle_enabled INTEGER, "
                              "repeat_mode INTEGER, volume REAL, pre_mute_volume REAL, "
-                             "position_ms INTEGER, shuffle_perm BLOB, current_track_id INTEGER)",
-                             nullptr, nullptr, nullptr) == SQLITE_OK);
-        sqlite3_stmt* st = nullptr;
-        REQUIRE(sqlite3_prepare_v2(
-                    h,
-                    "INSERT INTO engine_state VALUES(1,?,5,1,1,0.33,0.5,12000,?,?)", -1, &st,
-                    nullptr) == SQLITE_OK);
-        sqlite3_bind_int64(st, 1, *qid);
-        sqlite3_bind_blob(st, 2, perm, static_cast<int>(sizeof perm), SQLITE_TRANSIENT);
-        sqlite3_bind_int64(st, 3, *trackId);
-        REQUIRE(sqlite3_step(st) == SQLITE_DONE);
-        sqlite3_finalize(st);
-        sqlite3_close(h);
+                             "position_ms INTEGER, shuffle_perm BLOB, current_track_id INTEGER);"
+                             "INSERT INTO engine_state VALUES(1,1,5,1,1,0.33,0.5,12000,zeroblob(16),0)",
+                             nullptr, nullptr, &err) == SQLITE_OK);
+        if (err)
+            sqlite3_free(err);
+        REQUIRE(tableExists(handle, "engine_state"));
     }
 
+    // Opening applies step 9: the table is gone and no reader imports its row.
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto db = std::shared_ptr<Database>(std::move(dbRes.value()));
+    sqlite3* h = DatabaseAccess::handle(*db);
+    CHECK(!tableExists(h, "engine_state"));
+    auto version = internal::readUserVersion(h);
+    REQUIRE(version.has_value());
+    CHECK(*version == internal::schemaVersion);
+
+    // Building the ports leaves the sidecar untouched: state starts at defaults
+    // instead of being seeded from the retired table.
     auto storage = makeStorage(db);
     REQUIRE(storage.state != nullptr);
-    auto imported = storage.state->load();
-    REQUIRE(imported.has_value());
-    CHECK(imported->queue_name == "chill");
-    CHECK(imported->cursor_pos == 5);
-    CHECK(imported->shuffle_enabled);
-    CHECK(imported->repeat_mode == kanariv::types::RepeatMode::All);
-    CHECK(imported->volume > 0.32f);
-    CHECK(imported->volume < 0.34f);
-    CHECK(imported->position_ms == 12000);
-    CHECK(imported->shuffle_perm == std::vector<int64_t>{1, 2});
-    REQUIRE(imported->current_track_id.has_value());
-    CHECK(*imported->current_track_id == *trackId);
-    CHECK(imported->current_path == "legacy/current.flac");
-    CHECK(readStateSidecar(dbPath).has_value());
-
-    // The sidecar now exists: a later composition must not re-import the row.
-    {
-        sqlite3* h = nullptr;
-        REQUIRE(sqlite3_open(dbPath.c_str(), &h) == SQLITE_OK);
-        REQUIRE(sqlite3_exec(h, "UPDATE engine_state SET cursor_pos=9", nullptr, nullptr,
-                             nullptr) == SQLITE_OK);
-        sqlite3_close(h);
-    }
-    auto again = makeStorage(db);
-    REQUIRE(again.state != nullptr);
-    auto reloaded = again.state->load();
-    REQUIRE(reloaded.has_value());
-    CHECK(reloaded->cursor_pos == 5);
+    auto loaded = storage.state->load();
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->queue_name == "default");
+    CHECK(loaded->cursor_pos == 0);
+    CHECK(!std::filesystem::exists(dbPath + ".state.json"));
 }

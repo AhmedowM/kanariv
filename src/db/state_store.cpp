@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <kanariv/db/database.hpp>
 #include <kanariv/db/json_state_store.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/json.hpp>
@@ -20,8 +21,6 @@
 #else
 #include <unistd.h>
 #endif
-
-#include <db/database_access.hpp>
 
 namespace kanariv::db {
 
@@ -261,15 +260,7 @@ std::shared_ptr<kanariv::contracts::IPlaybackStateStore> makePlaybackStateStore(
         return std::make_shared<JsonPlaybackStateStore>(std::filesystem::path{}, db.logger());
     std::filesystem::path sidecar = dbPath;
     sidecar += ".state.json";
-    auto store = std::make_shared<JsonPlaybackStateStore>(sidecar, db.logger());
-    std::error_code ec;
-    if (!std::filesystem::exists(sidecar, ec)) {
-        if (auto legacy = DatabaseAccess::legacyEngineState(db)) {
-            if (auto saved = store->save(*legacy); !saved && db.logger())
-                db.logger()->warn("engine state import failed: {}", saved.error().message);
-        }
-    }
-    return store;
+    return std::make_shared<JsonPlaybackStateStore>(sidecar, db.logger());
 }
 
 } // namespace kanariv::db

@@ -846,8 +846,7 @@ class KANARIV_API Database final : public kanariv::contracts::ITrackStore,
  * @param db Database to expose; every port shares ownership of it.
  * @return Storage whose ports all view @p db. `state` is not database-backed:
  * it is a `JsonPlaybackStateStore` beside the database file (in memory for
- * `:memory:` databases), seeded once from the legacy `engine_state` row when
- * the sidecar does not exist yet.
+ * `:memory:` databases).
  */
 KANARIV_API kanariv::contracts::Storage makeStorage(std::shared_ptr<Database> db);
 

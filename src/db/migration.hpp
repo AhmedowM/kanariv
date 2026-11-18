@@ -52,7 +52,7 @@ struct MigrationStep {
  * @brief Current schema version a fully migrated database reports.
  * @ingroup kanariv_db
  */
-inline constexpr int schemaVersion = 8;
+inline constexpr int schemaVersion = 9;
 
 /**
  * @brief Applies connection-level pragmas (WAL, busy timeout, foreign keys).

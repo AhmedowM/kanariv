@@ -313,7 +313,7 @@ std::expected<void, kanariv::utils::Error> configureConnection(sqlite3* db) {
 }
 
 std::span<const MigrationStep> schemaMigrations() noexcept {
-    static constexpr std::array<MigrationStep, 8> steps{{
+    static constexpr std::array<MigrationStep, 9> steps{{
         MigrationStep{1, "base schema", baseSchema, nullptr},
         MigrationStep{2, "queue position uniqueness", queuePositionUniqueness, nullptr},
         MigrationStep{3, "track source identity", {}, &migrateSourceIdentity},
@@ -330,6 +330,11 @@ std::span<const MigrationStep> schemaMigrations() noexcept {
         // global "recently played" query had no index and scanned the table.
         MigrationStep{8, "history timeline index",
                       "CREATE INDEX IF NOT EXISTS idx_history_started ON history(started_at DESC)",
+                      nullptr},
+        // The single-row `engine_state` table was replaced by the JSON sidecar
+        // and only pre-versioning databases still carry it. Readers are gone,
+        // so this step retires the data instead of importing it.
+        MigrationStep{9, "drop legacy engine state table", "DROP TABLE IF EXISTS engine_state;",
                       nullptr},
     }};
     return steps;
