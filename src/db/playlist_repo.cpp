@@ -19,6 +19,7 @@
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/status_format.hpp>
+#include <kanariv/utils/time.hpp>
 #include <optional>
 #include <span>
 #include <string>
@@ -39,8 +40,9 @@ kanariv::utils::Expected<int64_t> Database::createPlaylist(std::string_view name
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
-    if (auto e = st.prepare(impl_->db_.get(),
-                            "INSERT INTO playlists (name, type, smart_query) VALUES (?,?,?)");
+    if (auto e = st.prepare(impl_->db_.get(), "INSERT INTO playlists "
+                                              "(name, type, smart_query, created, modified) "
+                                              "VALUES (?,?,?,?,?)");
         !e)
         return std::unexpected{e.error()};
     st.bindText(1, name);
@@ -49,6 +51,9 @@ kanariv::utils::Expected<int64_t> Database::createPlaylist(std::string_view name
         st.bindNull(3);
     else
         st.bindText(3, smart_query);
+    const auto now = kanariv::utils::unixMillis();
+    st.bindInt(4, now);
+    st.bindInt(5, now);
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
@@ -91,9 +96,8 @@ kanariv::utils::Expected<void> Database::updatePlaylist(const kanariv::types::Pl
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
-    if (auto e =
-            st.prepare(impl_->db_.get(), "UPDATE playlists SET name=?, type=?, smart_query=?, "
-                                         "library_id=?, modified=CURRENT_TIMESTAMP WHERE id=?");
+    if (auto e = st.prepare(impl_->db_.get(), "UPDATE playlists SET name=?, type=?, "
+                                              "smart_query=?, library_id=?, modified=? WHERE id=?");
         !e)
         return std::unexpected{e.error()};
     st.bindText(1, p.name);
@@ -103,7 +107,8 @@ kanariv::utils::Expected<void> Database::updatePlaylist(const kanariv::types::Pl
     else
         st.bindText(3, p.smart_query);
     st.bindInt(4, p.library_id);
-    st.bindInt(5, p.id);
+    st.bindInt(5, kanariv::utils::unixMillis());
+    st.bindInt(6, p.id);
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
@@ -141,12 +146,12 @@ kanariv::utils::Expected<void> Database::renamePlaylist(int64_t id, std::string_
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
-    if (auto e = st.prepare(impl_->db_.get(),
-                            "UPDATE playlists SET name=?, modified=CURRENT_TIMESTAMP WHERE id=?");
+    if (auto e = st.prepare(impl_->db_.get(), "UPDATE playlists SET name=?, modified=? WHERE id=?");
         !e)
         return std::unexpected{e.error()};
     st.bindText(1, newName);
-    st.bindInt(2, id);
+    st.bindInt(2, kanariv::utils::unixMillis());
+    st.bindInt(3, id);
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
@@ -191,8 +196,9 @@ Database::Impl::createPlaylistLocked(std::string_view name, int type,
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
-    if (auto e =
-            st.prepare(db_.get(), "INSERT INTO playlists (name, type, smart_query) VALUES (?,?,?)");
+    if (auto e = st.prepare(db_.get(), "INSERT INTO playlists "
+                                       "(name, type, smart_query, created, modified) "
+                                       "VALUES (?,?,?,?,?)");
         !e)
         return std::unexpected{e.error()};
     st.bindText(1, name);
@@ -201,6 +207,9 @@ Database::Impl::createPlaylistLocked(std::string_view name, int type,
         st.bindNull(3);
     else
         st.bindText(3, smart_query);
+    const auto now = kanariv::utils::unixMillis();
+    st.bindInt(4, now);
+    st.bindInt(5, now);
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
@@ -238,14 +247,15 @@ kanariv::utils::Expected<void> Database::Impl::playlistAddTrackLocked(int64_t pi
         }
     }
     SqliteStatement st;
-    if (auto e = st.prepare(db_.get(),
-                            "INSERT INTO playlist_items (playlist_id, track_id, position) VALUES "
-                            "(?,?,?)");
+    if (auto e = st.prepare(db_.get(), "INSERT INTO playlist_items "
+                                       "(playlist_id, track_id, position, added) "
+                                       "VALUES (?,?,?,?)");
         !e)
         return std::unexpected{e.error()};
     st.bindInt(1, pid);
     st.bindInt(2, tid);
     st.bindInt(3, pos);
+    st.bindInt(4, kanariv::utils::unixMillis());
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,

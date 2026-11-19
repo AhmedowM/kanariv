@@ -11,6 +11,7 @@
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/status_format.hpp>
+#include <kanariv/utils/time.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -205,12 +206,14 @@ kanariv::utils::Expected<void> queueEnqueueLocked(sqlite3* db, int64_t qid, int6
     }
 
     SqliteStatement st;
-    auto e = st.prepare(db, "INSERT INTO queue (queue_id, track_id, position) VALUES (?,?,?)");
+    auto e = st.prepare(db, "INSERT INTO queue (queue_id, track_id, position, added) "
+                            "VALUES (?,?,?,?)");
     if (!e)
         return std::unexpected{e.error()};
     st.bindInt(1, qid);
     st.bindInt(2, tid);
     st.bindInt(3, newPos);
+    st.bindInt(4, kanariv::utils::unixMillis());
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{

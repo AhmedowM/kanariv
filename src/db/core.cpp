@@ -21,6 +21,7 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/status_format.hpp>
+#include <kanariv/utils/time.hpp>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -201,7 +202,8 @@ kanariv::utils::Expected<int64_t> Database::libraryAdd(std::string_view path,
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
-    if (auto e = st.prepare(impl_->db_.get(), "INSERT INTO libraries (path, name) VALUES (?,?)");
+    if (auto e = st.prepare(impl_->db_.get(),
+                            "INSERT INTO libraries (path, name, date_added) VALUES (?,?,?)");
         !e)
         return std::unexpected{e.error()};
     st.bindText(1, path);
@@ -209,6 +211,7 @@ kanariv::utils::Expected<int64_t> Database::libraryAdd(std::string_view path,
         st.bindNull(2);
     else
         st.bindText(2, name);
+    st.bindInt(3, kanariv::utils::unixMillis());
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::db::internal::sqliteError(impl_->db_.get(), rc)};

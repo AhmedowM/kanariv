@@ -23,14 +23,15 @@ namespace kanariv::ipc {
  * @brief Lyrics for a single track (returned by LyricsGet).
  * @ingroup kanariv_ipc
  *
- * @json_example {"type": "Lyrics", "id": 1, "track_id": 123, "lrc_text": "[00:12.34]Hello world", "is_synced": true, "source": "import", "fetched_at": 1234567890}
+ * @json_example {"type": "Lyrics", "id": 1, "track_id": 123, "lrc_text": "[00:12.34]Hello world",
+ * "is_synced": true, "source": "import", "fetched_at": 1763500000000}
  *
  * @param id Row id (PK).
  * @param track_id Owning track id.
  * @param lrc_text Lyrics text (LRC format when synced).
  * @param is_synced True when lrc_text contains time-coded lines.
  * @param source Provenance label.
- * @param fetched_at Unix seconds when lyrics were stored.
+ * @param fetched_at Epoch milliseconds when the lyrics were stored.
  */
 struct Lyrics final {
     /**
@@ -54,7 +55,7 @@ struct Lyrics final {
      */
     std::string source{};
     /**
-     * @brief Unix seconds when lyrics were stored.
+     * @brief Epoch milliseconds when the lyrics were stored.
      */
     int64_t fetched_at{};
 };

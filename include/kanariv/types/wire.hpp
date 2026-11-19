@@ -21,6 +21,15 @@
 namespace kanariv::types {
 
 /**
+ * @brief Timestamp unit for every persisted and wire-carried time value.
+ * @ingroup kanariv_types
+ * @details Epoch milliseconds (UTC). Every `*_at`, `*_added`, `*_scanned` and
+ * `*_played` record field uses this unit, the database stores it as an INTEGER,
+ * and the IPC codecs pass it through unchanged.
+ */
+using UnixMillis = std::int64_t;
+
+/**
  * @brief Repeat mode for queue advancement.
  * @ingroup kanariv_types
  * @details Controls wrap behaviour in Engine::queueNextLocked and

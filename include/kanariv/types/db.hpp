@@ -10,10 +10,10 @@
  * documented per-field.
  */
 
-#include <kanariv/types/record.hpp>
-#include <kanariv/types/wire.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/types/record.hpp>
+#include <kanariv/types/wire.hpp>
 #include <optional>
 #include <string>
 #include <vector>
@@ -45,13 +45,13 @@ struct Queue {
  * expected by their scan policy.
  */
 struct Library {
-    int64_t id{};                                   ///< Row id (PK).
-    std::string path;                               ///< Root directory path (UNIQUE).
-    std::string name;                               ///< Display name.
-    int64_t date_added{};                           ///< Creation timestamp.
-    int64_t last_scanned{};                         ///< Last scan timestamp.
-    bool auto_scan{true};                           ///< Whether to auto-scan on startup.
-    bool recursive{true};                           ///< Whether to scan recursively.
+    int64_t id{};              ///< Row id (PK).
+    std::string path;          ///< Root directory path (UNIQUE).
+    std::string name;          ///< Display name.
+    UnixMillis date_added{};   ///< Epoch milliseconds when created.
+    UnixMillis last_scanned{}; ///< Epoch milliseconds of the last completed scan.
+    bool auto_scan{true};      ///< Whether to auto-scan on startup.
+    bool recursive{true};      ///< Whether to scan recursively.
     std::string extensions{"mp3,flac,ogg,wav,m4a"}; ///< Comma-separated allowed extensions.
 };
 
@@ -84,26 +84,26 @@ struct PlaybackStats {
  * disengaged optional means that criterion is not applied.
  */
 struct TrackQuery {
-    std::string artist;                  ///< Exact artist filter (empty = no filter).
-    std::string album;                   ///< Exact album filter.
-    std::string genre;                   ///< Exact genre filter.
-    std::optional<int32_t> year{};       ///< Exact year filter.
-    std::optional<int32_t> year_min{};   ///< Minimum year (inclusive).
-    std::optional<int32_t> year_max{};   ///< Maximum year (inclusive).
-    std::optional<int64_t> library_id{}; ///< Exact library filter.
-    std::optional<bool> dirty{};         ///< Dirty flag filter.
-    std::optional<int32_t> rating{};     ///< Exact user rating filter (0..5).
+    std::string artist;                      ///< Exact artist filter (empty = no filter).
+    std::string album;                       ///< Exact album filter.
+    std::string genre;                       ///< Exact genre filter.
+    std::optional<int32_t> year{};           ///< Exact year filter.
+    std::optional<int32_t> year_min{};       ///< Minimum year (inclusive).
+    std::optional<int32_t> year_max{};       ///< Maximum year (inclusive).
+    std::optional<int64_t> library_id{};     ///< Exact library filter.
+    std::optional<bool> dirty{};             ///< Dirty flag filter.
+    std::optional<int32_t> rating{};         ///< Exact user rating filter (0..5).
     std::optional<int64_t> play_count_min{}; ///< Minimum play count (inclusive).
     std::optional<int64_t> play_count_max{}; ///< Maximum play count (inclusive).
     std::optional<double> duration_min{};    ///< Minimum duration in seconds (inclusive).
     std::optional<double> duration_max{};    ///< Maximum duration in seconds (inclusive).
-    int limit{};                         ///< Max rows (0 = unlimited).
-    int offset{};                        ///< Row offset.
-    std::string search;                  ///< Substring search across title/artist/album/genre.
-    std::string sort;                    ///< Sort field: id, title, artist, album, year,
-                                          ///< rating, play_count, duration, date_added.
-                                          ///< Empty = default (id).
-    std::string order;                   ///< Sort direction: "asc" or "desc". Default: asc.
+    int limit{};                             ///< Max rows (0 = unlimited).
+    int offset{};                            ///< Row offset.
+    std::string search;                      ///< Substring search across title/artist/album/genre.
+    std::string sort;                        ///< Sort field: id, title, artist, album, year,
+                                             ///< rating, play_count, duration, date_added.
+                                             ///< Empty = default (id).
+    std::string order;                       ///< Sort direction: "asc" or "desc". Default: asc.
 };
 
 /**
@@ -128,7 +128,7 @@ struct HistoryQuery {
  * maintenance operations without depending on the concrete database layer.
  */
 struct LibraryMaintenanceReport {
-    std::size_t tracks_checked{}; ///< Live rows examined.
+    std::size_t tracks_checked{};                           ///< Live rows examined.
     std::vector<kanariv::types::TrackRow> missing_tracks{}; ///< Rows whose paths no longer exist.
     std::vector<std::vector<kanariv::types::TrackRow>>
         duplicate_groups{}; ///< Groups sharing a path.
@@ -136,7 +136,9 @@ struct LibraryMaintenanceReport {
     /**
      * @brief Returns the number of missing-file rows.
      */
-    std::size_t missingFiles() const noexcept { return missing_tracks.size(); }
+    std::size_t missingFiles() const noexcept {
+        return missing_tracks.size();
+    }
 
     /**
      * @brief Returns the number of redundant rows in duplicate groups.
@@ -155,7 +157,7 @@ struct LibraryMaintenanceReport {
  * @ingroup kanariv_types
  */
 struct LibraryMaintenanceOptions {
-    bool dry_run{true};       ///< Report planned actions without changing the database.
+    bool dry_run{true};        ///< Report planned actions without changing the database.
     bool prune_missing{false}; ///< Delete rows reported as missing when not dry-running.
 };
 

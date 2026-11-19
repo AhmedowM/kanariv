@@ -13,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <kanariv/types/wire.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -126,9 +127,9 @@ struct TrackRow {
     int64_t mtime{};                       ///< Last write time (filesystem epoch).
     double duration{};                     ///< Duration in seconds.
     int64_t play_count{};                  ///< Number of plays.
-    int64_t last_played{};                 ///< Timestamp of last play (unix seconds).
-    int64_t date_added{};                  ///< Timestamp when inserted.
-    int64_t last_scanned{};                ///< Timestamp of last scan.
+    UnixMillis last_played{};              ///< Epoch milliseconds of the last play.
+    UnixMillis date_added{};               ///< Epoch milliseconds when the row was inserted.
+    UnixMillis last_scanned{};             ///< Epoch milliseconds of the last scan.
     int64_t library_id{defaultLibraryId};  ///< Owning library id (FK -> libraries.id).
     std::string path;                      ///< Absolute filesystem path (NOT NULL).
     std::string title;                     ///< Title tag.
@@ -153,7 +154,6 @@ struct TrackRow {
     /// ReplayGain 2.0 album gain (dB); written by the library's analysis pass.
     /// 0 means "no album measurement"; playback falls back to `replayGainTrack`.
     double replayGainAlbum{};
-
 };
 
 /**
@@ -185,8 +185,8 @@ struct Playlist {
     std::string name;                     ///< Display name (NOT NULL).
     int32_t type{};                       ///< Playlist type (0 = manual).
     std::string smart_query;              ///< Smart-playlist filter (empty for manual).
-    int64_t created{};                    ///< Creation timestamp.
-    int64_t modified{};                   ///< Last modification timestamp.
+    UnixMillis created{};                 ///< Epoch milliseconds when created.
+    UnixMillis modified{};                ///< Epoch milliseconds of the last modification.
     int64_t library_id{defaultLibraryId}; ///< Owning library id.
 };
 
@@ -204,7 +204,7 @@ struct QueueItem {
     /// Stored gap-based ordering value (UNIQUE per queue_id). Not a zero-based
     /// index: use the item's index in listQueueItems() for public APIs.
     int64_t position{};
-    int64_t added{}; ///< Timestamp when enqueued.
+    UnixMillis added{}; ///< Epoch milliseconds when enqueued.
 };
 
 /**
@@ -219,8 +219,8 @@ struct QueueItem {
 struct HistoryEntry {
     int64_t id{};                     ///< Row id (PK).
     int64_t track_id{};               ///< Played track id.
-    int64_t started_at{};             ///< Start timestamp.
-    int64_t completed_at{};           ///< Completion timestamp (0 if not completed).
+    UnixMillis started_at{};          ///< Epoch milliseconds when playback started.
+    UnixMillis completed_at{};        ///< Epoch milliseconds at completion (0 if unfinished).
     int64_t position_ms{};            ///< Position reached in milliseconds.
     double completion_pct{};          ///< Completion percentage [0,100].
     int64_t queue_id{defaultQueueId}; ///< Queue context.
@@ -240,7 +240,7 @@ struct Bookmark {
     int64_t track_id{};    ///< Bookmarked track id.
     int64_t position_ms{}; ///< Saved position in milliseconds.
     std::string note;      ///< Optional user note.
-    int64_t created{};     ///< Creation timestamp.
+    UnixMillis created{};  ///< Epoch milliseconds when created.
 };
 
 /**
@@ -299,9 +299,9 @@ struct TrackMetadata {
  * artist gets credited with the full play_count.
  */
 struct TopEntity {
-    std::string name{};            ///< Entity name (artist / album / genre).
-    std::size_t track_count{0};    ///< Number of distinct tracks referencing it.
-    std::int64_t total_plays{0};   ///< Sum of play_count across those tracks.
+    std::string name{};          ///< Entity name (artist / album / genre).
+    std::size_t track_count{0};  ///< Number of distinct tracks referencing it.
+    std::int64_t total_plays{0}; ///< Sum of play_count across those tracks.
 };
 
 /**
@@ -338,12 +338,12 @@ struct LibraryStats {
  *  "musixmatch", "manual").
  */
 struct Lyrics {
-    int64_t id{};           ///< Row id (PK).
-    int64_t track_id{};     ///< Owning track id.
-    std::string lrc_text;   ///< Lyrics text (LRC format when synced).
-    bool is_synced{false};  ///< True when lrc_text contains time-coded lines.
-    std::string source;     ///< Provenance: "local", "import", etc.
-    int64_t fetched_at{};   ///< Unix seconds when lyrics were stored.
+    int64_t id{};            ///< Row id (PK).
+    int64_t track_id{};      ///< Owning track id.
+    std::string lrc_text;    ///< Lyrics text (LRC format when synced).
+    bool is_synced{false};   ///< True when lrc_text contains time-coded lines.
+    std::string source;      ///< Provenance: "local", "import", etc.
+    UnixMillis fetched_at{}; ///< Epoch milliseconds when the lyrics were stored.
 };
 
 } // namespace kanariv::types

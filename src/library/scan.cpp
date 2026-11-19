@@ -1,4 +1,3 @@
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <db/database_access.hpp>
@@ -16,6 +15,7 @@
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/log.hpp>
 #include <kanariv/utils/status_format.hpp>
+#include <kanariv/utils/time.hpp>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -276,6 +276,7 @@ Scanner::scanLibrary(int64_t libraryId,
             }
         } else {
             trk.library_id = libraryId;
+            trk.date_added = kanariv::utils::unixMillis();
             if (kanariv::db::DatabaseAccess::insertTrackLocked(db, trk))
                 added++;
             else {
@@ -311,9 +312,7 @@ Scanner::scanLibrary(int64_t libraryId,
     if (libs2) {
         for (auto& l : *libs2)
             if (l.id == libraryId) {
-                l.last_scanned = std::chrono::duration_cast<std::chrono::seconds>(
-                                     std::chrono::system_clock::now().time_since_epoch())
-                                     .count();
+                l.last_scanned = kanariv::utils::unixMillis();
                 {
                     std::unique_lock<std::mutex> lk(kanariv::db::DatabaseAccess::mutex(db));
                     // Single UPDATE, no explicit transaction: a failed write is

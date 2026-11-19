@@ -5,12 +5,14 @@
 #include <db/stmt_helpers.hpp>
 #include <db/transaction.hpp>
 #include <expected>
+#include <format>
 #include <kanariv/fwd.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/status_format.hpp>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 
 namespace kanariv::db::internal {
 
@@ -38,14 +40,16 @@ inline constexpr std::string_view connectionPragmas = "PRAGMA journal_mode=WAL;"
  * initialisation aborted are created here. The queue uniqueness index is not
  * part of this step -- legacy rows may hold duplicate positions and are
  * normalised by version 2 first. The row-update trigger is created by version 4.
+ * Timestamp columns are INTEGER epoch milliseconds and every writer binds them;
+ * version 10 converts the values older files already stored.
  */
 inline constexpr std::string_view baseSchema =
     "CREATE TABLE IF NOT EXISTS libraries ("
     "id INTEGER PRIMARY KEY,"
     "path TEXT NOT NULL UNIQUE,"
     "name TEXT,"
-    "date_added DATETIME DEFAULT CURRENT_TIMESTAMP,"
-    "last_scanned DATETIME,"
+    "date_added INTEGER NOT NULL DEFAULT 0,"
+    "last_scanned INTEGER,"
     "auto_scan BOOLEAN DEFAULT 1,"
     "recursive BOOLEAN DEFAULT 1,"
     "extensions TEXT DEFAULT 'mp3,flac,ogg,wav,m4a'"
@@ -71,9 +75,9 @@ inline constexpr std::string_view baseSchema =
     "cover_art_path TEXT,"
     "rating INTEGER DEFAULT 0,"
     "play_count INTEGER DEFAULT 0,"
-    "last_played DATETIME,"
-    "date_added DATETIME DEFAULT CURRENT_TIMESTAMP,"
-    "last_scanned DATETIME,"
+    "last_played INTEGER NOT NULL DEFAULT 0,"
+    "date_added INTEGER,"
+    "last_scanned INTEGER NOT NULL DEFAULT 0,"
     "dirty BOOLEAN DEFAULT 0,"
     "library_id INTEGER DEFAULT 1 REFERENCES libraries(id),"
     "source_kind INTEGER NOT NULL DEFAULT 0,"
@@ -83,7 +87,6 @@ inline constexpr std::string_view baseSchema =
     "replay_gain_track REAL DEFAULT 0,"
     "replay_gain_album REAL DEFAULT 0"
     ");"
-    "CREATE INDEX IF NOT EXISTS idx_tracks_fingerprint ON tracks(fingerprint);"
     "CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path);"
     "CREATE INDEX IF NOT EXISTS idx_tracks_artist_album ON tracks(artist, album);"
     "CREATE INDEX IF NOT EXISTS idx_tracks_library ON tracks(library_id);"
@@ -92,15 +95,15 @@ inline constexpr std::string_view baseSchema =
     "name TEXT NOT NULL,"
     "type INTEGER NOT NULL DEFAULT 0,"
     "smart_query TEXT,"
-    "created DATETIME DEFAULT CURRENT_TIMESTAMP,"
-    "modified DATETIME DEFAULT CURRENT_TIMESTAMP,"
+    "created INTEGER NOT NULL DEFAULT 0,"
+    "modified INTEGER NOT NULL DEFAULT 0,"
     "library_id INTEGER DEFAULT 1 REFERENCES libraries(id)"
     ");"
     "CREATE TABLE IF NOT EXISTS playlist_items ("
     "playlist_id INTEGER REFERENCES playlists(id) ON DELETE CASCADE,"
     "track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,"
     "position INTEGER NOT NULL,"
-    "added DATETIME DEFAULT CURRENT_TIMESTAMP,"
+    "added INTEGER NOT NULL DEFAULT 0,"
     "PRIMARY KEY (playlist_id, track_id)"
     ");"
     "CREATE INDEX IF NOT EXISTS idx_playlist_items_pos ON playlist_items(playlist_id, position);"
@@ -109,7 +112,7 @@ inline constexpr std::string_view baseSchema =
     "queue_id INTEGER NOT NULL DEFAULT 1,"
     "track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,"
     "position INTEGER NOT NULL,"
-    "added DATETIME DEFAULT CURRENT_TIMESTAMP,"
+    "added INTEGER NOT NULL DEFAULT 0,"
     "UNIQUE(queue_id, position)"
     ");"
     "INSERT OR IGNORE INTO libraries (id, path, name) VALUES (1, '', 'default');"
@@ -124,8 +127,8 @@ inline constexpr std::string_view baseSchema =
     "CREATE TABLE IF NOT EXISTS history ("
     "id INTEGER PRIMARY KEY,"
     "track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,"
-    "started_at DATETIME NOT NULL,"
-    "completed_at DATETIME,"
+    "started_at INTEGER NOT NULL,"
+    "completed_at INTEGER,"
     "position_ms INTEGER,"
     "completion_pct REAL,"
     "queue_id INTEGER DEFAULT 1"
@@ -136,7 +139,7 @@ inline constexpr std::string_view baseSchema =
     "track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,"
     "position_ms INTEGER NOT NULL,"
     "note TEXT,"
-    "created DATETIME DEFAULT CURRENT_TIMESTAMP"
+    "created INTEGER NOT NULL DEFAULT 0"
     ");"
     "CREATE TABLE IF NOT EXISTS lyrics ("
     "id INTEGER PRIMARY KEY,"
@@ -144,7 +147,7 @@ inline constexpr std::string_view baseSchema =
     "lrc_text TEXT,"
     "is_synced BOOLEAN DEFAULT 0,"
     "source TEXT,"
-    "fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+    "fetched_at INTEGER NOT NULL DEFAULT 0"
     ");"
     "CREATE TABLE IF NOT EXISTS eq_presets ("
     "id INTEGER PRIMARY KEY,"
@@ -303,6 +306,45 @@ kanariv::utils::Expected<void> dropDeletedAt(sqlite3* db) {
     return execSql(db, "ALTER TABLE tracks DROP COLUMN deleted_at", "drop tracks.deleted_at");
 }
 
+/**
+ * @brief Version 10: one timestamp unit across the schema.
+ * @details Every timestamp column holds epoch milliseconds (`types::UnixMillis`).
+ * Older files mixed three encodings: TEXT from `CURRENT_TIMESTAMP` defaults,
+ * epoch seconds from the scanner, and epoch milliseconds for the columns the
+ * engine already stamped (history, `tracks.last_played`). The CASE preserves
+ * NULL and the 0 "unset" sentinel, parses TEXT through SQLite's date functions,
+ * and multiplies anything below 1e11 by 1000 -- a seconds value stays below
+ * that boundary until year 5138, while any millisecond value since 1973 is
+ * larger.
+ */
+kanariv::utils::Expected<void> migrateTimestampsToMillis(sqlite3* db) {
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 13> columns{{
+        {"libraries", "date_added"},
+        {"libraries", "last_scanned"},
+        {"tracks", "last_played"},
+        {"tracks", "date_added"},
+        {"tracks", "last_scanned"},
+        {"playlists", "created"},
+        {"playlists", "modified"},
+        {"playlist_items", "added"},
+        {"queue", "added"},
+        {"history", "started_at"},
+        {"history", "completed_at"},
+        {"bookmarks", "created"},
+        {"lyrics", "fetched_at"},
+    }};
+    for (const auto& [table, column] : columns) {
+        const std::string sql = std::format(
+            "UPDATE {} SET {}=CASE WHEN {} IS NULL THEN NULL "
+            "WHEN typeof({})='text' THEN CAST(COALESCE(strftime('%s', {}), '0') AS INTEGER)*1000 "
+            "WHEN {}<100000000000 THEN {}*1000 ELSE {} END",
+            table, column, column, column, column, column, column, column);
+        if (auto r = execSql(db, sql, "timestamp unit"); !r)
+            return r;
+    }
+    return {};
+}
+
 } // namespace
 
 kanariv::utils::Expected<void> configureConnection(sqlite3* db) {
@@ -312,15 +354,15 @@ kanariv::utils::Expected<void> configureConnection(sqlite3* db) {
 }
 
 std::span<const MigrationStep> schemaMigrations() noexcept {
-    static constexpr std::array<MigrationStep, 9> steps{{
+    static constexpr std::array<MigrationStep, 10> steps{{
         MigrationStep{1, "base schema", baseSchema, nullptr},
         MigrationStep{2, "queue position uniqueness", queuePositionUniqueness, nullptr},
         MigrationStep{3, "track source identity", {}, &migrateSourceIdentity},
         MigrationStep{4, "scoped fts update trigger", scopedFtsUpdateTrigger, nullptr},
         // Older scans wrote a mis-scaled loudness heuristic into both gain
         // columns; the scanner no longer produces gain values at all (M10), so
-        // the stale numbers are cleared rather than reinterpreted. The columns
-        // are reserved for tag-imported values, which nothing writes yet.
+        // the stale numbers are cleared rather than reinterpreted. The explicit
+        // analyze pass is the only writer now (setReplayGainLocked).
         MigrationStep{5, "clear mis-scaled replay gain",
                       "UPDATE tracks SET replay_gain_track=0, replay_gain_album=0", nullptr},
         MigrationStep{6, "drop redundant indexes", dropRedundantIndexes, nullptr},
@@ -335,6 +377,7 @@ std::span<const MigrationStep> schemaMigrations() noexcept {
         // so this step retires the data instead of importing it.
         MigrationStep{9, "drop legacy engine state table", "DROP TABLE IF EXISTS engine_state;",
                       nullptr},
+        MigrationStep{10, "timestamps as unix milliseconds", {}, &migrateTimestampsToMillis},
     }};
     return steps;
 }

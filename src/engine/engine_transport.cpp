@@ -713,6 +713,15 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Device, msg)};
         }
+        // Simulated playback without any device (the null-backend retry above
+        // failed too): match the `!opened` fallback exactly. A live decoder and
+        // ring with no consumer would only park decodeLoop on a full ring, and
+        // the transport clock is wall-based, so nothing else needs them.
+        if (cfg_.logger)
+            cfg_.logger->warn("simulated playback (device unavailable) file={}", path);
+        decoder_.reset();
+        reader_.reset();
+        ring_.reset();
     }
     currentTrack_ = t;
     // update state

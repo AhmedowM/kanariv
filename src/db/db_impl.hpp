@@ -55,6 +55,22 @@ inline constexpr std::string_view updateTrackSql =
 inline constexpr std::string_view updateReplayGainSql =
     "UPDATE tracks SET replay_gain_track=?, replay_gain_album=? WHERE id=?";
 
+namespace internal {
+
+/// `?` placeholders in `sql`; used to pin the two track statements to the
+/// single binder's range so a column added to one side cannot drift.
+constexpr std::size_t placeholderCount(std::string_view sql) noexcept {
+    std::size_t count = 0;
+    for (char c : sql)
+        count += c == '?';
+    return count;
+}
+
+} // namespace internal
+
+static_assert(internal::placeholderCount(insertTrackSql) == 28);
+static_assert(internal::placeholderCount(updateTrackSql) == 29);
+
 // Private implementation: the SQLite handle, statement cache and locks live
 // here so the public header stays include-light. Member order is load-bearing:
 // cached statements are finalized before the handle is closed.
@@ -103,8 +119,12 @@ struct Database::Impl {
     std::size_t queueCountLocked(int64_t qid);
 };
 
-// Free functions for track binding (static, no impl_ needed)
-void bindTrackForInsert(SqliteStatement& st, const kanariv::types::TrackRow& t);
-void bindTrackForUpdate(SqliteStatement& st, const kanariv::types::TrackRow& t);
+/**
+ * @brief Binds one `TrackRow`'s 28 column values starting at `firstIndex`.
+ * @details Feeds both `insertTrackSql` and `updateTrackSql` (whose first 28
+ * parameters are the same column order) plus the JSON import. `date_added`
+ * binds NULL when zero, which reads back as 0 through `columnInt` either way.
+ */
+void bindTrackColumns(SqliteStatement& st, const kanariv::types::TrackRow& t, int firstIndex);
 
 } // namespace kanariv::db

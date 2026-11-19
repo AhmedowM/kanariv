@@ -12,6 +12,7 @@
  * - parse: parseId (the one decimal id/position rule)
  * - ring: SpscRing
  * - thread: sleepFor, sleepForMs, setThreadName
+ * - time: unixMillis (the wall-clock unit of persisted timestamps)
  * - print: portable print/println facade (see print.hpp)
  * - json: opaque Json/JsonRef value type (nlohmann stays behind src/ walls)
  * - record_json: TrackRow <-> Json codec shared by db and ipc
@@ -32,3 +33,4 @@
 #include <kanariv/utils/ring.hpp>
 #include <kanariv/utils/status_format.hpp>
 #include <kanariv/utils/thread.hpp>
+#include <kanariv/utils/time.hpp>

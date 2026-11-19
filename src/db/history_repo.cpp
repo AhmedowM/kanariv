@@ -15,6 +15,7 @@
 #include <kanariv/types/db.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/status_format.hpp>
+#include <kanariv/utils/time.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -105,8 +106,9 @@ kanariv::utils::Expected<void> Database::bookmarkAdd(int64_t tid, int64_t pos,
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
-    if (auto e = st.prepare(impl_->db_.get(),
-                            "INSERT INTO bookmarks (track_id, position_ms, note) VALUES (?,?,?)");
+    if (auto e = st.prepare(impl_->db_.get(), "INSERT INTO bookmarks "
+                                              "(track_id, position_ms, note, created) "
+                                              "VALUES (?,?,?,?)");
         !e)
         return std::unexpected{e.error()};
     st.bindInt(1, tid);
@@ -115,6 +117,7 @@ kanariv::utils::Expected<void> Database::bookmarkAdd(int64_t tid, int64_t pos,
         st.bindNull(3);
     else
         st.bindText(3, note);
+    st.bindInt(4, kanariv::utils::unixMillis());
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
@@ -131,10 +134,9 @@ Database::listBookmarks(int64_t tid) {
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
-    if (auto e =
-            st.prepare(impl_->db_.get(), "SELECT id, track_id, position_ms, note, "
-                                         "CAST(strftime('%s', created) AS INTEGER) FROM bookmarks "
-                                         "WHERE track_id=? ORDER BY created, id");
+    if (auto e = st.prepare(impl_->db_.get(),
+                            "SELECT id, track_id, position_ms, note, created FROM bookmarks "
+                            "WHERE track_id=? ORDER BY created, id");
         !e)
         return std::unexpected{e.error()};
     st.bindInt(1, tid);
@@ -159,9 +161,8 @@ kanariv::utils::Expected<kanariv::types::Bookmark> Database::bookmarkGet(int64_t
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
-    if (auto e = st.prepare(impl_->db_.get(),
-                            "SELECT id, track_id, position_ms, note, "
-                            "CAST(strftime('%s', created) AS INTEGER) FROM bookmarks WHERE id=?");
+    if (auto e = st.prepare(impl_->db_.get(), "SELECT id, track_id, position_ms, note, created "
+                                              "FROM bookmarks WHERE id=?");
         !e)
         return std::unexpected{e.error()};
     st.bindInt(1, id);
@@ -211,9 +212,10 @@ kanariv::utils::Expected<void> Database::lyricsSet(int64_t tid, std::string_view
     st.bindInt(1, tid);
     (void)st.stepDone();
     st.reset();
-    if (auto e = st.prepare(impl_->db_.get(),
-                            "INSERT INTO lyrics (track_id, lrc_text, is_synced, source) "
-                            "VALUES (?,?,?,?)");
+    if (auto e =
+            st.prepare(impl_->db_.get(),
+                       "INSERT INTO lyrics (track_id, lrc_text, is_synced, source, fetched_at) "
+                       "VALUES (?,?,?,?,?)");
         !e)
         return std::unexpected{e.error()};
     st.bindInt(1, tid);
@@ -223,6 +225,7 @@ kanariv::utils::Expected<void> Database::lyricsSet(int64_t tid, std::string_view
         st.bindNull(4);
     else
         st.bindText(4, source);
+    st.bindInt(5, kanariv::utils::unixMillis());
     int rc = st.stepDone();
     if (rc != SQLITE_DONE)
         return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::Internal,
@@ -239,9 +242,9 @@ kanariv::utils::Expected<kanariv::types::Lyrics> Database::lyricsGet(int64_t tid
             kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, "no db")};
     SqliteStatement st;
     if (auto e =
-            st.prepare(impl_->db_.get(), "SELECT id, track_id, lrc_text, is_synced, source, "
-                                         "CAST(strftime('%s', fetched_at) AS INTEGER) FROM lyrics "
-                                         "WHERE track_id=?");
+            st.prepare(impl_->db_.get(),
+                       "SELECT id, track_id, lrc_text, is_synced, source, fetched_at FROM lyrics "
+                       "WHERE track_id=?");
         !e)
         return std::unexpected{e.error()};
     st.bindInt(1, tid);

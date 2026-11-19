@@ -880,6 +880,58 @@ TEST_CASE("migration 6 drops indexes that duplicate table constraints", "[db][mi
     CHECK(rc != SQLITE_OK);
 }
 
+TEST_CASE("migration 10 converts every stored timestamp to epoch milliseconds", "[db][migration]") {
+    auto path = kanariv::test_helpers::tempDbPath("timestamp_millis");
+    sqlite3* handle = nullptr;
+    REQUIRE(sqlite3_open(path.string().c_str(), &handle) == SQLITE_OK);
+    {
+        auto raw = std::unique_ptr<sqlite3, SqliteHandleCloser>{handle};
+        // Stop at v9: the schema that still mixed TEXT, epoch seconds and
+        // epoch milliseconds across its timestamp columns.
+        const auto steps = internal::schemaMigrations();
+        REQUIRE(steps.size() >= 10);
+        REQUIRE(internal::applyMigrations(handle, steps.first(9)).has_value());
+        char* err = nullptr;
+        REQUIRE(sqlite3_exec(handle,
+                             "UPDATE libraries SET date_added='2024-01-02 03:04:05', "
+                             "last_scanned=1704164645 WHERE id=1;"
+                             "INSERT INTO tracks (fingerprint, path, last_played, date_added, "
+                             "last_scanned) VALUES (randomblob(32), 'old/stamp.mp3', "
+                             "1704164645123, '2024-01-02 03:04:05', 1704164645);"
+                             "INSERT INTO bookmarks (track_id, position_ms, note, created) "
+                             "VALUES (1, 0, 'text', '2024-01-02 03:04:05');"
+                             "INSERT INTO bookmarks (track_id, position_ms, note, created) "
+                             "VALUES (1, 0, 'unset', 0);",
+                             nullptr, nullptr, &err) == SQLITE_OK);
+        if (err)
+            sqlite3_free(err);
+    }
+
+    // Opening the database applies step 10: TEXT and seconds become epoch
+    // milliseconds, an existing millisecond value stays as it was, and NULL
+    // stays the 0/unknown sentinel.
+    auto opened = Database::open(path.string());
+    REQUIRE(opened.has_value());
+    auto db = std::move(*opened);
+    constexpr int64_t millis = 1704164645000;
+    auto libs = db->listLibraries();
+    REQUIRE(libs.has_value());
+    REQUIRE(libs->size() == 1);
+    CHECK((*libs)[0].date_added == millis);
+    CHECK((*libs)[0].last_scanned == millis);
+    auto tracks = db->listTracks();
+    REQUIRE(tracks.has_value());
+    REQUIRE(tracks->size() == 1);
+    CHECK((*tracks)[0].last_played == 1704164645123);
+    CHECK((*tracks)[0].date_added == millis);
+    CHECK((*tracks)[0].last_scanned == millis);
+    auto marks = db->listBookmarks(1);
+    REQUIRE(marks.has_value());
+    REQUIRE(marks->size() == 2);
+    CHECK((*marks)[0].created == 0);
+    CHECK((*marks)[1].created == millis);
+}
+
 TEST_CASE("queue positions are stored ordering values and APIs take indices",
           "[db][queue][position]") {
     auto dbRes = Database::open(":memory:");
@@ -1197,13 +1249,14 @@ TEST_CASE("migration 9 drops the legacy engine_state table", "[db][state_store][
         REQUIRE(steps.size() >= 9);
         REQUIRE(internal::applyMigrations(handle, steps.first(8)).has_value());
         char* err = nullptr;
-        REQUIRE(sqlite3_exec(handle,
-                             "CREATE TABLE engine_state(id INTEGER PRIMARY KEY, "
-                             "active_queue_id INTEGER, cursor_pos INTEGER, shuffle_enabled INTEGER, "
-                             "repeat_mode INTEGER, volume REAL, pre_mute_volume REAL, "
-                             "position_ms INTEGER, shuffle_perm BLOB, current_track_id INTEGER);"
-                             "INSERT INTO engine_state VALUES(1,1,5,1,1,0.33,0.5,12000,zeroblob(16),0)",
-                             nullptr, nullptr, &err) == SQLITE_OK);
+        REQUIRE(
+            sqlite3_exec(handle,
+                         "CREATE TABLE engine_state(id INTEGER PRIMARY KEY, "
+                         "active_queue_id INTEGER, cursor_pos INTEGER, shuffle_enabled INTEGER, "
+                         "repeat_mode INTEGER, volume REAL, pre_mute_volume REAL, "
+                         "position_ms INTEGER, shuffle_perm BLOB, current_track_id INTEGER);"
+                         "INSERT INTO engine_state VALUES(1,1,5,1,1,0.33,0.5,12000,zeroblob(16),0)",
+                         nullptr, nullptr, &err) == SQLITE_OK);
         if (err)
             sqlite3_free(err);
         REQUIRE(tableExists(handle, "engine_state"));

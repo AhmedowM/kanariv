@@ -109,7 +109,7 @@ Database::Impl::insertTrackLocked(const kanariv::types::TrackRow& t) {
     if (!sRes)
         return std::unexpected{sRes.error()};
     SqliteStatement& st = *(*sRes);
-    bindTrackForInsert(st, t);
+    bindTrackColumns(st, t, 1);
     int rc = st.stepDone();
     st.reset();
     if (rc != SQLITE_DONE)
@@ -129,7 +129,8 @@ Database::Impl::updateTrackLocked(const kanariv::types::TrackRow& t) {
     if (!sRes)
         return std::unexpected{sRes.error()};
     SqliteStatement& st = *(*sRes);
-    bindTrackForUpdate(st, t);
+    bindTrackColumns(st, t, 1);
+    st.bindInt(29, t.id);
     int rc = st.stepDone();
     st.reset();
     if (rc != SQLITE_DONE)
@@ -187,76 +188,42 @@ kanariv::utils::Expected<void> Database::Impl::deleteTrackLocked(int64_t id) {
     return {};
 }
 
-void bindTrackForInsert(SqliteStatement& st, const kanariv::types::TrackRow& t) {
-    st.bindBlob(1,
+void bindTrackColumns(SqliteStatement& st, const kanariv::types::TrackRow& t, int firstIndex) {
+    const int i = firstIndex;
+    st.bindBlob(i + 0,
                 std::span<const std::byte>{reinterpret_cast<const std::byte*>(t.fingerprint.data()),
                                            t.fingerprint.size()});
-    st.bindText(2, t.path);
-    st.bindInt(3, t.size);
-    st.bindInt(4, t.mtime);
-    st.bindDouble(5, t.duration);
-    st.bindInt(6, t.sample_rate);
-    st.bindInt(7, t.channels);
-    st.bindInt(8, t.bitrate);
-    st.bindText(9, t.title);
-    st.bindText(10, t.artist);
-    st.bindText(11, t.album);
-    st.bindText(12, t.album_artist);
-    st.bindText(13, t.genre);
-    st.bindInt(14, t.year);
-    st.bindInt(15, t.track_num);
-    st.bindInt(16, t.disc_num);
-    st.bindText(17, t.cover_art_path);
-    st.bindInt(18, t.rating);
-    st.bindInt(19, t.play_count);
-    st.bindInt(20, t.last_played);
+    st.bindText(i + 1, t.path);
+    st.bindInt(i + 2, t.size);
+    st.bindInt(i + 3, t.mtime);
+    st.bindDouble(i + 4, t.duration);
+    st.bindInt(i + 5, t.sample_rate);
+    st.bindInt(i + 6, t.channels);
+    st.bindInt(i + 7, t.bitrate);
+    st.bindText(i + 8, t.title);
+    st.bindText(i + 9, t.artist);
+    st.bindText(i + 10, t.album);
+    st.bindText(i + 11, t.album_artist);
+    st.bindText(i + 12, t.genre);
+    st.bindInt(i + 13, t.year);
+    st.bindInt(i + 14, t.track_num);
+    st.bindInt(i + 15, t.disc_num);
+    st.bindText(i + 16, t.cover_art_path);
+    st.bindInt(i + 17, t.rating);
+    st.bindInt(i + 18, t.play_count);
+    st.bindInt(i + 19, t.last_played);
     if (t.date_added)
-        st.bindInt(21, t.date_added);
+        st.bindInt(i + 20, t.date_added);
     else
-        st.bindNull(21);
-    st.bindInt(22, t.last_scanned);
-    st.bindInt(23, t.dirty ? 1 : 0);
-    st.bindInt(24, t.library_id ? t.library_id : 1);
+        st.bindNull(i + 20);
+    st.bindInt(i + 21, t.last_scanned);
+    st.bindInt(i + 22, t.dirty ? 1 : 0);
+    st.bindInt(i + 23, t.library_id ? t.library_id : 1);
     const auto source = kanariv::types::normalizedSource(t);
-    st.bindInt(25, static_cast<int>(source.kind));
-    st.bindText(26, source.key);
-    st.bindInt(27, source.available ? 1 : 0);
-    st.bindText(28, source.display_name);
-}
-
-void bindTrackForUpdate(SqliteStatement& st, const kanariv::types::TrackRow& t) {
-    st.bindBlob(1,
-                std::span<const std::byte>{reinterpret_cast<const std::byte*>(t.fingerprint.data()),
-                                           t.fingerprint.size()});
-    st.bindText(2, t.path);
-    st.bindInt(3, t.size);
-    st.bindInt(4, t.mtime);
-    st.bindDouble(5, t.duration);
-    st.bindInt(6, t.sample_rate);
-    st.bindInt(7, t.channels);
-    st.bindInt(8, t.bitrate);
-    st.bindText(9, t.title);
-    st.bindText(10, t.artist);
-    st.bindText(11, t.album);
-    st.bindText(12, t.album_artist);
-    st.bindText(13, t.genre);
-    st.bindInt(14, t.year);
-    st.bindInt(15, t.track_num);
-    st.bindInt(16, t.disc_num);
-    st.bindText(17, t.cover_art_path);
-    st.bindInt(18, t.rating);
-    st.bindInt(19, t.play_count);
-    st.bindInt(20, t.last_played);
-    st.bindInt(21, t.date_added);
-    st.bindInt(22, t.last_scanned);
-    st.bindInt(23, t.dirty ? 1 : 0);
-    st.bindInt(24, t.library_id ? t.library_id : 1);
-    const auto source = kanariv::types::normalizedSource(t);
-    st.bindInt(25, static_cast<int>(source.kind));
-    st.bindText(26, source.key);
-    st.bindInt(27, source.available ? 1 : 0);
-    st.bindText(28, source.display_name);
-    st.bindInt(29, t.id);
+    st.bindInt(i + 24, static_cast<int>(source.kind));
+    st.bindText(i + 25, source.key);
+    st.bindInt(i + 26, source.available ? 1 : 0);
+    st.bindText(i + 27, source.display_name);
 }
 
 kanariv::utils::Expected<int64_t> Database::insertTrack(const kanariv::types::TrackRow& t) {
