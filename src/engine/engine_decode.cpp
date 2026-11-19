@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <engine/fade.hpp>
 #include <engine/history.hpp>
+#include <engine/transition_policy.hpp>
 #include <expected>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/reader.hpp>
@@ -134,29 +135,33 @@ void Engine::Impl::engineTick() {
         pushEvent(ev);
     }
     if (snap.duration > 0) {
-        const double remaining = snap.duration - snap.position;
-        const double gapS = static_cast<double>(cfg_.gaplessMs) / 1000.0;
-        const double xfS = static_cast<double>(cfg_.crossfadeMs) / 1000.0;
-        if (cfg_.crossfadeMs > 0 && remaining <= xfS && remaining >= 0.0 &&
-            !crossfadeActive_.load(std::memory_order_acquire) &&
-            !crossfadePending_.load(std::memory_order_acquire) && snap.hasCurrent) {
-            // Arm crossfade: decodeLoop will load the next track into
-            // crossfadeDecoder_ and mix it with the outgoing track.
+        detail::NearEndInput in;
+        in.remainingSec = snap.duration - snap.position;
+        in.hasCurrent = snap.hasCurrent;
+        in.crossfadeMs = cfg_.crossfadeMs;
+        in.gaplessMs = cfg_.gaplessMs;
+        in.interTrackGapMs = cfg_.interTrackGapMs;
+        in.crossfadeActive = crossfadeActive_.load(std::memory_order_acquire);
+        in.crossfadePending = crossfadePending_.load(std::memory_order_acquire);
+        switch (detail::nearEndAction(in)) {
+        case detail::NearEndAction::ArmCrossfade:
+            // decodeLoop will load the next track into crossfadeDecoder_ and
+            // mix it with the outgoing track.
             crossfadePending_.store(true, std::memory_order_release);
-        } else if (cfg_.crossfadeMs == 0 && cfg_.interTrackGapMs == 0 && remaining <= gapS &&
-                   remaining >= 0.0) {
-            // Gapless pre-roll. A configured gap must not pre-empt itself here:
-            // the track has to reach EOF for the silence to start.
-            if (snap.hasCurrent) {
-                // gaplessArmed 0->1 CAS, 300ms preroll
+            break;
+        case detail::NearEndAction::AdvanceGapless:
+            // gaplessArmed 0->1 CAS: exactly one advance per track.
+            {
                 bool expected = false;
                 if (gaplessArmed_.compare_exchange_strong(expected, true, std::memory_order_acq_rel,
                                                           std::memory_order_acquire)) {
-                    auto nr = autoNextIfEpoch(snap.transitionEpoch);
-                    if (!nr)
+                    if (!autoNextIfEpoch(snap.transitionEpoch))
                         gaplessArmed_.store(false, std::memory_order_release);
                 }
             }
+            break;
+        case detail::NearEndAction::None:
+            break;
         }
     }
 }
@@ -543,50 +548,50 @@ void Engine::Impl::decodeLoop(std::stop_token st) {
                 ev.msg = "decode error";
                 pushEvent(ev);
             }
-            // EOF reached. Which policy owns the transition depends on what is
-            // configured; none of them may advance the cursor while a crossfade
-            // is still mixing the incoming track in.
-            if (crossfadeActive_.load(std::memory_order_acquire)) {
-                // The outgoing track is done while the incoming one is already
-                // in use: the crossfade owns the transition, so complete it.
-                // Waiting for the overlap to run out would leave nothing to
-                // write (the outgoing decoder is at EOF) and stall the ring.
-                (void)tryPublishCrossfade();
-            } else if (cfg_.crossfadeMs > 0) {
-                // A crossfade window is configured but nothing was armed (the
-                // preload failed or is still pending). Keep the cursor on this
-                // track: engineTick re-arms, and an explicit next()/play() still
-                // moves on. Advancing here would silently skip the next entry.
-            } else if (cfg_.interTrackGapMs > 0) {
-                // Real inter-track silence: wait for the buffered tail to be
-                // consumed by the device (the callback zero-fills on underrun,
-                // so the ring being empty is the audible end), then hold the
-                // gap before starting the next track.
-                if (!interTrackGapArmed_.load(std::memory_order_acquire)) {
-                    bool drained = true;
-                    {
-                        std::unique_lock<std::mutex> lk(decodeMtx_);
-                        drained = !ring_ || ring_->availableRead() == 0;
-                    }
-                    if (drained) {
-                        interTrackGapStartMs_ = detail::nowMs();
-                        interTrackGapArmed_.store(true, std::memory_order_release);
-                    }
-                } else if (detail::nowMs() - interTrackGapStartMs_ >=
-                           static_cast<uint64_t>(cfg_.interTrackGapMs)) {
-                    // doPlayTrack() clears the armed flag on success; a failed
-                    // advance (busy queue) is retried on the next pass with the
-                    // gap already elapsed.
-                    if (playbackState_.load(std::memory_order_acquire) ==
-                        kanariv::types::PlaybackState::Playing) {
-                        auto nr = autoNextIfEpoch(eofEpoch);
-                        (void)nr;
-                    }
+            // EOF reached: the policy names who owns the transition; the
+            // caller gathers the gap sub-state and applies the action.
+            detail::EofInput eof;
+            eof.crossfadeActive = crossfadeActive_.load(std::memory_order_acquire);
+            eof.crossfadeMs = cfg_.crossfadeMs;
+            eof.interTrackGapMs = cfg_.interTrackGapMs;
+            if (!eof.crossfadeActive && eof.crossfadeMs == 0 && eof.interTrackGapMs > 0) {
+                eof.gapArmed = interTrackGapArmed_.load(std::memory_order_acquire);
+                if (!eof.gapArmed) {
+                    // The ring being empty is the audible end: the callback
+                    // zero-fills on underrun.
+                    std::unique_lock<std::mutex> lk(decodeMtx_);
+                    eof.gapTailDrained = !ring_ || ring_->availableRead() == 0;
+                } else {
+                    eof.gapElapsed = detail::nowMs() - interTrackGapStartMs_ >=
+                                     static_cast<uint64_t>(cfg_.interTrackGapMs);
                 }
-            } else if (playbackState_.load(std::memory_order_acquire) ==
-                       kanariv::types::PlaybackState::Playing) {
-                auto nr = autoNextIfEpoch(eofEpoch);
-                (void)nr;
+            }
+            switch (detail::eofAction(eof)) {
+            case detail::EofAction::PublishCrossfade:
+                // The outgoing track is done while the incoming one is already
+                // in use: waiting for the overlap to run out would leave nothing
+                // to write (the outgoing decoder is at EOF) and stall the ring.
+                (void)tryPublishCrossfade();
+                break;
+            case detail::EofAction::HoldForCrossfade:
+                // Nothing was armed yet (the preload failed or is still
+                // pending): the cursor stays, engineTick re-arms.
+                break;
+            case detail::EofAction::ArmGap:
+                interTrackGapStartMs_ = detail::nowMs();
+                interTrackGapArmed_.store(true, std::memory_order_release);
+                break;
+            case detail::EofAction::WaitDrain:
+            case detail::EofAction::WaitGap:
+                // doPlayTrack() clears the armed flag on success; a failed
+                // advance (busy queue) is retried on the next pass with the
+                // gap already elapsed.
+                break;
+            case detail::EofAction::Advance:
+                if (playbackState_.load(std::memory_order_acquire) ==
+                    kanariv::types::PlaybackState::Playing)
+                    (void)autoNextIfEpoch(eofEpoch);
+                break;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(25));
             continue;

@@ -624,6 +624,15 @@ TEST_CASE("crossfade completion publishes the incoming track", "[engine_gapless]
     // currentTrack_/duration_ describing the outgoing one.
     REQUIRE(eng->currentTrackId() == ids[1]);
     REQUIRE(eng->duration() == Catch::Approx(2.0).margin(0.01));
+    // The published id is visible before the decode thread pushes TrackStarted
+    // (callback dispatch is a later step), so wait for the event instead of
+    // racing it.
+    busyWaitUntil(
+        [&] {
+            std::lock_guard<std::mutex> lk(startedMutex);
+            return std::find(started.begin(), started.end(), ids[1]) != started.end();
+        },
+        std::chrono::milliseconds(3000), std::chrono::milliseconds(20));
     {
         std::lock_guard<std::mutex> lk(startedMutex);
         REQUIRE(std::find(started.begin(), started.end(), ids[1]) != started.end());

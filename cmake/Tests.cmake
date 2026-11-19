@@ -81,6 +81,9 @@ if(KANARIV_ENABLE_TESTS)
   kanariv_add_catch_test(test_engine_events tests/test_engine_events.cpp LIBS kanariv::engine kanariv::db kanariv::player kanariv::utils kanariv::sqlite3)
   kanariv_add_catch_test(test_engine_state tests/test_engine_state.cpp LIBS kanariv::engine kanariv::db kanariv::player kanariv::utils kanariv::sqlite3)
   kanariv_add_catch_test(test_engine_gapless tests/test_engine_gapless.cpp LIBS kanariv::engine kanariv::db kanariv::player kanariv::utils kanariv::sqlite3)
+  # Transition decisions (pure header): the crossfade/gap/gapless precedence at
+  # near-end and at EOF, exercised without an engine or an audio device.
+  kanariv_add_catch_test(test_engine_transition_policy tests/test_engine_transition_policy.cpp LIBS kanariv::utils)
 
   kanariv_add_catch_test(test_db_scan tests/test_db_scan.cpp LIBS kanariv::library kanariv::db kanariv::media kanariv::utils kanariv::sqlite3)
   kanariv_add_catch_test(test_tag_write tests/test_tag_write.cpp LIBS kanariv::service kanariv::db kanariv::player kanariv::utils kanariv::sqlite3 WITH_TEST_DATA)
