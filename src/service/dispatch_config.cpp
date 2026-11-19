@@ -5,6 +5,7 @@
 #include <cmath>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <ios>
 #include <iterator>
@@ -66,10 +67,10 @@ Service::Impl::handle(const kanariv::ipc::ConfigSet& cmd) {
     if (isLevel) {
         auto lvl = kanariv::utils::parseLogLevelValue(cmd.value);
         if (!lvl)
-            return std::unexpected{
-                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                          "invalid logLevel '" + cmd.value +
-                                              "' (expected trace|debug|info|warn|error or 0-4)")};
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::InvalidArg,
+                std::format("invalid logLevel '{}' (expected trace|debug|info|warn|error or 0-4)",
+                            cmd.value))};
         newLevel = *lvl;
         storedValue = std::to_string(std::to_underlying(newLevel));
     }
@@ -236,8 +237,8 @@ Service::Impl::handle(const kanariv::ipc::DeviceSet& cmd) {
     auto devList = kanariv::player::enumerateDevices();
     const auto* device = matchDevice(devList, cmd.id);
     if (!device) {
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                         "device not found: " + cmd.id)};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::NotFound, std::format("device not found: {}", cmd.id))};
     }
     auto cfgPath = detail::resolveConfigPath(config_.base.configPath, config_.base.dbPath);
     if (auto res = kanariv::config::detail::configSetRaw(cfgPath, "device", device->id); !res)
@@ -269,8 +270,8 @@ Service::Impl::handle(const kanariv::ipc::DeviceTest& cmd) {
     auto devList = kanariv::player::enumerateDevices();
     const bool found = testId == "auto" || matchDevice(devList, testId) != nullptr;
     if (!found) {
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                         "device not found: " + testId)};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::NotFound, std::format("device not found: {}", testId))};
     }
     // Tone test: generate and play an audible sine wave through the device.
     if (cmd.tone) {

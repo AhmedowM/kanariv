@@ -7,6 +7,7 @@
 #include <exception>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <functional>
 #include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
@@ -203,7 +204,7 @@ kanariv::utils::Expected<void> IpcServer::Impl::listen(const std::filesystem::pa
     if (h == invalidHandleValue) {
         DWORD err = ::GetLastError();
         return std::unexpected{kanariv::utils::makeError(
-            kanariv::utils::StatusCode::Io, "CreateNamedPipeW failed: " + std::to_string(err))};
+            kanariv::utils::StatusCode::Io, std::format("CreateNamedPipeW failed: {}", err))};
     }
     pipeHandle_.store(reinterpret_cast<std::intptr_t>(h));
     return {};

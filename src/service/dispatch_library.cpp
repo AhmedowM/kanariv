@@ -12,6 +12,7 @@
 #include <exception>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <kanariv/fwd.hpp>
 #include <kanariv/ipc/command.hpp>
 #include <kanariv/ipc/result.hpp>
@@ -120,7 +121,8 @@ Service::Impl::handle(const kanariv::ipc::LibraryScan& cmd) {
             logger_->error("scan aborted after file={} err={}", lastFile, e.what());
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::Io,
-            "scan aborted at '" + (lastFile.empty() ? rootStr : lastFile) + "': " + e.what())};
+            std::format("scan aborted at '{}': {}", lastFile.empty() ? rootStr : lastFile,
+                        e.what()))};
     }
     if (logger_)
         logger_->info("scan finished root={} scanned={} added={}", rootStr, seen, n);
@@ -213,13 +215,13 @@ Service::Impl::handle(const kanariv::ipc::LibraryAdd& cmd) {
     std::error_code ec;
     bool exists = std::filesystem::exists(p, ec);
     if (ec || !exists)
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                         "path not found: " + cmd.path)};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::NotFound, std::format("path not found: {}", cmd.path))};
     auto addSingleFile = [&](const std::filesystem::path& fp) -> kanariv::utils::Expected<void> {
         if (!kanariv::media::hasAudioExt(fp))
             return std::unexpected{kanariv::utils::makeError(
                 kanariv::utils::StatusCode::Unsupported,
-                "unsupported file type: " + kanariv::utils::detail::pathToUtf8(fp))};
+                std::format("unsupported file type: {}", kanariv::utils::detail::pathToUtf8(fp)))};
         auto fpRes = kanariv::media::internal::computeFingerprint(fp);
         if (!fpRes)
             return std::unexpected{fpRes.error()};
@@ -304,8 +306,9 @@ Service::Impl::handle(const kanariv::ipc::LibraryAdd& cmd) {
         }
         return Result{Empty{}};
     } else {
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                         "not a file or directory: " + cmd.path)};
+        return std::unexpected{
+            kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                      std::format("not a file or directory: {}", cmd.path))};
     }
 }
 
@@ -366,8 +369,8 @@ Service::Impl::handle(const kanariv::ipc::LibraryRemove& cmd) {
             return Result{Empty{}};
         }
     }
-    return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                     "track not found: " + cmd.query)};
+    return std::unexpected{kanariv::utils::makeError(
+        kanariv::utils::StatusCode::NotFound, std::format("track not found: {}", cmd.query))};
 }
 
 kanariv::utils::Expected<kanariv::ipc::Result> Service::Impl::handle(const kanariv::ipc::Preview&) {
@@ -385,7 +388,7 @@ Service::Impl::handle(const kanariv::ipc::TrackRate& cmd) {
     if (!storage_.tracks->getTrack(cmd.track_id))
         return std::unexpected{
             kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                      "track not found: " + std::to_string(cmd.track_id))};
+                                      std::format("track not found: {}", cmd.track_id))};
     auto r = storage_.tracks->setRating(cmd.track_id, cmd.rating);
     if (!r)
         return std::unexpected{r.error()};
@@ -426,7 +429,8 @@ Service::Impl::handle(const kanariv::ipc::LibraryMaintenance& cmd) {
     }
     return std::unexpected{kanariv::utils::makeError(
         kanariv::utils::StatusCode::InvalidArg,
-        "library maintenance: unknown action '" + cmd.action + "' (expected 'report' or 'prune')")};
+        std::format("library maintenance: unknown action '{}' (expected 'report' or 'prune')",
+                    cmd.action))};
 }
 
 } // namespace kanariv::service

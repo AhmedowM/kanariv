@@ -24,10 +24,11 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <format>
 #include <kanariv/db/database.hpp>
 #include <kanariv/media/decoder.hpp>
-#include <kanariv/utils/error.hpp>
 #include <kanariv/media/fingerprint.hpp>
+#include <kanariv/utils/error.hpp>
 #include <string>
 #include <system_error>
 
@@ -98,7 +99,7 @@ kanariv::utils::Expected<void> writeFileTags(const std::filesystem::path& p,
     if (!canWriteFileTags(p)) {
         return std::unexpected(kanariv::utils::makeError(
             kanariv::utils::StatusCode::InvalidArg,
-            "tag write not supported for this format: " + p.extension().string()));
+            std::format("tag write not supported for this format: {}", p.extension().string())));
     }
     TagLib::FileRef f(p.generic_string().c_str());
     if (f.isNull() || !f.file() || !f.tag()) {

@@ -12,6 +12,7 @@
 #include <exception>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <kanariv/fwd.hpp>
@@ -200,8 +201,8 @@ Service::Impl::handle(const kanariv::ipc::PlaylistImport& cmd) {
     std::filesystem::path path = kanariv::utils::detail::pathFromUtf8(cmd.path);
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) {
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                         "file not found: " + cmd.path)};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::NotFound, std::format("file not found: {}", cmd.path))};
     }
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);

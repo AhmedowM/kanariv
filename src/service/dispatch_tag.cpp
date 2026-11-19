@@ -17,6 +17,7 @@
 #include <exception>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <kanariv/fwd.hpp>
@@ -135,8 +136,8 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
             break;
         }
     if (!ok)
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                         "invalid field: " + cmd.field)};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::InvalidArg, std::format("invalid field: {}", cmd.field))};
     auto trRes = storage_.tracks->getTrack(cmd.id);
     if (!trRes)
         return std::unexpected{trRes.error()};
@@ -159,8 +160,9 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
                 throw std::invalid_argument("extra");
             t.year = v;
         } catch (...) {
-            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                             "invalid year: " + cmd.value)};
+            return std::unexpected{
+                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                          std::format("invalid year: {}", cmd.value))};
         }
     } else if (cmd.field == "track_number") {
         try {
@@ -170,8 +172,9 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
                 throw std::invalid_argument("extra");
             t.track_num = v;
         } catch (...) {
-            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                             "invalid track_number: " + cmd.value)};
+            return std::unexpected{
+                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                          std::format("invalid track_number: {}", cmd.value))};
         }
     } else if (cmd.field == "disc_number") {
         try {
@@ -181,8 +184,9 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
                 throw std::invalid_argument("extra");
             t.disc_num = v;
         } catch (...) {
-            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
-                                                             "invalid disc_number: " + cmd.value)};
+            return std::unexpected{
+                kanariv::utils::makeError(kanariv::utils::StatusCode::InvalidArg,
+                                          std::format("invalid disc_number: {}", cmd.value))};
         }
     }
     // File-first-then-rescan: the audio file is the source of truth, so the
@@ -190,9 +194,9 @@ Service::Impl::handle(const kanariv::ipc::TagEdit& cmd) {
     if (!detail::canWriteFileTags(t.path)) {
         return std::unexpected{kanariv::utils::makeError(
             kanariv::utils::StatusCode::InvalidArg,
-            "tag write not supported for this format: " +
-                kanariv::utils::detail::pathToUtf8(
-                    kanariv::utils::detail::pathFromUtf8(t.path).extension()))};
+            std::format("tag write not supported for this format: {}",
+                        kanariv::utils::detail::pathToUtf8(
+                            kanariv::utils::detail::pathFromUtf8(t.path).extension())))};
     }
     // A loaded (playing or paused) track holds the file open through the
     // decoder: suspend to release the handles, write + re-register, reopen.
@@ -256,7 +260,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
             auto fpRes = storage_.tracks->findByPath(*entry.path);
             if (!fpRes) {
                 er.ok = false;
-                er.error = "track not found for path '" + *entry.path + "'";
+                er.error = std::format("track not found for path '{}'", *entry.path);
                 out.results.push_back(std::move(er));
                 ++out.failed;
                 continue;
@@ -280,7 +284,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
             }
         if (!ok) {
             er.ok = false;
-            er.error = "invalid field: " + entry.field;
+            er.error = std::format("invalid field: {}", entry.field);
             out.results.push_back(std::move(er));
             ++out.failed;
             continue;
@@ -322,7 +326,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
                 t.year = v;
             } catch (...) {
                 er.ok = false;
-                er.error = "invalid year: " + entry.value;
+                er.error = std::format("invalid year: {}", entry.value);
                 out.results.push_back(std::move(er));
                 ++out.failed;
                 continue;
@@ -336,7 +340,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
                 t.track_num = v;
             } catch (...) {
                 er.ok = false;
-                er.error = "invalid track_number: " + entry.value;
+                er.error = std::format("invalid track_number: {}", entry.value);
                 out.results.push_back(std::move(er));
                 ++out.failed;
                 continue;
@@ -350,7 +354,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
                 t.disc_num = v;
             } catch (...) {
                 er.ok = false;
-                er.error = "invalid disc_number: " + entry.value;
+                er.error = std::format("invalid disc_number: {}", entry.value);
                 out.results.push_back(std::move(er));
                 ++out.failed;
                 continue;
@@ -359,7 +363,7 @@ Service::Impl::handle(const kanariv::ipc::TagBatchEdit& cmd) {
 
         if (!detail::canWriteFileTags(t.path)) {
             er.ok = false;
-            er.error = "tag write not supported for this format: " + t.path;
+            er.error = std::format("tag write not supported for this format: {}", t.path);
             out.results.push_back(std::move(er));
             ++out.failed;
             continue;
@@ -438,7 +442,7 @@ Service::Impl::handle(const kanariv::ipc::TagGet& cmd) {
     if (!tr) {
         if (tr.error().message.empty())
             return std::unexpected{kanariv::utils::makeError(
-                tr.error().code, "track not found: " + std::to_string(trackId))};
+                tr.error().code, std::format("track not found: {}", trackId))};
         return std::unexpected{tr.error()};
     }
     kanariv::ipc::SingleTrack st{std::move(*tr)};
@@ -472,9 +476,9 @@ Service::Impl::handle(const kanariv::ipc::TagGet& cmd) {
             }
         }
         if (st.cover_data.empty())
-            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                             "tag get: no cover art for track " +
-                                                                 std::to_string(trackId))};
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::NotFound,
+                std::format("tag get: no cover art for track {}", trackId))};
     }
     return Result{std::move(st)};
 }

@@ -5,6 +5,7 @@
 #include <engine/engine_access.hpp>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <kanariv/contracts/queue_store.hpp>
 #include <kanariv/contracts/track_store.hpp>
 #include <kanariv/fwd.hpp>
@@ -146,7 +147,7 @@ resolveAddQuery(kanariv::contracts::Storage& storage, std::string_view query, bo
             return std::unexpected{sr.error()};
         if (sr->empty()) {
             return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::NotFound, "no matches for: " + std::string(query))};
+                kanariv::utils::StatusCode::NotFound, std::format("no matches for: {}", query))};
         }
         return std::move(*sr);
     }
@@ -156,7 +157,7 @@ resolveAddQuery(kanariv::contracts::Storage& storage, std::string_view query, bo
     if (!ec && kanariv::media::hasAudioExt(p)) {
         if (!exists) {
             return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::NotFound, "track not found: " + std::string(query))};
+                kanariv::utils::StatusCode::NotFound, std::format("track not found: {}", query))};
         }
         auto trRes = ensureLibraryTrack(*storage.tracks, p);
         if (!trRes)
@@ -187,8 +188,8 @@ resolveAddQuery(kanariv::contracts::Storage& storage, std::string_view query, bo
     if (!sr)
         return std::unexpected{sr.error()};
     if (sr->empty()) {
-        return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                         "track not found: " + std::string(query))};
+        return std::unexpected{kanariv::utils::makeError(
+            kanariv::utils::StatusCode::NotFound, std::format("track not found: {}", query))};
     }
     return std::move(*sr);
 }
@@ -327,11 +328,12 @@ Service::Impl::handle(const kanariv::ipc::PlayFiles& cmd) {
         std::filesystem::path p(ps);
         std::error_code ec;
         if (!std::filesystem::is_regular_file(p, ec) || ec)
-            return std::unexpected{kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound,
-                                                             "track not found: " + ps)};
-        if (!kanariv::media::hasAudioExt(p))
             return std::unexpected{kanariv::utils::makeError(
-                kanariv::utils::StatusCode::Unsupported, "unsupported file type: " + ps)};
+                kanariv::utils::StatusCode::NotFound, std::format("track not found: {}", ps))};
+        if (!kanariv::media::hasAudioExt(p))
+            return std::unexpected{
+                kanariv::utils::makeError(kanariv::utils::StatusCode::Unsupported,
+                                          std::format("unsupported file type: {}", ps))};
     }
     std::vector<int64_t> ids;
     ids.reserve(cmd.paths.size());
@@ -376,7 +378,7 @@ Service::Impl::handle(const kanariv::ipc::QueueSwitch& qs) {
     if (!q) {
         if (q.error().message.empty())
             return std::unexpected{kanariv::utils::makeError(
-                q.error().code, "queue not found: " + std::to_string(qs.qid))};
+                q.error().code, std::format("queue not found: {}", qs.qid))};
         return std::unexpected{q.error()};
     }
     auto sw = engine_->switchQueue(qs.qid);
@@ -514,7 +516,7 @@ Service::Impl::handle(const kanariv::ipc::QueueRemove& qr) {
     auto selector = detail::parseQueueSelector(qr.idOrIndex);
     if (!selector) {
         return std::unexpected{kanariv::utils::makeError(
-            selector.error().code, "queue remove: " + selector.error().message)};
+            selector.error().code, std::format("queue remove: {}", selector.error().message))};
     }
     int64_t index = selector->number;
     if (selector->byTrackId) {

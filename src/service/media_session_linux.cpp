@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <functional>
 #include <memory>
@@ -175,9 +176,9 @@ class LinuxImpl final : public Impl {
         dbus_error_init(&error);
         DBusConnection* conn = dbus_bus_get_private(DBUS_BUS_SESSION, &error);
         if (!conn) {
-            std::string msg = "failed to connect to session bus: ";
+            std::string msg = "failed to connect to session bus";
             if (error.message)
-                msg += error.message;
+                msg = std::format("failed to connect to session bus: {}", error.message);
             dbus_error_free(&error);
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Internal, msg)};
@@ -210,7 +211,7 @@ class LinuxImpl final : public Impl {
         if (requestedName.empty()) {
             std::string msg = "failed to request an MPRIS bus name";
             if (error.message)
-                msg += ": " + std::string{error.message};
+                msg = std::format("failed to request an MPRIS bus name: {}", error.message);
             dbus_error_free(&error);
             dbus_connection_close(conn);
             dbus_connection_unref(conn);
