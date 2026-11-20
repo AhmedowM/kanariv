@@ -8,6 +8,7 @@
 #include <kanariv/player/output.hpp>
 #include <kanariv/utils/error.hpp>
 #include <kanariv/utils/ring.hpp>
+#include <limits>
 #include <span>
 #include <string_view>
 #include <support/ring_fill.hpp>
@@ -82,6 +83,54 @@ TEST_CASE("output setVolume clamp", "[output]") {
     REQUIRE(out.volume() == 0.0f);
     out.setVolume(1.001f);
     REQUIRE(out.volume() == 1.0f);
+}
+
+TEST_CASE("output gain is a separate factor from volume", "[output]") {
+    using kanariv::player::AudioOutput;
+    kanariv::utils::SpscRing<float> ring{1024, 2};
+    AudioOutput::Config cfg;
+    cfg.sampleRate = 48000;
+    cfg.channels = 2;
+    cfg.ring = &ring;
+    cfg.nullBackend = true;
+
+    auto outRes = AudioOutput::create(cfg);
+    REQUIRE(outRes.has_value());
+    auto& out = *outRes.value();
+    REQUIRE(out.gain() == 1.0f); // config default is neutral
+
+    out.setGain(2.0f);
+    REQUIRE(out.gain() == 2.0f);
+    out.setVolume(0.25f);
+    REQUIRE(out.volume() == 0.25f);
+    REQUIRE(out.gain() == 2.0f); // a volume change never discards the gain
+    out.setVolume(1.0f);
+    REQUIRE(out.gain() == 2.0f);
+}
+
+TEST_CASE("output gain comes from config and is sanitized", "[output]") {
+    using kanariv::player::AudioOutput;
+    kanariv::utils::SpscRing<float> ring{1024, 2};
+    AudioOutput::Config cfg;
+    cfg.sampleRate = 48000;
+    cfg.channels = 2;
+    cfg.ring = &ring;
+    cfg.nullBackend = true;
+    cfg.gain = 0.25f;
+
+    auto outRes = AudioOutput::create(cfg);
+    REQUIRE(outRes.has_value());
+    auto& out = *outRes.value();
+    REQUIRE(out.gain() == 0.25f);
+
+    out.setGain(-1.0f);
+    REQUIRE(out.gain() == 1.0f);
+    out.setGain(std::numeric_limits<float>::quiet_NaN());
+    REQUIRE(out.gain() == 1.0f);
+    out.setGain(std::numeric_limits<float>::infinity());
+    REQUIRE(out.gain() == 1.0f);
+    out.setGain(0.0f); // a zero gain is legal: silence for this track
+    REQUIRE(out.gain() == 0.0f);
 }
 
 TEST_CASE("output fillFromRing volume 1.0 passthrough", "[output]") {

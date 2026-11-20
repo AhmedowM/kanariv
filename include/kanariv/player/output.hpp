@@ -92,18 +92,22 @@ KANARIV_API std::optional<std::uint32_t> legacyDeviceIndex(std::string_view id);
  * - start()/stop(): serialized by an internal mutex; the audio callback never
  *   takes that mutex, so start/stop may block on the backend but never recurse
  *   into the real-time callback.
- * - setVolume()/volume(): Thread-safe (atomic)
+ * - setVolume()/volume()/setGain()/gain(): Thread-safe (atomic)
  * - audio callback: runs on the audio thread (real-time), lock-free
  *
  * Audio Pipeline:
  * 1. Decode thread writes float samples to SPSC ring buffer
  * 2. the backend invokes the audio callback on the audio thread
- * 3. The callback reads from the ring, applies volume and zero-fills any
- *    remaining buffer space (silence on underrun)
+ * 3. The callback reads from the ring, applies volume and gain and zero-fills
+ *    any remaining buffer space (silence on underrun)
  *
  * Volume Control:
- * - Volume is applied in the audio callback via atomic load (lock-free)
- * - Range: 0.0 to 1.0, clamped with utils::clampVolume()
+ * - Output level is `volume * gain`; both factors are atomic and applied in the
+ *   audio callback (lock-free)
+ * - Volume is the user-facing level: range 0.0 to 1.0, clamped with
+ *   utils::clampVolume()
+ * - Gain is the per-track, session-independent factor (for example a
+ *   ReplayGain linear multiplier): any finite value >= 0
  * - Changes take effect on next audio callback
  *
  * Lifecycle:
@@ -131,6 +135,14 @@ class KANARIV_API AudioOutput {
         kanariv::utils::SpscRing<float>* ring = nullptr;
         /** @brief Initial volume, clamped to the range [0, 1]. */
         float volume = 1.0f;
+        /**
+         * @brief Initial gain applied on top of volume; 1.0 is neutral.
+         *
+         * Per-track factor owned by the caller (ReplayGain linear multiplier).
+         * Kept separate from volume so a user volume change cannot silently
+         * discard it. Invalid values (NaN, negative) fall back to 1.0.
+         */
+        float gain = 1.0f;
         /**
          * @brief Non-owning logger; null disables logging.
          * @par Ownership
@@ -207,6 +219,28 @@ class KANARIV_API AudioOutput {
      * Thread-safe; loads the volume atomically.
      */
     float volume() const noexcept;
+
+    /**
+     * @brief Set the per-track gain factor
+     * @param g Gain multiplier (1.0 = neutral; any finite value >= 0)
+     *
+     * Applied multiplicatively with the volume in the audio callback. Invalid
+     * values (NaN, infinity, negative) are ignored and the gain is reset to
+     * 1.0 rather than muting or corrupting the stream.
+     *
+     * @par Thread safety
+     * Thread-safe; stores the gain atomically.
+     */
+    void setGain(float g);
+
+    /**
+     * @brief Get the current gain factor
+     * @return Current gain multiplier (1.0 = neutral)
+     *
+     * @par Thread safety
+     * Thread-safe; loads the gain atomically.
+     */
+    float gain() const noexcept;
 
     /**
      * @brief Start audio playback

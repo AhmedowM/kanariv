@@ -1,6 +1,5 @@
 #include <atomic>
 #include <chrono>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <engine/history.hpp>
@@ -636,14 +635,12 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
                 cfg.sampleRate = sr;
                 cfg.channels = ch;
                 cfg.ring = ring_.get();
-                // ReplayGain: apply the mode-selected gain (dB) as a volume
-                // multiplier on top of the user volume. dB -> linear:
-                // 10^(dB/20). Gains come from the explicit analysis pass.
-                float gain = volume_.load(std::memory_order_relaxed);
-                const double gainDb = detail::replayGainDbFor(cfg_.replayGain, t);
-                if (gainDb != 0.0)
-                    gain = static_cast<float>((gain * std::pow(10.0, gainDb / 20.0)));
-                cfg.volume = gain;
+                // ReplayGain stays a separate sink factor: the output multiplies
+                // it with the user volume in the audio callback, so a later
+                // setVolume() cannot discard it. Gains come from the explicit
+                // analysis pass.
+                cfg.volume = volume_.load(std::memory_order_relaxed);
+                cfg.gain = detail::replayGainLinear(cfg_.replayGain, t);
                 cfg.logger = cfg_.logger;
                 cfg.deviceId = cfg_.device;
                 cfg.deviceName = cfg_.deviceName;

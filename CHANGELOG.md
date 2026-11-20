@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   TagLib file-first writer (`writeFileTags` + `reregisterTrackRow`) with
   loaded-track suspend/resume. Reports per-entry success/failure; `--dry-run`
   validates without writing.
+- `AudioOutput::Config::gain` and `AudioOutput::setGain()`/`gain()`: a
+  per-track gain factor applied multiplicatively with the user volume in the
+  audio callback (ReplayGain uses it), so the two never overwrite each other.
 
 ### Changed
 - One playback-state vocabulary: `player::State` is now an alias for
@@ -54,6 +57,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `db::DatabaseAccess::legacyEngineState` (the pre-sidecar import path) and
   `contracts::NullHistoryStore`, which no installed code used. The null
   history adapter now lives in the tests' support headers.
+
+### Fixed
+- ReplayGain survives volume changes: the engine used to overwrite the sink
+  volume with the raw user value, silently dropping the track gain until the
+  next track opened. Track gain is now a separate sink factor.
+- A crossfaded incoming track plays with its own ReplayGain instead of
+  inheriting the outgoing track's gain.
 
 ## [v2.0.0] - 2026-11-10
 

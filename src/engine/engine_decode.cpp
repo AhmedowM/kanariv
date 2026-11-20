@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "engine_impl.hpp"
+#include "replay_gain.hpp"
 
 namespace kanariv::engine {
 
@@ -194,12 +195,18 @@ bool Engine::Impl::tryPublishCrossfade() {
             trackDuration = crossfadeTrack_.duration;
         trackId = crossfadeTrack_.id;
         trackPath = crossfadeTrack_.path;
+        // Gain of the incoming track, before the move empties crossfadeTrack_.
+        // The sink already runs on the outgoing track's gain; the incoming one
+        // must take over on publication (user volume is untouched).
+        const float gain = detail::replayGainLinear(cfg_.replayGain, crossfadeTrack_);
 
         decoder_ = std::move(crossfadeDecoder_);
         reader_ = std::move(crossfadeReader_);
         currentTrack_ = std::move(crossfadeTrack_);
         crossfadeTrack_ = {};
         duration_ = trackDuration;
+        if (output_)
+            output_->setGain(gain);
         // The new track starts its own transport window at position 0; the
         // decoder itself continues where the overlap stopped.
         pausePos_ = 0;

@@ -11,6 +11,8 @@
 #include <kanariv/types/engine.hpp>
 #include <kanariv/types/record.hpp>
 
+#include <cmath>
+
 namespace kanariv::engine::detail {
 
 /**
@@ -36,6 +38,25 @@ inline double replayGainDbFor(kanariv::types::ReplayGainMode mode,
         return t.replayGainAlbum != 0.0 ? t.replayGainAlbum : t.replayGainTrack;
     }
     return 0.0;
+}
+
+/**
+ * @brief Linear multiplier for the gain in dB the mode applies to one track.
+ * @ingroup kanariv_engine
+ * @param mode Configured ReplayGain mode.
+ * @param t Track about to play, with its persisted gain columns.
+ * @return 1.0 when no gain applies (mode Off or unanalyzed), otherwise
+ *         10^(dB/20).
+ * @details The sink multiplies this by the user volume in the audio callback,
+ * so the two factors stay independent: changing the volume never discards the
+ * per-track gain.
+ */
+inline float replayGainLinear(kanariv::types::ReplayGainMode mode,
+                              const kanariv::types::TrackRow& t) noexcept {
+    const double db = replayGainDbFor(mode, t);
+    if (db == 0.0)
+        return 1.0f;
+    return static_cast<float>(std::pow(10.0, db / 20.0));
 }
 
 } // namespace kanariv::engine::detail

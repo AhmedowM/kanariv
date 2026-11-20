@@ -2,6 +2,7 @@
 #include <miniaudio.h>
 
 #include <atomic>
+#include <cmath>
 #include <expected>
 #include <kanariv/player/output.hpp>
 #include <kanariv/utils/error.hpp>
@@ -215,6 +216,12 @@ std::optional<ResolvedDevice> resolveConfiguredDevice(std::string_view key, std:
     return found;
 }
 
+/// Gain comes from persisted per-track columns: only a finite, non-negative
+/// multiplier is meaningful, anything else would mute or poison the stream.
+float sanitizedGain(float g) {
+    return std::isfinite(g) && g >= 0.0f ? g : 1.0f;
+}
+
 } // namespace
 
 /// miniaudio playback device and mutable control flags, hidden from the header.
@@ -229,6 +236,8 @@ struct AudioOutput::Impl {
     ma_device_id selectedDeviceId{};
     bool hasSelectedDevice{false};
     std::atomic<float> volume{1.0f};
+    /// Per-track factor (ReplayGain linear); 1.0 when neutral.
+    std::atomic<float> gain{1.0f};
     std::atomic<bool> running{false};
     std::atomic<bool> initialized{false};
     /// Serializes init/start/stop/shutdown transitions. The real-time data
@@ -309,6 +318,14 @@ void AudioOutput::setVolume(float vol) {
 
 float AudioOutput::volume() const noexcept {
     return impl_->volume.load(std::memory_order_relaxed);
+}
+
+void AudioOutput::setGain(float g) {
+    impl_->gain.store(sanitizedGain(g), std::memory_order_relaxed);
+}
+
+float AudioOutput::gain() const noexcept {
+    return impl_->gain.load(std::memory_order_relaxed);
 }
 
 AudioOutput::ExpectedVoid AudioOutput::start() {
@@ -399,6 +416,7 @@ AudioOutput::ExpectedVoid AudioOutput::init(const Config& cfg) {
 
     impl_->cfg = cfg;
     impl_->volume.store(kanariv::utils::clampVolume(cfg.volume), std::memory_order_relaxed);
+    impl_->gain.store(sanitizedGain(cfg.gain), std::memory_order_relaxed);
 
     // Optional silent null backend for headless tests: initialize a private
     // context that only advertises ma_backend_null. Otherwise resolve the
@@ -481,8 +499,10 @@ void AudioOutput::Impl::dataCallback(ma_device* pDevice, void* pOutput, const vo
     ma_uint32 channels = pDevice->playback.channels;
     ma_uint32 totalSamples = frameCount * channels;
     float vol = self->volume.load(std::memory_order_relaxed);
+    float gain = self->gain.load(std::memory_order_relaxed);
     // lock-free, no allocation
-    detail::fillFromRing(std::span<float>(output, totalSamples), self->cfg.ring, channels, vol);
+    detail::fillFromRing(std::span<float>(output, totalSamples), self->cfg.ring, channels,
+                         vol * gain);
 }
 
 } // namespace kanariv::player
