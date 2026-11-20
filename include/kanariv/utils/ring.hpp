@@ -288,14 +288,14 @@ class SpscRing {
      * @brief Resets read and write counters to zero.
      * @ingroup kanariv_utils
      * @details Requires external synchronization: caller must ensure producer
-     * and consumer are stopped/paused. In the engine, this means holding
-     * `Engine::decodeMtx_` (which serializes decodeLoop ring writes with
-     * seek/stop/play ring resets). No internal lock; concurrent reset with
+     * and consumer are stopped/paused. The playback pipeline resets it only
+     * after bumping its generation and parking the producer, so no in-flight
+     * chunk can still write. No internal lock; concurrent reset with
      * read/write is a data race. Uses release stores; no fence needed as
      * caller guarantees quiescence.
      */
-    // Requires external sync: producer & consumer stopped or decodeMtx_ held.
-    // Caller (Engine::seek/stop/play) must hold decodeMtx_ or ensure decode thread paused.
+    // Requires external sync: producer & consumer stopped, or the owner's
+    // generation bump has parked the producer (Pipeline::seek/open/stop).
     void reset() noexcept {
         // No fence needed: caller guarantees no concurrent read/write.
         rd_.store(0, std::memory_order_release);

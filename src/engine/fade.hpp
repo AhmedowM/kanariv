@@ -8,8 +8,8 @@
  * @file fade.hpp
  * @brief Fade-in/fade-out envelope and crossfade mixing for decoded chunks.
  * @ingroup kanariv_engine
- * @details Internal header (lives in `src/`, not installed). Extracted from
- * `Engine::Impl::decodeLoop` so the envelope can be unit-tested directly at
+ * @details Internal header (lives in `src/`, not installed). Extracted from the
+ * engine's decode loop so the envelope can be unit-tested directly at
  * mono/stereo/5.1 channel counts without an audio device or decode thread.
  *
  * The chunk buffer is interleaved `frames * channels` floats. The envelope is
@@ -19,7 +19,7 @@
  * `fadeInMs * sampleRate / 1000` (a frame count, not a sample count).
  *
  * Thread safety: stateless pure function over caller-owned buffers; the caller
- * (decodeLoop) owns the buffer and the fade counters.
+ * (the engine's EngineSource::produce) owns the buffer and the fade counters.
  */
 
 namespace kanariv::engine::detail {
@@ -56,7 +56,7 @@ struct FadeParams {
  * when the arguments cannot describe a valid chunk.
  * @details Fade-in ramps 0 -> 1 over `fadeInFrames`; fade-out ramps 1 -> 0
  * over `fadeOutFrames` from `fadeOutStartSec` and takes precedence when both
- * apply (matching the original decodeLoop arithmetic in double precision).
+ * apply (matching the original engine decode-loop arithmetic in double precision).
  * The crossfade mix keeps the outgoing gain applied to both tracks:
  * `out * sqrt(1-p) * gain + in * sqrt(p) * gain`.
  * Incoming channel `c` (clamped to the last channel) feeds output channel `c`,

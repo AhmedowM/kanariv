@@ -56,11 +56,13 @@ Pipeline::~Pipeline() {
 }
 
 Pipeline::ExpectedVoid Pipeline::open(std::uint32_t sampleRate, std::uint32_t channels,
-                                      std::shared_ptr<Source> source) {
+                                      std::shared_ptr<Source> source,
+                                      std::optional<std::size_t> ringFrames) {
     if (sampleRate == 0)
         sampleRate = 48000;
     if (channels == 0)
         channels = 2;
+    const std::size_t capacity = ringFrames.value_or(cfg_.ringFrames);
     std::lock_guard<std::mutex> ctl(controlMutex_);
 
     // Quiesce the old graph first: the generation bump parks the producer, and
@@ -90,8 +92,8 @@ Pipeline::ExpectedVoid Pipeline::open(std::uint32_t sampleRate, std::uint32_t ch
 
     std::shared_ptr<Ring> ring;
     std::unique_ptr<AudioOutput> output;
-    if (cfg_.ringFrames > 0) {
-        ring = std::make_shared<Ring>(cfg_.ringFrames, channels);
+    if (capacity > 0) {
+        ring = std::make_shared<Ring>(capacity, channels);
         AudioOutput::Config outCfg;
         outCfg.sampleRate = sampleRate;
         outCfg.channels = channels;
@@ -103,6 +105,13 @@ Pipeline::ExpectedVoid Pipeline::open(std::uint32_t sampleRate, std::uint32_t ch
         outCfg.deviceId = cfg_.deviceId;
         outCfg.deviceName = cfg_.deviceName;
         auto outResult = AudioOutput::create(outCfg);
+        if (!outResult && cfg_.nullFallback) {
+            // The owner allows playback without a real device: retry once on
+            // the silent backend so the ring keeps a consumer and the decode
+            // path (gapless, crossfade) still progresses.
+            outCfg.nullBackend = true;
+            outResult = AudioOutput::create(outCfg);
+        }
         if (!outResult) {
             std::lock_guard<std::mutex> lk(mtx_);
             lastErr_ = outResult.error().message;
@@ -177,8 +186,8 @@ Pipeline::ExpectedVoid Pipeline::preroll() {
     std::vector<float> buffer(chunkFrames * ch);
     std::size_t filled = 0;
     while (filled < target && ring->availableWrite() >= chunkFrames * ch) {
-        const Source::Result r =
-            source->produce(std::span<float>(buffer.data(), buffer.size()), token);
+        const Source::Result r = source->produce(std::span<float>(buffer.data(), buffer.size()),
+                                                 token, ProduceMode::Preroll);
         if (!r.samples.empty()) {
             std::lock_guard<std::mutex> lk(mtx_);
             if (ring_ == ring && token.current())
@@ -436,6 +445,11 @@ std::chrono::duration<double> Pipeline::position() const noexcept {
     return std::chrono::duration<double>(pos);
 }
 
+std::size_t Pipeline::bufferedFrames() const noexcept {
+    std::lock_guard<std::mutex> lk(mtx_);
+    return ring_ ? ring_->availableRead() : 0;
+}
+
 void Pipeline::failLocked(std::string_view reason) {
     // Generation and state move together (see seek()); a parked or in-flight
     // producer can no longer write once the graph is in Error.
@@ -498,8 +512,8 @@ void Pipeline::producerLoop(std::stop_token st) {
         if (scratch.size() < maxFrames * ch)
             scratch.resize(maxFrames * ch);
 
-        const Source::Result r =
-            source->produce(std::span<float>(scratch.data(), maxFrames * ch), token);
+        const Source::Result r = source->produce(std::span<float>(scratch.data(), maxFrames * ch),
+                                                 token, ProduceMode::Playback);
 
         bool drained = false;
         bool failed = false;

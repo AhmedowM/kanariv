@@ -6,12 +6,12 @@
  * @ingroup kanariv_engine
  * @details Internal header (lives in `src/`, not installed). The engine drives
  * track transitions from two places -- `engineTick()` arms or advances while
- * the track nears its end, `decodeLoop()` completes or defers the transition
- * at end of stream -- and both used to encode the precedence rules inline,
- * interleaved with locking and side effects. The rules live here once, as
- * constexpr functions over plain inputs, so the configuration precedence is
- * reviewable in one place and testable without an engine, an audio device or a
- * decode thread.
+ * the track nears its end, the producer (`EngineSource::produce`) completes or
+ * defers the transition at end of stream -- and both used to encode the
+ * precedence rules inline, interleaved with locking and side effects. The rules
+ * live here once, as constexpr functions over plain inputs, so the
+ * configuration precedence is reviewable in one place and testable without an
+ * engine, an audio device or a decode thread.
  *
  * Precedence (identical to the previous inline logic):
  * - a configured crossfade owns the transition: the monitor arms the overlap
@@ -31,7 +31,7 @@ namespace kanariv::engine::detail {
 /// What the monitor should do for a track that is still playing.
 enum class NearEndAction : std::uint8_t {
     None,          ///< Outside every pre-roll window, or a flag forbids arming.
-    ArmCrossfade,  ///< Flag the crossfade pending; decodeLoop preloads the next entry.
+    ArmCrossfade,  ///< Flag the crossfade pending; the producer preloads the next entry.
     AdvanceGapless ///< Advance the queue now; the ring's preroll covers the seam.
 };
 
@@ -85,7 +85,7 @@ enum class EofAction : std::uint8_t {
     Advance           ///< Move the queue to the next entry (epoch-guarded).
 };
 
-/// Inputs for the end-of-stream decision (see Engine::Impl::decodeLoop).
+/// Inputs for the end-of-stream decision (see Engine::Impl::EngineSource::produce).
 /// The gap fields are read only in the inter-track-gap branch.
 struct EofInput {
     bool crossfadeActive{false}; ///< An overlap is mixing right now.

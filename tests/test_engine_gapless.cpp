@@ -423,10 +423,11 @@ namespace {
 
 /// @brief Writes a 16-bit mono PCM WAV of silence.
 /// @details Silence keeps the crossfade tests quiet while still giving the
-/// engine a real file to decode (so `decodeLoop` runs and the preload/completion
-/// paths are exercised) without needing an audio device: `allowSimulatedPlayback`
-/// covers a missing `AudioOutput` (silent null backend). Fractional lengths let
-/// a test make the incoming track shorter than the crossfade window.
+/// engine a real file to decode (so its Source is driven and the
+/// preload/completion paths are exercised) without needing an audio device:
+/// `allowSimulatedPlayback` covers a missing `AudioOutput` (silent null
+/// backend). Fractional lengths let a test make the incoming track shorter
+/// than the crossfade window.
 bool writeSilentWav(const std::filesystem::path& path, double seconds) {
     constexpr std::uint32_t rate = 8000;
     const std::uint32_t frames = static_cast<std::uint32_t>(rate * seconds);

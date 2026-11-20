@@ -21,14 +21,14 @@
 #include <kanariv/fwd.hpp>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/reader.hpp>
-#include <kanariv/player/output.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
-#include <kanariv/utils/ring.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <player/pipeline.hpp>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -116,6 +116,31 @@ struct QueueFingerprint {
 struct Engine::Impl {
     explicit Impl(const kanariv::types::EngineConfig& cfg);
 
+    /**
+     * @brief Producer the shared pipeline drains for one engine track.
+     * @details The pipeline's producer thread (and preroll() on a control
+     * thread) calls produce(); the body decodes under `decodeMtx_`, applies the
+     * fade/crossfade mix and runs the end-of-stream ladder (advance, gap,
+     * crossfade publication). It may call engine control operations from
+     * inside produce() -- the pipeline never holds a mutex across the call, so
+     * that reentrancy is what lets a track boundary open the next graph.
+     * The engine never reports Status::Failed: a decode failure stays an engine
+     * policy decision (Error event, then the configured transition), so the
+     * pipeline keeps its single job of draining the ring.
+     */
+    struct EngineSource final : kanariv::player::detail::Source {
+        explicit EngineSource(Engine::Impl& impl) noexcept : impl_(impl) {}
+
+        Result produce(std::span<float> out, kanariv::player::detail::SourceToken token,
+                       kanariv::player::detail::ProduceMode mode) override;
+
+        /// @brief Seeks the engine's decoder; a clock-only graph never calls it.
+        kanariv::utils::Expected<void> seek(double seconds) override;
+
+      private:
+        Engine::Impl& impl_;
+    };
+
     // lifecycle
     std::optional<kanariv::utils::Error> init();
     void shutdown();
@@ -145,10 +170,6 @@ struct Engine::Impl {
      * @pre `queueMutex_` is held by the caller (same as saveStateLocked).
      */
     void saveStateBestEffort(std::optional<int64_t> livePositionMs = std::nullopt);
-    /// @brief output_->start() ignoring the outcome, logging a failure.
-    void startOutputBestEffort();
-    /// @brief output_->stop() ignoring the outcome, logging a failure.
-    void stopOutputBestEffort();
     kanariv::utils::Expected<kanariv::types::TrackRow> fetchTrackByPosLocked(int64_t qid,
                                                                              int64_t pos);
 
@@ -221,10 +242,11 @@ struct Engine::Impl {
     /**
      * @brief autoNext() restricted to the track transition the caller saw.
      * @param epoch `transitionEpoch_` sampled when the caller decided to
-     * advance (monitor snapshot, or the decode thread at EOF).
+     * advance (monitor snapshot, or the producer at end of stream).
      * @details Two drivers may decide to advance the same track (gapless arm in
-     * engineTick, EOF in decodeLoop). The first transition bumps the epoch, so
-     * a later call carrying the old one is a no-op instead of a double skip.
+     * engineTick, EOF in the producer's ladder). The first transition bumps the
+     * epoch, so a later call carrying the old one is a no-op instead of a
+     * double skip.
      */
     ExpectedVoid autoNextIfEpoch(uint64_t epoch);
     ExpectedVoid prev();
@@ -242,11 +264,14 @@ struct Engine::Impl {
     double position() const noexcept;
     int64_t currentTrackId() const noexcept;
     /**
-     * @brief Position estimate from the transport counters.
-     * @pre `decodeMtx_` is held by the caller (it reads `pausePos_`,
-     * `playStart_` and `duration_`); the name suffix documents that contract.
-     * Only the `hasCurrent_ == false` branch touches `state_.positionMs`,
-     * which is atomic.
+     * @brief Position estimate from the transport state.
+     * @pre `decodeMtx_` is held by the caller (it reads `duration_` and
+     * `suspendPos_`); the name suffix documents that contract.
+     * @details The live position comes from the shared pipeline clock (one
+     * source for device and simulated playback), clamped to the track's
+     * duration. While a tag-write suspension has the graph closed, the frozen
+     * `suspendPos_` is reported instead. Only the `hasCurrent_ == false`
+     * branch touches `state_.positionMs`, which is atomic.
      */
     double currentPositionLocked() const noexcept;
     bool shuffle() const noexcept;
@@ -287,7 +312,7 @@ struct Engine::Impl {
      * @brief Commits @p next when the queue still matches @p expected.
      * @pre `queueMutex_` held by the caller.
      * @param livePositionMs Forwarded to the persistence call; required when
-     * the caller also holds `decodeMtx_` (decodeLoop's preload path).
+     * the caller also holds `decodeMtx_` (the crossfade preload path).
      * @return false when the queue changed since the peek (nothing committed).
      */
     bool commitNextLocked(const QueueFingerprint& expected, PeekedNext&& next,
@@ -304,7 +329,6 @@ struct Engine::Impl {
      */
     kanariv::utils::Expected<kanariv::types::EngineEvent> doPlayTrack(kanariv::types::TrackRow& t,
                                                                       double startSec = 0.0);
-    void preroll();
 
     // callbacks / events
     ExpectedVoid setCallbacks(const kanariv::types::EngineCallbacks& cbs);
@@ -337,10 +361,20 @@ struct Engine::Impl {
     void resetPlaybackAccounting() noexcept;
     void accountPlaybackTime() noexcept;
     void monitorLoop(std::stop_token st);
-    void decodeLoop(std::stop_token st);
+    /**
+     * @brief Consumes a crossfade preload request as one transaction.
+     * @pre Called on the pipeline's producer thread with no mutex held.
+     * @details Peeks the next entry without the queue lock, opens its
+     * reader+decoder unlocked, then commits the cursor advance and arms the
+     * crossfade under the queue lock. A failure (unreadable entry, concurrent
+     * queue change) leaves the cursor on the unplayed entry so the next attempt
+     * targets it again.
+     */
+    void preloadCrossfade();
     /**
      * @brief Publishes the incoming crossfade track as the playing track.
-     * @pre Called on the decode thread with neither mutex held.
+     * @pre Called on the pipeline's producer thread with neither `queueMutex_`
+     * nor `decodeMtx_` held.
      * @details Takes `queueMutex_` (bounded, `crossfadePublishWait`) then
      * `decodeMtx_`, swaps `crossfadeDecoder_`/`crossfadeReader_` into
      * `decoder_`/`reader_`, republishes `currentTrack_`/`duration_`/position,
@@ -348,14 +382,14 @@ struct Engine::Impl {
      * track under the queue lock (no DB I/O under `decodeMtx_`). The
      * TrackStarted event is pushed after both locks are released.
      * @return false when the queue lock stayed contended; `crossfadeActive_`
-     * remains set and the caller retries on a later decode iteration.
+     * remains set and the caller retries on a later produce() call.
      */
     bool tryPublishCrossfade();
     /**
      * @brief Drops an armed or in-flight crossfade.
-     * @pre `decodeMtx_` is held by the caller (or no decode thread is running).
+     * @pre `decodeMtx_` is held by the caller.
      * @details A track change must not inherit the previous transition's
-     * preloaded decoder: otherwise decodeLoop keeps mixing the stale incoming
+     * preloaded decoder: otherwise the producer keeps mixing the stale incoming
      * track and tryPublishCrossfade() would publish it over the new track.
      */
     void resetCrossfadeLocked() noexcept;
@@ -369,11 +403,15 @@ struct Engine::Impl {
     // - queueMutex_ owns state_, currentTrack_, startedMs_ and the compound
     //   invariant of queue_ (cursor + perm). Writers must hold it; lock-free
     //   readers use the narrow atomics documented on those structs/fields.
-    // - decodeMtx_ owns reader_/decoder_/ring_/output_, duration_, pausePos_,
-    //   playStart_ and the fade/crossfade counters. Control access (start,
-    //   stop, setVolume, reset) to the audio graph happens under it.
-    // - Lock order is queueMutex_ then decodeMtx_; the queue lock is never
-    //   taken while decodeMtx_ is held.
+    // - decodeMtx_ owns reader_/decoder_, duration_, suspendPos_ and the
+    //   fade/crossfade counters.
+    // - pipeline_ owns the ring, sink, producer thread, position clock and its
+    //   own transport state. Its control operations serialize internally, so an
+    //   owner may call them while holding queueMutex_; nothing in the pipeline
+    //   ever takes the queue lock while a control operation is in flight.
+    // - Lock order is queueMutex_ then decodeMtx_ then the pipeline's graph
+    //   mutex; the engine never takes the queue lock while decodeMtx_ or the
+    //   pipeline is held.
     // - playbackState_, hasCurrent_, markedPlayed_, gaplessArmed_ and the
     //   accounting counters are atomics (written under the relevant lock,
     //   read lock-free).
@@ -393,8 +431,7 @@ struct Engine::Impl {
     // because there is no decoder to play. doPlayTrack() reopens the file and
     // clears it (resumeAfterTagWrite's path).
     std::atomic<bool> suspended_{false};
-    std::chrono::steady_clock::time_point playStart_{}; ///< decodeMtx_ only.
-    double pausePos_{0};                                ///< decodeMtx_ only.
+    double suspendPos_{0}; ///< decodeMtx_ only: position frozen by a suspension.
     std::atomic<uint64_t> accumulatedPlaybackMs_{0};
     std::atomic<uint64_t> lastPlaybackSampleMs_{0};
     std::atomic<bool> markedPlayed_{false};
@@ -411,15 +448,14 @@ struct Engine::Impl {
     // player (decodeMtx_ only)
     std::unique_ptr<kanariv::media::Reader> reader_{};
     std::unique_ptr<kanariv::media::Decoder> decoder_{};
-    // Shared so the decode thread can keep a parked ring alive while it waits
-    // after releasing decodeMtx_ (P8).
-    std::shared_ptr<kanariv::utils::SpscRing<float>> ring_{};
-    std::unique_ptr<kanariv::player::AudioOutput> output_{};
+    // The audio graph, its producer thread and the position clock (shared with
+    // Player). The engine supplies EngineSource; the pipeline owns the rest.
+    // Shared ownership because the pipeline may still be draining a chunk with
+    // a parked producer when the engine replaces or tears down its source.
+    std::shared_ptr<EngineSource> source_{};
+    std::unique_ptr<kanariv::player::detail::Pipeline> pipeline_{};
 
-    std::jthread decodeThread_{};
-    std::atomic<bool> decodeRun_{false};
     mutable std::mutex decodeMtx_{};
-    std::condition_variable_any decodeCv_{};
 
     // monitor
     std::jthread monitorThread_{};
@@ -444,8 +480,8 @@ struct Engine::Impl {
     // Reset to false on TrackStarted / next() failure. Requires engineTick() single-writer.
     std::atomic<bool> gaplessArmed_{false};
     // Playback polish state (real-time safe; decodeMtx_ owns the per-track
-    // envelope values, decodeLoop snapshots them under that lock so the mix
-    // never reads them unlocked). fadeSample_ counts frames into the current
+    // envelope values, and the producer snapshots them under that lock so the
+    // mix never reads them unlocked). fadeSample_ counts frames into the current
     // fade; fadeInSamples_/fadeOutSamples_ are precomputed per track in
     // frames; fadeOutStart_ holds the position where fade-out begins.
     std::atomic<uint64_t> fadeSample_{0};
@@ -453,16 +489,16 @@ struct Engine::Impl {
     uint64_t fadeOutSamples_{0}; ///< decodeMtx_ only.
     double fadeOutStart_{0};     ///< decodeMtx_ only.
     // interTrackGapArmed_: the outgoing tail has drained and the silence clock
-    // is running; decodeLoop advances once interTrackGapMs has elapsed. Owned by
-    // the decode thread; cleared by doPlayTrack()/stop() so a manual transition
-    // cannot inherit a half-elapsed gap.
+    // is running; the producer advances once interTrackGapMs has elapsed. Owned
+    // by the producer thread; cleared by doPlayTrack()/stop() so a manual
+    // transition cannot inherit a half-elapsed gap.
     std::atomic<bool> interTrackGapArmed_{false};
-    uint64_t interTrackGapStartMs_{0}; ///< Decode thread only.
+    uint64_t interTrackGapStartMs_{0}; ///< Producer thread only.
     // Crossfade state: when crossfadeMs > 0, the outgoing track is faded out
     // while the incoming track is faded in, and both are mixed into the ring
     // during the overlap (an overlap is not a gap; interTrackGapMs is ignored).
-    // Ownership: only the decode thread mutates these, always under decodeMtx_
-    // (the preload transaction and the completion swap both run in decodeLoop).
+    // Ownership: only the producer thread mutates these, always under decodeMtx_
+    // (the preload transaction and the completion swap both run in produce()).
     // crossfadeActive_ is atomic because engineTick (monitor thread) reads it
     // unlocked to avoid arming a second crossfade.
     std::unique_ptr<kanariv::media::Decoder> crossfadeDecoder_; ///< decodeMtx_ only.
@@ -471,7 +507,7 @@ struct Engine::Impl {
     uint64_t crossfadeSamples_{0}; ///< decodeMtx_ only: total crossfade length in frames.
     uint64_t crossfadeSample_{0};  ///< decodeMtx_ only: current frame within crossfade.
     std::atomic<bool> crossfadeActive_{false};  ///< Written under decodeMtx_, read lock-free.
-    std::atomic<bool> crossfadePending_{false}; // set by engineTick, consumed by decodeLoop
+    std::atomic<bool> crossfadePending_{false}; // set by engineTick, consumed by produce()
     mutable std::timed_mutex queueMutex_;
 };
 

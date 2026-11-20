@@ -1,7 +1,6 @@
 #include <expected>
 #include <kanariv/contracts/storage.hpp>
 #include <kanariv/fwd.hpp>
-#include <kanariv/player/output.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/utils/error.hpp>
@@ -180,16 +179,6 @@ Engine::Impl::saveStateLocked(std::optional<int64_t> livePositionMs) {
 void Engine::Impl::saveStateBestEffort(std::optional<int64_t> livePositionMs) {
     if (auto r = saveStateLocked(livePositionMs); !r && cfg_.logger)
         cfg_.logger->warn("state persist failed: {}", r.error());
-}
-
-void Engine::Impl::startOutputBestEffort() {
-    if (auto r = output_->start(); !r && cfg_.logger)
-        cfg_.logger->warn("audio start failed: {}", r.error());
-}
-
-void Engine::Impl::stopOutputBestEffort() {
-    if (auto r = output_->stop(); !r && cfg_.logger)
-        cfg_.logger->warn("audio stop failed: {}", r.error());
 }
 
 } // namespace kanariv::engine

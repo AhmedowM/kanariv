@@ -231,25 +231,21 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "no db"));
     // handle repeat one without shuffle without queue lock? match C: if !shuffle && repeat==One
-    // && hasCurrent => seek 0 and play - serialize with decodeLoop via decodeMtx_
+    // && hasCurrent => rewind the track through the pipeline
     if (!queue_.shuffle.load(std::memory_order_relaxed) &&
         queue_.repeat.load(std::memory_order_relaxed) == kanariv::types::RepeatMode::One &&
         hasCurrent_.load(std::memory_order_acquire)) {
         double trackDuration = 0.0;
         {
-            std::unique_lock<std::mutex> lk(decodeMtx_);
-            if (decoder_) {
-                auto r = decoder_->seek(0);
-                if (!r)
-                    return std::unexpected(r.error());
-            }
-            if (ring_)
-                ring_->reset();
-            // transport counters are decodeMtx_ state
-            pausePos_ = 0;
-            playStart_ = std::chrono::steady_clock::now();
+            std::lock_guard<std::mutex> lk(decodeMtx_);
             trackDuration = duration_;
         }
+        // Rewind through the pipeline (one serialized transport operation): it
+        // stops the device, seeks the source, clears the buffered tail and
+        // restarts, so the replay starts at the head instead of playing the old
+        // tail first. A clock-only graph just rebases its position.
+        if (auto r = pipeline_->seek(0.0); !r)
+            return std::unexpected(r.error());
         transition(kanariv::types::PlaybackState::Playing, "repeat one");
         resetPlaybackAccounting();
         markedPlayed_.store(false, std::memory_order_release);
@@ -264,7 +260,6 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
         ev.queue_id = queue_.queue_id.load(std::memory_order_relaxed);
         ev.duration = trackDuration;
         pushEvent(ev);
-        decodeCv_.notify_all();
         return {};
     }
     // Monitor autoNext passes 0 (fail-fast; the next tick retries), user
@@ -308,17 +303,16 @@ Engine::ExpectedVoid Engine::Impl::advanceLocked(bool stopAtEnd, int lockWaitMs,
             const int64_t endedId = currentTrack_.id;
             const int64_t qid = queue_.queue_id.load(std::memory_order_relaxed);
             double endedDuration = 0.0;
-            // audio graph + duration are decodeMtx_ state
             {
-                std::unique_lock<std::mutex> lk(decodeMtx_);
-                transition(kanariv::types::PlaybackState::Stopped, "end of queue");
-                if (output_)
-                    stopOutputBestEffort();
-                if (ring_)
-                    ring_->reset();
-                pausePos_ = 0;
+                std::lock_guard<std::mutex> lk(decodeMtx_);
                 endedDuration = duration_;
             }
+            transition(kanariv::types::PlaybackState::Stopped, "end of queue");
+            // Release the sink and the buffered tail; the decoder stays (play()
+            // rewinds it through the pipeline). The graph's clock stops, so the
+            // published position is 0 after this.
+            if (auto r = pipeline_->stop(); !r && cfg_.logger)
+                cfg_.logger->warn("audio stop failed: {}", r.error());
             qlk.release();
             // Notify listeners (e.g. the OS media-session bridge) that the
             // track ended naturally so now-playing UI can switch to Stopped.
@@ -385,15 +379,16 @@ std::unexpected<kanariv::utils::Error> Engine::Impl::queueBusy(std::string_view 
 
 double Engine::Impl::currentPositionLocked() const noexcept {
     if (!hasCurrent_.load(std::memory_order_acquire))
-        return static_cast<double>(state_.positionMs) / 1000.0;
-    auto st = playbackState_.load(std::memory_order_acquire);
-    if (st == kanariv::types::PlaybackState::Paused)
-        return pausePos_;
-    if (st != kanariv::types::PlaybackState::Playing)
-        return pausePos_;
-    auto now = std::chrono::steady_clock::now();
-    double elapsed = std::chrono::duration<double>(now - playStart_).count();
-    double pos = pausePos_ + elapsed;
+        return static_cast<double>(state_.positionMs.load(std::memory_order_relaxed)) / 1000.0;
+    // The graph is closed while the decoder is released for a tag write; the
+    // frozen offset is what the reopen resumes from.
+    if (suspended_.load(std::memory_order_acquire))
+        return suspendPos_;
+    // One clock for device and simulated playback: the shared pipeline reports
+    // the base position plus the elapsed time while playing, and a stopped or
+    // closed graph reports 0 (stop() and the end-of-queue path clear
+    // hasCurrent_ first, so no published track ever reads that 0).
+    double pos = pipeline_ ? pipeline_->position().count() : 0.0;
     if (pos > duration_)
         pos = duration_;
     if (pos < 0)

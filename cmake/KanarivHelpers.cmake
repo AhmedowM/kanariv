@@ -315,6 +315,10 @@ function(kanariv_check_src_boundaries)
     "app:config/raw.hpp"
     "config:config_detail.hpp"
     "engine:player/playback_policy.hpp"
+    # P6/D1: one single-track pipeline backs both playback paths. The engine
+    # supplies the Source and drives the graph; the header is exported for the
+    # split-DLL build (KANARIV_API) but is not an installed contract.
+    "engine:player/pipeline.hpp"
     "library:db/database_access.hpp"
     "library:db/transaction.hpp"
     "service:config/raw.hpp"

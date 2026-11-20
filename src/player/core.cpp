@@ -42,7 +42,8 @@ class DecoderSource final : public detail::Source {
         return channels_;
     }
 
-    Result produce(std::span<float> out, detail::SourceToken token) override {
+    Result produce(std::span<float> out, detail::SourceToken token,
+                   detail::ProduceMode /*mode*/) override {
         std::lock_guard<std::mutex> lk(mtx_);
         // A stale epoch must not consume frames: they belong to a graph that
         // no longer reads this source.

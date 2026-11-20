@@ -167,29 +167,33 @@ void Engine::Impl::shutdown() {
         monCv_.notify_all();
         monitorThread_.join();
     }
-    // stop decode
-    decodeRun_.store(false, std::memory_order_release);
-    decodeCv_.notify_all();
-    if (decodeThread_.joinable()) {
-        decodeThread_.request_stop();
-        decodeCv_.notify_all();
-        decodeThread_.join();
-    }
+    // Freeze the clock before the graph goes: a closed pipeline reports 0, and
+    // this is the position the next session resumes from. A second shutdown
+    // (the destructor always calls one) has no graph left and must not
+    // overwrite the saved position with that zero.
+    if (!pipeline_)
+        return;
+    const int64_t liveMs = static_cast<int64_t>(position() * 1000.0);
+    // Quiesce the producer and release the sink before the decoder (the
+    // producer decodes under decodeMtx_, the callback reads the ring).
+    if (pipeline_)
+        pipeline_->close();
     // persist state (threads are gone; take the queue lock so saveStateLocked's
     // precondition holds and the state_ snapshot is consistent)
     if (hasDb()) {
         std::lock_guard<std::timed_mutex> qlk(queueMutex_);
         state_.cursorPos = static_cast<int64_t>(queue_.cursor);
-        saveStateBestEffort();
+        saveStateBestEffort(liveMs);
     }
-    if (output_) {
-        stopOutputBestEffort();
-        output_.reset();
+    {
+        std::lock_guard<std::mutex> lk(decodeMtx_);
+        decoder_.reset();
+        reader_.reset();
+        resetCrossfadeLocked();
     }
-    decoder_.reset();
-    reader_.reset();
-    ring_.reset();
-    resetCrossfadeLocked();
+    // Join the parked producer thread and drop the graph with it.
+    pipeline_.reset();
+    source_.reset();
 }
 
 Engine::Impl::Impl(const kanariv::types::EngineConfig& cfg) : cfg_(cfg), state_{}, queue_{} {
@@ -220,12 +224,22 @@ Engine::Impl::Impl(const kanariv::types::EngineConfig& cfg) : cfg_(cfg), state_{
     crossfadeSample_ = 0;
     // callbacks from config
     callbacks_ = cfg.callbacks;
+    // The shared playback pipeline owns the ring, sink and producer thread for
+    // the engine's whole lifetime; open() installs a graph per track.
+    source_ = std::make_shared<EngineSource>(*this);
+    kanariv::player::detail::Pipeline::Config pcfg;
+    pcfg.volume = volume_.load(std::memory_order_relaxed);
+    pcfg.logger = cfg_.logger;
+    pcfg.deviceId = cfg_.device;
+    pcfg.deviceName = cfg_.deviceName;
+    // allowSimulatedPlayback means "this process may run without a device", so
+    // a failed real device falls back to the silent backend instead of a bare
+    // clock (same contract the engine's own output setup had).
+    pcfg.nullFallback = cfg_.allowSimulatedPlayback;
+    pipeline_ = std::make_unique<kanariv::player::detail::Pipeline>(std::move(pcfg));
 }
 
 std::optional<kanariv::utils::Error> Engine::Impl::init() {
-    // start decode thread
-    decodeRun_.store(true, std::memory_order_release);
-    decodeThread_ = std::jthread([this](std::stop_token st) { decodeLoop(st); });
     // start monitor thread if enabled
     if (cfg_.enableMonitorThread) {
         monRun_.store(true, std::memory_order_release);

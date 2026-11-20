@@ -35,6 +35,13 @@
  * a decode failure itself, under `mtx_`, so a concurrent control operation
  * cannot race with it: whichever runs first wins, exactly as when the state
  * machine and the decode loop shared one mutex.
+ *
+ * @par Reentrancy
+ * A Source may call control operations from inside produce(): the Engine's
+ * auto-advance does exactly that at a track boundary. This is safe because no
+ * control operation waits for the producer thread (the producer never holds
+ * `controlMutex_`), and `preroll()` produces with an explicit Preroll mode so a
+ * source with a richer state machine can skip its transition decisions there.
  */
 
 #include <atomic>
@@ -49,6 +56,7 @@
 #include <kanariv/utils/ring.hpp>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <stop_token>
 #include <string>
@@ -75,6 +83,17 @@ struct SourceToken {
 };
 
 /**
+ * @brief Why the pipeline is asking a Source for samples.
+ * @details Preroll calls run on the control thread before the device starts;
+ * a source whose produce() also drives track transitions (the Engine) must
+ * not take them there.
+ */
+enum class ProduceMode : std::uint8_t {
+    Playback, ///< Steady-state fill of the ring for an audible position.
+    Preroll   ///< Initial fill before play(); decode only.
+};
+
+/**
  * @brief Audio producer feeding a Pipeline's ring.
  * @details Called from the pipeline's producer thread (and from preroll() on
  * the caller's thread), one chunk at a time. The pipeline never holds its own
@@ -82,8 +101,12 @@ struct SourceToken {
  * Implementations may be shared with parked producer threads; they must stay
  * alive until the last in-flight produce() returns (the pipeline keeps a
  * shared_ptr).
+ *
+ * KANARIV_API is for the split-DLL build only: the engine derives from this
+ * interface in its own DLL, so the vtable and typeinfo must leave player.dll.
+ * The header stays in `src/` -- no installed contract carries it.
  */
-class Source {
+class KANARIV_API Source {
   public:
     /// How one produce call ended.
     enum class Status : std::uint8_t {
@@ -111,13 +134,14 @@ class Source {
      * @brief Fill @p out with interleaved samples for the current epoch.
      * @param out Scratch span sized by the shared chunk policy; overwrite it.
      * @param token Epoch snapshot; return an empty result when it is stale.
+     * @param mode Preroll for the pre-device fill, Playback while sounding.
      * @return Produced frames and the end condition.
      * @par Thread safety
      * Serialized with seek() by the implementation; called from at most one
      * thread at a time for a given epoch, but a stale call may overlap the
      * control thread.
      */
-    virtual Result produce(std::span<float> out, SourceToken token) = 0;
+    virtual Result produce(std::span<float> out, SourceToken token, ProduceMode mode) = 0;
 
     /**
      * @brief Reposition the producer.
@@ -141,8 +165,11 @@ class Source {
  *
  * The owner keeps its own richer state machine when it has one (the engine's
  * queue); this one describes the audio device and the clock.
+ *
+ * KANARIV_API is for the split-DLL build only; see Source. The header stays in
+ * `src/` so the pipeline remains an internal seam, not an installed contract.
  */
-class Pipeline {
+class KANARIV_API Pipeline {
   public:
     using ExpectedVoid = kanariv::utils::Expected<void>;
 
@@ -151,7 +178,8 @@ class Pipeline {
      * @brief Sink and graph configuration fixed for the pipeline's lifetime.
      */
     struct Config {
-        /// Ring capacity in frames; 0 means clock-only (no ring, no device).
+        /// Default ring capacity in frames; 0 means clock-only (no ring, no
+        /// device) unless open() overrides it per graph.
         std::size_t ringFrames{0};
         /// Initial user volume, clamped to [0, 1].
         float volume{1.0f};
@@ -161,6 +189,11 @@ class Pipeline {
         kanariv::utils::Logger* logger{nullptr};
         /// Use miniaudio's silent null backend (headless tests, simulations).
         bool nullBackend{false};
+        /// Retry a failed device creation once on the silent null backend.
+        /// @details Owners whose configuration allows playback without a real
+        /// device (the engine's `allowSimulatedPlayback`) set this so the real
+        /// decode path keeps running instead of degrading to a bare clock.
+        bool nullFallback{false};
         /// Configured playback device (opaque id, name, or legacy index).
         std::string deviceId{};
         /// Display name paired with deviceId.
@@ -177,13 +210,16 @@ class Pipeline {
      * @param sampleRate Output rate in hertz; 0 falls back to 48000.
      * @param channels Output channels; 0 falls back to 2.
      * @param source Producer feeding the ring; may be null for clock-only.
+     * @param ringFrames Ring capacity in frames for this graph; nullopt uses
+     * Config::ringFrames. 0 installs a clock-only graph (no ring, no device).
      * @return Device creation error; on failure the pipeline stays closed.
      * @details Stops and releases whatever was installed first. The old graph
      * is only torn down here, so the ring and source seen by a parked producer
      * stay alive (shared ownership) until its chunk returns.
      */
     ExpectedVoid open(std::uint32_t sampleRate, std::uint32_t channels,
-                      std::shared_ptr<Source> source);
+                      std::shared_ptr<Source> source,
+                      std::optional<std::size_t> ringFrames = std::nullopt);
 
     /**
      * @brief Release the graph and return to Stopped.
@@ -261,7 +297,16 @@ class Pipeline {
     [[nodiscard]] std::string lastError() const;
 
     /// @brief Base position plus elapsed time while playing; 0 when stopped.
+    /// @details A clock-only graph (no ring/device) advances the same way, so
+    /// an owner can keep one position source for device and simulated playback.
     [[nodiscard]] std::chrono::duration<double> position() const noexcept;
+
+    /**
+     * @brief Frames currently buffered in the ring (0 when clock-only).
+     * @details The owner-side drain check: a tail that has not been consumed
+     * yet means the audible end of the track has not been reached.
+     */
+    [[nodiscard]] std::size_t bufferedFrames() const noexcept;
 
   private:
     using Ring = kanariv::utils::SpscRing<float>;

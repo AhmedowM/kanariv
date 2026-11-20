@@ -10,29 +10,32 @@
  * Core class is Engine which owns:
  * - Playback state machine (`Stopped -> Playing -> Paused -> Playing`,
  *   next/prev with shuffle/repeat, see queueNextLocked/queuePrevLocked).
- * - Gapless transition: preroll() fills SpscRing<float> to half capacity
- *   before AudioOutput::start(); decodeLoop continuously refills the ring;
- *   engineTick arms gaplessArmed_ (CAS 0->1) when remaining <= gaplessMs
- *   (300 ms) and calls next().
- * - Threads: decodeLoop runs on decodeThread_ (SPSC ring, decodeMtx_ +
- *   decodeCv_, wakes on Playing); monitorLoop runs on monitorThread_
- *   polling every pollMs (default 10 ms) via monMtx_/monCv_ and calling
- *   engineTick() (history + progress + gapless).
+ * - Gapless transition: the shared playback pipeline prerolls its ring to half
+ *   capacity before the device starts and its producer thread continuously
+ *   refills it from the engine's Source; engineTick arms gaplessArmed_ (CAS
+ *   0->1) when remaining <= gaplessMs (300 ms) and calls next().
+ * - Threads: the pipeline's producer thread runs the engine's Source (SPSC
+ *   ring, decodeMtx_, per-chunk generation token); monitorLoop runs on
+ *   monitorThread_ polling every pollMs (default 10 ms) via monMtx_/monCv_
+ *   and calling engineTick() (history + progress + gapless).
  * - Persistence: engine state (shuffle, repeat, cursor, current track, volume,
  *   shuffle permutation, active queue) is loaded at attach and saved on
  *   transport transitions through the `contracts::IPlaybackStateStore` port.
  * - History: doHistoryMark uses shouldMarkPlayed(historyThresholdPct/Secs)
  *   with atomic CAS on markedPlayed_ and a database-owned transaction.
  * Locking: two engine mutexes with a documented ownership split and a fixed
- * order -- `queueMutex_` then `decodeMtx_`, never the reverse.
+ * order -- `queueMutex_` then `decodeMtx_` then the pipeline's own graph
+ * mutex; never the reverse.
  * - `queueMutex_` (timed mutex) owns `state_`, `currentTrack_`, `startedMs_`
  *   and the compound invariant of `queue_` (cursor + shuffle permutation).
  *   Fast/monitor paths try_lock; transport commands (play/next/prev/pause/
  *   stop/seek) wait boundedly (500 ms) and report Busy on timeout.
- * - `decodeMtx_` (mutex) owns the audio graph (`reader_`/`decoder_`/`ring_`/
- *   `output_`) plus `duration_`, `pausePos_`, `playStart_` and the fade /
- *   crossfade counters. Control access to the graph happens under it.
- * - Crossfade fields are mutated only by the decode thread under `decodeMtx_`;
+ * - `decodeMtx_` (mutex) owns the decoders (`reader_`/`decoder_`), `duration_`,
+ *   `suspendPos_` and the fade / crossfade counters. The audio graph itself
+ *   (ring, sink, producer thread, position clock) belongs to the shared
+ *   `player::detail::Pipeline`, whose control operations serialize internally
+ *   and never wait on the producer.
+ * - Crossfade fields are mutated only by the producer thread under `decodeMtx_`;
  *   `std::atomic<bool> crossfadeActive_` is the lock-free signal the monitor
  *   thread observes (it never reads the crossfade members themselves).
  * - Lock-free readers use only the atomics published by the owning writer
@@ -81,9 +84,11 @@ struct EngineAccess;
  * `Busy` on contention); transport commands (play/next/prev/pause/stop/seek)
  * instead wait up to 500 ms via `tryLockQueueFor()` so a colliding command
  * executes instead of failing. The lock order is `queueMutex_` then
- * `decodeMtx_`. `currentTrack_`, `startedMs_` and `state_` are queue-lock
- * state; `duration_`, `pausePos_`, `playStart_` and the audio graph are
- * decode-lock state. Published atomics (`playbackState_`, `hasCurrent_`,
+ * `decodeMtx_` then the playback pipeline's graph mutex. `currentTrack_`,
+ * `startedMs_` and `state_` are queue-lock state; `duration_`, `suspendPos_`
+ * and the decoders are decode-lock state, while the audio graph (ring, sink,
+ * producer thread, position clock) belongs to the shared pipeline. Published
+ * atomics (`playbackState_`, `hasCurrent_`,
  * `volume_`, `markedPlayed_`, `gaplessArmed_`, `crossfadeActive_` and the
  * atomic fields of `state_`) keep the lock-free API surfaces consistent.
  *
@@ -111,7 +116,8 @@ class KANARIV_API Engine final {
      * @ingroup kanariv_engine
      * @param cfg Engine configuration (poll/gapless/history thresholds).
      * @return Owning Engine or Error from init().
-     * @details Starts decodeThread_ and optionally monitorThread_ via init().
+     * @details Creates the playback pipeline and optionally monitorThread_ via
+     * init().
      * No database is opened; optionally attach persistence with
      * attachStorage().
      * @par Thread safety
@@ -255,8 +261,10 @@ class KANARIV_API Engine final {
      * @retval StatusCode::Busy if `queueMutex_` stays contended past the wait
      * budget; nothing is changed (retry).
      * @details Waits boundedly (500 ms) for `queueMutex_` (lock order
-     * queue-to-decode), then holds decodeMtx_ to serialize with decodeLoop
-     * (decoder_->decode / ring_->write) and to update `pausePos_`/`playStart_`.
+     * queue-to-decode), then holds decodeMtx_ to serialize with the producer's
+     * Source (decoder_->decode) and to clamp the target against `duration_`,
+     * then repositions the shared pipeline (clock, ring and source seek in one
+     * serialized operation).
      * The playback state found on entry is restored afterwards (and after a
      * failed seek), so seeking while paused does not start audio and seeking
      * while stopped does not begin playback.
@@ -292,8 +300,9 @@ class KANARIV_API Engine final {
      * the call takes that mutex briefly). */
     double duration() const noexcept;
     /** @brief Returns current playback position in seconds. @ingroup kanariv_engine
-     * @return Position (persisted resume position if stopped with no loaded track;
-     * pausePos_ if paused; pausePos_ + elapsed if playing, clamped).
+     * @return Position (persisted resume position if stopped with no loaded
+     * track; the frozen position while suspended; otherwise the pipeline's
+     * clock, clamped to the duration).
      * Takes `decodeMtx_` briefly; queue-lock state is never read without it. */
     double position() const noexcept;
     /** @brief Returns current track id (or persisted one if no current). @ingroup kanariv_engine

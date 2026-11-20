@@ -1,5 +1,5 @@
 #include <atomic>
-#include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <engine/history.hpp>
@@ -7,7 +7,6 @@
 #include <kanariv/fwd.hpp>
 #include <kanariv/media/decoder.hpp>
 #include <kanariv/media/reader.hpp>
-#include <kanariv/player/output.hpp>
 #include <kanariv/types/db.hpp>
 #include <kanariv/types/engine.hpp>
 #include <kanariv/types/format.hpp>
@@ -17,7 +16,6 @@
 #include <memory>
 #include <optional>
 #include <player/playback_policy.hpp>
-#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -49,37 +47,21 @@ Engine::ExpectedVoid Engine::Impl::play(int64_t queueId) {
         if (suspended_.load(std::memory_order_acquire))
             return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
                                                              "track suspended for tag write"));
-        // resume, don't dequeue; playStart_/output_ are decodeMtx_ state
-        {
-            std::unique_lock<std::mutex> lk(decodeMtx_);
-            playStart_ = std::chrono::steady_clock::now();
-            if (output_)
-                startOutputBestEffort();
-        }
+        // resume, don't dequeue
+        if (auto r = pipeline_->resume(); !r && cfg_.logger)
+            cfg_.logger->warn("audio start failed: {}", r.error());
         lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
         transition(kanariv::types::PlaybackState::Playing, "play resume");
-        decodeCv_.notify_all();
         monCv_.notify_all();
         return {};
     }
     if (s == kanariv::types::PlaybackState::Playing) {
-        // already playing, restart current track (seek 0), don't dequeue
-        // serialize with decodeLoop (decoder_->decode / ring_->write) via decodeMtx_
-        std::unique_lock<std::mutex> lk(decodeMtx_);
-        if (decoder_) {
-            auto r = decoder_->seek(0);
-            if (!r)
-                return std::unexpected(r.error());
-        }
-        if (ring_)
-            ring_->reset();
-        pausePos_ = 0;
-        playStart_ = std::chrono::steady_clock::now();
+        // already playing, restart current track (seek 0), don't dequeue. The
+        // pipeline pauses the device, seeks the source, clears the ring and
+        // restarts it, so this is one serialized transport operation.
+        if (auto r = pipeline_->seek(0.0); !r)
+            return std::unexpected(r.error());
         resetPlaybackAccounting();
-        if (output_)
-            startOutputBestEffort();
-        lk.unlock();
-        decodeCv_.notify_all();
         monCv_.notify_all();
         return {};
     } // end if Playing
@@ -174,10 +156,10 @@ Engine::ExpectedVoid Engine::Impl::playTrack(int64_t trackId) {
 }
 
 Engine::ExpectedVoid Engine::Impl::pause() {
-    // pausePos_/output_ live under decodeMtx_ while the persisted state lives
-    // under queueMutex_: take the queue lock first (documented order) so the
-    // pause snapshot and saveStateLocked() cannot interleave with a concurrent
-    // transport command or the monitor checkpoint.
+    // The persisted state lives under queueMutex_, and the pipeline folds its
+    // own clock when it pauses, so take the queue lock first (documented order)
+    // to keep the pause snapshot and saveStateLocked() from interleaving with a
+    // concurrent transport command or the monitor checkpoint.
     auto qlk = tryLockQueueFor(queueLockWait);
     if (!qlk)
         return queueBusy("pause", "queue busy");
@@ -189,13 +171,10 @@ Engine::ExpectedVoid Engine::Impl::pauseLocked() {
     if (s != kanariv::types::PlaybackState::Playing)
         return std::unexpected(
             kanariv::utils::makeError(kanariv::utils::StatusCode::State, "not playing"));
-    // record pause position (transport counters are decodeMtx_ state)
-    {
-        std::unique_lock<std::mutex> lk(decodeMtx_);
-        pausePos_ = currentPositionLocked();
-        if (output_)
-            stopOutputBestEffort();
-    }
+    // The pipeline stops the device and folds the elapsed time into its clock;
+    // a stop failure is logged but never leaves the engine reporting Playing.
+    if (auto r = pipeline_->pause(); !r && cfg_.logger)
+        cfg_.logger->warn("audio stop failed: {}", r.error());
     accountPlaybackTime();
     lastPlaybackSampleMs_.store(0, std::memory_order_release);
     transition(kanariv::types::PlaybackState::Paused, "pause");
@@ -215,15 +194,10 @@ Engine::ExpectedVoid Engine::Impl::resume() {
     if (suspended_.load(std::memory_order_acquire))
         return std::unexpected(kanariv::utils::makeError(kanariv::utils::StatusCode::State,
                                                          "track suspended for tag write"));
-    {
-        std::unique_lock<std::mutex> lk(decodeMtx_);
-        playStart_ = std::chrono::steady_clock::now();
-        if (output_)
-            startOutputBestEffort();
-    }
+    if (auto r = pipeline_->resume(); !r && cfg_.logger)
+        cfg_.logger->warn("audio start failed: {}", r.error());
     lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
     transition(kanariv::types::PlaybackState::Playing, "resume");
-    decodeCv_.notify_all();
     monCv_.notify_all();
     return {};
 }
@@ -278,23 +252,19 @@ Engine::ExpectedVoid Engine::Impl::stop() {
     }
     hasCurrent_.store(false, std::memory_order_release);
     suspended_.store(false, std::memory_order_release);
-    // Release playback resources (decoder/output/ring hold tens of MB for
-    // large files; measured +47 MB private retained after stop). Replay
-    // re-opens via doPlayTrack. decodeMtx_ serializes with an in-flight
-    // decode chunk; queue-to-decodeMtx_ is the established lock order
-    // (matched by doPlayTrack/suspendCurrentTrack).
+    // Release playback resources (the ring and sink hold tens of MB for large
+    // files; measured +47 MB private retained after stop). close() stops the
+    // device, drops the ring and parks the producer; the decoder goes under
+    // decodeMtx_, which serializes with an in-flight decode chunk. Replay
+    // re-opens via doPlayTrack.
+    pipeline_->close();
     {
         std::unique_lock<std::mutex> lk(decodeMtx_);
-        if (output_) {
-            stopOutputBestEffort();
-            output_.reset();
-        }
         decoder_.reset();
         reader_.reset();
-        ring_.reset();
         resetCrossfadeLocked();
         interTrackGapArmed_.store(false, std::memory_order_release);
-        pausePos_ = 0;
+        suspendPos_ = 0;
     }
     resetPlaybackAccounting();
     // An explicit stop starts the track from its head next time (including
@@ -323,41 +293,22 @@ Engine::ExpectedVoid Engine::Impl::seek(double seconds) {
     auto qlk = tryLockQueueFor(queueLockWait);
     if (!qlk)
         return queueBusy("seek", "queue busy");
-    // Pause decode thread to safely seek + reset ring (prevents race with decodeLoop)
-    // A seek repositions the transport; it must not start one. The state it
-    // found is restored on both the success and the failure path.
+    // The pipeline pauses the device, seeks the source, clears the ring and
+    // restarts it, publishing its clock at the new position; a seek never
+    // changes whether the transport is playing.
     const auto previousState = playbackState_.load(std::memory_order_acquire);
+    double target = seconds;
     {
-        std::unique_lock<std::mutex> lk(decodeMtx_);
-        transition(kanariv::types::PlaybackState::Paused, "seek");
-        // snapshot for restore on error (Task 1: seek hardening)
-        double savedPause = pausePos_;
-        auto savedStart = playStart_;
-
-        if (decoder_) {
-            auto res = decoder_->seek(seconds);
-            if (!res) {
-                pausePos_ = savedPause;
-                playStart_ = savedStart;
-                transition(previousState, "seek restore");
-                return std::unexpected(res.error());
-            }
-        }
-
-        // adjust position tracking
-        double dur = duration_;
-        if (seconds > dur)
-            seconds = dur;
-        pausePos_ = seconds;
-        playStart_ = std::chrono::steady_clock::now();
-        lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
-        if (ring_)
-            ring_->reset();
-
-        // Resume the decode thread only if it was running before the seek.
-        transition(previousState, "seek restore");
+        std::lock_guard<std::mutex> lk(decodeMtx_);
+        if (target > duration_)
+            target = duration_;
     }
-    decodeCv_.notify_all();
+    if (auto r = pipeline_->seek(target); !r) {
+        transition(previousState, "seek restore");
+        return std::unexpected(r.error());
+    }
+    lastPlaybackSampleMs_.store(detail::nowMs(), std::memory_order_release);
+    transition(previousState, "seek restore");
     if (hasDb())
         saveStateBestEffort();
     return {};
@@ -373,25 +324,23 @@ Engine::ExpectedVoid Engine::Impl::suspendCurrentTrack() {
         return queueBusy("suspend", "queue busy");
     // Mirror stop() teardown but keep cursor, current track, and history
     // mark: the file handles must go so TagLib can rewrite the file, while
-    // everything needed to resume stays in place. decodeMtx_ serializes with
-    // an in-flight decode chunk (like stop(); queue-to-decodeMtx_ order).
-    std::unique_lock<std::mutex> lk(decodeMtx_);
-    // Freeze the transport clock before the state flips: with the decoder gone
-    // position() returns pausePos_, which without this snapshot would rewind to
-    // the pre-track value.
-    pausePos_ = currentPositionLocked();
+    // everything needed to resume stays in place.
+    // Freeze the transport clock before the graph goes: with the pipeline
+    // closed position() would report 0, and suspendPos_ is what
+    // currentPositionLocked() returns until the track is reopened.
+    {
+        std::lock_guard<std::mutex> lk(decodeMtx_);
+        suspendPos_ = currentPositionLocked();
+    }
     suspended_.store(true, std::memory_order_release);
     transition(kanariv::types::PlaybackState::Paused, "suspend");
-    if (output_)
-        stopOutputBestEffort();
-    if (ring_)
-        ring_->reset();
-    decoder_.reset();
-    reader_.reset();
-    resetCrossfadeLocked();
-    lk.unlock();
-    qlk.release();
-    decodeCv_.notify_all();
+    pipeline_->close();
+    {
+        std::lock_guard<std::mutex> lk(decodeMtx_);
+        decoder_.reset();
+        reader_.reset();
+        resetCrossfadeLocked();
+    }
     monCv_.notify_all();
     return {};
 }
@@ -432,19 +381,15 @@ Engine::ExpectedVoid Engine::Impl::resumeAfterTagWrite(const kanariv::types::Tra
 Engine::ExpectedVoid Engine::Impl::setVolume(float g) {
     g = kanariv::utils::clampVolume(g);
     volume_.store(g, std::memory_order_relaxed);
-    // state_ is queueMutex_-only and output_ is decodeMtx_-only: take both in
-    // the documented order. A busy queue lock is not an error -- the atomic
-    // volume is already updated and saveStateLocked() persists volume_ (the
-    // authoritative value), so the next checkpoint picks it up.
+    // A busy queue lock is not an error -- the atomic volume is already
+    // updated and saveStateLocked() persists volume_ (the authoritative
+    // value), so the next checkpoint picks it up. The pipeline applies the
+    // value to the live sink (or to the graph installed next).
     std::unique_lock<std::timed_mutex> qlk(queueMutex_, std::defer_lock);
     if (!qlk.try_lock_for(queueLockWait))
         return {};
     state_.volume = g;
-    {
-        std::unique_lock<std::mutex> lk(decodeMtx_);
-        if (output_)
-            output_->setVolume(g);
-    }
+    pipeline_->setVolume(g);
     if (hasDb()) {
         // Throttle persistence (M-3): a volume drag emits dozens of
         // events/s; each saveStateLocked() rewrites the state sidecar.
@@ -564,54 +509,58 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
     // lastErr_ describes *this* attempt's open failure; without the reset a
     // failure of a different kind surfaced the previous track's message.
     lastErr_.clear();
-    // Teardown and reopen must serialize with decodeLoop (decoder_->decode /
-    // ring_->write hold decodeMtx_) and with the audio callback, which keeps
-    // cfg.ring raw. Freeing those without the lock is a use-after-free (ASan:
-    // convertFrameBuffered while doPlayTrack reset decoder_); stopping the
-    // device first also quiesces the callback before the ring goes away.
-    // Lock order queue-to-decodeMtx_ matches stop()/suspendCurrentTrack();
-    // every caller already holds the queue lock.
-    std::unique_lock<std::mutex> lk(decodeMtx_);
-    if (output_) {
-        stopOutputBestEffort();
-        output_.reset();
+    // The shared pipeline owns the ring, sink, producer thread and position
+    // clock: its control operations serialize with the producer and join the
+    // device before the old graph is released, so this function only replaces
+    // the engine's decoder/reader and installs a new graph. Lock order
+    // queueMutex_ -> decodeMtx_ matches stop()/suspendCurrentTrack(); every
+    // caller already holds the queue lock.
+    pipeline_->close();
+    {
+        std::lock_guard<std::mutex> lk(decodeMtx_);
+        decoder_.reset();
+        reader_.reset();
+        suspendPos_ = 0;
+        // A track change cancels any armed/in-flight crossfade; otherwise the
+        // stale preloaded decoder would keep mixing into the new track and
+        // later be published over it.
+        resetCrossfadeLocked();
     }
-    decoder_.reset();
-    reader_.reset();
-    ring_.reset();
-    // A track change cancels any armed/in-flight crossfade; otherwise the
-    // stale preloaded decoder would keep mixing into the new track and later
-    // be published over it.
-    resetCrossfadeLocked();
 
-    // attempt to open reader & decoder; without allowSimulatedPlayback an
-    // unplayable track is an error, never silent timer playback
+    // Open outside the decode lock: reading a large or unreadable file must not
+    // block the monitor's position reads. The graph is closed, so no produce()
+    // can observe a half-installed decoder.
     bool opened = false;
+    double decodedDuration = 0.0;
+    uint32_t sr = 0;
+    uint32_t ch = 0;
     if (!path.empty()) {
         // TrackRow paths are stored UTF-8; decode them as UTF-8 rather than the
         // Windows ANSI code page so non-ASCII filenames resolve.
         auto rRes = kanariv::media::FileReader::open(kanariv::utils::detail::pathFromUtf8(path));
         if (rRes) {
-            reader_ = std::move(rRes.value());
-            auto dRes = kanariv::media::Decoder::open(*reader_, cfg_.logger);
+            auto reader = std::move(rRes.value());
+            auto dRes = kanariv::media::Decoder::open(*reader, cfg_.logger);
             if (dRes) {
-                decoder_ = std::move(dRes.value());
+                auto decoder = std::move(dRes.value());
                 opened = true;
-                duration_ = decoder_->totalFrames()
-                                ? static_cast<double>(decoder_->totalFrames()) /
-                                      static_cast<double>(decoder_->sampleRate())
-                                : t.duration;
-                if (duration_ <= 0)
-                    duration_ = t.duration > 0 ? t.duration : 1.0;
-                // Resume: seek before the ring exists and is prerolled, so the
-                // device starts at the requested offset. Seeking after
-                // output_->start() leaks the ring's preroll (4096 frames,
-                // ~93 ms) of the track head into playback.
+                sr = decoder->sampleRate() ? decoder->sampleRate() : 48000;
+                ch = decoder->channels() ? decoder->channels() : 2;
+                const double rate = static_cast<double>(decoder->sampleRate());
+                const uint64_t frames = decoder->totalFrames();
+                decodedDuration = (frames > 0 && rate > 0.0)
+                                      ? static_cast<double>(frames) / rate
+                                      : static_cast<double>(t.duration);
+                if (decodedDuration <= 0.0)
+                    decodedDuration = t.duration > 0.0 ? t.duration : 1.0;
+                // Resume: seek before the graph exists and is prerolled, so the
+                // device starts at the requested offset. Seeking after the
+                // device started would leak the ring's prerolled track head.
                 if (startSec > 0.0) {
                     double target = startSec;
-                    if (duration_ > 0 && target > duration_)
-                        target = duration_;
-                    auto sRes = decoder_->seek(target);
+                    if (target > decodedDuration)
+                        target = decodedDuration;
+                    auto sRes = decoder->seek(target);
                     if (!sRes) {
                         if (cfg_.logger)
                             cfg_.logger->warn("resume seek failed file={} pos={} err={}", path,
@@ -621,60 +570,22 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
                         cfg_.logger->debug("resume seek pos={} file={}", target, path);
                     }
                 }
-                // create ring and output; engineRingFrames() carries the
-                // measured reason this path does not use Player's flat cap.
-                uint32_t sr = decoder_->sampleRate();
-                uint32_t ch = decoder_->channels();
-                if (sr == 0)
-                    sr = 48000;
-                if (ch == 0)
-                    ch = 2;
-                ring_ = std::make_shared<kanariv::utils::SpscRing<float>>(
-                    playback::policy::engineRingFrames(ch), ch);
-                kanariv::player::AudioOutput::Config cfg;
-                cfg.sampleRate = sr;
-                cfg.channels = ch;
-                cfg.ring = ring_.get();
-                // ReplayGain stays a separate sink factor: the output multiplies
-                // it with the user volume in the audio callback, so a later
-                // setVolume() cannot discard it. Gains come from the explicit
-                // analysis pass.
-                cfg.volume = volume_.load(std::memory_order_relaxed);
-                cfg.gain = detail::replayGainLinear(cfg_.replayGain, t);
-                cfg.logger = cfg_.logger;
-                cfg.deviceId = cfg_.device;
-                cfg.deviceName = cfg_.deviceName;
-                auto oRes = kanariv::player::AudioOutput::create(cfg);
-                if (!oRes && cfg_.allowSimulatedPlayback) {
-                    // Headless fallback: `allowSimulatedPlayback` already means
-                    // "this process may run without a device", so retry once on
-                    // miniaudio's silent null backend. That keeps the real
-                    // decode/ring path (and therefore gapless/crossfade, which
-                    // need a ring consumer to progress) alive instead of
-                    // degrading straight to timer-only playback.
-                    cfg.nullBackend = true;
-                    oRes = kanariv::player::AudioOutput::create(cfg);
-                }
-                if (oRes) {
-                    output_ = std::move(oRes.value());
-                    // Initialize fade state for this track.
-                    fadeSample_.store(0, std::memory_order_release);
-                    fadeInSamples_ = 0;
-                    fadeOutSamples_ = 0;
-                    fadeOutStart_ = 0;
-                    if (cfg_.fadeInMs > 0 && sr > 0)
-                        fadeInSamples_ = static_cast<uint64_t>(cfg_.fadeInMs) * sr / 1000;
-                    if (cfg_.fadeOutMs > 0 && sr > 0 && duration_ > 0) {
-                        fadeOutSamples_ = static_cast<uint64_t>(cfg_.fadeOutMs) * sr / 1000;
-                        fadeOutStart_ = duration_ - static_cast<double>(cfg_.fadeOutMs) / 1000.0;
-                        if (fadeOutStart_ < 0.0)
-                            fadeOutStart_ = 0.0;
-                    }
-                    // preroll: decode some frames before start
-                    preroll();
-                    startOutputBestEffort();
-                } else {
-                    lastErr_ = oRes.error().message;
+                // Install under the lock the producer takes around decode.
+                std::lock_guard<std::mutex> lk(decodeMtx_);
+                decoder_ = std::move(decoder);
+                reader_ = std::move(reader);
+                duration_ = decodedDuration;
+                fadeSample_.store(0, std::memory_order_release);
+                fadeInSamples_ = 0;
+                fadeOutSamples_ = 0;
+                fadeOutStart_ = 0;
+                if (cfg_.fadeInMs > 0)
+                    fadeInSamples_ = static_cast<uint64_t>(cfg_.fadeInMs) * sr / 1000;
+                if (cfg_.fadeOutMs > 0 && duration_ > 0) {
+                    fadeOutSamples_ = static_cast<uint64_t>(cfg_.fadeOutMs) * sr / 1000;
+                    fadeOutStart_ = duration_ - static_cast<double>(cfg_.fadeOutMs) / 1000.0;
+                    if (fadeOutStart_ < 0.0)
+                        fadeOutStart_ = 0.0;
                 }
             } else {
                 lastErr_ = dRes.error().message;
@@ -692,34 +603,93 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::NotFound, msg)};
         }
-        // timer-only fallback to track metadata duration (no audio output)
+    }
+
+    // Degrades to a clock-only graph: no decoder, no ring, no device, but the
+    // same position source (the pipeline clock advances without a consumer), so
+    // every transport query behaves as it does during audible playback.
+    auto installClockOnly = [&](std::string_view why, bool metadataDuration) {
         if (cfg_.logger)
-            cfg_.logger->warn("simulated playback (no audio) file={}", path);
-        duration_ = t.duration > 0 ? t.duration : 1.0;
-        // no ring/output needed for simulated playback
-    } else if (!output_) {
-        // decoder opened but no audio device (Player::openReader fails here
-        // with Device); timer fallback only when explicitly opted in
-        if (!cfg_.allowSimulatedPlayback) {
+            cfg_.logger->warn("simulated playback ({}) file={}", why, path);
+        {
+            std::lock_guard<std::mutex> lk(decodeMtx_);
             decoder_.reset();
             reader_.reset();
-            ring_.reset();
-            const std::string msg = lastErr_.empty() ? "audio device unavailable" : lastErr_;
+            if (metadataDuration)
+                duration_ = t.duration > 0 ? t.duration : 1.0;
+        }
+        if (auto r = pipeline_->open(0, 0, nullptr, 0); !r) {
             if (cfg_.logger)
-                cfg_.logger->warn("audio device unavailable file={} err={}", path, msg);
+                cfg_.logger->warn("clock-only graph failed file={} err={}", path, r.error());
+            return false;
+        }
+        return true;
+    };
+
+    bool haveGraph = false;
+    if (opened) {
+        // engineRingFrames() carries the measured reason this path does not use
+        // Player's flat cap.
+        auto oRes = pipeline_->open(sr, ch, source_, playback::policy::engineRingFrames(ch));
+        if (oRes) {
+            haveGraph = true;
+            // ReplayGain stays a separate sink factor: the output multiplies it
+            // with the user volume in the audio callback, so a later
+            // setVolume() cannot discard it. Gains come from the explicit
+            // analysis pass.
+            pipeline_->setGain(detail::replayGainLinear(cfg_.replayGain, t));
+            if (auto pr = pipeline_->preroll(); !pr && cfg_.logger)
+                cfg_.logger->warn("preroll failed file={} err={}", path, pr.error());
+        } else {
+            lastErr_ = oRes.error().message;
+            if (!cfg_.allowSimulatedPlayback) {
+                {
+                    std::lock_guard<std::mutex> lk(decodeMtx_);
+                    decoder_.reset();
+                    reader_.reset();
+                }
+                const std::string msg = lastErr_.empty() ? "audio device unavailable" : lastErr_;
+                if (cfg_.logger)
+                    cfg_.logger->warn("audio device unavailable file={} err={}", path, msg);
+                return std::unexpected{
+                    kanariv::utils::makeError(kanariv::utils::StatusCode::Device, msg)};
+            }
+        }
+    }
+    if (!haveGraph) {
+        // Missing file (timer-only) or a device the silent-backend retry could
+        // not provide: neither keeps a live decoder, which would only decode
+        // into a ring that no consumer drains.
+        if (!installClockOnly(opened ? "device unavailable" : "no audio", !opened))
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Device, "audio device unavailable")};
+    }
+    if (auto pr = pipeline_->play(); !pr) {
+        if (!haveGraph || !cfg_.allowSimulatedPlayback) {
+            pipeline_->close();
+            {
+                std::lock_guard<std::mutex> lk(decodeMtx_);
+                decoder_.reset();
+                reader_.reset();
+            }
+            const std::string msg = pr.error().message;
+            if (cfg_.logger)
+                cfg_.logger->warn("audio start failed file={} err={}", path, msg);
             return std::unexpected{
                 kanariv::utils::makeError(kanariv::utils::StatusCode::Device, msg)};
         }
-        // Simulated playback without any device (the null-backend retry above
-        // failed too): match the `!opened` fallback exactly. A live decoder and
-        // ring with no consumer would only park decodeLoop on a full ring, and
-        // the transport clock is wall-based, so nothing else needs them.
-        if (cfg_.logger)
-            cfg_.logger->warn("simulated playback (device unavailable) file={}", path);
-        decoder_.reset();
-        reader_.reset();
-        ring_.reset();
+        // A device that opened but refused to start degrades like one that
+        // never opened; a clock-only graph then cannot fail to start.
+        if (!installClockOnly("device start failed", false) || !pipeline_->play()) {
+            pipeline_->close();
+            return std::unexpected{kanariv::utils::makeError(
+                kanariv::utils::StatusCode::Device, "audio device start failed")};
+        }
     }
+    // Position tracking starts at the resumed offset (0 for next/prev); the
+    // decoder was seeked above, so the clock only has to start there.
+    pipeline_->rebase(startSec);
+
     currentTrack_ = t;
     // update state
     hasCurrent_.store(true, std::memory_order_release);
@@ -744,16 +714,9 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
     // This track owns the transition now; auto-advance decisions taken for the
     // previous track carry the old epoch and must not move the queue again.
     transitionEpoch_.fetch_add(1, std::memory_order_acq_rel);
-    // Position tracking starts at the resumed offset (0 for next/prev);
-    // saveStateLocked() below then persists that offset instead of a transient
-    // 0. pausePos_ already holds the offset, so playStart_ must be "now" --
-    // shifting it back too would count the offset twice.
-    pausePos_ = startSec;
-    playStart_ = std::chrono::steady_clock::now();
-    const double trackDuration = duration_;
-    // saveStateLocked() takes decodeMtx_ itself, so it must run unlocked (the
+    const double trackDuration = duration();
+    // saveStateLocked() takes decodeMtx_ itself, so it must run without it (the
     // queue lock the caller holds is what it requires).
-    lk.unlock();
     if (hasDb())
         saveStateBestEffort();
     kanariv::types::EngineEvent ev;
@@ -762,39 +725,12 @@ Engine::Impl::doPlayTrack(kanariv::types::TrackRow& t, double startSec) {
     ev.queue_id = queue_.queue_id.load(std::memory_order_relaxed);
     ev.duration = trackDuration;
     ev.position = 0;
-    decodeCv_.notify_all();
     monCv_.notify_all();
     if (cfg_.logger)
         cfg_.logger->debug("playing track={} file={}", t.id, path);
     // The callers publish this after releasing the queue lock: pushEvent runs
     // the media-session callbacks synchronously (E8).
     return ev;
-}
-
-void Engine::Impl::preroll() {
-    if (!decoder_ || !ring_)
-        return;
-    uint32_t ch = decoder_->channels();
-    if (ch == 0)
-        ch = 2;
-    std::size_t need = playback::policy::prerollFrames(ring_->capacity());
-    if (need == 0)
-        return;
-    std::size_t chunkFrames = playback::policy::chunkCapFrames(ch);
-    std::vector<float> tmp(chunkFrames * ch);
-    while (need > 0 && ring_->availableWrite() >= chunkFrames) {
-        size_t frames = decoder_->decode(std::span<float>(tmp.data(), tmp.size()));
-        if (frames == 0)
-            break;
-        size_t samples = frames * ch;
-        size_t writtenFrames = ring_->write(std::span<float>(tmp.data(), samples));
-        if (writtenFrames < frames)
-            break;
-        if (need > frames)
-            need -= frames;
-        else
-            break;
-    }
 }
 
 void Engine::Impl::pushEvent(const kanariv::types::EngineEvent& ev) {
