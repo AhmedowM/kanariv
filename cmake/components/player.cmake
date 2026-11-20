@@ -9,6 +9,7 @@ set(KANARIV_PLAYER_MODULE_SOURCES
 )
 set(KANARIV_PLAYER_SOURCES
   src/player/output.cpp
+  src/player/pipeline.cpp
   src/player/core.cpp
 )
 # INCLUDES vendor: src/player/miniaudio_impl.cpp and output.cpp include

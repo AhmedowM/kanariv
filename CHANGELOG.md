@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   audio callback (ReplayGain uses it), so the two never overwrite each other.
 
 ### Changed
+- **BREAKING** `PlayerOptions` no longer carries `sampleRate`/`channels`: they
+  were never honoured (the decoder's rate and layout configure the device).
 - One playback-state vocabulary: `player::State` is now an alias for
   `types::PlaybackState`, which gained `Error = 4` for the player's
   decoder/device fault arm (the engine never emits it, so it cannot appear in
@@ -59,6 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   history adapter now lives in the tests' support headers.
 
 ### Fixed
+- `Player::position()` advances at the decoded sample rate rather than the
+  ignored `PlayerOptions::sampleRate`, so 44.1 kHz files no longer drift
+  against a 48 kHz default.
+- A failed `Player::open()` while playing now stops the audio device instead
+  of leaving it running over a dead graph.
 - ReplayGain survives volume changes: the engine used to overwrite the sink
   volume with the raw user value, silently dropping the track gain until the
   next track opened. Track gain is now a separate sink factor.

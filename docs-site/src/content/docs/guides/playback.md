@@ -52,10 +52,10 @@ Stopped <-> Playing <-> Paused
 
 Track transitions are gapless by default:
 
-- Ring buffer prerolls to half capacity before `play()` returns
-- Seeking resets the ring buffer and updates position atomically
-- No allocations in the hot path (decode loop or audio callback)
-- Decode thread maintains steady fill rate; audio thread consumes
+- Ring buffer prerolls to half capacity before `open()` returns
+- Seeking resets the ring buffer and rebases the position clock
+- No allocations in the hot path (producer loop or audio callback)
+- Producer thread maintains steady fill rate; audio thread consumes
 
 ## C++ API
 
@@ -64,9 +64,8 @@ Track transitions are gapless by default:
 ```cpp
 #include <kanariv/player/player.hpp>
 
+// The device follows the decoded file's sample rate and channel layout.
 auto opts = kanariv::player::PlayerOptions{};
-opts.sampleRate = 48000;
-opts.channels = 2;
 
 auto player = kanariv::player::Player::create(opts);
 player.value()->open("/path/to/track.flac");
