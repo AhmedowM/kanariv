@@ -198,7 +198,7 @@ expensive, risky steps this pilot is meant to inform.
   `LibraryStatsDetailed`; unknown future types become `Reply::Other` and keep
   their raw JSON.
 - The CLI locates the socket/pid files exactly like `kanariv::config`,
-  including the `std::hash`-derived `kanariv-<hex8>` name.
+  including the `kanariv-<endpoint>` name.
 - `start` spawns the C++ daemon: `KANARIV_DAEMON_BIN` when set, otherwise a
   `kanariv`/`kanariv.exe` sibling of the running executable.
 
@@ -207,14 +207,11 @@ command, fixtures for every reply kind, and deterministic random/mutation
 tests that assert the frame and reply parsers never panic on arbitrary input
 (no nightly or libFuzzer required).
 
-The socket name embeds `std::hash<std::string>` of the database path, which is
-implementation-defined. The port covers the MSVC STL (FNV-1a 64, used by
-windows-msvc targets) and libstdc++ (MurmurHash64A, used by unix targets)
-layouts; both were verified against the real C++ `std::hash` output.
-libc++ on macOS uses a CityHash variant that is not reproduced; there
-`socketPath` must be set explicitly in the config. The same escape hatch
-applies when the daemon was built with a different C++ runtime than the Rust
-target assumes (for example a MinGW daemon on Windows).
+The socket name embeds `endpointIdForDb`, a specified FNV-1a 64-bit hash of
+the generic UTF-8 database path rendered as 16 hex digits
+(`src/config/paths.cpp`). Because the algorithm is specified rather than
+`std::hash`, the name is identical on every toolchain and target, and
+`src/hash.rs` reproduces the C++ test vectors exactly.
 
 ## Notes
 

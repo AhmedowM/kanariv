@@ -20,6 +20,8 @@ pub enum StatusCode {
     Busy,
     Corrupt,
     NoSpace,
+    Timeout,
+    /// Rust-side catch-all for codes newer than this crate.
     Unknown,
 }
 
@@ -40,6 +42,7 @@ impl StatusCode {
             Self::Busy => "Busy",
             Self::Corrupt => "Corrupt",
             Self::NoSpace => "NoSpace",
+            Self::Timeout => "Timeout",
             Self::Unknown => "Unknown",
         }
     }
@@ -60,6 +63,7 @@ impl StatusCode {
             "Busy" => Self::Busy,
             "Corrupt" => Self::Corrupt,
             "NoSpace" => Self::NoSpace,
+            "Timeout" => Self::Timeout,
             _ => Self::Unknown,
         }
     }
@@ -80,6 +84,7 @@ impl StatusCode {
             10 => Self::Busy,
             11 => Self::Corrupt,
             12 => Self::NoSpace,
+            13 => Self::Timeout,
             _ => Self::Unknown,
         }
     }

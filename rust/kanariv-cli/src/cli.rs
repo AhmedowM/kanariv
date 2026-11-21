@@ -110,6 +110,16 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Config operations
+    Config {
+        #[command(subcommand)]
+        command: Option<ConfigCommand>,
+    },
+    /// Audio device operations
+    Device {
+        #[command(subcommand)]
+        command: Option<DeviceCommand>,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -184,6 +194,77 @@ pub enum QueueCommand {
     Repeat {
         /// off|one|all
         mode: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigCommand {
+    /// Get config value
+    Get {
+        /// Key
+        key: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set config value
+    Set {
+        /// Key
+        key: String,
+        /// Value
+        value: String,
+    },
+    /// List config
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export config
+    Export {
+        /// Path
+        path: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import config
+    Import {
+        /// Path
+        path: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Reset config to defaults
+    Reset {
+        /// Key to reset (omit to reset all)
+        key: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DeviceCommand {
+    /// List audio output devices
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set default audio device
+    Set {
+        /// Device index, name, or stable id
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Check audio device is available
+    Test {
+        /// Device index, name, or stable id (default: current config)
+        #[arg(long)]
+        id: Option<String>,
+        /// Play an audible test tone
+        #[arg(long)]
+        tone: bool,
         #[arg(long)]
         json: bool,
     },

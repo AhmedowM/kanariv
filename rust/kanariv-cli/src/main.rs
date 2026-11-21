@@ -23,7 +23,7 @@ use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser};
 
 use crate::app::App;
-use crate::cli::{Cli, Command, QueueCommand, StatusArgs};
+use crate::cli::{Cli, Command, ConfigCommand, DeviceCommand, QueueCommand, StatusArgs};
 use crate::error::{Error, Result};
 use crate::outcome::Outcome;
 use crate::parse::VolumeArg;
@@ -81,9 +81,14 @@ fn run() -> i32 {
         Ok(cfg) => cfg,
         Err(err) => return render_error(&err),
     };
+    // First-run detection mirrors the C++ shell: the file must still be
+    // absent after loading (a corrupt file counts as present). Defaults are
+    // persisted only by mutating commands, never by `status`/`config get`.
+    let config_missing = !cfg.config_path.exists();
+    let persist_defaults = config_missing && is_mutating(&command);
 
     let app = App::new(cfg);
-    match command {
+    let code = match command {
         Command::Version { .. } => 0,
         Command::Start { foreground } => render(daemon::start(app.config(), foreground), false),
         Command::Shutdown => render_outcome(&daemon::shutdown(app.config()), false),
@@ -123,9 +128,66 @@ fn run() -> i32 {
         }
         Command::Queue { command } => match command {
             Some(command) => dispatch_queue(&app, command),
-            None => print_queue_help(),
+            None => print_group_help("queue"),
         },
         Command::Info { json } => render(app.info(), json),
+        Command::Config { command } => match command {
+            Some(command) => dispatch_config(&app, command),
+            None => print_group_help("config"),
+        },
+        Command::Device { command } => match command {
+            Some(command) => dispatch_device(&app, command),
+            None => print_group_help("device"),
+        },
+    };
+
+    // PersistDefaultsGuard equivalent: runs after the command, and a write
+    // failure only warns, exactly like the C++ guard's destructor.
+    save_first_run_defaults(persist_defaults, app.config());
+    code
+}
+
+fn save_first_run_defaults(enabled: bool, cfg: &config::Config) {
+    if !enabled {
+        return;
+    }
+    if let Err(err) = config::save_config(cfg) {
+        eprintln!(
+            "warning: could not write config file '{}': {}",
+            config::generic_string(&cfg.config_path),
+            err.message
+        );
+    }
+}
+
+/// Mirrors `detail::isMutating` for the commands this frontend implements;
+/// the match is exhaustive so new subcommands must classify themselves.
+fn is_mutating(command: &Command) -> bool {
+    match command {
+        Command::Start { .. } => true,
+        Command::Queue { command } => matches!(
+            command,
+            Some(
+                QueueCommand::Switch { .. }
+                    | QueueCommand::Create { .. }
+                    | QueueCommand::Delete { .. }
+                    | QueueCommand::Clear { .. }
+                    | QueueCommand::Shuffle { .. }
+                    | QueueCommand::Repeat { .. }
+            )
+        ),
+        Command::Config { command } => matches!(
+            command,
+            Some(
+                ConfigCommand::Set { .. }
+                    | ConfigCommand::Import { .. }
+                    | ConfigCommand::Reset { .. }
+            )
+        ),
+        Command::Device { command } => {
+            matches!(command, Some(DeviceCommand::Set { .. }))
+        }
+        _ => false,
     }
 }
 
@@ -144,6 +206,33 @@ fn status(app: &App, args: &StatusArgs) -> i32 {
         return 1;
     }
     render(app.status(), args.json)
+}
+
+fn dispatch_config(app: &App, command: ConfigCommand) -> i32 {
+    match command {
+        ConfigCommand::Get { key, json } => render(app.config_get(&key), json),
+        ConfigCommand::Set { key, value } => render(app.config_set(&key, &value), false),
+        ConfigCommand::List { json } => render(app.config_list(), json),
+        ConfigCommand::Export { path, json } => render(app.config_export(&path), json),
+        ConfigCommand::Import { path, json } => render(app.config_import(&path), json),
+        ConfigCommand::Reset { key, json } => {
+            if key.as_deref() == Some("") {
+                eprintln!("config reset: empty key (omit --key to reset all)");
+                return 1;
+            }
+            render(app.config_reset(key.as_deref()), json)
+        }
+    }
+}
+
+fn dispatch_device(app: &App, command: DeviceCommand) -> i32 {
+    match command {
+        DeviceCommand::List { json } => render(app.device_list(), json),
+        DeviceCommand::Set { id, json } => render(app.device_set(&id), json),
+        DeviceCommand::Test { id, tone, json } => {
+            render(app.device_test(id.as_deref(), tone), json)
+        }
+    }
 }
 
 fn dispatch_queue(app: &App, command: QueueCommand) -> i32 {
@@ -227,11 +316,76 @@ fn print_root_help() -> i32 {
     0
 }
 
-fn print_queue_help() -> i32 {
+fn print_group_help(group: &str) -> i32 {
     let mut command = Cli::command();
-    if let Some(queue) = command.find_subcommand_mut("queue") {
-        let _ = queue.print_help();
+    if let Some(sub) = command.find_subcommand_mut(group) {
+        let _ = sub.print_help();
         println!();
     }
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_state_changing_commands_persist_defaults() {
+        assert!(is_mutating(&Command::Start { foreground: false }));
+        assert!(is_mutating(&Command::Config {
+            command: Some(ConfigCommand::Set {
+                key: "logLevel".into(),
+                value: "1".into(),
+            }),
+        }));
+        assert!(is_mutating(&Command::Config {
+            command: Some(ConfigCommand::Reset {
+                key: None,
+                json: false
+            }),
+        }));
+        assert!(is_mutating(&Command::Device {
+            command: Some(DeviceCommand::Set {
+                id: "auto".into(),
+                json: false,
+            }),
+        }));
+        assert!(is_mutating(&Command::Queue {
+            command: Some(QueueCommand::Shuffle {
+                mode: None,
+                json: false,
+            }),
+        }));
+
+        assert!(!is_mutating(&Command::Shutdown));
+        assert!(!is_mutating(&Command::Pause { json: false }));
+        assert!(!is_mutating(&Command::Status(StatusArgs {
+            json: false,
+            watch: false,
+            follow: false,
+            interval: 1000,
+        })));
+        assert!(!is_mutating(&Command::Config {
+            command: Some(ConfigCommand::Get {
+                key: "logLevel".into(),
+                json: false,
+            }),
+        }));
+        assert!(!is_mutating(&Command::Config {
+            command: Some(ConfigCommand::Export {
+                path: "out.json".into(),
+                json: false,
+            }),
+        }));
+        assert!(!is_mutating(&Command::Device {
+            command: Some(DeviceCommand::List { json: false }),
+        }));
+        assert!(!is_mutating(&Command::Queue {
+            command: Some(QueueCommand::Tracks {
+                order: "playback".into(),
+                json: false,
+            }),
+        }));
+        assert!(!is_mutating(&Command::Queue { command: None }));
+    }
 }

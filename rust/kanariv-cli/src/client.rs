@@ -31,8 +31,9 @@ pub fn send(socket_path: &str, command: &Command, timeout: Duration) -> Result<P
 
     match receiver.recv_timeout(timeout) {
         Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => Err(Error::io("timeout")),
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(Error::io("request worker stopped")),
+        Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {
+            Err(Error::new(StatusCode::Timeout, "timeout"))
+        }
     }
 }
 

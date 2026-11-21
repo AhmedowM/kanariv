@@ -2,9 +2,7 @@
 //!
 //! Same precedence as the C++ library: `--config` override, else the
 //! platform default (with the legacy Windows path as a fallback), tolerant
-//! JSON reads, and derived socket/pid names. The only intentional gap is
-//! libc++ (macOS), whose `std::hash` is not reproduced here; callers must
-//! provide `socketPath` explicitly there.
+//! JSON reads, and derived socket/pid names.
 
 use std::env;
 use std::fs;
@@ -13,13 +11,14 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::error::{Error, Result, StatusCode};
-use crate::hash::hex8_for_db;
+use crate::hash::endpoint_id_for_db;
 
 #[derive(Clone, Debug)]
 pub struct Config {
     pub db_path: PathBuf,
     pub config_path: PathBuf,
     pub device: String,
+    pub device_name: String,
     pub log_level: i32,
     pub socket_path: String,
     pub auto_resume_on_play: bool,
@@ -30,6 +29,7 @@ pub struct Config {
     pub fade_in_ms: i32,
     pub fade_out_ms: i32,
     pub inter_track_gap_ms: i32,
+    pub crossfade_ms: i32,
 }
 
 impl Default for Config {
@@ -38,6 +38,7 @@ impl Default for Config {
             db_path: default_db_path(),
             config_path: default_config_path(),
             device: "auto".to_string(),
+            device_name: String::new(),
             log_level: 2,
             socket_path: String::new(),
             auto_resume_on_play: false,
@@ -48,6 +49,7 @@ impl Default for Config {
             fade_in_ms: 0,
             fade_out_ms: 0,
             inter_track_gap_ms: 0,
+            crossfade_ms: 0,
         }
     }
 }
@@ -127,30 +129,23 @@ pub fn generic_string(path: &Path) -> String {
     }
 }
 
-pub fn socket_path_for(db_path: &Path) -> Result<String> {
-    if cfg!(target_os = "macos") {
-        return Err(Error::new(
-            StatusCode::Unsupported,
-            "socket path derivation is not implemented for libc++ (macOS); set socketPath in the config",
-        ));
-    }
-    let hex = hex8_for_db(&generic_string(db_path));
+#[must_use]
+pub fn socket_path_for(db_path: &Path) -> String {
+    let id = endpoint_id_for_db(&generic_string(db_path));
     #[cfg(windows)]
     {
-        Ok(format!(r"\\.\pipe\kanariv-{hex}"))
+        format!(r"\\.\pipe\kanariv-{id}")
     }
     #[cfg(not(windows))]
     {
-        Ok(generic_string(
-            &base_dir_for_socket().join(format!("kanariv-{hex}.sock")),
-        ))
+        generic_string(&base_dir_for_socket().join(format!("kanariv-{id}.sock")))
     }
 }
 
 #[must_use]
 pub fn pid_path_for(db_path: &Path) -> PathBuf {
-    let hex = hex8_for_db(&generic_string(db_path));
-    base_dir_for_socket().join(format!("kanariv-{hex}.pid"))
+    let id = endpoint_id_for_db(&generic_string(db_path));
+    base_dir_for_socket().join(format!("kanariv-{id}.pid"))
 }
 
 /// Loads config, returning platform defaults when the file is absent.
@@ -198,6 +193,9 @@ fn apply_json(cfg: &mut Config, json: &Value) {
     if let Some(value) = json.get("device").and_then(Value::as_str) {
         cfg.device = value.to_string();
     }
+    if let Some(value) = json.get("deviceName").and_then(Value::as_str) {
+        cfg.device_name = value.to_string();
+    }
     if let Some(value) = json.get("logLevel") {
         if let Some(level) = parse_log_level(value) {
             cfg.log_level = level;
@@ -217,17 +215,21 @@ fn apply_json(cfg: &mut Config, json: &Value) {
         cfg.clear_stops_playback = value;
     }
     if let Some(value) = json.get("repeatDefault").and_then(Value::as_str) {
-        if matches!(value, "off" | "one" | "all") {
-            cfg.repeat_default = value.to_string();
-        }
+        cfg.repeat_default = match value.to_ascii_lowercase().as_str() {
+            "one" => "one".to_string(),
+            "all" => "all".to_string(),
+            _ => "off".to_string(),
+        };
     }
     if let Some(value) = json.get("autostart").and_then(Value::as_bool) {
         cfg.autostart = value;
     }
     if let Some(value) = json.get("replayGain").and_then(Value::as_str) {
-        if matches!(value, "off" | "track" | "album") {
-            cfg.replay_gain = value.to_string();
-        }
+        cfg.replay_gain = match value.to_ascii_lowercase().as_str() {
+            "track" => "track".to_string(),
+            "album" => "album".to_string(),
+            _ => "off".to_string(),
+        };
     }
     for (key, target) in [
         ("fadeInMs", &mut cfg.fade_in_ms),
@@ -237,6 +239,14 @@ fn apply_json(cfg: &mut Config, json: &Value) {
         if let Some(value) = json.get(key).and_then(Value::as_i64) {
             *target = i32::try_from(value).unwrap_or(*target);
         }
+    }
+    if let Some(value) = json.get("crossfadeMs").and_then(Value::as_i64) {
+        cfg.crossfade_ms = i32::try_from(value).unwrap_or(cfg.crossfade_ms);
+    } else if cfg.inter_track_gap_ms > 0 {
+        // Legacy meaning: before the split, interTrackGapMs configured the
+        // crossfade overlap; a config without crossfadeMs keeps it.
+        cfg.crossfade_ms = cfg.inter_track_gap_ms;
+        cfg.inter_track_gap_ms = 0;
     }
 
     // Legacy spellings (db_path / log_level) win when both are present,
@@ -253,6 +263,40 @@ fn apply_json(cfg: &mut Config, json: &Value) {
     }
 }
 
+/// Reads one raw key from the config file, matching
+/// `config::detail::configGetRaw`: the daemon is down, so the file is the
+/// authority. JSON strings come back bare, `null` as `"null"`, anything else
+/// as compact JSON.
+pub fn get_raw(path: &Path, key: &str) -> Result<String> {
+    if !path.exists() {
+        return Err(Error::new(StatusCode::NotFound, "config not found"));
+    }
+    let content =
+        fs::read_to_string(path).map_err(|e| Error::io(format!("cannot open config: {e}")))?;
+    if content.is_empty() {
+        return Err(Error::new(
+            StatusCode::NotFound,
+            format!("key not found: {key}"),
+        ));
+    }
+    let json: Value = serde_json::from_str(&content)
+        .map_err(|e| Error::new(StatusCode::Corrupt, e.to_string()))?;
+    if !json.is_object() {
+        return Err(Error::new(StatusCode::Corrupt, "config is not an object"));
+    }
+    match json.get(key) {
+        Some(Value::String(text)) => Ok(text.clone()),
+        Some(Value::Null) => Ok("null".to_string()),
+        Some(value) => {
+            serde_json::to_string(value).map_err(|e| Error::new(StatusCode::Corrupt, e.to_string()))
+        }
+        None => Err(Error::new(
+            StatusCode::NotFound,
+            format!("key not found: {key}"),
+        )),
+    }
+}
+
 #[must_use]
 pub fn is_valid_log_level(name: &str) -> bool {
     parse_log_level(&Value::String(name.to_string())).is_some()
@@ -260,7 +304,8 @@ pub fn is_valid_log_level(name: &str) -> bool {
 
 fn parse_log_level(value: &Value) -> Option<i32> {
     if let Some(number) = value.as_i64() {
-        return i32::try_from(number).ok();
+        // Out-of-range numbers keep their direction, like `clampLogLevel`.
+        return i32::try_from(number.clamp(0, 4)).ok();
     }
     let name = value.as_str()?;
     if name.len() == 1 {
@@ -281,12 +326,20 @@ fn parse_log_level(value: &Value) -> Option<i32> {
 pub fn save_config(cfg: &Config) -> Result<()> {
     if let Some(parent) = cfg.config_path.parent() {
         if !parent.as_os_str().is_empty() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent).map_err(|e| {
+                Error::io(format!(
+                    "cannot create config directory '{}': {e}",
+                    generic_string(parent)
+                ))
+            })?;
         }
     }
+    // Key order matches `config::saveConfig`; the daemon's `config list`
+    // reports file order, so preserving it keeps the output identical.
     let mut json = serde_json::json!({
         "dbPath": generic_string(&cfg.db_path),
         "device": cfg.device,
+        "deviceName": cfg.device_name,
         "logLevel": cfg.log_level,
         "autoResumeOnPlay": cfg.auto_resume_on_play,
         "clearStopsPlayback": cfg.clear_stops_playback,
@@ -296,31 +349,52 @@ pub fn save_config(cfg: &Config) -> Result<()> {
         "fadeInMs": cfg.fade_in_ms,
         "fadeOutMs": cfg.fade_out_ms,
         "interTrackGapMs": cfg.inter_track_gap_ms,
+        "crossfadeMs": cfg.crossfade_ms,
     });
     if !cfg.socket_path.is_empty() {
         json["socketPath"] = Value::String(cfg.socket_path.clone());
     }
     let text = serde_json::to_string_pretty(&json)
         .map_err(|e| Error::new(StatusCode::Corrupt, e.to_string()))?;
-    fs::write(&cfg.config_path, text).map_err(|e| Error::io(format!("cannot write config: {e}")))
+
+    // Write beside the target first so a failure never truncates the live
+    // config, then rename; the copy fallback covers filesystems that reject
+    // rename-over-existing (Windows). Same sequence as `config::saveConfig`.
+    let mut tmp_name = cfg.config_path.clone().into_os_string();
+    tmp_name.push(".tmp");
+    let tmp = PathBuf::from(tmp_name);
+    if let Err(err) = fs::write(&tmp, &text) {
+        let _ = fs::remove_file(&tmp);
+        return Err(Error::io(format!(
+            "cannot write config '{}': {err}",
+            generic_string(&tmp)
+        )));
+    }
+    if let Err(rename_err) = fs::rename(&tmp, &cfg.config_path) {
+        let copied = fs::copy(&tmp, &cfg.config_path).is_ok();
+        let _ = fs::remove_file(&tmp);
+        if !copied {
+            return Err(Error::io(format!(
+                "cannot replace config '{}': {rename_err}",
+                generic_string(&cfg.config_path)
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Applies `--config`, `--log-level`, `--device` and derives the socket.
 ///
-/// Mirrors the shell's post-parse sequence, including persisting defaults
-/// when the config file did not exist yet.
+/// Mirrors the shell's post-parse sequence. First-run defaults are *not*
+/// written here: the caller persists them only for mutating commands,
+/// matching C++ `PersistDefaultsGuard` (`status`/`config get` must not
+/// create files).
 pub fn resolve(
     config_override: Option<&Path>,
     log_level: Option<&str>,
     device: Option<&str>,
 ) -> Result<Config> {
     let mut cfg = if let Ok(cfg) = load_config(config_override) {
-        if !cfg.config_path.exists() {
-            if let Some(parent) = cfg.config_path.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-            let _ = save_config(&cfg);
-        }
         cfg
     } else {
         // Corrupt config: the C++ shell silently keeps defaults, so a broken
@@ -345,7 +419,7 @@ pub fn resolve(
         })?;
     }
     if cfg.socket_path.is_empty() && !cfg.db_path.as_os_str().is_empty() {
-        cfg.socket_path = socket_path_for(&cfg.db_path)?;
+        cfg.socket_path = socket_path_for(&cfg.db_path);
     }
     if let Some(parent) = cfg.db_path.parent() {
         let _ = fs::create_dir_all(parent);

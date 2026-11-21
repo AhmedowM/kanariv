@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::client::{self, DEFAULT_TIMEOUT};
 use crate::config::Config;
 use crate::error::{Result, StatusCode};
-use crate::ipc::{Command, Payload, RepeatMode, Reply, Status};
+use crate::ipc::{Command, ConfigValue, Payload, RepeatMode, Reply, Status};
 use crate::outcome::Outcome;
 
 pub struct App {
@@ -341,6 +341,108 @@ impl App {
             _ => "off",
         };
         Ok(Outcome::confirm(payload, Some(format!("Repeat: {label}"))))
+    }
+
+    pub fn config_get(&self, key: &str) -> Result<Outcome> {
+        // The daemon owns clamped/canonicalized values while it runs; with no
+        // daemon the file is the only authority, so read it directly.
+        if client::probe(&self.config.socket_path) {
+            return self.confirm(
+                &Command::ConfigGet {
+                    key: key.to_string(),
+                },
+                None,
+            );
+        }
+        let value = crate::config::get_raw(&self.config.config_path, key)?;
+        let json = serde_json::json!({
+            "type": "ConfigValue",
+            "key": key,
+            "value": value,
+        });
+        Ok(Outcome::confirm(
+            Payload {
+                json,
+                reply: Reply::ConfigValue(ConfigValue {
+                    key: key.to_string(),
+                    value,
+                }),
+            },
+            None,
+        ))
+    }
+
+    pub fn config_set(&self, key: &str, value: &str) -> Result<Outcome> {
+        self.confirm(
+            &Command::ConfigSet {
+                key: key.to_string(),
+                value: value.to_string(),
+            },
+            None,
+        )
+    }
+
+    pub fn config_list(&self) -> Result<Outcome> {
+        self.confirm(&Command::ConfigList, None)
+    }
+
+    pub fn config_export(&self, path: &str) -> Result<Outcome> {
+        self.confirm(
+            &Command::ConfigExport {
+                path: path.to_string(),
+            },
+            Some(format!("Exported config to {path}")),
+        )
+    }
+
+    pub fn config_import(&self, path: &str) -> Result<Outcome> {
+        self.confirm(
+            &Command::ConfigImport {
+                path: path.to_string(),
+            },
+            Some(format!("Imported config from {path}")),
+        )
+    }
+
+    pub fn config_reset(&self, key: Option<&str>) -> Result<Outcome> {
+        let line = key.map_or_else(
+            || "Reset all config".to_string(),
+            |key| format!("Reset config key '{key}'"),
+        );
+        self.confirm(
+            &Command::ConfigReset {
+                key: key.map(ToString::to_string),
+            },
+            Some(line),
+        )
+    }
+
+    pub fn device_list(&self) -> Result<Outcome> {
+        self.confirm(&Command::DeviceList, None)
+    }
+
+    pub fn device_set(&self, id: &str) -> Result<Outcome> {
+        self.confirm(
+            &Command::DeviceSet { id: id.to_string() },
+            Some(format!("Default device: {id}")),
+        )
+    }
+
+    pub fn device_test(&self, id: Option<&str>, tone: bool) -> Result<Outcome> {
+        let mut line = id.map_or_else(
+            || "Default device available".to_string(),
+            |id| format!("Device available: {id}"),
+        );
+        if tone {
+            line.push_str(" (playing test tone)");
+        }
+        self.confirm(
+            &Command::DeviceTest {
+                id: id.map(ToString::to_string),
+                tone,
+            },
+            Some(line),
+        )
     }
 }
 

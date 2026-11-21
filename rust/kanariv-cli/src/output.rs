@@ -71,7 +71,35 @@ pub fn print_payload(payload: &Payload, highlight: i64, color: bool) {
             play_count,
             last_played,
         } => print_track_info(track, *play_count, *last_played),
+        Reply::ConfigValue(value) => println!("{} = {}", value.key, value.value),
+        Reply::ConfigValues(values) => {
+            println!("Config ({} entries):", values.len());
+            for value in values {
+                println!("{} = {}", value.key, value.value);
+            }
+        }
+        Reply::Devices(devices) => print_devices(devices),
+        Reply::Empty => println!("OK"),
         _ => print_json(payload),
+    }
+}
+
+fn print_devices(devices: &[crate::ipc::DeviceInfo]) {
+    println!("Devices ({}):", devices.len());
+    println!(
+        "{}  {}  {}  Default",
+        pad_left("#", 3),
+        pad_right("ID", 20),
+        pad_right("Name", 40)
+    );
+    for (index, device) in devices.iter().enumerate() {
+        println!(
+            "{}  {}  {}  {}",
+            pad_left(&index.to_string(), 3),
+            pad_right(&truncate_field(&device.id, 20), 20),
+            pad_right(&truncate_field(&device.name, 40), 40),
+            if device.is_default { "yes" } else { "no" }
+        );
     }
 }
 
