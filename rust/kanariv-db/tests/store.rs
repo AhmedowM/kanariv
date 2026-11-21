@@ -309,6 +309,44 @@ fn bookmarks_and_lyrics_round_trip() {
 }
 
 #[test]
+fn timestamps_are_written_as_unix_millis() {
+    // Schema v10 stores every timestamp as epoch milliseconds; a TEXT
+    // `CURRENT_TIMESTAMP` or a 0 default reads back as 0.
+    const MILLIS_FLOOR: i64 = 1_000_000_000_000;
+    let store = Store::open_in_memory().unwrap();
+    let id = insert(&store, "C:/a.mp3", "A");
+
+    let playlist = store.create_playlist("mix", 0, "").unwrap();
+    let created = store.get_playlist(playlist).unwrap();
+    assert!(
+        created.created >= MILLIS_FLOOR,
+        "created: {}",
+        created.created
+    );
+    assert!(
+        created.modified >= MILLIS_FLOOR,
+        "modified: {}",
+        created.modified
+    );
+
+    store.bookmark_add(id, 0, "").unwrap();
+    let marks = store.list_bookmarks(id).unwrap();
+    assert!(
+        marks[0].created >= MILLIS_FLOOR,
+        "created: {}",
+        marks[0].created
+    );
+
+    store.lyrics_set(id, "hi", false, "local").unwrap();
+    let lyrics = store.lyrics_get(id).unwrap();
+    assert!(
+        lyrics.fetched_at >= MILLIS_FLOOR,
+        "fetched_at: {}",
+        lyrics.fetched_at
+    );
+}
+
+#[test]
 fn deleting_a_track_cascades() {
     let store = Store::open_in_memory().unwrap();
     let id = insert(&store, "C:/a.mp3", "A");

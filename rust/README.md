@@ -36,10 +36,10 @@ rust/
     tests/            # golden schema, reply fixtures, mutation/fuzz
   kanariv-cli/        # CLI, config discovery, daemon lifecycle
   kanariv-db/         # experimental SQLite parity crate (not linked)
-    src/schema.rs     # schema/pragmas/triggers, byte-identical to core.cpp
+    src/schema.rs     # schema/pragmas/triggers, the C++ ladder's v10 end state
     src/store.rs      # CRUD, 3-stage search, queue gaps, history, playlists
-    tests/schema_parity.rs  # compares SCHEMA against src/db/core.cpp
-    tests/store.rs          # behavior tests (16 total across both files)
+    tests/schema_parity.rs  # compares SCHEMA against src/db/migration.cpp
+    tests/store.rs          # behavior tests (17 total across both files)
   kanariv-db-ffi/     # read-only C ABI pilot (cdylib, not linked)
     include/kanariv/db_ffi.h  # C contract: open/close/search/get/string_free
     src/lib.rs                # JSON-returning ABI + status mapping
@@ -113,9 +113,10 @@ measure whether a Rust DB is worth pursuing, not to ship.
 
 Parity mechanisms:
 
-- `tests/schema_parity.rs` reads `src/db/core.cpp`, extracts the `schema`
-  string literal, and asserts byte-for-byte equality with `SCHEMA`. The C++
-  file remains the single source of truth; the test fails if either drifts.
+- `tests/schema_parity.rs` reads `src/db/migration.cpp`, extracts the
+  `baseSchema` literal, and asserts that every statement in it also appears in
+  `SCHEMA` (the crate may add its own pragmas). The C++ migration ladder stays
+  the single source of truth; the test fails if either side drifts.
 - `tests/store.rs` exercises the behaviors that are easy to get subtly wrong:
   fingerprint uniqueness, source/library-id normalization, `date_added == 0`
   -> NULL, the three-stage search (exact MATCH -> prefix MATCH -> escaped

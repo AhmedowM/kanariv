@@ -516,9 +516,11 @@ impl Store {
         if name.is_empty() {
             return Err(DbError::invalid_arg("playlist name"));
         }
+        let now = now_millis();
         self.conn.execute(
-            "INSERT INTO playlists (name, type, smart_query) VALUES (?,?,?)",
-            params![name, playlist_type, smart_query],
+            "INSERT INTO playlists (name, type, smart_query, created, modified) \
+             VALUES (?,?,?,?,?)",
+            params![name, playlist_type, smart_query, now, now],
         )?;
         Ok(self.conn.last_insert_rowid())
     }
@@ -571,8 +573,9 @@ impl Store {
             index
         };
         tx.execute(
-            "INSERT INTO playlist_items (playlist_id, track_id, position) VALUES (?,?,?)",
-            params![pid, track_id, position],
+            "INSERT INTO playlist_items (playlist_id, track_id, position, added) \
+             VALUES (?,?,?,?)",
+            params![pid, track_id, position, now_millis()],
         )?;
         tx.commit()?;
         Ok(())
@@ -636,8 +639,8 @@ impl Store {
             return Err(DbError::invalid_arg("playlist id or name"));
         }
         let changed = self.conn.execute(
-            "UPDATE playlists SET name=?, modified=CURRENT_TIMESTAMP WHERE id=?",
-            params![new_name, pid],
+            "UPDATE playlists SET name=?, modified=? WHERE id=?",
+            params![new_name, now_millis(), pid],
         )?;
         if changed == 0 {
             return Err(DbError::not_found(format!("playlist {pid}")));
@@ -773,8 +776,8 @@ impl Store {
             return Err(DbError::invalid_arg("bookmark track or position"));
         }
         self.conn.execute(
-            "INSERT INTO bookmarks (track_id, position_ms, note) VALUES (?,?,?)",
-            params![track_id, position_ms, note],
+            "INSERT INTO bookmarks (track_id, position_ms, note, created) VALUES (?,?,?,?)",
+            params![track_id, position_ms, note, now_millis()],
         )?;
         Ok(())
     }
@@ -827,8 +830,15 @@ impl Store {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute("DELETE FROM lyrics WHERE track_id=?", [track_id])?;
         tx.execute(
-            "INSERT INTO lyrics (track_id, lrc_text, is_synced, source) VALUES (?,?,?,?)",
-            params![track_id, lrc_text, i64::from(is_synced), source],
+            "INSERT INTO lyrics (track_id, lrc_text, is_synced, source, fetched_at) \
+             VALUES (?,?,?,?,?)",
+            params![
+                track_id,
+                lrc_text,
+                i64::from(is_synced),
+                source,
+                now_millis()
+            ],
         )?;
         tx.commit()?;
         Ok(())
@@ -896,6 +906,17 @@ impl Store {
 }
 
 // ------------------------------------------------------------- helpers
+
+/// Wall-clock time as Unix milliseconds, matching `utils::unixMillis`; every
+/// timestamp column in the schema holds this unit.
+fn now_millis() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX)
+        })
+}
 
 fn normalize_queue_id(qid: i64) -> i64 {
     if qid == 0 {
@@ -1071,8 +1092,8 @@ fn enqueue_in(conn: &Connection, qid: i64, track_id: i64, index: i64) -> Result<
         }
     };
     conn.execute(
-        "INSERT INTO queue (queue_id, track_id, position) VALUES (?,?,?)",
-        params![qid, track_id, position],
+        "INSERT INTO queue (queue_id, track_id, position, added) VALUES (?,?,?,?)",
+        params![qid, track_id, position, now_millis()],
     )?;
     Ok(())
 }
