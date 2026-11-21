@@ -2,5 +2,5 @@
 
 pub use kanariv_ipc::{
     encode, encode_request, parse_reply, Command, ConfigValue, Connection, DeviceInfo, Payload,
-    QueueEntry, RepeatMode, Reply, Status, Track,
+    Playlist, QueueEntry, RepeatMode, Reply, Status, Track,
 };

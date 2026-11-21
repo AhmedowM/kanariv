@@ -3,13 +3,15 @@
 //! Rendering stays out of here: handlers return payload + optional line,
 //! exactly like the C++ `Outcome` contract.
 
+use std::fmt::Write as _;
 use std::thread;
 use std::time::Duration;
 
+use crate::batch::BatchReport;
 use crate::client::{self, DEFAULT_TIMEOUT};
 use crate::config::Config;
 use crate::error::{Result, StatusCode};
-use crate::ipc::{Command, ConfigValue, Payload, RepeatMode, Reply, Status};
+use crate::ipc::{Command, ConfigValue, Payload, RepeatMode, Reply, Status, Track};
 use crate::outcome::Outcome;
 
 pub struct App {
@@ -443,6 +445,352 @@ impl App {
             },
             Some(line),
         )
+    }
+
+    pub fn playlist_list(&self) -> Result<Outcome> {
+        self.confirm(&Command::PlaylistList, None)
+    }
+
+    pub fn playlist_tracks(&self, pid: i64) -> Result<Outcome> {
+        self.confirm(&Command::PlaylistTracks { pid }, None)
+    }
+
+    pub fn playlist_create(&self, name: &str, smart: &str) -> Result<Outcome> {
+        let payload = self.send(&Command::PlaylistCreate {
+            name: name.to_string(),
+            smart_query: smart.to_string(),
+        })?;
+        let line = match &payload.reply {
+            Reply::PlaylistCreated { id, name } => Some(format!("Created playlist {id} '{name}'")),
+            _ => None,
+        };
+        Ok(Outcome::confirm(payload, line))
+    }
+
+    /// Port of `App::playlistAdd`: resolve ids and paths to library tracks,
+    /// append each one, and report per-track lines.
+    pub fn playlist_add(
+        &self,
+        pid: i64,
+        ids: &[String],
+        paths: &[String],
+        recursive: bool,
+    ) -> BatchReport {
+        if ids.is_empty() && paths.is_empty() {
+            return BatchReport::fail("playlist add: need --id ID or PATH");
+        }
+        let mut resolved = Vec::new();
+        for text in ids {
+            let Some(id) = crate::parse::parse_id(text) else {
+                return BatchReport::fail(format!(
+                    "playlist add: --id needs a non-negative numeric id: {text}"
+                ));
+            };
+            resolved.push(id);
+        }
+        let mut files = Vec::new();
+        let mut unmatched = Vec::new();
+        for token in paths {
+            crate::paths::expand_add_token(token, recursive, &mut files, &mut unmatched);
+        }
+        let mut report = BatchReport::default();
+        let mut hard_fail = false;
+        for token in &unmatched {
+            if crate::paths::is_numeric(token) {
+                report.err_line(format!(
+                    "playlist add: '{token}' is not a file (use --id for ids)"
+                ));
+                hard_fail = true;
+            } else if crate::paths::has_glob_chars(token) || std::path::Path::new(token).is_dir() {
+                report.err_line(format!("No files matched: {token}"));
+            } else {
+                report.err_line(format!("playlist add: no such file: {token}"));
+                hard_fail = true;
+            }
+        }
+        for file in &files {
+            self.ensure_library_track(file, &mut report, &mut resolved, &mut hard_fail);
+        }
+        let (added, collected) =
+            self.append_playlist_tracks(pid, resolved, &mut report, &mut hard_fail);
+        report.json = Some(serde_json::json!({"type": "QueueTracks", "tracks": collected}));
+        crate::batch::count_line_text(added, &mut report.out);
+        report.exit_code = i32::from(added == 0 && hard_fail);
+        report
+    }
+
+    /// Library-resolves one expanded path: `LibraryAdd`, then an exact
+    /// `pathKey` match in a filename search (the C++ loop body).
+    fn ensure_library_track(
+        &self,
+        file: &str,
+        report: &mut BatchReport,
+        resolved: &mut Vec<i64>,
+        hard_fail: &mut bool,
+    ) {
+        if let Err(err) = self.send(&Command::LibraryAdd {
+            path: file.to_string(),
+            recursive: false,
+        }) {
+            report.err_block(&err.render());
+            *hard_fail = true;
+            return;
+        }
+        let search = match self.send(&Command::LibrarySearch {
+            query: crate::paths::filename_of(file),
+            limit: 50,
+        }) {
+            Ok(payload) => payload,
+            Err(err) => {
+                report.err_block(&err.render());
+                *hard_fail = true;
+                return;
+            }
+        };
+        let Reply::SearchResults { tracks, .. } = &search.reply else {
+            report.out_block(&crate::output::render_payload(&search, 0, false));
+            *hard_fail = true;
+            return;
+        };
+        let key = crate::paths::path_key(file);
+        if let Some(track) = tracks
+            .iter()
+            .find(|track| crate::paths::path_key(&track.path) == key)
+        {
+            resolved.push(track.id);
+        } else {
+            report.err_line(format!("playlist add: not in library: {file}"));
+            *hard_fail = true;
+        }
+    }
+
+    /// Appends each resolved id and tags every success with the C++ label.
+    fn append_playlist_tracks(
+        &self,
+        pid: i64,
+        resolved: Vec<i64>,
+        report: &mut BatchReport,
+        hard_fail: &mut bool,
+    ) -> (usize, Vec<serde_json::Value>) {
+        let mut added = 0_usize;
+        let mut collected = Vec::new();
+        for track_id in resolved {
+            match self.send(&Command::PlaylistAdd { pid, track_id }) {
+                Err(err) if err.code == StatusCode::AlreadyExists => {
+                    report.err_line(format!("already on playlist: track {track_id}"));
+                    continue;
+                }
+                Err(err) => {
+                    report.err_block(&err.render());
+                    *hard_fail = true;
+                    continue;
+                }
+                Ok(_) => {}
+            }
+            let mut label = String::new();
+            if let Ok(payload) = self.send(&Command::TagGet {
+                id: Some(track_id),
+                path: None,
+                cover: false,
+            }) {
+                if let Reply::SingleTrack { track, .. } = &payload.reply {
+                    if let Some(raw) = payload.json.get("track") {
+                        collected.push(raw.clone());
+                    }
+                    label = added_label(track);
+                }
+            }
+            if label.is_empty() {
+                label = format!("track {track_id}");
+            }
+            report.out_line(format!("Added {label} to playlist {pid}"));
+            added += 1;
+        }
+        (added, collected)
+    }
+
+    pub fn playlist_load(&self, pid: i64, play: bool, replace: bool) -> Result<Outcome> {
+        let payload = self.send(&Command::PlaylistLoad { pid, play, replace })?;
+        let line = match &payload.reply {
+            Reply::PlaylistLoaded { queue_id, status } => {
+                let mut line = if replace {
+                    format!("Replaced queue {queue_id} with playlist {pid}")
+                } else {
+                    format!("Loaded playlist {pid} into queue {queue_id}")
+                };
+                if play {
+                    let _ = write!(line, "\nPlaying {}", track_who(status));
+                }
+                Some(line)
+            }
+            _ => None,
+        };
+        Ok(Outcome::confirm(payload, line))
+    }
+
+    pub fn playlist_save(&self, name: &str, queue_id: Option<i64>) -> Result<Outcome> {
+        self.confirm(
+            &Command::PlaylistSave {
+                name: name.to_string(),
+                queue_id,
+            },
+            Some(format!("Saved playlist '{name}'")),
+        )
+    }
+
+    pub fn playlist_delete(&self, pid: i64) -> Result<Outcome> {
+        self.confirm(
+            &Command::PlaylistDelete { pid },
+            Some(format!("Deleted playlist {pid}")),
+        )
+    }
+
+    pub fn playlist_rename(&self, pid: i64, name: &str) -> Result<Outcome> {
+        self.confirm(
+            &Command::PlaylistRename {
+                pid,
+                new_name: name.to_string(),
+            },
+            Some(format!("Renamed playlist {pid} to '{name}'")),
+        )
+    }
+
+    /// Port of `App::playlistExport`: the daemon returns the rows, the
+    /// frontend writes the file (m3u/pls text or the kanariv JSON shape).
+    #[must_use]
+    pub fn playlist_export(&self, pid: i64, path: &str, format: &str) -> BatchReport {
+        let payload = match self.send(&Command::PlaylistExport {
+            pid,
+            path: path.to_string(),
+            format: format.to_string(),
+        }) {
+            Ok(payload) => payload,
+            Err(err) => return BatchReport::fail(format!("export: {}", err.message)),
+        };
+        let Reply::PlaylistData { tracks, format } = &payload.reply else {
+            return BatchReport::fail("export: unexpected response from daemon");
+        };
+        let text = match format.as_str() {
+            "m3u" | "pls" => render_playlist_text(tracks, format),
+            "json" => render_playlist_json(&payload),
+            _ => String::new(),
+        };
+        if std::fs::write(path, native_newlines(text)).is_err() {
+            return BatchReport::fail(format!("export: failed to open output file '{path}'"));
+        }
+        BatchReport {
+            out: format!("exported {} tracks to {path}", tracks.len()),
+            ..BatchReport::default()
+        }
+    }
+
+    pub fn playlist_import(&self, path: &str, name: Option<&str>) -> Result<Outcome> {
+        self.confirm(
+            &Command::PlaylistImport {
+                path: path.to_string(),
+                name: name.map(ToString::to_string),
+            },
+            None,
+        )
+    }
+}
+
+/// `kanariv::app::addedLabel`: "artist - title: file", falling back by part.
+#[must_use]
+pub fn added_label(track: &Track) -> String {
+    let filename = crate::paths::filename_of(&track.path);
+    let who = if !track.artist.is_empty() && !track.title.is_empty() {
+        format!("{} - {}", track.artist, track.title)
+    } else {
+        format!("{}{}", track.artist, track.title)
+    };
+    if !who.is_empty() && !filename.is_empty() {
+        format!("{who}: {filename}")
+    } else if !filename.is_empty() {
+        filename
+    } else if !who.is_empty() {
+        who
+    } else {
+        format!("track {}", track.id)
+    }
+}
+
+/// `writePlaylistText`: M3U and PLS bodies with `\n` line endings.
+#[must_use]
+pub fn render_playlist_text(tracks: &[Track], format: &str) -> String {
+    let mut out = String::new();
+    if format == "m3u" {
+        out.push_str("#EXTM3U\n");
+        for track in tracks {
+            let duration = track.duration.round() as i64;
+            let title = if track.title.is_empty() {
+                track.path.as_str()
+            } else {
+                track.title.as_str()
+            };
+            let _ = write!(out, "#EXTINF:{duration},");
+            if track.artist.is_empty() {
+                out.push_str(title);
+            } else {
+                let _ = write!(out, "{} - {title}", track.artist);
+            }
+            out.push('\n');
+            out.push_str(&track.path);
+            out.push('\n');
+        }
+    } else if format == "pls" {
+        out.push_str("[playlist]\n");
+        for (index, track) in tracks.iter().enumerate() {
+            let number = index + 1;
+            let _ = writeln!(out, "File{number}={}", track.path);
+            let title = if track.title.is_empty() {
+                track.path.as_str()
+            } else {
+                track.title.as_str()
+            };
+            let title = if track.artist.is_empty() {
+                title.to_string()
+            } else {
+                format!("{} - {title}", track.artist)
+            };
+            let _ = writeln!(out, "Title{number}={title}");
+            let duration = track.duration.round() as i64;
+            let _ = writeln!(out, "Length{number}={duration}");
+        }
+        let _ = writeln!(out, "NumberOfEntries={}", tracks.len());
+        out.push_str("Version=2\n");
+    }
+    out
+}
+
+/// `writePlaylistJson`: the daemon's track objects under the kanariv header.
+#[must_use]
+pub fn render_playlist_json(payload: &Payload) -> String {
+    let tracks = payload
+        .json
+        .get("tracks")
+        .cloned()
+        .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
+    let mut root = serde_json::Map::new();
+    root.insert(
+        "format".to_string(),
+        serde_json::Value::String("kanariv-playlist".to_string()),
+    );
+    root.insert("version".to_string(), serde_json::Value::from(1));
+    root.insert("tracks".to_string(), tracks);
+    let mut text = serde_json::to_string_pretty(&serde_json::Value::Object(root))
+        .unwrap_or_else(|_| String::new());
+    text.push('\n');
+    text
+}
+
+/// `std::ofstream` text mode writes CRLF on Windows; the file parity target
+/// is the C++ CLI's bytes, so reproduce that.
+fn native_newlines(text: String) -> String {
+    if cfg!(windows) {
+        text.replace('\n', "\r\n")
+    } else {
+        text
     }
 }
 

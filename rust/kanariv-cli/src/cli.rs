@@ -120,6 +120,11 @@ pub enum Command {
         #[command(subcommand)]
         command: Option<DeviceCommand>,
     },
+    /// Playlist operations
+    Playlist {
+        #[command(subcommand)]
+        command: Option<PlaylistCommand>,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -270,9 +275,176 @@ pub enum DeviceCommand {
     },
 }
 
+#[derive(Debug, Subcommand)]
+pub enum PlaylistCommand {
+    /// List playlists
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Tracks in playlist
+    Tracks {
+        /// Playlist id
+        pid: i64,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Create an empty playlist
+    Create {
+        /// Playlist name
+        name: String,
+        /// Smart-playlist filter expression
+        #[arg(long)]
+        smart: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Add tracks to playlist
+    Add {
+        /// Playlist id
+        pid: i64,
+        /// Library track id (repeatable)
+        #[arg(long = "id", value_name = "ID")]
+        ids: Vec<String>,
+        /// File, folder, or glob (repeatable)
+        #[arg(value_name = "PATH")]
+        paths: Vec<String>,
+        /// Recurse into folders
+        #[arg(long)]
+        recursive: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Load playlist into queue
+    Load {
+        /// Playlist id
+        pid: i64,
+        /// Play after load
+        #[arg(long)]
+        play: bool,
+        /// Replace active queue
+        #[arg(long)]
+        replace: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Save queue as playlist
+    Save {
+        /// Playlist name
+        name: String,
+        /// Queue id
+        #[arg(long)]
+        queue: Option<i64>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete playlist
+    Delete {
+        /// Playlist id
+        pid: i64,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Rename playlist
+    Rename {
+        /// Playlist id
+        pid: i64,
+        /// New name
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export playlist to file
+    Export {
+        /// Playlist id
+        pid: i64,
+        /// Output file path
+        path: String,
+        /// Format: m3u|pls|json
+        #[arg(long, default_value = "m3u", value_parser = ["m3u", "pls", "json"])]
+        format: String,
+    },
+    /// Import playlist from file
+    Import {
+        /// Input file path
+        path: String,
+        /// Playlist name (default: filename)
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn playlist_add_takes_repeatable_ids_and_paths() {
+        let cli = Cli::try_parse_from([
+            "kanariv",
+            "playlist",
+            "add",
+            "3",
+            "--id",
+            "7",
+            "--id",
+            "9",
+            "one.mp3",
+            "two.mp3",
+            "--recursive",
+        ])
+        .expect("parse");
+        let Some(Command::Playlist {
+            command:
+                Some(PlaylistCommand::Add {
+                    pid,
+                    ids,
+                    paths,
+                    recursive,
+                    ..
+                }),
+        }) = cli.command
+        else {
+            panic!("expected playlist add");
+        };
+        assert_eq!(pid, 3);
+        assert_eq!(ids, ["7", "9"]);
+        assert_eq!(paths, ["one.mp3", "two.mp3"]);
+        assert!(recursive);
+    }
+
+    #[test]
+    fn playlist_save_queue_is_optional() {
+        let cli = Cli::try_parse_from(["kanariv", "playlist", "save", "mix"]).expect("parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Playlist {
+                command: Some(PlaylistCommand::Save { queue: None, .. })
+            })
+        ));
+    }
+
+    #[test]
+    fn playlist_export_rejects_unknown_format() {
+        assert!(Cli::try_parse_from([
+            "kanariv", "playlist", "export", "1", "out.txt", "--format", "txt"
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn playlist_export_format_defaults_to_m3u() {
+        let cli =
+            Cli::try_parse_from(["kanariv", "playlist", "export", "1", "out.bin"]).expect("parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Playlist {
+                command: Some(PlaylistCommand::Export { ref format, .. })
+            }) if format == "m3u"
+        ));
+    }
 
     #[test]
     fn volume_accepts_negative_delta() {

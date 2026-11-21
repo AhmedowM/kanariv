@@ -4,6 +4,7 @@
 //! error, failure line, quiet success, JSON payload, human line, bare payload.
 
 mod app;
+mod batch;
 mod cli;
 mod client;
 mod config;
@@ -14,6 +15,7 @@ mod ipc;
 mod outcome;
 mod output;
 mod parse;
+mod paths;
 mod version;
 
 use std::io::IsTerminal;
@@ -23,7 +25,10 @@ use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser};
 
 use crate::app::App;
-use crate::cli::{Cli, Command, ConfigCommand, DeviceCommand, QueueCommand, StatusArgs};
+use crate::batch::BatchReport;
+use crate::cli::{
+    Cli, Command, ConfigCommand, DeviceCommand, PlaylistCommand, QueueCommand, StatusArgs,
+};
 use crate::error::{Error, Result};
 use crate::outcome::Outcome;
 use crate::parse::VolumeArg;
@@ -88,7 +93,16 @@ fn run() -> i32 {
     let persist_defaults = config_missing && is_mutating(&command);
 
     let app = App::new(cfg);
-    let code = match command {
+    let code = dispatch(&app, command);
+
+    // PersistDefaultsGuard equivalent: runs after the command, and a write
+    // failure only warns, exactly like the C++ guard's destructor.
+    save_first_run_defaults(persist_defaults, app.config());
+    code
+}
+
+fn dispatch(app: &App, command: Command) -> i32 {
+    match command {
         Command::Version { .. } => 0,
         Command::Start { foreground } => render(daemon::start(app.config(), foreground), false),
         Command::Shutdown => render_outcome(&daemon::shutdown(app.config()), false),
@@ -108,7 +122,7 @@ fn run() -> i32 {
                 1
             }
         },
-        Command::Status(args) => status(&app, &args),
+        Command::Status(args) => status(app, &args),
         Command::Volume { level, json } => {
             match parse::parse_volume(level.as_deref().unwrap_or("")) {
                 Ok(VolumeArg::Show) => render(app.set_volume(None, None, None), json),
@@ -127,24 +141,23 @@ fn run() -> i32 {
             }
         }
         Command::Queue { command } => match command {
-            Some(command) => dispatch_queue(&app, command),
+            Some(command) => dispatch_queue(app, command),
             None => print_group_help("queue"),
         },
         Command::Info { json } => render(app.info(), json),
         Command::Config { command } => match command {
-            Some(command) => dispatch_config(&app, command),
+            Some(command) => dispatch_config(app, command),
             None => print_group_help("config"),
         },
         Command::Device { command } => match command {
-            Some(command) => dispatch_device(&app, command),
+            Some(command) => dispatch_device(app, command),
             None => print_group_help("device"),
         },
-    };
-
-    // PersistDefaultsGuard equivalent: runs after the command, and a write
-    // failure only warns, exactly like the C++ guard's destructor.
-    save_first_run_defaults(persist_defaults, app.config());
-    code
+        Command::Playlist { command } => match command {
+            Some(command) => dispatch_playlist(app, command),
+            None => print_group_help("playlist"),
+        },
+    }
 }
 
 fn save_first_run_defaults(enabled: bool, cfg: &config::Config) {
@@ -187,6 +200,17 @@ fn is_mutating(command: &Command) -> bool {
         Command::Device { command } => {
             matches!(command, Some(DeviceCommand::Set { .. }))
         }
+        Command::Playlist { command } => matches!(
+            command,
+            Some(
+                PlaylistCommand::Create { .. }
+                    | PlaylistCommand::Add { .. }
+                    | PlaylistCommand::Load { .. }
+                    | PlaylistCommand::Delete { .. }
+                    | PlaylistCommand::Rename { .. }
+                    | PlaylistCommand::Import { .. }
+            )
+        ),
         _ => false,
     }
 }
@@ -233,6 +257,61 @@ fn dispatch_device(app: &App, command: DeviceCommand) -> i32 {
             render(app.device_test(id.as_deref(), tone), json)
         }
     }
+}
+
+fn dispatch_playlist(app: &App, command: PlaylistCommand) -> i32 {
+    match command {
+        PlaylistCommand::List { json } => render(app.playlist_list(), json),
+        PlaylistCommand::Tracks { pid, json } => render(app.playlist_tracks(pid), json),
+        PlaylistCommand::Create { name, smart, json } => render(
+            app.playlist_create(&name, smart.as_deref().unwrap_or("")),
+            json,
+        ),
+        PlaylistCommand::Add {
+            pid,
+            ids,
+            paths,
+            recursive,
+            json,
+        } => render_batch(&app.playlist_add(pid, &ids, &paths, recursive), json),
+        PlaylistCommand::Load {
+            pid,
+            play,
+            replace,
+            json,
+        } => render(app.playlist_load(pid, play, replace), json),
+        PlaylistCommand::Save { name, queue, json } => {
+            render(app.playlist_save(&name, queue), json)
+        }
+        PlaylistCommand::Delete { pid, json } => render(app.playlist_delete(pid), json),
+        PlaylistCommand::Rename { pid, name, json } => {
+            render(app.playlist_rename(pid, &name), json)
+        }
+        // Export declares no --json flag; the C++ dispatcher always passes false.
+        PlaylistCommand::Export { pid, path, format } => {
+            render_batch(&app.playlist_export(pid, &path, &format), false)
+        }
+        PlaylistCommand::Import { path, name, json } => {
+            let name = name.as_deref().filter(|name| !name.is_empty());
+            render(app.playlist_import(&path, name), json)
+        }
+    }
+}
+
+fn render_batch(report: &BatchReport, as_json: bool) -> i32 {
+    if !report.err.is_empty() {
+        eprintln!("{}", report.err);
+    }
+    if as_json {
+        if let Some(json) = &report.json {
+            output::print_json_value(json);
+        }
+        return report.exit_code;
+    }
+    if !report.out.is_empty() {
+        println!("{}", report.out);
+    }
+    report.exit_code
 }
 
 fn dispatch_queue(app: &App, command: QueueCommand) -> i32 {
@@ -387,5 +466,38 @@ mod tests {
             }),
         }));
         assert!(!is_mutating(&Command::Queue { command: None }));
+
+        assert!(is_mutating(&Command::Playlist {
+            command: Some(PlaylistCommand::Create {
+                name: "mix".into(),
+                smart: None,
+                json: false,
+            }),
+        }));
+        assert!(is_mutating(&Command::Playlist {
+            command: Some(PlaylistCommand::Import {
+                path: "mix.m3u".into(),
+                name: None,
+                json: false,
+            }),
+        }));
+        assert!(!is_mutating(&Command::Playlist {
+            command: Some(PlaylistCommand::Save {
+                name: "mix".into(),
+                queue: None,
+                json: false,
+            }),
+        }));
+        assert!(!is_mutating(&Command::Playlist {
+            command: Some(PlaylistCommand::Export {
+                pid: 1,
+                path: "out.m3u".into(),
+                format: "m3u".into(),
+            }),
+        }));
+        assert!(!is_mutating(&Command::Playlist {
+            command: Some(PlaylistCommand::List { json: false }),
+        }));
+        assert!(!is_mutating(&Command::Playlist { command: None }));
     }
 }

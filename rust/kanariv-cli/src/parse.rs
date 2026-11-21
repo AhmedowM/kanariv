@@ -136,6 +136,18 @@ pub fn parse_volume(input: &str) -> Result<VolumeArg, String> {
     })
 }
 
+/// `kanariv::utils::parseId`: ASCII digits only, no sign, no overflow.
+///
+/// One rule for every numeric boundary (library ids, queue positions,
+/// playlist ids).
+#[must_use]
+pub fn parse_id(text: &str) -> Option<i64> {
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    text.parse::<i64>().ok()
+}
+
 /// strtod-compatible strict token parse (no whitespace, no hex floats).
 fn parse_double(token: &str) -> Option<f64> {
     if token.is_empty() || token.starts_with([' ', '\t', '\r', '\n']) || is_hex_float(token) {
@@ -188,6 +200,18 @@ mod tests {
         assert_eq!(parse_seek("+5"), Ok((5.0, true)));
         assert_eq!(parse_seek("-1:30"), Ok((-90.0, true)));
         assert_eq!(parse_seek("42"), Ok((42.0, false)));
+    }
+
+    #[test]
+    fn ids_are_non_negative_digits() {
+        assert_eq!(parse_id("42"), Some(42));
+        assert_eq!(parse_id("0"), Some(0));
+        assert_eq!(parse_id(""), None);
+        assert_eq!(parse_id("-1"), None);
+        assert_eq!(parse_id("+1"), None);
+        assert_eq!(parse_id("1 "), None);
+        assert_eq!(parse_id("1.5"), None);
+        assert_eq!(parse_id("99999999999999999999999"), None);
     }
 
     #[test]

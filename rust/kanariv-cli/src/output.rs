@@ -1,9 +1,14 @@
 //! Human renderer matching `cli/src/shell/output_formatter.cpp`.
 //!
-//! String widths are measured in bytes, like `std::format` on `std::string`,
-//! so table alignment matches the C++ output exactly for byte-oriented text.
+//! Everything renders into a `String` so batch handlers can fold a result
+//! into their stdout blob; the `print_*` helpers are the single-shot
+//! frontend path. String widths are measured in bytes, like `std::format` on
+//! `std::string`, so table alignment matches the C++ output exactly for
+//! byte-oriented text.
 
-use crate::ipc::{Payload, Reply, Status, Track};
+use serde_json::Value;
+
+use crate::ipc::{Payload, Playlist, QueueEntry, Reply, Status, Track};
 
 #[must_use]
 pub fn format_time(seconds: f64) -> String {
@@ -50,8 +55,20 @@ fn pad_left(text: &str, width: usize) -> String {
     out
 }
 
+/// `kanariv::println`: appends a newline between lines, never at the end.
+fn pushln(out: &mut String, line: impl AsRef<str>) {
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(line.as_ref());
+}
+
 pub fn print_json(payload: &Payload) {
-    match serde_json::to_string_pretty(&payload.json) {
+    print_json_value(&payload.json);
+}
+
+pub fn print_json_value(value: &Value) {
+    match serde_json::to_string_pretty(value) {
         Ok(text) => println!("{text}"),
         Err(err) => eprintln!("Error: Corrupt {err}"),
     }
@@ -60,107 +77,173 @@ pub fn print_json(payload: &Payload) {
 /// Renders a result in human form. `highlight` is the id to mark in a queue
 /// listing (0 = none), matching the C++ formatter's `> ` marker.
 pub fn print_payload(payload: &Payload, highlight: i64, color: bool) {
+    println!("{}", render_payload(payload, highlight, color));
+}
+
+#[must_use]
+pub fn render_payload(payload: &Payload, highlight: i64, color: bool) -> String {
+    let mut out = String::new();
     match &payload.reply {
-        Reply::Status(status) => print_status(status),
-        Reply::QueueTracks(tracks) => print_queue_tracks(tracks, highlight, color),
-        Reply::Queues(entries) => print_queues(entries),
-        Reply::QueueCreated { id, name } => println!("Created queue {id} '{name}'"),
-        Reply::VolumeInfo { vol, muted } => print_volume(*vol, *muted),
+        Reply::Status(status) => render_status(&mut out, status),
+        Reply::QueueTracks(tracks) => render_queue_tracks(&mut out, tracks, highlight, color),
+        Reply::Queues(entries) => render_queues(&mut out, entries),
+        Reply::QueueCreated { id, name } => {
+            pushln(&mut out, format!("Created queue {id} '{name}'"));
+        }
+        Reply::PlaylistLoaded { queue_id, .. } => {
+            pushln(&mut out, format!("Loaded playlist into queue {queue_id}"));
+        }
+        Reply::VolumeInfo { vol, muted } => render_volume(&mut out, *vol, *muted),
         Reply::TrackInfo {
             track,
             play_count,
             last_played,
-        } => print_track_info(track, *play_count, *last_played),
-        Reply::ConfigValue(value) => println!("{} = {}", value.key, value.value),
+        } => render_track_info(&mut out, track, *play_count, *last_played),
+        Reply::ConfigValue(value) => {
+            pushln(&mut out, format!("{} = {}", value.key, value.value));
+        }
         Reply::ConfigValues(values) => {
-            println!("Config ({} entries):", values.len());
+            pushln(&mut out, format!("Config ({} entries):", values.len()));
             for value in values {
-                println!("{} = {}", value.key, value.value);
+                pushln(&mut out, format!("{} = {}", value.key, value.value));
             }
         }
-        Reply::Devices(devices) => print_devices(devices),
-        Reply::Empty => println!("OK"),
-        _ => print_json(payload),
+        Reply::Devices(devices) => render_devices(&mut out, devices),
+        Reply::Playlists(playlists) => render_playlists(&mut out, playlists),
+        Reply::PlaylistData { tracks, .. } => {
+            pushln(&mut out, format!("Playlist ({} tracks):", tracks.len()));
+            render_track_table(&mut out, tracks);
+        }
+        Reply::PlaylistCreated { id, name } => {
+            pushln(&mut out, format!("Created playlist {id} '{name}'"));
+        }
+        Reply::PlaylistImportReport {
+            name,
+            tracks,
+            matched,
+            skipped,
+            duplicates,
+            ..
+        } => {
+            pushln(
+                &mut out,
+                format!(
+                    "Imported playlist '{name}' ({} tracks, {matched} matched, {skipped} skipped, \
+                     {duplicates} duplicates):",
+                    tracks.len()
+                ),
+            );
+            render_track_table(&mut out, tracks);
+        }
+        Reply::Empty => pushln(&mut out, "OK"),
+        _ => {
+            out = serde_json::to_string_pretty(&payload.json)
+                .unwrap_or_else(|err| format!("Error: Corrupt {err}"));
+        }
     }
+    out
 }
 
-fn print_devices(devices: &[crate::ipc::DeviceInfo]) {
-    println!("Devices ({}):", devices.len());
-    println!(
-        "{}  {}  {}  Default",
-        pad_left("#", 3),
-        pad_right("ID", 20),
-        pad_right("Name", 40)
+fn render_devices(out: &mut String, devices: &[crate::ipc::DeviceInfo]) {
+    pushln(out, format!("Devices ({}):", devices.len()));
+    pushln(
+        out,
+        format!(
+            "{}  {}  {}  Default",
+            pad_left("#", 3),
+            pad_right("ID", 20),
+            pad_right("Name", 40)
+        ),
     );
     for (index, device) in devices.iter().enumerate() {
-        println!(
-            "{}  {}  {}  {}",
-            pad_left(&index.to_string(), 3),
-            pad_right(&truncate_field(&device.id, 20), 20),
-            pad_right(&truncate_field(&device.name, 40), 40),
-            if device.is_default { "yes" } else { "no" }
+        pushln(
+            out,
+            format!(
+                "{}  {}  {}  {}",
+                pad_left(&index.to_string(), 3),
+                pad_right(&truncate_field(&device.id, 20), 20),
+                pad_right(&truncate_field(&device.name, 40), 40),
+                if device.is_default { "yes" } else { "no" }
+            ),
         );
     }
 }
 
-pub fn print_status(status: &Status) {
-    println!("State: {}", status.state);
-    println!(
-        "Pos: {} / {}",
-        format_time(status.pos),
-        format_time(status.dur)
+fn render_status(out: &mut String, status: &Status) {
+    pushln(out, format!("State: {}", status.state));
+    pushln(
+        out,
+        format!(
+            "Pos: {} / {}",
+            format_time(status.pos),
+            format_time(status.dur)
+        ),
     );
     if status.muted {
-        println!("Volume: muted");
+        pushln(out, "Volume: muted");
     } else {
-        println!("Volume: {}%", (status.vol * 100.0_f32) as i32);
+        pushln(out, format!("Volume: {}%", (status.vol * 100.0_f32) as i32));
     }
-    println!(
-        "Shuffle: {} Repeat: {}",
-        if status.shuffle { "on" } else { "off" },
-        status.repeat
+    pushln(
+        out,
+        format!(
+            "Shuffle: {} Repeat: {}",
+            if status.shuffle { "on" } else { "off" },
+            status.repeat
+        ),
     );
     if !status.artist.is_empty() && !status.title.is_empty() {
-        println!(
-            "Track: {} - {} [id: {}]",
-            truncate_field(&status.artist, 40),
-            truncate_field(&status.title, 40),
-            status.track_id
+        pushln(
+            out,
+            format!(
+                "Track: {} - {} [id: {}]",
+                truncate_field(&status.artist, 40),
+                truncate_field(&status.title, 40),
+                status.track_id
+            ),
         );
     } else if !status.artist.is_empty() || !status.title.is_empty() {
-        println!(
-            "Track: {} [id: {}]",
-            truncate_field(&(status.artist.clone() + &status.title), 40),
-            status.track_id
+        pushln(
+            out,
+            format!(
+                "Track: {} [id: {}]",
+                truncate_field(&(status.artist.clone() + &status.title), 40),
+                status.track_id
+            ),
         );
     } else if status.track_id != 0 {
-        println!("Track: [id: {}]", status.track_id);
+        pushln(out, format!("Track: [id: {}]", status.track_id));
     }
     if !status.path.is_empty() {
-        println!("Path: {}", status.path);
+        pushln(out, format!("Path: {}", status.path));
     }
     if status.track_id != 0 && status.q_size > 0 {
-        println!("Queue: track {} of {}", status.q_idx + 1, status.q_size);
+        pushln(
+            out,
+            format!("Queue: track {} of {}", status.q_idx + 1, status.q_size),
+        );
     } else {
-        println!("Queue: {} tracks", status.q_size);
+        pushln(out, format!("Queue: {} tracks", status.q_size));
     }
     if !status.version.is_empty() {
-        println!("Version: {}", status.version);
+        pushln(out, format!("Version: {}", status.version));
     }
 }
 
-fn print_queue_tracks(tracks: &[Track], highlight: i64, color: bool) {
-    println!("Queue ({} tracks):", tracks.len());
-    println!(
-        "{} {}  {} {} {}",
-        pad_left("#", 3),
-        pad_left("ID", 6),
-        pad_right("Artist", 40),
-        pad_right("Title", 40),
-        pad_left("Dur", 8)
+fn render_queue_tracks(out: &mut String, tracks: &[Track], highlight: i64, color: bool) {
+    pushln(out, format!("Queue ({} tracks):", tracks.len()));
+    pushln(
+        out,
+        format!(
+            "{} {}  {} {} {}",
+            pad_left("#", 3),
+            pad_left("ID", 6),
+            pad_right("Artist", 40),
+            pad_right("Title", 40),
+            pad_left("Dur", 8)
+        ),
     );
     for (index, track) in tracks.iter().enumerate() {
-        let is_current = highlight != 0 && track.id == highlight;
         let row = format!(
             "{} {}  {} {} {}",
             pad_left(&index.to_string(), 3),
@@ -169,25 +252,30 @@ fn print_queue_tracks(tracks: &[Track], highlight: i64, color: bool) {
             pad_right(&truncate_field(&track.title, 40), 40),
             pad_left(&format_time(track.duration), 8)
         );
-        let marker = if is_current { ">" } else { " " };
+        let is_current = highlight != 0 && track.id == highlight;
         if is_current && color {
-            println!("{marker} \u{1b}[32m{row}\u{1b}[0m");
+            pushln(out, format!("> \u{1b}[32m{row}\u{1b}[0m"));
+        } else if is_current {
+            pushln(out, format!("> {row}"));
         } else {
-            println!("{marker} {row}");
+            pushln(out, format!("  {row}"));
         }
     }
 }
 
-fn print_queues(entries: &[crate::ipc::QueueEntry]) {
-    println!("Queues ({}):", entries.len());
-    println!(
-        "{} {}  {} {} {} {}",
-        pad_left("#", 3),
-        pad_left("ID", 6),
-        pad_right("Name", 40),
-        pad_left("Tracks", 8),
-        pad_left("Active", 6),
-        pad_left("Temp", 4)
+fn render_queues(out: &mut String, entries: &[QueueEntry]) {
+    pushln(out, format!("Queues ({}):", entries.len()));
+    pushln(
+        out,
+        format!(
+            "{} {}  {} {} {} {}",
+            pad_left("#", 3),
+            pad_left("ID", 6),
+            pad_right("Name", 40),
+            pad_left("Tracks", 8),
+            pad_left("Active", 6),
+            pad_left("Temp", 4)
+        ),
     );
     for (index, entry) in entries.iter().enumerate() {
         let name = if entry.name.is_empty() {
@@ -195,27 +283,68 @@ fn print_queues(entries: &[crate::ipc::QueueEntry]) {
         } else {
             entry.name.as_str()
         };
-        println!(
-            "{} {}  {} {} {} {}",
-            pad_left(&index.to_string(), 3),
-            pad_left(&entry.id.to_string(), 6),
-            pad_right(&truncate_field(name, 40), 40),
-            pad_left(&entry.tracks.to_string(), 8),
-            pad_left(if entry.active { "*" } else { "" }, 6),
-            pad_left(if entry.temp { "yes" } else { "" }, 4)
+        pushln(
+            out,
+            format!(
+                "{} {}  {} {} {} {}",
+                pad_left(&index.to_string(), 3),
+                pad_left(&entry.id.to_string(), 6),
+                pad_right(&truncate_field(name, 40), 40),
+                pad_left(&entry.tracks.to_string(), 8),
+                pad_left(if entry.active { "*" } else { "" }, 6),
+                pad_left(if entry.temp { "yes" } else { "" }, 4)
+            ),
         );
     }
 }
 
-pub fn print_volume(vol: f32, muted: bool) {
-    if muted {
-        println!("Volume: muted");
-    } else {
-        println!("Volume: {}%", (vol * 100.0_f32) as i32);
+fn render_playlists(out: &mut String, playlists: &[Playlist]) {
+    pushln(out, format!("Playlists ({}):", playlists.len()));
+    pushln(out, format!("{:>3} {:>6}  {:<40}", "#", "ID", "Name"));
+    for (index, playlist) in playlists.iter().enumerate() {
+        pushln(
+            out,
+            format!(
+                "{index:>3} {:>6}  {}",
+                playlist.id,
+                pad_right(&truncate_field(&playlist.name, 40), 40)
+            ),
+        );
     }
 }
 
-fn print_track_info(track: &Track, play_count: i64, last_played: i64) {
+/// Shared table for `PlaylistData` and `PlaylistImportReport`.
+fn render_track_table(out: &mut String, tracks: &[Track]) {
+    pushln(
+        out,
+        format!(
+            "{:>3} {:>6}  {:<40} {:<40} {:>8}",
+            "#", "ID", "Artist", "Title", "Dur"
+        ),
+    );
+    for (index, track) in tracks.iter().enumerate() {
+        pushln(
+            out,
+            format!(
+                "{index:>3} {:>6}  {} {} {:>8}",
+                track.id,
+                pad_right(&truncate_field(&track.artist, 40), 40),
+                pad_right(&truncate_field(&track.title, 40), 40),
+                format_time(track.duration)
+            ),
+        );
+    }
+}
+
+fn render_volume(out: &mut String, vol: f32, muted: bool) {
+    if muted {
+        pushln(out, "Volume: muted");
+    } else {
+        pushln(out, format!("Volume: {}%", (vol * 100.0_f32) as i32));
+    }
+}
+
+fn render_track_info(out: &mut String, track: &Track, play_count: i64, last_played: i64) {
     let field = |value: &str| {
         if value.is_empty() {
             "---".to_string()
@@ -230,29 +359,50 @@ fn print_track_info(track: &Track, play_count: i64, last_played: i64) {
             value.to_string()
         }
     };
-    println!("Track [{}]", track.id);
-    println!("  Path:         {}", track.path);
-    println!("  Title:        {}", field(&track.title));
-    println!("  Artist:       {}", field(&track.artist));
-    println!("  Album:        {}", field(&track.album));
-    println!("  Album Artist: {}", field(&track.album_artist));
-    println!("  Genre:        {}", field(&track.genre));
-    println!("  Year:         {}", number(i64::from(track.year)));
-    println!("  Track:        {}", number(i64::from(track.track_num)));
-    println!("  Disc:         {}", number(i64::from(track.disc_num)));
-    println!("  Duration:     {}", format_time(track.duration));
-    println!("  Sample Rate:  {} Hz", track.sample_rate);
-    println!("  Channels:     {}", track.channels);
+    pushln(out, format!("Track [{}]", track.id));
+    pushln(out, format!("  Path:         {}", track.path));
+    pushln(out, format!("  Title:        {}", field(&track.title)));
+    pushln(out, format!("  Artist:       {}", field(&track.artist)));
+    pushln(out, format!("  Album:        {}", field(&track.album)));
+    pushln(
+        out,
+        format!("  Album Artist: {}", field(&track.album_artist)),
+    );
+    pushln(out, format!("  Genre:        {}", field(&track.genre)));
+    pushln(
+        out,
+        format!("  Year:         {}", number(i64::from(track.year))),
+    );
+    pushln(
+        out,
+        format!("  Track:        {}", number(i64::from(track.track_num))),
+    );
+    pushln(
+        out,
+        format!("  Disc:         {}", number(i64::from(track.disc_num))),
+    );
+    pushln(
+        out,
+        format!("  Duration:     {}", format_time(track.duration)),
+    );
+    pushln(out, format!("  Sample Rate:  {} Hz", track.sample_rate));
+    pushln(out, format!("  Channels:     {}", track.channels));
     if track.bitrate == 0 {
-        println!("  Bitrate:      ---");
+        pushln(out, "  Bitrate:      ---");
     } else {
-        println!("  Bitrate:      {} kbps", track.bitrate / 1000);
+        pushln(
+            out,
+            format!("  Bitrate:      {} kbps", track.bitrate / 1000),
+        );
     }
-    println!("  Play Count:   {play_count}");
+    pushln(out, format!("  Play Count:   {play_count}"));
     if last_played > 0 {
-        println!("  Last Played:  {}", format_epoch_ms(last_played));
+        pushln(
+            out,
+            format!("  Last Played:  {}", format_epoch_ms(last_played)),
+        );
     } else {
-        println!("  Last Played:  (never)");
+        pushln(out, "  Last Played:  (never)");
     }
 }
 
@@ -297,6 +447,13 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
 mod tests {
     use super::*;
 
+    fn payload(reply: Reply) -> Payload {
+        Payload {
+            json: Value::Null,
+            reply,
+        }
+    }
+
     #[test]
     fn formats_times_like_the_cpp_formatter() {
         assert_eq!(format_time(-5.0), "00:00");
@@ -322,5 +479,69 @@ mod tests {
     fn epoch_conversion() {
         assert_eq!(format_epoch_ms(0), "1970-01-01 00:00");
         assert_eq!(format_epoch_ms(1_700_000_000_000), "2023-11-14 22:13");
+    }
+
+    #[test]
+    fn playlists_table_matches_the_cpp_widths() {
+        let text = render_payload(
+            &payload(Reply::Playlists(vec![Playlist {
+                id: 3,
+                name: "mix".to_string(),
+                ..Playlist::default()
+            }])),
+            0,
+            false,
+        );
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines[0], "Playlists (1):");
+        assert!(lines[1].starts_with("  #     ID  Name"));
+        assert!(lines[2].starts_with("  0      3  mix"));
+        assert_eq!(lines[1].len(), lines[2].len());
+    }
+
+    #[test]
+    fn playlist_data_table_has_the_duration_column() {
+        let track = Track {
+            id: 7,
+            artist: "Artist".to_string(),
+            title: "Title".to_string(),
+            duration: 95.0,
+            ..Track::default()
+        };
+        let text = render_payload(
+            &payload(Reply::PlaylistData {
+                tracks: vec![track],
+                format: String::new(),
+            }),
+            0,
+            false,
+        );
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines[0], "Playlist (1 tracks):");
+        assert!(lines[1].starts_with("  #     ID  Artist"));
+        assert!(lines[1].ends_with("     Dur"));
+        assert!(lines[2].starts_with("  0      7  Artist"));
+        assert!(lines[2].ends_with("    01:35"));
+    }
+
+    #[test]
+    fn import_report_prefix_matches_cpp() {
+        let text = render_payload(
+            &payload(Reply::PlaylistImportReport {
+                pid: 4,
+                name: "imported".to_string(),
+                tracks: Vec::new(),
+                matched: 2,
+                skipped: 1,
+                duplicates: 0,
+            }),
+            0,
+            false,
+        );
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(
+            lines[0],
+            "Imported playlist 'imported' (0 tracks, 2 matched, 1 skipped, 0 duplicates):"
+        );
     }
 }
