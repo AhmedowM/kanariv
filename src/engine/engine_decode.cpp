@@ -93,6 +93,7 @@ Engine::Impl::TickSnapshot Engine::Impl::snapshotLocked() const {
         std::lock_guard<std::mutex> lk(decodeMtx_);
         snap.duration = duration_;
         snap.position = currentPositionLocked();
+        snap.crossfadeRefused = crossfadeRefused_;
     }
     return snap;
 }
@@ -142,6 +143,7 @@ void Engine::Impl::engineTick() {
         in.interTrackGapMs = cfg_.interTrackGapMs;
         in.crossfadeActive = crossfadeActive_.load(std::memory_order_acquire);
         in.crossfadePending = crossfadePending_.load(std::memory_order_acquire);
+        in.crossfadeRefused = snap.crossfadeRefused;
         switch (detail::nearEndAction(in)) {
         case detail::NearEndAction::ArmCrossfade:
             // The producer's next request loads the following track into
@@ -264,6 +266,7 @@ bool Engine::Impl::tryPublishCrossfade() {
 void Engine::Impl::resetCrossfadeLocked() noexcept {
     crossfadeActive_.store(false, std::memory_order_release);
     crossfadePending_.store(false, std::memory_order_release);
+    crossfadeRefused_ = false;
     crossfadeDecoder_.reset();
     crossfadeReader_.reset();
     crossfadeTrack_ = {};
@@ -308,6 +311,15 @@ void Engine::Impl::preloadCrossfade() {
     if (!crossfadePending_.load(std::memory_order_acquire) ||
         crossfadeActive_.load(std::memory_order_acquire))
         return;
+    {
+        std::lock_guard<std::mutex> lk(decodeMtx_);
+        if (crossfadeRefused_) {
+            // This outgoing track already met a layout-mismatched neighbour;
+            // engineTick re-arms the request every tick inside the window.
+            crossfadePending_.store(false, std::memory_order_release);
+            return;
+        }
+    }
     PeekedNext next;
     QueueFingerprint fingerprint;
     bool peeked = false;
@@ -338,6 +350,11 @@ void Engine::Impl::preloadCrossfade() {
             xfDecoder = std::move(dRes.value());
     }
     bool armed = false;
+    bool refused = false;
+    std::uint32_t liveCh = 0;
+    std::uint32_t liveRate = 0;
+    std::uint32_t inCh = 0;
+    std::uint32_t inRate = 0;
     if (xfReader && xfDecoder) {
         // Commit and arm atomically against both state machines: queueMutex_
         // keeps doPlayTrack()/stop() out, decodeMtx_ keeps pause()/seek() out,
@@ -348,10 +365,25 @@ void Engine::Impl::preloadCrossfade() {
         // decodeMtx_ is held here, so hand the position down instead of letting
         // the persist path relock it.
         const int64_t livePositionMs = static_cast<int64_t>(currentPositionLocked() * 1000.0);
+        liveCh = decoder_ ? decoder_->channels() : 0;
+        liveRate = decoder_ ? decoder_->sampleRate() : 0;
+        inCh = xfDecoder->channels();
+        inRate = xfDecoder->sampleRate();
+        // The overlap may mix two layouts, but publication swaps the decoder
+        // under a ring and a device opened for the outgoing stride/rate.
+        // Refusing keeps the entry queued for the normal end-of-track advance.
+        const bool layoutMatches = liveCh > 0 && liveRate > 0 && inCh > 0 && inRate > 0 &&
+                                   liveCh == inCh && liveRate == inRate;
         if (playbackState_.load(std::memory_order_acquire) ==
                 kanariv::types::PlaybackState::Playing &&
-            !crossfadeActive_.load(std::memory_order_relaxed) &&
-            commitNextLocked(fingerprint, std::move(next), livePositionMs)) {
+            !crossfadeActive_.load(std::memory_order_relaxed) && !layoutMatches) {
+            crossfadeRefused_ = true;
+            crossfadePending_.store(false, std::memory_order_release);
+            refused = true;
+        } else if (playbackState_.load(std::memory_order_acquire) ==
+                       kanariv::types::PlaybackState::Playing &&
+                   !crossfadeActive_.load(std::memory_order_relaxed) &&
+                   commitNextLocked(fingerprint, std::move(next), livePositionMs)) {
             crossfadeReader_ = std::move(xfReader);
             crossfadeDecoder_ = std::move(xfDecoder);
             crossfadeTrack_ = std::move(next.track);
@@ -369,7 +401,11 @@ void Engine::Impl::preloadCrossfade() {
             armed = true;
         }
     }
-    if (!armed) {
+    if (refused) {
+        if (cfg_.logger)
+            cfg_.logger->debug("crossfade refused track={} outgoing={}ch@{}Hz incoming={}ch@{}Hz",
+                               next.track.id, liveCh, liveRate, inCh, inRate);
+    } else if (!armed) {
         // Keep the cursor on the failed entry: the next attempt (engineTick
         // re-arms, or an explicit next()/play()) targets it again instead of
         // skipping past it.
@@ -406,6 +442,7 @@ Engine::Impl::EngineSource::produce(std::span<float> out,
     double fadeOutStart = 0.0;
     std::size_t frames = 0;
     std::uint64_t eofEpoch = 0;
+    bool refused = false;
     media::DecodeStatus decodeStatus = media::DecodeStatus::Ok;
     std::size_t xfFrames = 0;
     std::uint32_t xfCh = 0;
@@ -431,6 +468,7 @@ Engine::Impl::EngineSource::produce(std::span<float> out,
         // stream ladder below runs after decodeMtx_ is released, so this is
         // what tells it whether the track it decoded is still the current one.
         eofEpoch = e.transitionEpoch_.load(std::memory_order_acquire);
+        refused = e.crossfadeRefused_;
         // During crossfade, decode the incoming track into a second buffer.
         if (playback && frames > 0 &&
             e.crossfadeActive_.load(std::memory_order_relaxed) && e.crossfadeDecoder_) {
@@ -507,6 +545,7 @@ Engine::Impl::EngineSource::produce(std::span<float> out,
         // gathers the gap sub-state and applies the action.
         detail::EofInput eof;
         eof.crossfadeActive = e.crossfadeActive_.load(std::memory_order_acquire);
+        eof.crossfadeRefused = refused;
         eof.crossfadeMs = e.cfg_.crossfadeMs;
         eof.interTrackGapMs = e.cfg_.interTrackGapMs;
         if (!eof.crossfadeActive && eof.crossfadeMs == 0 && eof.interTrackGapMs > 0) {

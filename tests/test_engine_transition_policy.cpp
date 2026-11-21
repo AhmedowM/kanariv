@@ -79,6 +79,13 @@ TEST_CASE("near-end: crossfade wins over a configured gap", "[engine][transition
     CHECK(nearEndAction(in) == NearEndAction::None);
 }
 
+TEST_CASE("near-end: a refused crossfade is never re-armed", "[engine][transition]") {
+    auto in = nearEndWithCrossfade();
+    in.remainingSec = 1.0;
+    in.crossfadeRefused = true;
+    CHECK(nearEndAction(in) == NearEndAction::None);
+}
+
 TEST_CASE("near-end: a configured gap never pre-empts itself", "[engine][transition]") {
     auto in = nearEndWithGap();
     in.remainingSec = 0.0;
@@ -137,6 +144,17 @@ TEST_CASE("EOF: an armed-but-unfinished crossfade holds the cursor", "[engine][t
     in.crossfadeMs = 3000;
     in.interTrackGapMs = 1000;
     CHECK(eofAction(in) == EofAction::HoldForCrossfade);
+}
+
+TEST_CASE("EOF: a refused crossfade advances instead of holding", "[engine][transition]") {
+    EofInput in;
+    in.crossfadeMs = 3000;
+    in.interTrackGapMs = 1000;
+    in.crossfadeRefused = true;
+    CHECK(eofAction(in) == EofAction::Advance);
+    // An in-flight overlap still owns the transition.
+    in.crossfadeActive = true;
+    CHECK(eofAction(in) == EofAction::PublishCrossfade);
 }
 
 TEST_CASE("EOF: the inter-track gap waits for the drain, then the clock", "[engine][transition]") {

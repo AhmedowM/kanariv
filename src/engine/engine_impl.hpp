@@ -353,6 +353,7 @@ struct Engine::Impl {
         double duration{0};          ///< duration_ at tick time.
         double position{0};          ///< currentPositionLocked() at tick time.
         uint64_t transitionEpoch{0}; ///< transitionEpoch_ at tick time.
+        bool crossfadeRefused{false}; ///< The next seam's overlap was refused.
         kanariv::types::PlaybackState playback{kanariv::types::PlaybackState::Stopped};
     };
     /// @brief Builds a TickSnapshot; @pre `queueMutex_` held by the caller.
@@ -369,6 +370,15 @@ struct Engine::Impl {
      * crossfade under the queue lock. A failure (unreadable entry, concurrent
      * queue change) leaves the cursor on the unplayed entry so the next attempt
      * targets it again.
+     *
+     * The arm is refused when the incoming track's sample rate or channel
+     * count differs from the outgoing one: the overlap mixes both buffers per
+     * side, but publication swaps the decoder under a ring and device opened
+     * for the outgoing layout, so the frames would be played at the wrong
+     * stride/rate. A refusal leaves the cursor untouched (the next attempt
+     * must not skip the entry) and latches `crossfadeRefused_` until the
+     * outgoing track ends, so the entry advances through the normal
+     * end-of-track path, which reopens the graph at its own layout.
      */
     void preloadCrossfade();
     /**
@@ -508,6 +518,12 @@ struct Engine::Impl {
     uint64_t crossfadeSample_{0};  ///< decodeMtx_ only: current frame within crossfade.
     std::atomic<bool> crossfadeActive_{false};  ///< Written under decodeMtx_, read lock-free.
     std::atomic<bool> crossfadePending_{false}; // set by engineTick, consumed by produce()
+    // The incoming track's layout (sample rate or channel count) did not match
+    // the live graph, so this outgoing track must not arm an overlap. Cleared
+    // only when the track changes (resetCrossfadeLocked); engineTick keeps
+    // re-arming `crossfadePending_` inside the window and this latch makes each
+    // retry cheap instead of reopening the next decoder every tick.
+    bool crossfadeRefused_{false}; ///< decodeMtx_ only.
     mutable std::timed_mutex queueMutex_;
 };
 

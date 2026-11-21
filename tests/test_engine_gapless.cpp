@@ -421,17 +421,19 @@ TEST_CASE("crossfade mixes incoming tracks with their own channel count", "[engi
 
 namespace {
 
-/// @brief Writes a 16-bit mono PCM WAV of silence.
+/// @brief Writes a 16-bit PCM WAV of silence.
 /// @details Silence keeps the crossfade tests quiet while still giving the
 /// engine a real file to decode (so its Source is driven and the
 /// preload/completion paths are exercised) without needing an audio device:
 /// `allowSimulatedPlayback` covers a missing `AudioOutput` (silent null
 /// backend). Fractional lengths let a test make the incoming track shorter
-/// than the crossfade window.
-bool writeSilentWav(const std::filesystem::path& path, double seconds) {
-    constexpr std::uint32_t rate = 8000;
+/// than the crossfade window; `channels`/`rate` let a test build a seam whose
+/// layout differs from the outgoing track's.
+bool writeSilentWav(const std::filesystem::path& path, double seconds,
+                    std::uint16_t channels = 1, std::uint32_t rate = 8000) {
     const std::uint32_t frames = static_cast<std::uint32_t>(rate * seconds);
-    const std::uint32_t bytes = frames * 2;
+    const std::uint16_t blockAlign = static_cast<std::uint16_t>(channels * 2);
+    const std::uint32_t bytes = frames * blockAlign;
     std::ofstream f(path, std::ios::binary);
     if (!f)
         return false;
@@ -450,14 +452,14 @@ bool writeSilentWav(const std::filesystem::path& path, double seconds) {
     f.write("WAVEfmt ", 8);
     put32(16);
     put16(1); // PCM
-    put16(1); // mono
+    put16(channels);
     put32(rate);
-    put32(rate * 2);
-    put16(2);
+    put32(rate * blockAlign);
+    put16(blockAlign);
     put16(16);
     f.write("data", 4);
     put32(bytes);
-    for (std::uint32_t i = 0; i < frames; ++i)
+    for (std::uint32_t i = 0; i < frames * channels; ++i)
         put16(0); // silence
     f.close();
     return static_cast<bool>(f);
@@ -689,6 +691,103 @@ TEST_CASE("crossfade publishes when the incoming track ends before the overlap",
                   std::chrono::milliseconds(20));
     REQUIRE(eng->currentTrackId() == ids[1]);
     REQUIRE(eng->duration() == Catch::Approx(0.2).margin(0.01));
+    eng.reset();
+    safeRemoveDb(dbPath);
+}
+
+TEST_CASE("crossfade refuses a seam whose incoming layout differs",
+          "[engine_gapless][crossfade]") {
+    namespace fs = std::filesystem;
+    const fs::path dir = tempDirPath("xf_layout");
+    const std::string dbPath = tempDbPath("xf_layout").string();
+    // Two mismatch kinds: channel count at the same rate, and rate at the same
+    // channel count. Either one would publish frames at a stride/clock the live
+    // ring was not opened for.
+    const bool byChannels = GENERATE(true, false);
+    const fs::path firstWav = dir / "first.wav";
+    const fs::path secondWav = dir / "second.wav";
+    REQUIRE(writeSilentWav(firstWav, 1.0));
+    REQUIRE(writeSilentWav(secondWav, 1.0, byChannels ? 2 : 1, byChannels ? 8000 : 16000));
+
+    auto dbRes = Database::open(dbPath);
+    REQUIRE(dbRes.has_value());
+    auto sharedDb = std::shared_ptr<Database>(std::move(dbRes.value()));
+    int64_t ids[2]{0, 0};
+    const fs::path wavs[2] = {firstWav, secondWav};
+    for (int i = 0; i < 2; ++i) {
+        kanariv::types::TrackRow t;
+        t.path = kanariv::utils::detail::pathToUtf8(wavs[i]);
+        t.duration = 1.0;
+        for (int b = 0; b < 32; ++b)
+            t.fingerprint[b] = static_cast<std::uint8_t>(0x90 + i * 16 + b);
+        auto r = sharedDb->insertTrack(t);
+        REQUIRE(r.has_value());
+        ids[i] = *r;
+        REQUIRE(sharedDb->queueEnqueue(1, *r, -1).has_value());
+    }
+
+    // One ordered log makes the assertion race-free: the refusal is logged by
+    // the producer, the incoming start by the monitor, and the test thread may
+    // run long after both. Ordering proves the refusal happened before the
+    // normal advance, and the marker proves the advance did happen (a held
+    // cursor would stall at end of stream instead).
+    std::mutex logMutex;
+    std::vector<std::string> logs;
+    Logger logger(
+        [&](LogLevel, std::string_view msg) {
+            std::lock_guard<std::mutex> lk(logMutex);
+            logs.emplace_back(msg);
+        },
+        LogLevel::Trace);
+    const auto indexOf = [&](std::string_view needle) -> std::ptrdiff_t {
+        std::lock_guard<std::mutex> lk(logMutex);
+        for (std::size_t i = 0; i < logs.size(); ++i)
+            if (logs[i].find(needle) != std::string::npos)
+                return static_cast<std::ptrdiff_t>(i);
+        return -1;
+    };
+
+    kanariv::types::EngineConfig cfg;
+    cfg.allowSimulatedPlayback = true;
+    cfg.enableMonitorThread = true;
+    cfg.pollMs = 10;
+    cfg.gaplessMs = 300;
+    cfg.crossfadeMs = 300;
+    cfg.historyThresholdPct = 100;
+    cfg.historyThresholdSecs = 100;
+    cfg.logger = &logger;
+    cfg.callbacks.on_track_started = [&](int64_t id) {
+        if (id != ids[1])
+            return;
+        std::lock_guard<std::mutex> lk(logMutex);
+        logs.emplace_back("incoming started");
+    };
+    auto eRes = Engine::create(cfg);
+    REQUIRE(eRes.has_value());
+    auto eng = std::move(eRes.value());
+    REQUIRE(eng->attachStorage(kanariv::db::makeStorage(sharedDb)).has_value());
+    REQUIRE(eng->play(1).has_value());
+    REQUIRE(eng->currentTrackId() == ids[0]);
+    const double dur = eng->duration();
+    REQUIRE(dur == Catch::Approx(1.0).margin(0.01));
+    // Enter the crossfade window (remaining 0.2 s <= 300 ms).
+    REQUIRE(eng->seek(dur - 0.2).has_value());
+    busyWaitUntil([&] { return indexOf("crossfade refused") >= 0; },
+                  std::chrono::milliseconds(3000), std::chrono::milliseconds(10));
+    REQUIRE(indexOf("crossfade refused") >= 0);
+    REQUIRE(indexOf("crossfade armed") < 0);
+    // A refusal is a policy outcome, not a preload failure: the entry is
+    // readable, so the cursor may not be left behind for a retry.
+    REQUIRE(indexOf("crossfade preload failed") < 0);
+
+    // The seam completes through the normal advance, which reopens the graph
+    // at the incoming track's own layout (the refused overlap never publishes).
+    busyWaitUntil([&] { return indexOf("incoming started") >= 0; },
+                  std::chrono::milliseconds(5000), std::chrono::milliseconds(10));
+    REQUIRE(indexOf("incoming started") >= 0);
+    REQUIRE(indexOf("crossfade refused") < indexOf("incoming started"));
+    REQUIRE(eng->currentTrackId() == ids[1]);
+    REQUIRE(eng->duration() == Catch::Approx(1.0).margin(0.01));
     eng.reset();
     safeRemoveDb(dbPath);
 }

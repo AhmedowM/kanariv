@@ -16,6 +16,9 @@
  * Precedence (identical to the previous inline logic):
  * - a configured crossfade owns the transition: the monitor arms the overlap
  *   pre-roll and the decode loop never advances past an unarmed crossfade;
+ * - a crossfade refused because the incoming track's layout or rate differs
+ *   from the live graph is no crossfade at all: the seam advances through the
+ *   normal end-of-track path, which reopens the graph at the new layout;
  * - a configured inter-track gap starts only at end of stream (the track must
  *   sound its full tail before the silence) and is ignored while a crossfade
  *   is configured;
@@ -44,6 +47,7 @@ struct NearEndInput {
     int interTrackGapMs{0};       ///< EngineConfig::interTrackGapMs.
     bool crossfadeActive{false};  ///< An overlap is mixing right now.
     bool crossfadePending{false}; ///< A preload request is already queued.
+    bool crossfadeRefused{false}; ///< The next entry's layout blocks the overlap.
 };
 
 /**
@@ -58,6 +62,8 @@ struct NearEndInput {
     if (!(in.remainingSec >= 0.0))
         return NearEndAction::None;
     if (in.crossfadeMs > 0) {
+        if (in.crossfadeRefused)
+            return NearEndAction::None;
         const double window = static_cast<double>(in.crossfadeMs) / 1000.0;
         if (in.remainingSec <= window && !in.crossfadeActive && !in.crossfadePending &&
             in.hasCurrent)
@@ -88,8 +94,9 @@ enum class EofAction : std::uint8_t {
 /// Inputs for the end-of-stream decision (see Engine::Impl::EngineSource::produce).
 /// The gap fields are read only in the inter-track-gap branch.
 struct EofInput {
-    bool crossfadeActive{false}; ///< An overlap is mixing right now.
-    int crossfadeMs{0};          ///< EngineConfig::crossfadeMs.
+    bool crossfadeActive{false};  ///< An overlap is mixing right now.
+    bool crossfadeRefused{false}; ///< The overlap was refused for this seam.
+    int crossfadeMs{0};           ///< EngineConfig::crossfadeMs.
     int interTrackGapMs{0};      ///< EngineConfig::interTrackGapMs.
     bool gapArmed{false};        ///< The silence clock already started.
     bool gapTailDrained{false};  ///< The ring holds no unplayed samples.
@@ -103,12 +110,18 @@ struct EofInput {
  * @details A crossfade owns the transition even at EOF: the incoming track is
  * already in use, so waiting for the overlap to run out would stall the ring
  * with nothing left to decode. An armed-but-unfinished crossfade keeps the
- * cursor where it is (advancing would silently skip the next entry). A
- * configured gap only ever advances after the drained tail plus the silence.
+ * cursor where it is (advancing would silently skip the next entry), but a
+ * refused one (layout/rate mismatch) advances, since no overlap can start for
+ * this seam. A configured gap only ever advances after the drained tail plus
+ * the silence.
  */
 [[nodiscard]] constexpr EofAction eofAction(const EofInput& in) noexcept {
     if (in.crossfadeActive)
         return EofAction::PublishCrossfade;
+    // A refused overlap will never become active for this seam: holding the
+    // cursor would stall at end of stream instead of reaching the next track.
+    if (in.crossfadeRefused)
+        return EofAction::Advance;
     if (in.crossfadeMs > 0)
         return EofAction::HoldForCrossfade;
     if (in.interTrackGapMs > 0) {
