@@ -30,7 +30,7 @@ pub use model::{
     Bookmark, ConfigValue, DeviceInfo, HistoryEntry, LibraryStats, Lyrics, PlaybackState, Playlist,
     QueueEntry, RepeatMode, SourceRef, TagBatchEditEntryResult, TopEntity, Track,
 };
-pub use reply::{parse_reply, Payload, Reply, Status};
+pub use reply::{parse_reply, Payload, QueueAddItem, QueueRemoveItem, Reply, Status};
 pub use transport::Connection;
 
 /// Builds the `IpcRequest` JSON envelope `{"id": ..., "cmd": {...}}`.

@@ -3,9 +3,9 @@
 An isolated Rust exploration in three layers:
 
 1. `kanariv-ipc` — a reusable, FFI-free codec and transport for the existing
-   IPC wire. It models all 65 commands and all 26 result kinds key-for-key
-   against `src/ipc/protocol.cpp`, with a hardened frame parser and mutation
-   tests.
+   IPC wire. It models all 69 commands and all 28 result kinds key-for-key
+   against `src/ipc/command_json.cpp` / `src/ipc/result_json.cpp`, with a
+   hardened frame parser and mutation tests.
 2. `kanariv-cli` (binary `kanariv-rs`) — a frontend-only CLI that talks to the
    existing C++ daemon over that wire.
 3. `kanariv-db` — an experimental, link-free reimplementation of the SQLite

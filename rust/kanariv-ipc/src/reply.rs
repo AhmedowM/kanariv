@@ -116,11 +116,37 @@ impl Status {
     }
 }
 
+/// One `QueueAddBatch` outcome (`ipc::QueueAddItem`).
+#[derive(Clone, Debug)]
+pub struct QueueAddItem {
+    pub query: String,
+    /// Absent when the query resolved to nothing.
+    pub track: Option<Track>,
+    pub status: String,
+    pub detail: Option<String>,
+}
+
+/// One `QueueRemoveBatch` outcome (`ipc::QueueRemoveItem`).
+#[derive(Clone, Debug)]
+pub struct QueueRemoveItem {
+    pub selector: String,
+    /// Absent when the selector did not match.
+    pub track: Option<Track>,
+    pub status: String,
+    pub detail: Option<String>,
+}
+
 /// A typed daemon result. `Other` preserves replies this crate does not model.
 #[derive(Clone, Debug)]
 pub enum Reply {
     Status(Status),
     QueueTracks(Vec<Track>),
+    QueueAddReport {
+        items: Vec<QueueAddItem>,
+    },
+    QueueRemoveReport {
+        items: Vec<QueueRemoveItem>,
+    },
     Queues(Vec<QueueEntry>),
     QueueCreated {
         id: i64,
@@ -142,6 +168,12 @@ pub enum Reply {
     },
     ScanReport {
         added: u64,
+    },
+    AnalyzeReport {
+        tracks: i64,
+        analyzed: i64,
+        failed: i64,
+        skipped: i64,
     },
     Playlists(Vec<Playlist>),
     PlaylistData {
@@ -225,6 +257,7 @@ impl Payload {
 }
 
 impl Reply {
+    #[allow(clippy::too_many_lines)]
     fn from_json(j: &Value) -> Result<Self> {
         let type_name = j
             .get("type")
@@ -233,6 +266,12 @@ impl Reply {
         match type_name {
             "Status" => Ok(Self::Status(Status::from_json(j)?)),
             "QueueTracks" => Ok(Self::QueueTracks(track_array(j, "tracks")?)),
+            "QueueAddReport" => Ok(Self::QueueAddReport {
+                items: queue_add_items(j)?,
+            }),
+            "QueueRemoveReport" => Ok(Self::QueueRemoveReport {
+                items: queue_remove_items(j)?,
+            }),
             "Queues" => Ok(Self::Queues(array(j, "queues")?)),
             "QueueCreated" => Ok(Self::QueueCreated {
                 id: i64_field(j, "id"),
@@ -258,6 +297,12 @@ impl Reply {
             }),
             "ScanReport" => Ok(Self::ScanReport {
                 added: u64_field(j, "added"),
+            }),
+            "AnalyzeReport" => Ok(Self::AnalyzeReport {
+                tracks: i64_field(j, "tracks"),
+                analyzed: i64_field(j, "analyzed"),
+                failed: i64_field(j, "failed"),
+                skipped: i64_field(j, "skipped"),
             }),
             "Playlists" => Ok(Self::Playlists(array(j, "playlists")?)),
             "PlaylistData" => Ok(Self::PlaylistData {
@@ -381,6 +426,48 @@ fn array<T: DeserializeOwned>(j: &Value, key: &str) -> Result<Vec<T>> {
 fn optional_array<T: DeserializeOwned>(j: &Value, key: &str) -> Result<Option<Vec<T>>> {
     match j.get(key) {
         Some(Value::Array(_)) => array(j, key).map(Some),
+        _ => Ok(None),
+    }
+}
+
+fn queue_add_items(j: &Value) -> Result<Vec<QueueAddItem>> {
+    let mut items = Vec::new();
+    for item in report_item_objects(j) {
+        items.push(QueueAddItem {
+            query: string_field(&item, "query").unwrap_or_default(),
+            track: report_item_track(&item)?,
+            status: string_field(&item, "status").unwrap_or_default(),
+            detail: string_field(&item, "detail"),
+        });
+    }
+    Ok(items)
+}
+
+fn queue_remove_items(j: &Value) -> Result<Vec<QueueRemoveItem>> {
+    let mut items = Vec::new();
+    for item in report_item_objects(j) {
+        items.push(QueueRemoveItem {
+            selector: string_field(&item, "selector").unwrap_or_default(),
+            track: report_item_track(&item)?,
+            status: string_field(&item, "status").unwrap_or_default(),
+            detail: string_field(&item, "detail"),
+        });
+    }
+    Ok(items)
+}
+
+fn report_item_objects(j: &Value) -> Vec<Value> {
+    match j.get("items") {
+        Some(Value::Array(items)) => items.clone(),
+        _ => Vec::new(),
+    }
+}
+
+/// C++ omits `track` when the entry did not resolve; a present non-object is
+/// treated as absent rather than fatal, matching the crate's tolerant parsing.
+fn report_item_track(item: &Value) -> Result<Option<Track>> {
+    match item.get("track") {
+        Some(Value::Object(_)) => Ok(Some(normalize_track(track_field(item, "track")?))),
         _ => Ok(None),
     }
 }

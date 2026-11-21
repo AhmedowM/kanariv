@@ -34,6 +34,9 @@ pub enum Command {
     Seek {
         seconds: f64,
     },
+    SeekBy {
+        delta: f64,
+    },
     StatusReq,
     StatusWait {
         timeout_ms: i32,
@@ -65,9 +68,16 @@ pub enum Command {
         query: String,
         search: bool,
     },
+    QueueAddBatch {
+        queries: Vec<String>,
+        search: bool,
+    },
     QueueRemove {
         #[serde(rename = "idOrIndex")]
         id_or_index: String,
+    },
+    QueueRemoveBatch {
+        selectors: Vec<String>,
     },
     QueueMove {
         from: usize,
@@ -121,6 +131,10 @@ pub enum Command {
     LibraryScan {
         path: Option<String>,
         full_hash: bool,
+    },
+    LibraryAnalyze {
+        reanalyze: bool,
+        library_id: Option<i64>,
     },
     LibrarySearch {
         query: String,

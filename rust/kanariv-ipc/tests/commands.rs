@@ -23,6 +23,10 @@ fn playback_commands_match_cpp_schema() {
         Command::Seek { seconds: 12.5 },
         json!({"type": "Seek", "seconds": 12.5}),
     );
+    check(
+        Command::SeekBy { delta: -10.0 },
+        json!({"type": "SeekBy", "delta": -10.0}),
+    );
     check(Command::StatusReq, json!({"type": "StatusReq"}));
     check(
         Command::StatusWait { timeout_ms: 5000 },
@@ -86,10 +90,23 @@ fn queue_commands_match_cpp_schema() {
         json!({"type": "QueueAdd", "query": "song.mp3", "search": false}),
     );
     check(
+        Command::QueueAddBatch {
+            queries: vec!["12".to_string(), "13".to_string()],
+            search: false,
+        },
+        json!({"type": "QueueAddBatch", "queries": ["12", "13"], "search": false}),
+    );
+    check(
         Command::QueueRemove {
             id_or_index: "3".to_string(),
         },
         json!({"type": "QueueRemove", "idOrIndex": "3"}),
+    );
+    check(
+        Command::QueueRemoveBatch {
+            selectors: vec!["#pos:2".to_string(), "#id:7".to_string()],
+        },
+        json!({"type": "QueueRemoveBatch", "selectors": ["#pos:2", "#id:7"]}),
     );
     check(
         Command::QueueMove { from: 1, to: 4 },
@@ -209,6 +226,20 @@ fn library_commands_match_cpp_schema() {
             full_hash: false,
         },
         json!({"type": "LibraryScan", "path": null, "full_hash": false}),
+    );
+    check(
+        Command::LibraryAnalyze {
+            reanalyze: true,
+            library_id: Some(2),
+        },
+        json!({"type": "LibraryAnalyze", "reanalyze": true, "library_id": 2}),
+    );
+    check(
+        Command::LibraryAnalyze {
+            reanalyze: false,
+            library_id: None,
+        },
+        json!({"type": "LibraryAnalyze", "reanalyze": false, "library_id": null}),
     );
     check(
         Command::LibrarySearch {

@@ -454,3 +454,55 @@ fn missing_type_is_an_error() {
     let err = Payload::from_json(&json!({"tracks": []})).unwrap_err();
     assert_eq!(err.code, StatusCode::InvalidArg);
 }
+
+#[test]
+fn queue_reports_and_analyze_report_parse() {
+    let reply = parse(json!({
+        "type": "QueueAddReport",
+        "items": [
+            {"query": "12", "track": {"id": 12}, "status": "added"},
+            {"query": "nope", "status": "failed", "detail": "not found"}
+        ]
+    }));
+    let Reply::QueueAddReport { items } = reply else {
+        panic!("expected QueueAddReport");
+    };
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].query, "12");
+    assert_eq!(items[0].track.as_ref().map(|t| t.id), Some(12));
+    assert_eq!(items[0].status, "added");
+    assert!(items[0].detail.is_none());
+    assert!(items[1].track.is_none());
+    assert_eq!(items[1].detail.as_deref(), Some("not found"));
+
+    let reply = parse(json!({
+        "type": "QueueRemoveReport",
+        "items": [
+            {"selector": "#pos:2", "track": {"id": 5}, "status": "removed"}
+        ]
+    }));
+    let Reply::QueueRemoveReport { items } = reply else {
+        panic!("expected QueueRemoveReport");
+    };
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].selector, "#pos:2");
+    assert_eq!(items[0].track.as_ref().map(|t| t.id), Some(5));
+
+    let reply = parse(json!({
+        "type": "AnalyzeReport",
+        "tracks": 120,
+        "analyzed": 118,
+        "failed": 2,
+        "skipped": 0
+    }));
+    let Reply::AnalyzeReport {
+        tracks,
+        analyzed,
+        failed,
+        skipped,
+    } = reply
+    else {
+        panic!("expected AnalyzeReport");
+    };
+    assert_eq!((tracks, analyzed, failed, skipped), (120, 118, 2, 0));
+}
