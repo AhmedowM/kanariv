@@ -57,9 +57,12 @@ Implemented (parity with the C++ shell's slice):
 | Transport | `play`, `pause`, `resume`, `restart`, `stop`, `next`, `prev`, `seek` |
 | Reporting | `status`, `info`, `volume`, `version` |
 | Queue | `queue list`, `queue queues`, `queue tracks`, `queue switch`, `queue create`, `queue delete`, `queue clear`, `queue shuffle`, `queue repeat` |
+| Config | `config get`, `config set`, `config list`, `config export`, `config import`, `config reset` |
+| Device | `device list`, `device set`, `device test` |
+| Playlist | `playlist list`, `playlist tracks`, `playlist create`, `playlist add`, `playlist load`, `playlist save`, `playlist delete`, `playlist rename`, `playlist export`, `playlist import` |
 
-Not implemented yet (the C++ CLI still owns these): `playlist`, `library`,
-`tag`, `history`, `config`, `device`, direct-path play, `status --watch`,
+Not implemented yet (the C++ CLI still owns these): `library`, `tags`,
+`history`, `lyrics`, `preview`, direct-path play, `status --watch`,
 `--daemon` hosting.
 
 `status --watch` exits with a clear error instead of polling; a status-stream
