@@ -7,6 +7,25 @@ use crate::error::{Error, Result, StatusCode};
 use crate::ipc::{encode, encode_request, parse_reply, Command, Connection, Payload};
 
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(2000);
+pub const BATCH_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+pub const LONG_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+/// `kanariv::ipc::transportPolicyFor`: the deadline class attached to each
+/// command's schema row. Unlisted commands are Interactive.
+#[must_use]
+pub fn deadline_for(command: &Command) -> Duration {
+    match command {
+        Command::QueueAddBatch { .. }
+        | Command::QueueRemoveBatch { .. }
+        | Command::PlaylistExport { .. }
+        | Command::PlaylistImport { .. }
+        | Command::LibraryAdd { .. }
+        | Command::LibraryMaintenance { .. }
+        | Command::TagBatchEdit { .. } => BATCH_TIMEOUT,
+        Command::LibraryScan { .. } | Command::LibraryAnalyze { .. } => LONG_TIMEOUT,
+        _ => DEFAULT_TIMEOUT,
+    }
+}
 
 /// Connect-only check (used for readiness and teardown polling).
 #[must_use]

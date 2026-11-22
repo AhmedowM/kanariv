@@ -8,7 +8,7 @@
 
 use serde_json::Value;
 
-use crate::ipc::{Payload, Playlist, QueueEntry, Reply, Status, Track};
+use crate::ipc::{LibraryStats, Payload, Playlist, QueueEntry, Reply, Status, TopEntity, Track};
 
 #[must_use]
 pub fn format_time(seconds: f64) -> String {
@@ -63,6 +63,14 @@ fn pushln(out: &mut String, line: impl AsRef<str>) {
     out.push_str(line.as_ref());
 }
 
+/// Formatter state that the CLI attaches before printing: the `--columns`
+/// allowlist of `library list` and the highlight needle of `library search`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RenderOpts<'a> {
+    pub columns: &'a str,
+    pub needle: &'a str,
+}
+
 pub fn print_json(payload: &Payload) {
     print_json_value(&payload.json);
 }
@@ -77,11 +85,25 @@ pub fn print_json_value(value: &Value) {
 /// Renders a result in human form. `highlight` is the id to mark in a queue
 /// listing (0 = none), matching the C++ formatter's `> ` marker.
 pub fn print_payload(payload: &Payload, highlight: i64, color: bool) {
-    println!("{}", render_payload(payload, highlight, color));
+    print_payload_with(payload, highlight, color, &RenderOpts::default());
+}
+
+pub fn print_payload_with(payload: &Payload, highlight: i64, color: bool, opts: &RenderOpts) {
+    println!("{}", render_payload_with(payload, highlight, color, opts));
 }
 
 #[must_use]
 pub fn render_payload(payload: &Payload, highlight: i64, color: bool) -> String {
+    render_payload_with(payload, highlight, color, &RenderOpts::default())
+}
+
+#[must_use]
+pub fn render_payload_with(
+    payload: &Payload,
+    highlight: i64,
+    color: bool,
+    opts: &RenderOpts,
+) -> String {
     let mut out = String::new();
     match &payload.reply {
         Reply::Status(status) => render_status(&mut out, status),
@@ -134,6 +156,39 @@ pub fn render_payload(payload: &Payload, highlight: i64, color: bool) -> String 
                 ),
             );
             render_track_table(&mut out, tracks);
+        }
+        Reply::LibraryStats(stats) => render_library_stats(&mut out, stats),
+        Reply::Tracks(tracks) => render_tracks(&mut out, tracks, opts.columns),
+        Reply::SearchResults { tracks, .. } => {
+            render_search_results(&mut out, tracks, opts.needle, color);
+        }
+        Reply::ScanReport { added } => {
+            crate::batch::count_line_text(usize::try_from(*added).unwrap_or_default(), &mut out);
+        }
+        Reply::AnalyzeReport {
+            tracks,
+            analyzed,
+            failed,
+            skipped,
+        } => {
+            pushln(
+                &mut out,
+                format!("ReplayGain: {analyzed} analyzed, {failed} failed, {skipped} skipped of {tracks} tracks"),
+            );
+        }
+        Reply::LibraryMaintenanceReport {
+            tracks_checked,
+            missing_tracks,
+            duplicate_groups,
+            duplicate_tracks,
+        } => {
+            render_maintenance(
+                &mut out,
+                *tracks_checked,
+                missing_tracks,
+                *duplicate_groups,
+                *duplicate_tracks,
+            );
         }
         Reply::Empty => pushln(&mut out, "OK"),
         _ => {
@@ -336,6 +391,379 @@ fn render_track_table(out: &mut String, tracks: &[Track]) {
     }
 }
 
+/// `OutputFormatter::setColumns`: comma-separated allowlist, spaces and tabs
+/// trimmed off each name, blanks dropped.
+#[must_use]
+pub fn parse_columns(text: &str) -> Vec<String> {
+    text.split(',')
+        .map(|column| column.trim_matches(|char| char == ' ' || char == '\t'))
+        .filter(|column| !column.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// `OutputFormatter`'s `highlightAll`: wraps every case-insensitive byte-wise
+/// occurrence of `needle` in ANSI green.
+#[must_use]
+pub fn highlight_all(text: &str, needle: &str, color: bool) -> String {
+    if !color || needle.is_empty() {
+        return text.to_string();
+    }
+    let bytes = text.as_bytes();
+    let pattern = needle.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut pos = 0_usize;
+    while pos < bytes.len() {
+        let mut hit = None;
+        let mut index = pos;
+        while index + pattern.len() <= bytes.len() {
+            if bytes[index..index + pattern.len()]
+                .iter()
+                .zip(pattern)
+                .all(|(found, want)| found.eq_ignore_ascii_case(want))
+            {
+                hit = Some(index);
+                break;
+            }
+            index += 1;
+        }
+        let Some(hit) = hit else {
+            out.extend_from_slice(&bytes[pos..]);
+            break;
+        };
+        out.extend_from_slice(&bytes[pos..hit]);
+        out.extend_from_slice(b"\x1b[32m");
+        out.extend_from_slice(&bytes[hit..hit + pattern.len()]);
+        out.extend_from_slice(b"\x1b[0m");
+        pos = hit + pattern.len();
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// `ipc::Tracks`: the default artist/title table, or the `--columns` subset.
+fn render_tracks(out: &mut String, tracks: &[Track], columns: &str) {
+    pushln(out, format!("Tracks ({}):", tracks.len()));
+    let selected = parse_columns(columns);
+    if selected.is_empty() {
+        pushln(
+            out,
+            format!(
+                "{} {}  {} {} {}",
+                pad_left("#", 3),
+                pad_left("ID", 6),
+                pad_right("Artist", 40),
+                pad_right("Title", 40),
+                pad_left("Dur", 8)
+            ),
+        );
+        for (index, track) in tracks.iter().enumerate() {
+            pushln(
+                out,
+                format!(
+                    "{} {}  {} {} {}",
+                    pad_left(&index.to_string(), 3),
+                    pad_left(&track.id.to_string(), 6),
+                    pad_right(&truncate_field(&track.artist, 40), 40),
+                    pad_right(&truncate_field(&track.title, 40), 40),
+                    pad_left(&format_time(track.duration), 8)
+                ),
+            );
+        }
+        return;
+    }
+    pushln(out, track_columns_header(&selected));
+    for (index, track) in tracks.iter().enumerate() {
+        pushln(out, track_columns_row(track, index, &selected));
+    }
+}
+
+fn track_columns_header(selected: &[String]) -> String {
+    let mut line = pad_left("#", 3);
+    let mut append = |name: &str, field: &str| {
+        if selected.iter().any(|column| column == name) {
+            line.push(' ');
+            line.push_str(field);
+        }
+    };
+    append("id", &pad_left("ID", 6));
+    append("title", &pad_right("Title", 40));
+    append("artist", &pad_right("Artist", 40));
+    append("album", &pad_right("Album", 40));
+    append("genre", &pad_right("Genre", 20));
+    append("year", &pad_left("Year", 6));
+    append("rating", &pad_left("Rating", 8));
+    append("duration", &pad_left("Dur", 8));
+    append("path", "Path");
+    line
+}
+
+fn track_columns_row(track: &Track, index: usize, selected: &[String]) -> String {
+    let wants = |name: &str| selected.iter().any(|column| column == name);
+    let mut line = pad_left(&index.to_string(), 3);
+    if wants("id") {
+        line.push(' ');
+        line.push_str(&pad_left(&track.id.to_string(), 6));
+    }
+    if wants("title") {
+        line.push(' ');
+        line.push_str(&pad_right(&truncate_field(&track.title, 40), 40));
+    }
+    if wants("artist") {
+        line.push(' ');
+        line.push_str(&pad_right(&truncate_field(&track.artist, 40), 40));
+    }
+    if wants("album") {
+        line.push(' ');
+        line.push_str(&pad_right(&truncate_field(&track.album, 40), 40));
+    }
+    if wants("genre") {
+        line.push(' ');
+        line.push_str(&pad_right(&truncate_field(&track.genre, 20), 20));
+    }
+    if wants("year") {
+        // `{:6}` on a std::string: `std::format` left-aligns strings.
+        line.push(' ');
+        let year = if track.year == 0 {
+            "---".to_string()
+        } else {
+            track.year.to_string()
+        };
+        line.push_str(&pad_right(&year, 6));
+    }
+    if wants("rating") {
+        line.push(' ');
+        line.push_str(&pad_left(&track.rating.to_string(), 8));
+    }
+    if wants("duration") {
+        line.push(' ');
+        line.push_str(&pad_left(&format_time(track.duration), 8));
+    }
+    if wants("path") {
+        line.push(' ');
+        line.push_str(&track.path);
+    }
+    line
+}
+
+/// `ipc::SearchResults`: fixed-width table with the query highlighted.
+fn render_search_results(out: &mut String, tracks: &[Track], needle: &str, color: bool) {
+    if tracks.len() == 1 {
+        pushln(out, "1 track found:");
+    } else {
+        pushln(out, format!("{} tracks found:", tracks.len()));
+    }
+    pushln(
+        out,
+        format!(
+            "{} {}  {} {} {} {} {}",
+            pad_left("#", 3),
+            pad_left("ID", 6),
+            pad_right("Title", 30),
+            pad_right("Artist", 25),
+            pad_right("Album", 20),
+            pad_right("Genre", 12),
+            pad_right("File", 25)
+        ),
+    );
+    let cell = |value: &str, width: usize| {
+        pad_right(
+            &highlight_all(&truncate_field(value, width), needle, color),
+            width,
+        )
+    };
+    for (index, track) in tracks.iter().enumerate() {
+        let file = crate::paths::filename_of(&track.path);
+        pushln(
+            out,
+            format!(
+                "{} {}  {} {} {} {} {}",
+                pad_left(&index.to_string(), 3),
+                pad_left(&track.id.to_string(), 6),
+                cell(&track.title, 30),
+                cell(&track.artist, 25),
+                cell(&track.album, 20),
+                cell(&track.genre, 12),
+                cell(&file, 25)
+            ),
+        );
+    }
+}
+
+/// `types::LibraryStats`: one totals line, or the detailed view once any
+/// top-N report is engaged (presence, not emptiness, is the trigger).
+fn render_library_stats(out: &mut String, stats: &LibraryStats) {
+    let detailed = stats.top_tracks.is_some()
+        || stats.top_albums.is_some()
+        || stats.top_genres.is_some()
+        || stats.top_artists.is_some();
+    if !detailed {
+        pushln(
+            out,
+            format!(
+                "Tracks: {} Queues: {} Playlists: {}",
+                stats.tracks, stats.queues, stats.playlists
+            ),
+        );
+        return;
+    }
+    pushln(out, "Library Stats (Detailed):");
+    pushln(out, format!("  Tracks:      {}", stats.tracks));
+    pushln(out, format!("  Queues:      {}", stats.queues));
+    pushln(out, format!("  Playlists:   {}", stats.playlists));
+    pushln(
+        out,
+        format!(
+            "  Total Duration:  {}",
+            format_time(stats.total_duration_ms as f64 / 1000.0)
+        ),
+    );
+    pushln(
+        out,
+        format!(
+            "  Total Play Time: {}",
+            format_time(stats.total_play_time_ms as f64 / 1000.0)
+        ),
+    );
+    if let Some(tracks) = stats
+        .top_tracks
+        .as_ref()
+        .filter(|tracks| !tracks.is_empty())
+    {
+        pushln(out, "\n  Most Played Tracks:");
+        pushln(
+            out,
+            format!(
+                "  {} {}  {} {} {} {}",
+                pad_left("#", 3),
+                pad_left("ID", 6),
+                pad_right("Artist", 40),
+                pad_right("Title", 40),
+                pad_left("Dur", 8),
+                pad_left("Plays", 10)
+            ),
+        );
+        for (index, track) in tracks.iter().enumerate() {
+            pushln(
+                out,
+                format!(
+                    "  {} {}  {} {} {} {}",
+                    pad_left(&(index + 1).to_string(), 3),
+                    pad_left(&track.id.to_string(), 6),
+                    pad_right(&truncate_field(&track.artist, 40), 40),
+                    pad_right(&truncate_field(&track.title, 40), 40),
+                    pad_left(&format_time(track.duration), 8),
+                    pad_left(&track.play_count.to_string(), 10)
+                ),
+            );
+        }
+    }
+    render_top_entities(
+        out,
+        "\n  Top Albums by Plays:",
+        "Album",
+        40,
+        stats.top_albums.as_deref(),
+    );
+    render_top_entities(
+        out,
+        "\n  Top Genres by Plays:",
+        "Genre",
+        20,
+        stats.top_genres.as_deref(),
+    );
+    render_top_entities(
+        out,
+        "\n  Top Artists by Plays:",
+        "Artist",
+        40,
+        stats.top_artists.as_deref(),
+    );
+}
+
+fn render_top_entities(
+    out: &mut String,
+    title: &str,
+    label: &str,
+    width: usize,
+    entries: Option<&[TopEntity]>,
+) {
+    let Some(entries) = entries.filter(|entries| !entries.is_empty()) else {
+        return;
+    };
+    pushln(out, title);
+    pushln(
+        out,
+        format!(
+            "  {} {} {} {}",
+            pad_left("#", 3),
+            pad_right(label, width),
+            pad_left("Tracks", 10),
+            pad_left("Plays", 10)
+        ),
+    );
+    for (index, entry) in entries.iter().enumerate() {
+        pushln(
+            out,
+            format!(
+                "  {} {} {} {}",
+                pad_left(&(index + 1).to_string(), 3),
+                pad_right(&truncate_field(&entry.name, width), width),
+                pad_left(&entry.track_count.to_string(), 10),
+                pad_left(&entry.total_plays.to_string(), 10)
+            ),
+        );
+    }
+}
+
+/// `ipc::LibraryMaintenanceReport`.
+fn render_maintenance(
+    out: &mut String,
+    tracks_checked: u64,
+    missing: &[Track],
+    duplicate_groups: u64,
+    duplicate_tracks: u64,
+) {
+    pushln(
+        out,
+        format!("Library maintenance: {tracks_checked} tracks checked"),
+    );
+    if missing.is_empty() && duplicate_groups == 0 {
+        pushln(out, "  No missing files or duplicates found.");
+        return;
+    }
+    if !missing.is_empty() {
+        pushln(out, format!("  Missing files ({}):", missing.len()));
+        pushln(
+            out,
+            format!(
+                "{} {}  {} {}",
+                pad_left("#", 3),
+                pad_left("ID", 6),
+                pad_right("Artist", 40),
+                pad_right("Title", 40)
+            ),
+        );
+        for (index, track) in missing.iter().enumerate() {
+            pushln(
+                out,
+                format!(
+                    "{} {}  {} {}",
+                    pad_left(&index.to_string(), 3),
+                    pad_left(&track.id.to_string(), 6),
+                    pad_right(&truncate_field(&track.artist, 40), 40),
+                    pad_right(&truncate_field(&track.title, 40), 40)
+                ),
+            );
+        }
+    }
+    if duplicate_groups > 0 {
+        pushln(
+            out,
+            format!("  Duplicate groups: {duplicate_groups} (redundant rows: {duplicate_tracks})"),
+        );
+    }
+}
+
 fn render_volume(out: &mut String, vol: f32, muted: bool) {
     if muted {
         pushln(out, "Volume: muted");
@@ -343,7 +771,6 @@ fn render_volume(out: &mut String, vol: f32, muted: bool) {
         pushln(out, format!("Volume: {}%", (vol * 100.0_f32) as i32));
     }
 }
-
 fn render_track_info(out: &mut String, track: &Track, play_count: i64, last_played: i64) {
     let field = |value: &str| {
         if value.is_empty() {
@@ -543,5 +970,295 @@ mod tests {
             lines[0],
             "Imported playlist 'imported' (0 tracks, 2 matched, 1 skipped, 0 duplicates):"
         );
+    }
+
+    #[test]
+    fn scan_and_analyze_reports_use_the_cpp_wording() {
+        let one = render_payload(&payload(Reply::ScanReport { added: 1 }), 0, false);
+        assert_eq!(one, "1 track added");
+        let many = render_payload(&payload(Reply::ScanReport { added: 0 }), 0, false);
+        assert_eq!(many, "0 tracks added");
+        let analyze = render_payload(
+            &payload(Reply::AnalyzeReport {
+                tracks: 12,
+                analyzed: 9,
+                failed: 1,
+                skipped: 2,
+            }),
+            0,
+            false,
+        );
+        assert_eq!(
+            analyze,
+            "ReplayGain: 9 analyzed, 1 failed, 2 skipped of 12 tracks"
+        );
+    }
+
+    #[test]
+    fn tracks_default_table_matches_the_cpp_widths() {
+        let text = render_payload(&payload(Reply::Tracks(vec![sample_track()])), 0, false);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines[0], "Tracks (1):");
+        assert_eq!(
+            lines[1],
+            format!("  #     ID  {:<40} {:<40}      Dur", "Artist", "Title")
+        );
+        assert_eq!(
+            lines[2],
+            format!("  0      7  {:<40} {:<40}    01:35", "Artist", "Title")
+        );
+    }
+
+    #[test]
+    fn tracks_columns_table_follows_the_allowlist() {
+        let opts = RenderOpts {
+            columns: " title , year,rating,bogus,path",
+            needle: "",
+        };
+        let track = Track {
+            title: "Title".to_string(),
+            path: "D:/Music/one.wav".to_string(),
+            ..Track::default()
+        };
+        let text = render_payload_with(&payload(Reply::Tracks(vec![track])), 0, false, &opts);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(
+            lines[1],
+            format!("  # {:<40} {:>6} {:>8} Path", "Title", "Year", "Rating")
+        );
+        // Year carries a string (`---`), so `std::format` left-aligns it while
+        // the numeric rating stays right-aligned.
+        assert_eq!(
+            lines[2],
+            format!("  0 {:<40} {:<6} {:>8} D:/Music/one.wav", "Title", "---", 0)
+        );
+    }
+
+    #[test]
+    fn column_allowlist_parsing_trims_and_drops_blanks() {
+        assert!(parse_columns("").is_empty());
+        assert_eq!(parse_columns("a,, b ,\tc "), ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn search_table_highlights_only_on_a_terminal() {
+        let track = Track {
+            id: 3,
+            title: "Rock Anthem".to_string(),
+            artist: "The Rocks".to_string(),
+            path: "D:/Music/rock/anthem.wav".to_string(),
+            ..Track::default()
+        };
+        let opts = RenderOpts {
+            columns: "",
+            needle: "rock",
+        };
+        let plain = render_payload_with(
+            &payload(Reply::SearchResults {
+                query: "rock".to_string(),
+                tracks: vec![track.clone()],
+            }),
+            0,
+            false,
+            &opts,
+        );
+        let lines: Vec<&str> = plain.lines().collect();
+        assert_eq!(lines[0], "1 track found:");
+        assert_eq!(
+            lines[1],
+            format!(
+                "  #     ID  {:<30} {:<25} {:<20} {:<12} {:<25}",
+                "Title", "Artist", "Album", "Genre", "File"
+            )
+        );
+        assert_eq!(
+            lines[2],
+            format!(
+                "  0      3  {:<30} {:<25} {:<20} {:<12} {:<25}",
+                "Rock Anthem", "The Rocks", "---", "---", "anthem.wav"
+            )
+        );
+        assert!(!plain.contains('\u{1b}'));
+
+        let colored = render_payload_with(
+            &payload(Reply::SearchResults {
+                query: "rock".to_string(),
+                tracks: vec![track],
+            }),
+            0,
+            true,
+            &opts,
+        );
+        assert!(colored.contains("\u{1b}[32mRock\u{1b}[0m Anthem"));
+    }
+
+    #[test]
+    fn highlight_wraps_every_case_insensitive_occurrence() {
+        assert_eq!(
+            highlight_all("aBcAbc", "abc", true),
+            "\u{1b}[32maBc\u{1b}[0m\u{1b}[32mAbc\u{1b}[0m"
+        );
+        assert_eq!(highlight_all("abc", "", true), "abc");
+        assert_eq!(highlight_all("abc", "abc", false), "abc");
+        assert_eq!(highlight_all("zz", "abc", true), "zz");
+    }
+
+    #[test]
+    fn library_stats_totals_need_no_top_n_request() {
+        let text = render_payload(
+            &payload(Reply::LibraryStats(LibraryStats::default())),
+            0,
+            false,
+        );
+        assert_eq!(text, "Tracks: 0 Queues: 0 Playlists: 0");
+    }
+
+    #[test]
+    fn library_stats_detailed_view_is_engaged_by_an_empty_top_n() {
+        let stats = LibraryStats {
+            tracks: 4,
+            queues: 2,
+            playlists: 1,
+            total_duration_ms: 95_000,
+            total_play_time_ms: 60_000,
+            top_tracks: Some(Vec::new()),
+            top_albums: Some(vec![TopEntity {
+                name: "Album".to_string(),
+                track_count: 2,
+                total_plays: 9,
+            }]),
+            top_genres: Some(Vec::new()),
+            top_artists: None,
+        };
+        let text = render_payload(&payload(Reply::LibraryStats(stats)), 0, false);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines[0], "Library Stats (Detailed):");
+        assert_eq!(lines[1], "  Tracks:      4");
+        assert_eq!(lines[2], "  Queues:      2");
+        assert_eq!(lines[3], "  Playlists:   1");
+        assert_eq!(lines[4], "  Total Duration:  01:35");
+        assert_eq!(lines[5], "  Total Play Time: 01:00");
+        // An engaged-but-empty report emits nothing, so the blank line before
+        // the albums section separates it from the totals.
+        assert_eq!(lines[6], "");
+        assert_eq!(lines[7], "  Top Albums by Plays:");
+        assert_eq!(
+            lines[8],
+            format!("    # {:<40} {:>10} {:>10}", "Album", "Tracks", "Plays")
+        );
+        assert_eq!(
+            lines[9],
+            format!("    1 {:<40} {:>10} {:>10}", "Album", 2, 9)
+        );
+    }
+
+    #[test]
+    fn maintenance_report_sections() {
+        let clean = render_payload(
+            &payload(Reply::LibraryMaintenanceReport {
+                tracks_checked: 5,
+                missing_tracks: Vec::new(),
+                duplicate_groups: 0,
+                duplicate_tracks: 0,
+            }),
+            0,
+            false,
+        );
+        assert_eq!(
+            clean,
+            "Library maintenance: 5 tracks checked\n  No missing files or duplicates found."
+        );
+
+        let dirty = render_payload(
+            &payload(Reply::LibraryMaintenanceReport {
+                tracks_checked: 5,
+                missing_tracks: vec![sample_track()],
+                duplicate_groups: 1,
+                duplicate_tracks: 2,
+            }),
+            0,
+            false,
+        );
+        let lines: Vec<&str> = dirty.lines().collect();
+        assert_eq!(lines[1], "  Missing files (1):");
+        assert!(lines[3].starts_with("  0      7  Artist"));
+        assert_eq!(lines[4], "  Duplicate groups: 1 (redundant rows: 2)");
+    }
+
+    #[test]
+    fn library_stats_prints_every_top_n_table() {
+        // A fresh library has no plays, so the live parity harness cannot reach
+        // these table bodies; pin their bytes instead.
+        let stats = LibraryStats {
+            tracks: 4,
+            queues: 2,
+            playlists: 1,
+            total_duration_ms: 95_000,
+            total_play_time_ms: 60_000,
+            top_tracks: Some(vec![sample_track()]),
+            top_albums: Some(vec![top_entity("Album", 2, 9)]),
+            top_genres: Some(vec![top_entity(&"g".repeat(25), 3, 8)]),
+            top_artists: Some(vec![top_entity("Artist", 4, 7)]),
+        };
+        let text = render_payload(&payload(Reply::LibraryStats(stats)), 0, false);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines[6], "");
+        assert_eq!(lines[7], "  Most Played Tracks:");
+        assert_eq!(
+            lines[8],
+            format!(
+                "    #     ID  {:<40} {:<40}      Dur      Plays",
+                "Artist", "Title"
+            )
+        );
+        assert_eq!(
+            lines[9],
+            format!(
+                "    1      7  {:<40} {:<40}    01:35          0",
+                "Artist", "Title"
+            )
+        );
+        assert_eq!(lines[10], "");
+        assert_eq!(lines[11], "  Top Albums by Plays:");
+        assert_eq!(
+            lines[13],
+            format!("    1 {:<40} {:>10} {:>10}", "Album", 2, 9)
+        );
+        assert_eq!(lines[14], "");
+        assert_eq!(lines[15], "  Top Genres by Plays:");
+        // The genre column is 20 wide, so a long name is truncated.
+        assert_eq!(
+            lines[17],
+            format!(
+                "    1 {:<20} {:>10} {:>10}",
+                truncate_field(&"g".repeat(25), 20),
+                3,
+                8
+            )
+        );
+        assert_eq!(lines[18], "");
+        assert_eq!(lines[19], "  Top Artists by Plays:");
+        assert_eq!(
+            lines[21],
+            format!("    1 {:<40} {:>10} {:>10}", "Artist", 4, 7)
+        );
+    }
+
+    fn sample_track() -> Track {
+        Track {
+            id: 7,
+            artist: "Artist".to_string(),
+            title: "Title".to_string(),
+            duration: 95.0,
+            ..Track::default()
+        }
+    }
+
+    fn top_entity(name: &str, track_count: u64, total_plays: i64) -> TopEntity {
+        TopEntity {
+            name: name.to_string(),
+            track_count,
+            total_plays,
+        }
     }
 }

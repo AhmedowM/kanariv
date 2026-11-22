@@ -60,8 +60,9 @@ Implemented (parity with the C++ shell's slice):
 | Config | `config get`, `config set`, `config list`, `config export`, `config import`, `config reset` |
 | Device | `device list`, `device set`, `device test` |
 | Playlist | `playlist list`, `playlist tracks`, `playlist create`, `playlist add`, `playlist load`, `playlist save`, `playlist delete`, `playlist rename`, `playlist export`, `playlist import` |
+| Library | `library scan`, `library analyze`, `library search`, `library stats`, `library add`, `library remove`, `library list`, `library favorites`, `library maintenance` |
 
-Not implemented yet (the C++ CLI still owns these): `library`, `tags`,
+Not implemented yet (the C++ CLI still owns these): `tags`,
 `history`, `lyrics`, `preview`, direct-path play, `status --watch`,
 `--daemon` hosting.
 
@@ -234,5 +235,6 @@ Known output differences (content-equivalent):
 - JSON key order: the daemon preserves insertion order, serde_json emits
   sorted keys. Payloads are structurally identical; object key order is not
   part of the wire contract.
-- Malformed invocations: clap and CLI11 word their parse errors differently
-  (both exit 1).
+- Malformed invocations: clap and CLI11 word their parse errors differently.
+  The process status matches: rejected parses and hand-written grammar checks
+  exit 2 (`exitUsage`), help and version exit 0.

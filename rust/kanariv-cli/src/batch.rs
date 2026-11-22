@@ -35,11 +35,11 @@ impl BatchReport {
     }
 
     pub fn out_block(&mut self, text: &str) {
-        push_block(&mut self.out, text);
+        append_block(&mut self.out, text);
     }
 
     pub fn err_block(&mut self, text: &str) {
-        push_block(&mut self.err, text);
+        append_block(&mut self.err, text);
     }
 }
 
@@ -60,7 +60,7 @@ fn push_line(blob: &mut String, line: &str) {
 }
 
 /// `detail::appendBlock`: joins the non-final lines of `text` onto `blob`.
-fn push_block(blob: &mut String, text: &str) {
+fn append_block(blob: &mut String, text: &str) {
     let mut start = 0_usize;
     let mut first = blob.is_empty();
     while start <= text.len() {
@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn blocks_drop_one_trailing_newline() {
         let mut blob = String::new();
-        push_block(&mut blob, "Error: State daemon not running\nhint: start\n");
+        append_block(&mut blob, "Error: State daemon not running\nhint: start\n");
         assert_eq!(blob, "Error: State daemon not running\nhint: start");
     }
 }

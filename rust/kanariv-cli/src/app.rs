@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::batch::BatchReport;
-use crate::client::{self, DEFAULT_TIMEOUT};
+use crate::client::{self, deadline_for};
 use crate::config::Config;
 use crate::error::{Result, StatusCode};
 use crate::ipc::{Command, ConfigValue, Payload, RepeatMode, Reply, Status, Track};
@@ -30,7 +30,7 @@ impl App {
     }
 
     fn send(&self, command: &Command) -> Result<Payload> {
-        client::send(&self.config.socket_path, command, DEFAULT_TIMEOUT)
+        client::send(&self.config.socket_path, command, deadline_for(command))
     }
 
     fn send_play(&self, command: &Command) -> Result<Payload> {
@@ -445,6 +445,223 @@ impl App {
             },
             Some(line),
         )
+    }
+
+    pub fn library_scan(&self, path: Option<&str>, full_hash: bool) -> Result<Outcome> {
+        self.confirm(
+            &Command::LibraryScan {
+                path: path.map(ToString::to_string),
+                full_hash,
+            },
+            None,
+        )
+    }
+
+    pub fn library_analyze(&self, reanalyze: bool, library_id: Option<i64>) -> Result<Outcome> {
+        self.confirm(
+            &Command::LibraryAnalyze {
+                reanalyze,
+                library_id,
+            },
+            None,
+        )
+    }
+
+    pub fn library_search(&self, query: &str, limit: i32) -> Result<Outcome> {
+        self.confirm(
+            &Command::LibrarySearch {
+                query: query.to_string(),
+                limit,
+            },
+            None,
+        )
+    }
+
+    /// Port of `App::libraryStats`: the totals plus the optional queue and
+    /// playlist overview sections, accumulated into one stdout blob.
+    pub fn library_stats(
+        &self,
+        top_tracks: Option<i32>,
+        top_albums: Option<i32>,
+        top_genres: Option<i32>,
+        top_artists: Option<i32>,
+        queues: &[String],
+        playlists: &[i64],
+    ) -> Result<BatchReport> {
+        let stats = self.send(&Command::LibraryStats {
+            top_tracks,
+            top_albums,
+            top_genres,
+            top_artists,
+        })?;
+        let mut report = BatchReport::default();
+        report.out_block(&crate::output::render_payload(&stats, 0, false));
+        report.json = Some(stats.json.clone());
+        if !queues.is_empty() || !playlists.is_empty() {
+            report.out.push('\n');
+        }
+        if !queues.is_empty() {
+            let response = self.send(&Command::QueueQueues)?;
+            let Reply::Queues(entries) = &response.reply else {
+                report.out_block(&crate::output::render_payload(&response, 0, false));
+                return Ok(report);
+            };
+            if queues.iter().any(|selector| selector == "all") {
+                report.out_block(&crate::output::render_payload(&response, 0, false));
+            } else {
+                for selector in queues {
+                    let Some(id) = crate::parse::parse_id(selector) else {
+                        return Ok(BatchReport::fail(format!(
+                            "library stats: bad queue selector '{selector}'"
+                        )));
+                    };
+                    let Some(entry) = entries.iter().find(|entry| entry.id == id) else {
+                        return Ok(BatchReport::fail(format!(
+                            "library stats: no such queue: {id}"
+                        )));
+                    };
+                    if !report.out.is_empty() {
+                        report.out.push('\n');
+                    }
+                    let _ = write!(
+                        report.out,
+                        "Queue {} '{}': {} tracks",
+                        entry.id, entry.name, entry.tracks
+                    );
+                }
+            }
+        }
+        for &pid in playlists {
+            let response = self.send(&Command::PlaylistTracks { pid })?;
+            let Reply::PlaylistData { tracks, .. } = &response.reply else {
+                report.out_block(&crate::output::render_payload(&response, 0, false));
+                continue;
+            };
+            let mut name = String::new();
+            if let Ok(list) = self.send(&Command::PlaylistList) {
+                if let Reply::Playlists(playlists) = &list.reply {
+                    if let Some(found) = playlists.iter().find(|found| found.id == pid) {
+                        name.clone_from(&found.name);
+                    }
+                }
+            }
+            if name.is_empty() {
+                return Ok(BatchReport::fail(format!(
+                    "library stats: no such playlist: {pid}"
+                )));
+            }
+            if !report.out.is_empty() {
+                report.out.push('\n');
+            }
+            if tracks.len() == 1 {
+                let _ = write!(report.out, "Playlist '{name}': 1 track");
+            } else {
+                let _ = write!(report.out, "Playlist '{name}': {} tracks", tracks.len());
+            }
+        }
+        Ok(report)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn library_list(
+        &self,
+        query: &str,
+        limit: i32,
+        offset: i32,
+        sort: &str,
+        order: &str,
+        artist: &str,
+        album: &str,
+        genre: &str,
+        rating: Option<i32>,
+    ) -> Result<Outcome> {
+        self.confirm(
+            &Command::LibraryList {
+                query: (!query.is_empty()).then(|| query.to_string()),
+                limit,
+                offset,
+                sort: sort.to_string(),
+                order: order.to_string(),
+                artist: (!artist.is_empty()).then(|| artist.to_string()),
+                album: (!album.is_empty()).then(|| album.to_string()),
+                genre: (!genre.is_empty()).then(|| genre.to_string()),
+                rating,
+            },
+            None,
+        )
+    }
+
+    pub fn library_favorites(&self, min_rating: i32, limit: i32) -> Result<Outcome> {
+        self.confirm(
+            &Command::LibraryList {
+                query: None,
+                limit,
+                offset: 0,
+                sort: String::new(),
+                order: String::new(),
+                artist: None,
+                album: None,
+                genre: None,
+                rating: Some(min_rating),
+            },
+            None,
+        )
+    }
+
+    pub fn library_maintenance(
+        &self,
+        action: &str,
+        dry_run: bool,
+        library_id: i64,
+    ) -> Result<Outcome> {
+        self.confirm(
+            &Command::LibraryMaintenance {
+                action: action.to_string(),
+                dry_run,
+                library_id,
+            },
+            None,
+        )
+    }
+
+    pub fn library_add(&self, path: &str, recursive: bool) -> Result<Outcome> {
+        self.confirm(
+            &Command::LibraryAdd {
+                path: path.to_string(),
+                recursive,
+            },
+            Some(format!("Added {path} to library")),
+        )
+    }
+
+    pub fn library_remove(&self, query: &str) -> Result<Outcome> {
+        let mut label = String::new();
+        if let Some(id) = crate::parse::parse_id(query).filter(|id| *id != 0) {
+            if let Ok(payload) = self.send(&Command::TagGet {
+                id: Some(id),
+                path: None,
+                cover: false,
+            }) {
+                if let Reply::SingleTrack { track, .. } = &payload.reply {
+                    label = added_label(track);
+                }
+            }
+        }
+        if label.is_empty() {
+            let filename = crate::paths::filename_of(query);
+            if !filename.is_empty() {
+                label = filename;
+            }
+        }
+        let payload = self.send(&Command::LibraryRemove {
+            query: query.to_string(),
+        })?;
+        let line = if label.is_empty() {
+            format!("Removed {query} from library")
+        } else {
+            format!("Removed from library {label}")
+        };
+        Ok(Outcome::confirm(payload, Some(line)))
     }
 
     pub fn playlist_list(&self) -> Result<Outcome> {

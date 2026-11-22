@@ -1,7 +1,7 @@
 //! Command-line surface (clap).
 //!
-//! Parse failures map to exit 1 (the C++ shell returns 1 from CLI11), not
-//! clap's default 2. Help/version displays exit 0.
+//! Parse failures keep clap's exit 2, which is what the C++ shell normalizes
+//! CLI11's own codes to (`detail::exitUsage`). Help/version displays exit 0.
 
 use std::path::PathBuf;
 
@@ -124,6 +124,11 @@ pub enum Command {
     Playlist {
         #[command(subcommand)]
         command: Option<PlaylistCommand>,
+    },
+    /// Library operations
+    Library {
+        #[command(subcommand)]
+        command: Option<LibraryCommand>,
     },
 }
 
@@ -376,6 +381,149 @@ pub enum PlaylistCommand {
     },
 }
 
+#[derive(Debug, Subcommand)]
+pub enum LibraryCommand {
+    /// Scan library
+    Scan {
+        /// Scan path (default: library music dir)
+        #[arg(long, value_name = "PATH")]
+        path: Option<String>,
+        /// Full-file BLAKE3 (slower)
+        #[arg(long)]
+        full_hash: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(about = "Measure ReplayGain 2.0 gains")]
+    Analyze {
+        /// Re-measure tracks that already carry gains
+        #[arg(long)]
+        reanalyze: bool,
+        /// Library id (0 = all tracks)
+        #[arg(long, default_value_t = 0)]
+        library: i64,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Search library
+    Search {
+        /// FTS query
+        query: String,
+        /// Limit
+        #[arg(long, default_value_t = 50)]
+        limit: i32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Library stats
+    Stats {
+        /// Top-N most played tracks (0 = totals only)
+        #[arg(long, default_value_t = -1, allow_hyphen_values = true)]
+        top_tracks: i32,
+        /// Top-N albums by total plays (0 = not requested)
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        top_albums: i32,
+        /// Top-N genres by total plays (0 = not requested)
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        top_genres: i32,
+        /// Top-N artists by total plays (0 = not requested)
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        top_artists: i32,
+        /// Queue overview: all or id (repeatable)
+        #[arg(long = "queue", value_name = "QUEUE")]
+        queues: Vec<String>,
+        /// Playlist overview by id (repeatable)
+        #[arg(long = "playlist", value_name = "ID")]
+        playlists: Vec<i64>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Add file or directory to library
+    Add {
+        /// File or directory path
+        path: String,
+        /// Recurse into subdirectories
+        #[arg(long)]
+        recursive: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove track from library
+    Remove {
+        /// Track id or path
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// List all tracks in library
+    List {
+        /// Search query (title, artist, album, genre)
+        #[arg(long, default_value = "")]
+        query: String,
+        #[arg(
+            long,
+            default_value = "",
+            help = "Sort field: id, title, artist, album, year, rating, play_count, duration, date_added"
+        )]
+        sort: String,
+        /// Sort direction: asc or desc
+        #[arg(long, default_value = "")]
+        order: String,
+        /// Column allowlist: id,title,artist,album,genre,year,rating,duration,path
+        #[arg(long, default_value = "")]
+        columns: String,
+        /// Filter by artist
+        #[arg(long, default_value = "")]
+        artist: String,
+        /// Filter by album
+        #[arg(long, default_value = "")]
+        album: String,
+        /// Filter by genre
+        #[arg(long, default_value = "")]
+        genre: String,
+        /// Filter by user rating (0-5)
+        #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(i32).range(0..=5))]
+        rating: i32,
+        /// Limit results
+        #[arg(long, default_value_t = 50)]
+        limit: i32,
+        /// Offset for pagination
+        #[arg(long, default_value_t = 0)]
+        offset: i32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// List favorited (rated) tracks
+    Favorites {
+        /// Minimum rating (0-5)
+        #[arg(
+            long,
+            default_value_t = 1,
+            value_parser = clap::value_parser!(i32).range(0..=5)
+        )]
+        min_rating: i32,
+        /// Limit results
+        #[arg(long, default_value_t = 50)]
+        limit: i32,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Report or prune missing/duplicate tracks
+    Maintenance {
+        /// report or prune
+        #[arg(default_value = "report", value_parser = ["report", "prune"])]
+        action: String,
+        /// Report only, no changes
+        #[arg(long)]
+        dry_run: bool,
+        /// Library id (default: 1)
+        #[arg(long, default_value_t = 1)]
+        library: i64,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,6 +609,86 @@ mod tests {
         assert!(matches!(
             cli.command,
             Some(Command::Seek { ref time, .. }) if time == "-5"
+        ));
+    }
+
+    #[test]
+    fn library_stats_defaults_match_the_cpp_options() {
+        let cli = Cli::try_parse_from(["kanariv", "library", "stats"]).expect("parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Library {
+                command: Some(LibraryCommand::Stats {
+                    top_tracks: -1,
+                    top_albums: 0,
+                    top_genres: 0,
+                    top_artists: 0,
+                    json: false,
+                    ..
+                })
+            })
+        ));
+    }
+
+    #[test]
+    fn library_stats_collects_repeatable_selectors() {
+        let cli = Cli::try_parse_from([
+            "kanariv",
+            "library",
+            "stats",
+            "--top-tracks",
+            "5",
+            "--queue",
+            "all",
+            "--queue",
+            "3",
+            "--playlist",
+            "2",
+        ])
+        .expect("parse");
+        let Some(Command::Library {
+            command:
+                Some(LibraryCommand::Stats {
+                    top_tracks,
+                    queues,
+                    playlists,
+                    ..
+                }),
+        }) = cli.command
+        else {
+            panic!("expected library stats");
+        };
+        assert_eq!(top_tracks, 5);
+        assert_eq!(queues, ["all", "3"]);
+        assert_eq!(playlists, [2]);
+    }
+
+    #[test]
+    fn library_maintenance_action_defaults_to_report() {
+        let cli = Cli::try_parse_from(["kanariv", "library", "maintenance"]).expect("parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Library {
+                command: Some(LibraryCommand::Maintenance { ref action, library: 1, dry_run: false, json: false })
+            }) if action == "report"
+        ));
+        assert!(Cli::try_parse_from(["kanariv", "library", "maintenance", "vacuum"]).is_err());
+    }
+
+    #[test]
+    fn library_list_bounds_the_rating_filter() {
+        assert!(Cli::try_parse_from(["kanariv", "library", "list", "--rating", "6"]).is_err());
+        let cli = Cli::try_parse_from(["kanariv", "library", "favorites", "--min-rating", "0"])
+            .expect("parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Library {
+                command: Some(LibraryCommand::Favorites {
+                    min_rating: 0,
+                    limit: 50,
+                    json: false
+                })
+            })
         ));
     }
 }

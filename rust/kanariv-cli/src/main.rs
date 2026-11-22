@@ -27,11 +27,18 @@ use clap::{CommandFactory, Parser};
 use crate::app::App;
 use crate::batch::BatchReport;
 use crate::cli::{
-    Cli, Command, ConfigCommand, DeviceCommand, PlaylistCommand, QueueCommand, StatusArgs,
+    Cli, Command, ConfigCommand, DeviceCommand, LibraryCommand, PlaylistCommand, QueueCommand,
+    StatusArgs,
 };
 use crate::error::{Error, Result};
 use crate::outcome::Outcome;
+use crate::output::RenderOpts;
 use crate::parse::VolumeArg;
+
+/// `detail::exitUsage`: `shell.cpp` remaps every rejected CLI11 parse to this
+/// constant, and so do the hand-written grammar checks (a parse error is a
+/// wrong invocation, where `--help` is the fix).
+const EXIT_USAGE: i32 = 2;
 
 fn main() -> ExitCode {
     ExitCode::from(u8::try_from(run()).unwrap_or(1))
@@ -41,14 +48,16 @@ fn run() -> i32 {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(err) => {
-            let success = matches!(
+            // Help and version are informational (exit 0); every other
+            // rejection is a usage error.
+            let informational = matches!(
                 err.kind(),
                 ErrorKind::DisplayHelp
                     | ErrorKind::DisplayVersion
                     | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
             );
             let _ = err.print();
-            return i32::from(!success);
+            return if informational { 0 } else { EXIT_USAGE };
         }
     };
 
@@ -78,7 +87,7 @@ fn run() -> i32 {
     if let Some(level) = log_level.as_deref() {
         if !config::is_valid_log_level(level) {
             eprintln!("--log-level: invalid '{level}' (expected trace|debug|info|warn|error)");
-            return 1;
+            return EXIT_USAGE;
         }
     }
 
@@ -119,7 +128,7 @@ fn dispatch(app: &App, command: Command) -> i32 {
                 eprintln!(
                     "seek: '{time}': {message} (expected mm:ss, hh:mm:ss, seconds, or +N/-N)"
                 );
-                1
+                EXIT_USAGE
             }
         },
         Command::Status(args) => status(app, &args),
@@ -136,7 +145,7 @@ fn dispatch(app: &App, command: Command) -> i32 {
                         "volume: '{}': {message} (expected 0-100, +N/-N, mute, or unmute)",
                         level.as_deref().unwrap_or("")
                     );
-                    1
+                    EXIT_USAGE
                 }
             }
         }
@@ -156,6 +165,10 @@ fn dispatch(app: &App, command: Command) -> i32 {
         Command::Playlist { command } => match command {
             Some(command) => dispatch_playlist(app, command),
             None => print_group_help("playlist"),
+        },
+        Command::Library { command } => match command {
+            Some(command) => dispatch_library(app, command),
+            None => print_group_help("library"),
         },
     }
 }
@@ -211,18 +224,32 @@ fn is_mutating(command: &Command) -> bool {
                     | PlaylistCommand::Import { .. }
             )
         ),
+        Command::Library { command } => matches!(
+            command,
+            Some(
+                LibraryCommand::Scan { .. }
+                    | LibraryCommand::Analyze { .. }
+                    | LibraryCommand::Add { .. }
+                    | LibraryCommand::Remove { .. }
+                    | LibraryCommand::Maintenance { .. }
+            )
+        ),
         _ => false,
     }
 }
 
 fn status(app: &App, args: &StatusArgs) -> i32 {
+    if args.watch && args.follow {
+        eprintln!("status: --watch and --follow are aliases; pass only one");
+        return EXIT_USAGE;
+    }
     if args.watch || args.follow {
         if args.interval <= 0 {
             eprintln!(
                 "status: --interval must be positive (got {})",
                 args.interval
             );
-            return 1;
+            return EXIT_USAGE;
         }
         // The watch loop belongs to a status-stream API that this frontend
         // phase does not have yet; fail loudly instead of polling silently.
@@ -242,7 +269,7 @@ fn dispatch_config(app: &App, command: ConfigCommand) -> i32 {
         ConfigCommand::Reset { key, json } => {
             if key.as_deref() == Some("") {
                 eprintln!("config reset: empty key (omit --key to reset all)");
-                return 1;
+                return EXIT_USAGE;
             }
             render(app.config_reset(key.as_deref()), json)
         }
@@ -298,6 +325,116 @@ fn dispatch_playlist(app: &App, command: PlaylistCommand) -> i32 {
     }
 }
 
+fn dispatch_library(app: &App, command: LibraryCommand) -> i32 {
+    match command {
+        LibraryCommand::Scan {
+            path,
+            full_hash,
+            json,
+        } => render(app.library_scan(path.as_deref(), full_hash), json),
+        LibraryCommand::Analyze {
+            reanalyze,
+            library,
+            json,
+        } => render(
+            app.library_analyze(reanalyze, (library != 0).then_some(library)),
+            json,
+        ),
+        LibraryCommand::Search { query, limit, json } => library_search(app, &query, limit, json),
+        LibraryCommand::Stats {
+            top_tracks,
+            top_albums,
+            top_genres,
+            top_artists,
+            queues,
+            playlists,
+            json,
+        } => {
+            if json && (!queues.is_empty() || !playlists.is_empty()) {
+                eprintln!("library stats: --json takes no --queue or --playlist");
+                return EXIT_USAGE;
+            }
+            let report = app.library_stats(
+                (top_tracks >= 0).then_some(top_tracks),
+                (top_albums > 0).then_some(top_albums),
+                (top_genres > 0).then_some(top_genres),
+                (top_artists > 0).then_some(top_artists),
+                &queues,
+                &playlists,
+            );
+            match report {
+                Err(err) => render_error(&err),
+                Ok(report) => render_batch(&report, json),
+            }
+        }
+        LibraryCommand::Add {
+            path,
+            recursive,
+            json,
+        } => render(app.library_add(&path, recursive), json),
+        LibraryCommand::Remove { id, json } => render(app.library_remove(&id), json),
+        LibraryCommand::List {
+            query,
+            sort,
+            order,
+            columns,
+            artist,
+            album,
+            genre,
+            rating,
+            limit,
+            offset,
+            json,
+        } => {
+            let rating = (rating > 0).then_some(rating);
+            render_with_columns(
+                app.library_list(
+                    &query, limit, offset, &sort, &order, &artist, &album, &genre, rating,
+                ),
+                json,
+                &columns,
+            )
+        }
+        LibraryCommand::Favorites {
+            min_rating,
+            limit,
+            json,
+        } => render(app.library_favorites(min_rating, limit), json),
+        LibraryCommand::Maintenance {
+            action,
+            library,
+            json,
+            ..
+        } => {
+            // `--dry-run` is inert upstream: the option starts as `true` and the
+            // flag can only set it, so even `prune` reaches the daemon as a dry run.
+            render(app.library_maintenance(&action, true, library), json)
+        }
+    }
+}
+
+/// `detail::runLibrary` search branch: the formatter prints the table with the
+/// query highlighted, and the outcome line is ignored.
+fn library_search(app: &App, query: &str, limit: i32, as_json: bool) -> i32 {
+    let outcome = match app.library_search(query, limit) {
+        Ok(outcome) => outcome,
+        Err(err) => return render_error(&err),
+    };
+    let Some(payload) = outcome.payload else {
+        return 0;
+    };
+    let opts = RenderOpts {
+        columns: "",
+        needle: query,
+    };
+    if as_json {
+        output::print_json(&payload);
+    } else {
+        output::print_payload_with(&payload, 0, use_color(), &opts);
+    }
+    0
+}
+
 fn render_batch(report: &BatchReport, as_json: bool) -> i32 {
     if !report.err.is_empty() {
         eprintln!("{}", report.err);
@@ -346,7 +483,27 @@ fn render(result: Result<Outcome>, as_json: bool) -> i32 {
     }
 }
 
+/// `detail::render(res, asJson, columns)`: the only command with a column
+/// allowlist is `library list`.
+fn render_with_columns(result: Result<Outcome>, as_json: bool, columns: &str) -> i32 {
+    match result {
+        Ok(outcome) => render_outcome_with(
+            &outcome,
+            as_json,
+            &RenderOpts {
+                columns,
+                needle: "",
+            },
+        ),
+        Err(err) => render_error(&err),
+    }
+}
+
 fn render_outcome(outcome: &Outcome, as_json: bool) -> i32 {
+    render_outcome_with(outcome, as_json, &RenderOpts::default())
+}
+
+fn render_outcome_with(outcome: &Outcome, as_json: bool, opts: &RenderOpts) -> i32 {
     if outcome.failed {
         if let Some(line) = &outcome.line {
             eprintln!("{line}");
@@ -371,7 +528,7 @@ fn render_outcome(outcome: &Outcome, as_json: bool) -> i32 {
         return 0;
     }
     if let Some(payload) = &outcome.payload {
-        output::print_payload(payload, 0, use_color());
+        output::print_payload_with(payload, 0, use_color(), opts);
     }
     0
 }
@@ -466,7 +623,10 @@ mod tests {
             }),
         }));
         assert!(!is_mutating(&Command::Queue { command: None }));
+    }
 
+    #[test]
+    fn playlist_and_library_mutations_persist_defaults() {
         assert!(is_mutating(&Command::Playlist {
             command: Some(PlaylistCommand::Create {
                 name: "mix".into(),
@@ -499,5 +659,38 @@ mod tests {
             command: Some(PlaylistCommand::List { json: false }),
         }));
         assert!(!is_mutating(&Command::Playlist { command: None }));
+
+        assert!(is_mutating(&Command::Library {
+            command: Some(LibraryCommand::Scan {
+                path: None,
+                full_hash: false,
+                json: false,
+            }),
+        }));
+        assert!(is_mutating(&Command::Library {
+            command: Some(LibraryCommand::Remove {
+                id: "7".into(),
+                json: false,
+            }),
+        }));
+        assert!(!is_mutating(&Command::Library {
+            command: Some(LibraryCommand::Search {
+                query: "song".into(),
+                limit: 50,
+                json: false,
+            }),
+        }));
+        assert!(!is_mutating(&Command::Library {
+            command: Some(LibraryCommand::Stats {
+                top_tracks: -1,
+                top_albums: 0,
+                top_genres: 0,
+                top_artists: 0,
+                queues: Vec::new(),
+                playlists: Vec::new(),
+                json: false,
+            }),
+        }));
+        assert!(!is_mutating(&Command::Library { command: None }));
     }
 }
