@@ -130,6 +130,16 @@ pub enum Command {
         #[command(subcommand)]
         command: Option<LibraryCommand>,
     },
+    /// Tag operations
+    Tag {
+        #[command(subcommand)]
+        command: Option<TagCommand>,
+    },
+    /// Track operations
+    Track {
+        #[command(subcommand)]
+        command: Option<TrackCommand>,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -524,6 +534,61 @@ pub enum LibraryCommand {
     },
 }
 
+#[derive(Debug, Subcommand)]
+pub enum TagCommand {
+    /// Edit track tag
+    Edit {
+        /// Track id or file path
+        id: String,
+        #[arg(
+            help = "Field (title,artist,album,album_artist,genre,year,track_number,disc_number)",
+            value_parser = ["title", "artist", "album", "album_artist", "genre", "year", "track_number", "disc_number"]
+        )]
+        field: String,
+        /// New value
+        value: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Get track tags
+    Get {
+        /// Track id or file path
+        id: String,
+        /// Single field (default: all)
+        field: Option<String>,
+        /// Output file path (cover art only)
+        #[arg(long, default_value = "")]
+        out: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Batch-edit tags from a file
+    Batch {
+        /// Tag assignments file (JSON or id|field|value lines)
+        #[arg(long)]
+        file: String,
+        /// Validate only, do not write
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TrackCommand {
+    /// Rate a track (0-5)
+    Rate {
+        /// Track id or file path
+        id: String,
+        /// Rating (0-5)
+        #[arg(default_value_t = 0, value_parser = clap::value_parser!(i32).range(0..=5))]
+        rating: i32,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -592,6 +657,68 @@ mod tests {
                 command: Some(PlaylistCommand::Export { ref format, .. })
             }) if format == "m3u"
         ));
+    }
+
+    #[test]
+    fn tag_edit_rejects_a_field_the_writer_cannot_set() {
+        let cli =
+            Cli::try_parse_from(["kanariv", "tag", "edit", "3", "title", "New"]).expect("parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tag {
+                command: Some(TagCommand::Edit { ref id, ref field, ref value, json: false })
+            }) if id == "3" && field == "title" && value == "New"
+        ));
+        // `cover` is readable but not an `edit` target (CLI11 IsMember).
+        assert!(Cli::try_parse_from(["kanariv", "tag", "edit", "3", "cover", "x"]).is_err());
+    }
+
+    #[test]
+    fn tag_get_field_is_optional_and_out_defaults_empty() {
+        let cli = Cli::try_parse_from(["kanariv", "tag", "get", "3"]).expect("parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tag {
+                command: Some(TagCommand::Get { ref id, field: None, ref out, json: false })
+            }) if id == "3" && out.is_empty()
+        ));
+        let cli = Cli::try_parse_from(["kanariv", "tag", "get", "3", "cover", "--out", "c.jpg"])
+            .expect("parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tag {
+                command: Some(TagCommand::Get { field: Some(ref field), ref out, .. })
+            }) if field == "cover" && out == "c.jpg"
+        ));
+    }
+
+    #[test]
+    fn tag_batch_requires_a_file() {
+        assert!(Cli::try_parse_from(["kanariv", "tag", "batch"]).is_err());
+        let cli = Cli::try_parse_from(["kanariv", "tag", "batch", "--file", "e.txt", "--dry-run"])
+            .expect("parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tag {
+                command: Some(TagCommand::Batch { ref file, dry_run: true, json: false })
+            }) if file == "e.txt"
+        ));
+    }
+
+    #[test]
+    fn track_rate_defaults_to_zero_and_bounds_the_rating() {
+        let cli = Cli::try_parse_from(["kanariv", "track", "rate", "3"]).expect("parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Track {
+                command: Some(TrackCommand::Rate {
+                    rating: 0,
+                    json: false,
+                    ..
+                })
+            })
+        ));
+        assert!(Cli::try_parse_from(["kanariv", "track", "rate", "3", "6"]).is_err());
     }
 
     #[test]

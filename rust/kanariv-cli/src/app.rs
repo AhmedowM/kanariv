@@ -7,11 +7,15 @@ use std::fmt::Write as _;
 use std::thread;
 use std::time::Duration;
 
+use serde_json::Value;
+
 use crate::batch::BatchReport;
 use crate::client::{self, deadline_for};
 use crate::config::Config;
-use crate::error::{Result, StatusCode};
-use crate::ipc::{Command, ConfigValue, Payload, RepeatMode, Reply, Status, Track};
+use crate::error::{Error, Result, StatusCode};
+use crate::ipc::{
+    Command, ConfigValue, Payload, RepeatMode, Reply, Status, TagBatchEditEntry, Track,
+};
 use crate::outcome::Outcome;
 
 pub struct App {
@@ -664,6 +668,133 @@ impl App {
         Ok(Outcome::confirm(payload, Some(line)))
     }
 
+    pub fn tag_edit(&self, id_or_path: &str, field: &str, value: &str) -> Result<Outcome> {
+        let id = self.resolve_track_id(id_or_path)?;
+        Ok(Outcome::confirm(
+            self.send(&Command::TagEdit {
+                id,
+                field: field.to_string(),
+                value: value.to_string(),
+            })?,
+            Some(format!("Updated {field} for track {id}")),
+        ))
+    }
+
+    pub fn tag_get(&self, id_or_path: &str, cover: bool) -> Result<Outcome> {
+        let (id, path) = match crate::parse::parse_id(id_or_path) {
+            Some(id) => (Some(id), None),
+            None => (None, Some(id_or_path.to_string())),
+        };
+        self.confirm(&Command::TagGet { id, path, cover }, None)
+    }
+
+    /// One tag field as human text plus its single-key JSON (`app::TagValue`).
+    pub fn tag_value(&self, id_or_path: &str, field: &str) -> Result<TagValue> {
+        if !is_tag_field(field) {
+            return Err(Error::invalid_arg(format!("unknown tag field '{field}'")));
+        }
+        let id = self.resolve_track_id(id_or_path)?;
+
+        // Cover art needs its own round trip with cover=true; every other
+        // field comes from the plain TagGet.
+        if field == "cover" {
+            let payload = self.send(&Command::TagGet {
+                id: Some(id),
+                path: None,
+                cover: true,
+            })?;
+            let cover = match &payload.reply {
+                Reply::SingleTrack { cover_data, .. } => cover_data
+                    .as_deref()
+                    .filter(|data| !data.is_empty())
+                    .map(ToString::to_string),
+                _ => None,
+            };
+            let Some(cover) = cover else {
+                return Err(Error::new(
+                    StatusCode::NotFound,
+                    format!("tag get cover: no cover art for track {id}"),
+                ));
+            };
+            return Ok(TagValue {
+                json: single_key_json(field, Value::String(cover.clone())),
+                value: cover,
+            });
+        }
+
+        let payload = self.send(&Command::TagGet {
+            id: Some(id),
+            path: None,
+            cover: false,
+        })?;
+        let Reply::SingleTrack { track, .. } = &payload.reply else {
+            return Err(Error::new(
+                StatusCode::Internal,
+                "tag get: no track in result",
+            ));
+        };
+        let numeric = matches!(field, "year" | "track_number" | "disc_number");
+        let raw = match field {
+            "title" => track.title.clone(),
+            "artist" => track.artist.clone(),
+            "album" => track.album.clone(),
+            "album_artist" => track.album_artist.clone(),
+            "genre" => track.genre.clone(),
+            "year" => track.year.to_string(),
+            "track_number" => track.track_num.to_string(),
+            "disc_number" => track.disc_num.to_string(),
+            _ => String::new(),
+        };
+        // Numeric fields carry a JSON number, exactly like `std::stoll`.
+        let json = if numeric {
+            single_key_json(field, Value::from(raw.parse::<i64>().unwrap_or_default()))
+        } else {
+            single_key_json(field, Value::String(raw.clone()))
+        };
+        Ok(TagValue { value: raw, json })
+    }
+
+    /// `App::tagBatchEdit`: one request carries every assignment, which is why
+    /// the command class is Batch rather than Interactive.
+    pub fn tag_batch_edit(
+        &self,
+        entries: Vec<TagBatchEditEntry>,
+        dry_run: bool,
+    ) -> Result<Payload> {
+        self.send(&Command::TagBatchEdit { dry_run, entries })
+    }
+
+    pub fn track_rate(&self, id_or_path: &str, rating: i32) -> Result<Outcome> {
+        let id = self.resolve_track_id(id_or_path)?;
+        Ok(Outcome::confirm(
+            self.send(&Command::TrackRate {
+                track_id: id,
+                rating,
+            })?,
+            Some(format!("Rated track {id} as {rating}")),
+        ))
+    }
+
+    /// `App::numericId` plus the path fallback the tag handlers share: a
+    /// numeric token is an id, anything else resolves through `TagGet{path}`.
+    fn resolve_track_id(&self, id_or_path: &str) -> Result<i64> {
+        if let Some(id) = crate::parse::parse_id(id_or_path) {
+            return Ok(id);
+        }
+        let payload = self.send(&Command::TagGet {
+            id: None,
+            path: Some(id_or_path.to_string()),
+            cover: false,
+        })?;
+        match &payload.reply {
+            Reply::SingleTrack { track, .. } => Ok(track.id),
+            _ => Err(Error::new(
+                StatusCode::NotFound,
+                format!("track not found for path '{id_or_path}'"),
+            )),
+        }
+    }
+
     pub fn playlist_list(&self) -> Result<Outcome> {
         self.confirm(&Command::PlaylistList, None)
     }
@@ -910,6 +1041,40 @@ impl App {
             None,
         )
     }
+}
+
+/// `kanariv::app::tagFields`: the nine fields `tag get`/`tag edit` accept.
+const TAG_FIELDS: [&str; 9] = [
+    "title",
+    "artist",
+    "album",
+    "album_artist",
+    "genre",
+    "year",
+    "track_number",
+    "disc_number",
+    "cover",
+];
+
+/// `kanariv::app::isTagField`.
+#[must_use]
+pub fn is_tag_field(field: &str) -> bool {
+    TAG_FIELDS.contains(&field)
+}
+
+/// One field's human text plus its single-key JSON, mirroring `app::TagValue`.
+#[derive(Debug)]
+pub struct TagValue {
+    pub value: String,
+    pub json: String,
+}
+
+/// `utils::Json` with one member, dumped compactly: the CLI prints this text
+/// verbatim for `tag get <id> <field> --json`.
+fn single_key_json(key: &str, value: Value) -> String {
+    let mut object = serde_json::Map::new();
+    object.insert(key.to_string(), value);
+    serde_json::to_string(&Value::Object(object)).unwrap_or_default()
 }
 
 /// `kanariv::app::addedLabel`: "artist - title: file", falling back by part.

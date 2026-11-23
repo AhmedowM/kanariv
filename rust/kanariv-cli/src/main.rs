@@ -4,6 +4,7 @@
 //! error, failure line, quiet success, JSON payload, human line, bare payload.
 
 mod app;
+mod base64;
 mod batch;
 mod cli;
 mod client;
@@ -28,9 +29,10 @@ use crate::app::App;
 use crate::batch::BatchReport;
 use crate::cli::{
     Cli, Command, ConfigCommand, DeviceCommand, LibraryCommand, PlaylistCommand, QueueCommand,
-    StatusArgs,
+    StatusArgs, TagCommand, TrackCommand,
 };
 use crate::error::{Error, Result};
+use crate::ipc::Reply;
 use crate::outcome::Outcome;
 use crate::output::RenderOpts;
 use crate::parse::VolumeArg;
@@ -170,6 +172,14 @@ fn dispatch(app: &App, command: Command) -> i32 {
             Some(command) => dispatch_library(app, command),
             None => print_group_help("library"),
         },
+        Command::Tag { command } => match command {
+            Some(command) => dispatch_tag(app, command),
+            None => print_group_help("tag"),
+        },
+        Command::Track { command } => match command {
+            Some(command) => dispatch_track(app, command),
+            None => print_group_help("track"),
+        },
     }
 }
 
@@ -234,6 +244,12 @@ fn is_mutating(command: &Command) -> bool {
                     | LibraryCommand::Maintenance { .. }
             )
         ),
+        // `tag get` reads; `tag batch --dry-run` still counts as a write.
+        Command::Tag { command } => matches!(
+            command,
+            Some(TagCommand::Edit { .. } | TagCommand::Batch { .. })
+        ),
+        Command::Track { command } => matches!(command, Some(TrackCommand::Rate { .. })),
         _ => false,
     }
 }
@@ -433,6 +449,133 @@ fn library_search(app: &App, query: &str, limit: i32, as_json: bool) -> i32 {
         output::print_payload_with(&payload, 0, use_color(), &opts);
     }
     0
+}
+
+fn dispatch_tag(app: &App, command: TagCommand) -> i32 {
+    match command {
+        TagCommand::Edit {
+            id,
+            field,
+            value,
+            json,
+        } => render(app.tag_edit(&id, &field, &value), json),
+        TagCommand::Get {
+            id,
+            field,
+            out,
+            json,
+        } => tag_get(app, &id, field.as_deref(), &out, json),
+        TagCommand::Batch {
+            file,
+            dry_run,
+            json,
+        } => tag_batch(app, &file, dry_run, json),
+    }
+}
+
+fn dispatch_track(app: &App, command: TrackCommand) -> i32 {
+    match command {
+        TrackCommand::Rate { id, rating, json } => render(app.track_rate(&id, rating), json),
+    }
+}
+
+/// `detail::runTags` get branch: the whole record, or one field as text (or
+/// single-key JSON), or cover art written to a file.
+fn tag_get(app: &App, id: &str, field: Option<&str>, out: &str, as_json: bool) -> i32 {
+    let Some(field) = field.filter(|field| !field.is_empty()) else {
+        return render(app.tag_get(id, false), as_json);
+    };
+    if !app::is_tag_field(field) {
+        eprintln!(
+            "tag get: unknown field '{field}' (expected one of \
+             title|artist|album|album_artist|genre|year|track_number|disc_number|cover)"
+        );
+        return EXIT_USAGE;
+    }
+    let value = match app.tag_value(id, field) {
+        Ok(value) => value,
+        Err(err) => return render_error(&err),
+    };
+    if out.is_empty() || field != "cover" {
+        if as_json {
+            println!("{}", value.json);
+        } else {
+            println!("{}", value.value);
+        }
+        return 0;
+    }
+    let bytes = match crate::base64::decode(&value.value) {
+        Ok(bytes) => bytes,
+        Err(err) => return render_error(&err),
+    };
+    if std::fs::write(out, &bytes).is_err() {
+        return render_error(&Error::io(format!("tag get: cannot open output '{out}'")));
+    }
+    println!("Wrote cover art ({} bytes) to {out}", bytes.len());
+    0
+}
+
+/// `detail::runTags` batch branch: the file grammar, then the per-entry report
+/// the shell prints itself instead of going through the formatter.
+fn tag_batch(app: &App, file: &str, dry_run: bool, as_json: bool) -> i32 {
+    let Ok(bytes) = std::fs::read(file) else {
+        eprintln!("tag batch: cannot open file '{file}'");
+        return 1;
+    };
+    let content = String::from_utf8_lossy(&bytes).into_owned();
+    let entries = match parse::parse_tag_batch(&content) {
+        parse::TagBatchFile::Entries(entries) => entries,
+        parse::TagBatchFile::NotArray => {
+            return render_error(&Error::invalid_arg(
+                "tag batch: JSON must be an array of entries",
+            ));
+        }
+        parse::TagBatchFile::InvalidJson(detail) => {
+            return render_error(&Error::invalid_arg(format!(
+                "tag batch: invalid JSON: {detail}"
+            )));
+        }
+        parse::TagBatchFile::Malformed(line) => {
+            eprintln!("tag batch: malformed line (expected id|field|value): {line}");
+            return EXIT_USAGE;
+        }
+    };
+    if entries.is_empty() {
+        eprintln!("tag batch: no entries found in '{file}'");
+        return 1;
+    }
+    let payload = match app.tag_batch_edit(entries, dry_run) {
+        Ok(payload) => payload,
+        Err(err) => return render_error(&err),
+    };
+    let Reply::TagBatchEditResult {
+        succeeded,
+        failed,
+        results,
+    } = &payload.reply
+    else {
+        eprintln!("tag batch: unexpected result type");
+        return 1;
+    };
+    if as_json {
+        // `ipc::toJson(res).dump()`: compact, unlike the pretty frontend JSON.
+        println!(
+            "{}",
+            serde_json::to_string(&payload.json).unwrap_or_default()
+        );
+        return 0;
+    }
+    println!("Tag batch: {succeeded} succeeded, {failed} failed");
+    for entry in results {
+        let target = entry.id.map_or_else(
+            || entry.path.clone().unwrap_or_else(|| "?".to_string()),
+            |id| id.to_string(),
+        );
+        let state = if entry.ok { "OK" } else { "FAIL" };
+        let detail = if entry.ok { "" } else { &entry.error };
+        println!("  [{target}] {}={state} {detail}", entry.field);
+    }
+    i32::from(*failed > 0)
 }
 
 fn render_batch(report: &BatchReport, as_json: bool) -> i32 {
@@ -692,5 +835,38 @@ mod tests {
             }),
         }));
         assert!(!is_mutating(&Command::Library { command: None }));
+
+        assert!(is_mutating(&Command::Tag {
+            command: Some(TagCommand::Edit {
+                id: "3".into(),
+                field: "title".into(),
+                value: "New".into(),
+                json: false,
+            }),
+        }));
+        assert!(is_mutating(&Command::Tag {
+            command: Some(TagCommand::Batch {
+                file: "entries.txt".into(),
+                dry_run: true,
+                json: false,
+            }),
+        }));
+        assert!(is_mutating(&Command::Track {
+            command: Some(TrackCommand::Rate {
+                id: "3".into(),
+                rating: 4,
+                json: false,
+            }),
+        }));
+        assert!(!is_mutating(&Command::Tag {
+            command: Some(TagCommand::Get {
+                id: "3".into(),
+                field: None,
+                out: String::new(),
+                json: false,
+            }),
+        }));
+        assert!(!is_mutating(&Command::Tag { command: None }));
+        assert!(!is_mutating(&Command::Track { command: None }));
     }
 }

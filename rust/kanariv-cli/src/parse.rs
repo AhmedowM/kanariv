@@ -168,6 +168,83 @@ fn parse_digits(token: &str) -> Option<u64> {
     token.parse::<u64>().ok()
 }
 
+/// What a `tag batch --file` payload parsed into.
+#[derive(Debug, PartialEq)]
+pub enum TagBatchFile {
+    Entries(Vec<crate::ipc::TagBatchEditEntry>),
+    /// JSON parsed but is not an array.
+    NotArray,
+    /// JSON text the parser rejected.
+    InvalidJson(String),
+    /// Not JSON and not an `id|field|value` record.
+    Malformed(String),
+}
+
+/// `detail::runLibrary` batch-file grammar: JSON when the first non-whitespace
+/// byte is `[` or `{`, otherwise `#`-comment-tolerant `id|field|value` lines.
+#[must_use]
+pub fn parse_tag_batch(content: &str) -> TagBatchFile {
+    let is_json = content
+        .trim_start_matches([' ', '\t', '\r', '\n'])
+        .chars()
+        .next()
+        .is_some_and(|first| first == '[' || first == '{');
+    if is_json {
+        return match serde_json::from_str::<serde_json::Value>(content) {
+            Ok(serde_json::Value::Array(items)) => TagBatchFile::Entries(
+                items
+                    .iter()
+                    .map(|item| crate::ipc::TagBatchEditEntry {
+                        // A wrong type reads as "absent", like the C++ `isNumber`
+                        // and `isString` guards.
+                        id: item.get("id").and_then(serde_json::Value::as_i64),
+                        path: item
+                            .get("path")
+                            .and_then(serde_json::Value::as_str)
+                            .map(ToString::to_string),
+                        field: item
+                            .get("field")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
+                        value: item
+                            .get("value")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
+                    })
+                    .collect(),
+            ),
+            Ok(_) => TagBatchFile::NotArray,
+            // The frontend renders this as an InvalidArg error; the explanation
+            // is serde's wording, not nlohmann's.
+            Err(err) => TagBatchFile::InvalidJson(err.to_string()),
+        };
+    }
+    let mut entries = Vec::new();
+    for line in content.lines() {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() != 3 {
+            return TagBatchFile::Malformed(line.to_string());
+        }
+        let (id, path) = match parse_id(parts[0]) {
+            Some(id) => (Some(id), None),
+            None => (None, Some(parts[0].to_string())),
+        };
+        entries.push(crate::ipc::TagBatchEditEntry {
+            id,
+            path,
+            field: parts[1].to_string(),
+            value: parts[2].to_string(),
+        });
+    }
+    TagBatchFile::Entries(entries)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,6 +289,90 @@ mod tests {
         assert_eq!(parse_id("1 "), None);
         assert_eq!(parse_id("1.5"), None);
         assert_eq!(parse_id("99999999999999999999999"), None);
+    }
+
+    #[test]
+    fn tag_batch_prefers_json_when_the_payload_starts_with_a_bracket() {
+        let entries = super::parse_tag_batch(
+            r#"[{"id": 3, "field": "title", "value": "New"},
+                {"path": "a.wav", "field": "genre", "value": "Rock"}]"#,
+        );
+        let super::TagBatchFile::Entries(entries) = entries else {
+            panic!("expected entries");
+        };
+        assert_eq!(
+            entries,
+            vec![
+                crate::ipc::TagBatchEditEntry {
+                    id: Some(3),
+                    path: None,
+                    field: "title".into(),
+                    value: "New".into(),
+                },
+                crate::ipc::TagBatchEditEntry {
+                    id: None,
+                    path: Some("a.wav".into()),
+                    field: "genre".into(),
+                    value: "Rock".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn tag_batch_json_treats_a_wrong_type_as_absent() {
+        // C++ guards each member with isNumber/isString, so a non-number id
+        // leaves the entry without an id rather than failing.
+        let parsed = super::parse_tag_batch(r#"[{"id": "3", "field": "title"}]"#);
+        let super::TagBatchFile::Entries(entries) = parsed else {
+            panic!("expected entries");
+        };
+        assert_eq!(
+            entries,
+            vec![crate::ipc::TagBatchEditEntry {
+                id: None,
+                path: None,
+                field: "title".into(),
+                value: String::new(),
+            }]
+        );
+    }
+
+    #[test]
+    fn tag_batch_json_must_be_an_array() {
+        assert_eq!(
+            super::parse_tag_batch(r#"{"id": 1}"#),
+            super::TagBatchFile::NotArray
+        );
+        assert!(matches!(
+            super::parse_tag_batch("[oops"),
+            super::TagBatchFile::InvalidJson(_)
+        ));
+    }
+
+    #[test]
+    fn tag_batch_reads_line_records() {
+        let parsed = super::parse_tag_batch(
+            "# comment\n\n1|title|One\r\nD:/a.wav|year|1998\n2|artist|OnlyTwo|Extra\n",
+        );
+        // The third record splits into four parts, which is malformed.
+        let super::TagBatchFile::Malformed(line) = parsed else {
+            panic!("expected a malformed line");
+        };
+        assert_eq!(line, "2|artist|OnlyTwo|Extra");
+
+        let parsed = super::parse_tag_batch("# comment\n\n1|title|One\r\nD:/a.wav|year|1998\n");
+        let super::TagBatchFile::Entries(entries) = parsed else {
+            panic!("expected entries");
+        };
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].id, Some(1));
+        assert_eq!(entries[1].path.as_deref(), Some("D:/a.wav"));
+        assert_eq!(entries[1].value, "1998");
+        assert!(matches!(
+            super::parse_tag_batch("# only comments\n"),
+            super::TagBatchFile::Entries(entries) if entries.is_empty()
+        ));
     }
 
     #[test]

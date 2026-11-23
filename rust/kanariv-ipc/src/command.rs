@@ -10,7 +10,7 @@ use serde::Serialize;
 use crate::model::RepeatMode;
 
 /// One `TagBatchEdit` assignment.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct TagBatchEditEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<i64>,

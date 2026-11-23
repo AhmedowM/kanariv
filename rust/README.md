@@ -65,9 +65,10 @@ Implemented (parity with the C++ shell's slice):
 | Device | `device list`, `device set`, `device test` |
 | Playlist | `playlist list`, `playlist tracks`, `playlist create`, `playlist add`, `playlist load`, `playlist save`, `playlist delete`, `playlist rename`, `playlist export`, `playlist import` |
 | Library | `library scan`, `library analyze`, `library search`, `library stats`, `library add`, `library remove`, `library list`, `library favorites`, `library maintenance` |
+| Tags | `tag edit`, `tag get` (record, single field, cover art to a file), `tag batch`, `track rate` |
 
-Not implemented yet (the C++ CLI still owns these): `tags`,
-`history`, `lyrics`, `preview`, direct-path play, `status --watch`,
+Not implemented yet (the C++ CLI still owns these): `history`,
+`lyrics`, `preview`, direct-path play, `status --watch`,
 `--daemon` hosting.
 
 `status --watch` exits with a clear error instead of polling; a status-stream

@@ -121,6 +121,7 @@ pub fn render_payload_with(
             play_count,
             last_played,
         } => render_track_info(&mut out, track, *play_count, *last_played),
+        Reply::SingleTrack { track, .. } => render_track_detail(&mut out, track),
         Reply::ConfigValue(value) => {
             pushln(&mut out, format!("{} = {}", value.key, value.value));
         }
@@ -772,6 +773,21 @@ fn render_volume(out: &mut String, vol: f32, muted: bool) {
     }
 }
 fn render_track_info(out: &mut String, track: &Track, play_count: i64, last_played: i64) {
+    render_track_detail(out, track);
+    pushln(out, format!("  Play Count:   {play_count}"));
+    if last_played > 0 {
+        pushln(
+            out,
+            format!("  Last Played:  {}", format_epoch_ms(last_played)),
+        );
+    } else {
+        pushln(out, "  Last Played:  (never)");
+    }
+}
+
+/// `OutputFormatter::printTrackDetail`: the block `tag get` prints on its own,
+/// and the first half of the `TrackInfo` block.
+fn render_track_detail(out: &mut String, track: &Track) {
     let field = |value: &str| {
         if value.is_empty() {
             "---".to_string()
@@ -821,15 +837,6 @@ fn render_track_info(out: &mut String, track: &Track, play_count: i64, last_play
             out,
             format!("  Bitrate:      {} kbps", track.bitrate / 1000),
         );
-    }
-    pushln(out, format!("  Play Count:   {play_count}"));
-    if last_played > 0 {
-        pushln(
-            out,
-            format!("  Last Played:  {}", format_epoch_ms(last_played)),
-        );
-    } else {
-        pushln(out, "  Last Played:  (never)");
     }
 }
 
@@ -969,6 +976,36 @@ mod tests {
         assert_eq!(
             lines[0],
             "Imported playlist 'imported' (0 tracks, 2 matched, 1 skipped, 0 duplicates):"
+        );
+    }
+
+    #[test]
+    fn single_track_renders_the_detail_block_without_play_stats() {
+        let text = render_payload(
+            &payload(Reply::SingleTrack {
+                track: sample_track(),
+                cover_mime: None,
+                cover_data: None,
+            }),
+            0,
+            false,
+        );
+        assert_eq!(
+            text,
+            "Track [7]\n  \
+             Path:         \n  \
+             Title:        Title\n  \
+             Artist:       Artist\n  \
+             Album:        ---\n  \
+             Album Artist: ---\n  \
+             Genre:        ---\n  \
+             Year:         ---\n  \
+             Track:        ---\n  \
+             Disc:         ---\n  \
+             Duration:     01:35\n  \
+             Sample Rate:  0 Hz\n  \
+             Channels:     0\n  \
+             Bitrate:      ---"
         );
     }
 
