@@ -1,27 +1,31 @@
-# kanariv-rs (experimental Rust components)
+# kanariv-rs (Rust rewrite, in progress)
 
-An isolated Rust exploration in three layers:
+**Destination:** one Rust binary that owns everything except the realtime audio
+thread — CLI, daemon, IPC server and client, decode path, ring buffer, audio
+output, file tags and persistence. The C++ tree is the reference implementation
+every Rust layer is validated against, not a permanent partner.
+
+Work is sequenced from the edges inward so each step has a live oracle. Today
+that is three layers plus a pilot:
 
 1. `kanariv-ipc` — a reusable, FFI-free codec and transport for the existing
    IPC wire. It models all 69 commands and all 28 result kinds key-for-key
    against `src/ipc/command_json.cpp` / `src/ipc/result_json.cpp`, with a
-   hardened frame parser and mutation tests.
-2. `kanariv-cli` (binary `kanariv-rs`) — a frontend-only CLI that talks to the
-   existing C++ daemon over that wire.
-3. `kanariv-db` — an experimental, link-free reimplementation of the SQLite
-   persistence layer (schema, FTS5 search, queue positioning, playlists,
-   history, bookmarks, lyrics). It is a parity experiment only: the daemon
-   does not link it.
+   hardened frame parser and mutation tests. The server side lands with the
+   daemon phase.
+2. `kanariv-cli` (binary `kanariv-rs`) — the Rust frontend, currently at CLI
+   parity with the C++ shell while it talks to the C++ daemon over that wire.
+3. `kanariv-db` — a link-free reimplementation of the SQLite persistence layer
+   (schema, FTS5 search, queue positioning, playlists, history, bookmarks,
+   lyrics), promoted during the DB phase.
 4. `kanariv-db-ffi` — a read-only C ABI (`cdylib`) over `kanariv-db`, plus a
-   standalone C++ parity executable. This measures cross-language cost and ABI
-   maintenance; it does not implement the kanariv persistence ports and is never
-   linked into the daemon.
+   standalone C++ parity executable. It measured cross-language cost and is a
+   pilot, not the daemon's persistence path.
 
-None of these crates links C++ code, uses FFI, or touches decoding or the
-audio thread — the audio path stays entirely C++ by design.
-
-The C++ `kanariv` binary remains canonical. Rust targets build alongside it
-and are disabled unless explicitly enabled.
+Nothing here links C++ or uses FFI yet, and nothing runs on a decode or audio
+thread: the isolation rule is that Rust enters the media path last, with a
+benchmark and a latency spike behind it. Until then the C++ `kanariv` binary is
+the one built by default, and every Rust target is opt-in.
 
 ## Workspace layout
 
